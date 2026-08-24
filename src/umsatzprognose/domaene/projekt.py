@@ -148,8 +148,10 @@ class Projekt:
     def im_prognose_scope(self) -> bool:
         """Ob das Projekt in die Prognose eingeht: aktiv und mit verwertbarem Budget.
 
-        Die Abgrenzung auf aktive Projekte deckt die Spec nicht ab; sie ist eine
-        Annahme (von 895 Projekten sind 122 aktiv) und gehoert bestaetigt.
+        Spec 5.0 (seit v0.6) legt diesen Scope fest: aktiv und mit einem als
+        Euro-Gesamtbudget lesbaren Budget. Von 895 Projekten sind 122 aktiv, davon 44 im
+        Scope. Offen bleibt laut 9.1 der Umgang mit aktiven Projekten, die
+        ``completed`` tragen - sie gehen hier derzeit ein.
         """
         return self.aktiv and self.budget.verwertbar
 
@@ -163,10 +165,12 @@ class Projekt:
         vorliegt, weicht der abgeleitete Satz vom nominalen ab, weil nicht jede erfasste
         Stunde abgerechnet wird.
 
-        Die in Spec 5.1 verlangte **Normalisierung von Pauschalleistungen** ist damit
-        noch nicht abgedeckt: acht Gruppen haben Umsatz ohne jede erfasste Zeit und
-        liefern hier ``None``. Die Definition des effektiven Stundensatzes steht in
-        Spec v0.3, die dem Repository nicht vorliegt.
+        Pauschalleistungen **mit** gebuchter Zeit sind darin normalisiert enthalten;
+        genau so legt Spec 5.1 es seit v0.6 fest, ohne den Umweg ueber ``/v2/entries``.
+        Offen bleibt der Fall Umsatz **ohne** jede erfasste Zeit: acht Gruppen liefern
+        hier ``None``. Sie gehen laut 5.1 mit ihrem Restvolumen in die Simulation ein,
+        verbrauchen aber keine Kapazitaet - eine benannte Naeherung, die ueber einen
+        Hinweis sichtbar bleibt.
         """
         if not self.verbrauchte_stunden:
             return None

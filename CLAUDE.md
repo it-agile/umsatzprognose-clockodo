@@ -53,7 +53,8 @@ darstellung  ──►  domaene  ◄──  clockodo
 - `tests/` – pytest. Die Antwortausschnitte in `conftest.py` sind gekürzte, aber echte
   Antworten samt ihrer Fallen.
 - `notebooks/` – zwei Notebooks mit verschiedenen Zielgruppen, siehe unten.
-- `spec/` – Spezifikation, maßgeblich für alle Modellfragen.
+- `spec/` – Spezifikation. Maßgeblich ist **v0.6**, ein vollständiges Dokument; v0.3
+  und v0.5 liegen als Historie daneben und sind nicht mehr zu zitieren.
 
 **Die Domäne kennt kein JSON und keinen HTTP-Client.** Das ist die tragende Regel: das
 teuer erarbeitete Wissen über Clockodos Eigenheiten steht in `clockodo/`, je Endpunkt
@@ -148,12 +149,18 @@ Auftragsvolumen, Umsatz der zwölf abgeschlossenen Monate 09/2025–08/2026 rund
 Größenordnung, nicht als Regressionswert. Ein vollständiger Ladevorgang dauert rund
 15 Sekunden.
 
-Es fehlen: die Monte-Carlo-Simulation (5.4), die Abrufquote-Verteilungen (5.2), die
-Referenzklassen (6), die verfügbare Kapazität (5.3, es fehlen Abwesenheiten und der
-Abschlag für ungeplante Abwesenheit) und die Normalisierung von Pauschalleistungen
-(5.1). `Bestand.simulieren()` liefert deshalb `NochKeinePrognose` mit Begründung, und
-das Dashboard zeigt an der Stelle der Bandbreite genau diese Begründung an – eine
-erfundene Kurve wäre der schlechtere Platzhalter.
+Es fehlen: die Monte-Carlo-Simulation (5.4), die **Schätzung** der
+Abrufquote-Verteilung (5.2 legt ihre Form fest, die Zahlen fehlen) und die verfügbare
+Kapazität (5.3, es fehlen Abwesenheiten und der Abschlag für ungeplante Abwesenheit).
+`Bestand.simulieren()` liefert deshalb `NochKeinePrognose` mit Begründung, und das
+Dashboard zeigt an der Stelle der Bandbreite genau diese Begründung an – eine erfundene
+Kurve wäre der schlechtere Platzhalter.
+
+Referenzklassen sind seit v0.6 **zurückgestellt** und blockieren nichts mehr; die
+Verteilung wird portfolioweit geschätzt. Die Normalisierung von Pauschalleistungen ist
+ebenfalls entschieden: Pauschalen mit gebuchter Zeit stecken im abgeleiteten
+Stundensatz, die acht Gruppen mit Umsatz ohne Zeit gehen ohne Kapazitätsbedarf ein und
+werden als Hinweis ausgewiesen.
 
 ## Was das Modul fachlich tut
 
@@ -172,23 +179,31 @@ Nicht im MVP: Pipeline, Kurzfristgeschäft, Cash-Schicht, Projekte ohne Clockodo
 
 ## Rechenkern (Monte Carlo, 10.000 Läufe)
 
-Die Simulation rechnet **in Euro als Leitgröße** und nutzt Personentage nur als
+Die Simulation rechnet **in Euro als Leitgröße** und nutzt **Stunden** nur als
 Zwischenschritt für den Kapazitätsdeckel. Diese Richtung ist zentral – wer sie umdreht,
-baut ein anderes Modell:
+baut ein anderes Modell. Stunden und nicht Personentage, weil `/targethours` Stunden je
+Wochentag liefert (20–35 h/Woche, meist 7 h/Tag) und keine Taglänge hinterlegt ist; eine
+angenommene würde den Deckel still verschieben (Spec 5.3 seit v0.6).
+
+Der Horizont **beginnt mit dem laufenden Monat**. Er ist angebrochen, deshalb werden
+gezogene Abrufquote und Kapazität für Monat 1 mit dem Anteil der verbleibenden
+Arbeitstage skaliert. Der bereits gebuchte Verbrauch dieses Monats steckt schon im
+Ausgangs-Restvolumen und wird nicht doppelt gezählt; für die Darstellung wird er neben
+der Bandbreite ausgewiesen (5.5).
 
 1. Restvolumen je Projekt: `budget.amount − revenue_kumuliert` (aus `entrygroups`).
    Pauschalleistungen werden über einen abgeleiteten effektiven Stundensatz normalisiert.
    Initialisiert wird mit dem **prognosewirksamen** Restvolumen, also `max(0, …)`.
-2. Abrufquote je Monat aus der Verteilung der **Referenzklasse** des Projekts ziehen
+2. Abrufquote je Monat aus der **portfolioweiten** empirischen Verteilung ziehen
    → gewünschter Euro-Verbrauch, **begrenzt auf das verbleibende Restvolumen**.
-3. Über den effektiven Stundensatz in Personentage umrechnen und auf Personen aufteilen –
+3. Über den effektiven Stundensatz in Stunden umrechnen und auf Personen aufteilen –
    Schlüssel ist der **historische Anteil je Person am jeweiligen Projekt** (Anteil an
    den Gesamtstunden), unverändert in die Zukunft fortgeschrieben. Er liegt als
    `Projekt.anteil_je_mitarbeiter()` vor und stammt aus der Doppelgruppierung von
    `/v2/entrygroups`, nicht aus den Einzeleinträgen.
 4. Je Person Bedarf über **alle** Projekte gegen die verfügbare Kapazität deckeln; bei
    Überschreitung anteilig kürzen. Der Deckel ist projektübergreifend, nicht pro Projekt.
-5. Gelieferte Personentage zurück in Euro → Monatsumsatz je Projekt.
+5. Gelieferte Stunden zurück in Euro → Monatsumsatz je Projekt.
 6. Restvolumen um den tatsächlichen Euro-Verbrauch reduzieren, in den nächsten Monat
    übertragen. Durch die Begrenzung in Schritt 2 bleibt es ≥ 0.
 
@@ -405,27 +420,41 @@ ebenfalls keines aktiv.
 
 ## Kalibrierung als Teil des Modells
 
-Zwei Größen sind geschätzt und veralten: die Referenzklassen-Zuordnung der Projekte und
-der historische Aufteilungsschlüssel je Person. Wechselt die Teambesetzung eines Projekts
-spürbar, wird der Schlüssel falsch. Die Spec ordnet das ausdrücklich der monatlichen
-Kalibrierung zu und **nicht** einer Modelländerung – bei Abweichungen also zuerst die
-Kalibrierung prüfen, nicht die Simulationslogik umbauen.
+Drei Größen sind geschätzt und veralten: die Abrufquote-Verteilung, der historische
+Aufteilungsschlüssel je Person und der Abschlag für ungeplante Abwesenheit. Wechselt die
+Teambesetzung eines Projekts spürbar, wird der Schlüssel falsch. Die Spec ordnet das
+ausdrücklich der monatlichen Kalibrierung zu und **nicht** einer Modelländerung – bei
+Abweichungen also zuerst die Kalibrierung prüfen, nicht die Simulationslogik umbauen.
 
-## Wichtige Einschränkung der Spec-Datei
+Zwei Einschränkungen der Schätzung stehen in 5.2 und sind nicht wegzudefinieren: das
+Budget ist nur in seinem **heutigen** Stand bekannt, weshalb rückwärts rekonstruierte
+Restvolumina bei nachträglich erhöhten Budgets zu niedrige Quoten liefern; und die
+unabhängige Ziehung je Projekt ignoriert Korrelation und liefert damit eine **zu enge**
+Bandbreite. Die Richtung beider Fehler ist bekannt, ihre Größe nicht.
 
-v0.5 ist wie schon v0.4 ein Delta-Dokument: viele Abschnitte (Begriffe, Abrufquote-Verteilung,
-Referenzklassen, Kalibrierung, Verhältnis zur Gesamtprognose) stehen dort nur als
-„Unverändert zu v0.3“. **v0.3 liegt nicht im Repository.** Fehlen für eine Aufgabe
-Details – etwa die konkrete Form der Abrufquote-Verteilung oder die Definition der
-Referenzklassen – sind sie hier nicht auffindbar; dann beim Nutzer nachfragen statt
-plausible Werte zu erfinden.
+## Die Spec-Historie: nur v0.6 zitieren
 
-Offen und bewusst zurückgestellt: Verantwortlichkeit für Referenzklassen-Pflege und
-monatliche Kalibrierung. Blockiert den produktiven Rollout, nicht den Prototyp.
+v0.4 und v0.5 waren Delta-Dokumente, die tragende Abschnitte nur als „unverändert zu
+v0.3“ führten. Das hat die Spec ohne v0.3 unlesbar gemacht. **v0.6 ist ein vollständiges
+Dokument** und die einzige maßgebliche Fassung; v0.3 und v0.5 liegen daneben, sind aber
+an mehreren Stellen widerlegt.
+
+Wichtig zu wissen, warum: v0.3 bezog seine Feldangaben aus
+`docs.clockodo.com/openapi.yaml`, also aus der Dokumentation. Genau drei davon hat der
+Prototyp an echten Antworten widerlegt – `hourly_rate`, `default_target_hours` und die
+Legacy-Absences. **Bei Feldfragen also nie v0.3 zitieren, sondern gegen eine echte
+Antwort prüfen.**
+
+Offen und bewusst zurückgestellt: Verantwortlichkeit für die monatliche Kalibrierung
+(9.5). Blockiert den produktiven Rollout, nicht den Prototyp. Ebenfalls offen laut 9.1
+bis 9.4: aktive Projekte mit `completed: true` (sie gehen derzeit ein), aktive Projekte
+ohne Budget, die Korrelationsannahme und die Behandlung von Feiertagen.
 
 ## Nächster geplanter Schritt
 
-Laut Spec Abschnitt 10: Abrufquoten-Verteilungen je Referenzklasse aus der
-`entrygroups`-Historie schätzen, Rückwärtstest über 12 Stichtage. Beides setzt voraus,
-dass die Definition der Referenzklassen und die Form der Verteilung geklärt sind – sie
-stehen in Spec v0.3, die nicht vorliegt. Vorher also nachfragen, nicht schätzen.
+Laut Spec Abschnitt 11: die Abrufquote-Verteilung schätzen. Die Form steht seit v0.6
+fest – empirische Verteilung über Projekt-Monate, Quote = Verbrauch im Monat geteilt
+durch Restvolumen zu Monatsbeginn, aus `/v2/entrygroups` mit
+`grouping[]=projects_id&grouping[]=month`. Das ist eine Gruppierungskombination, die der
+Client noch nicht anbietet. Danach Abwesenheiten (`/v4/absences`), dann die Simulation,
+dann der Rückwärtstest über 12 Stichtage.

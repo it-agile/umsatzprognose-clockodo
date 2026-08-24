@@ -65,7 +65,7 @@ def test_prognoseflaeche_nennt_den_grund():
     fig = diagramme.prognose(BESTAND.simulieren())
     text = fig.layout.annotations[0].text
     assert "5.4" in text
-    assert "Referenzklassen" in text
+    assert "Abrufquote" in text
 
 
 def test_kennzahlen_zeigen_eine_kachel_je_eintrag():

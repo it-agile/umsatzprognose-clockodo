@@ -1,10 +1,12 @@
 """Prognose - die Ausgabe der Simulation, und die Naht, an der sie andockt.
 
-Die Monte-Carlo-Simulation aus Spec 5.4 ist **nicht gebaut**. Was ihr fehlt, sind keine
-Programmierarbeit, sondern zwei Modellgroessen: die Verteilung der Abrufquote (5.2) und
-die Definition der Referenzklassen (6). Beide stehen laut Spec v0.5 "unveraendert zu
-v0.3", und v0.3 liegt dem Repository nicht vor. Plausible Werte zu erfinden hiesse, eine
-Bandbreite auszuweisen, die niemand kalibriert hat.
+Die Monte-Carlo-Simulation aus Spec 5.4 ist **nicht gebaut**. Seit Spec v0.6 ist das
+keine Definitionsluecke mehr, sondern offene Arbeit: 5.2 legt die Abrufquote-Verteilung
+als empirische Verteilung ueber Projekt-Monate fest, geschaetzt ist sie aber noch nicht,
+und die verfuegbare Kapazitaet aus 5.3 fehlt ohne die Abwesenheiten. Referenzklassen
+sind in v0.6 ausdruecklich zurueckgestellt (Abschnitt 6) und blockieren nichts mehr.
+Eine Bandbreite auszuweisen, die niemand kalibriert hat, waere trotzdem der schlechtere
+Platzhalter.
 
 Statt die Luecke zu verschweigen, hat sie hier eine Form: :class:`NochKeinePrognose`
 sagt aus, dass es keine gibt, und warum. Das Dashboard zeigt das an der Stelle an, an
@@ -58,8 +60,8 @@ class NochKeinePrognose(Prognose):
 
     fehlt: str = (
         "Die Simulation nach Spec 5.4 ist noch nicht gebaut. Dafür fehlen die "
-        "Verteilung der Abrufquote und die Definition der Referenzklassen; beide "
-        "stehen in Spec v0.3, die nicht vorliegt."
+        "geschätzte Abrufquote-Verteilung (Spec 5.2) und die verfügbare Kapazität "
+        "(5.3, es fehlen die Abwesenheiten)."
     )
 
     @property

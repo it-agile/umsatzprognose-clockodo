@@ -3,19 +3,23 @@
 Rollierende 1–3-Monats-Prognose des Umsatzes aus laufenden, in Clockodo angelegten
 Projekten – als Bandbreite (95 % / 85 % / 50 %), nicht als Punktwert.
 
-Maßgeblich ist die Spezifikation: [`spec/spec-umsatzprognose-clockodo-modul-v0.5.md`](spec/spec-umsatzprognose-clockodo-modul-v0.5.md).
+Maßgeblich ist die Spezifikation: [`spec/spec-umsatzprognose-clockodo-modul-v0.6.md`](spec/spec-umsatzprognose-clockodo-modul-v0.6.md).
+Sie ist seit v0.6 ein vollständiges Dokument; v0.3 und v0.5 liegen als Historie daneben
+und sind nicht mehr maßgeblich.
 
 ## Stand
 
-Prototyp-Phase. Umgesetzt sind Schritt 1 aus Spec Abschnitt 10 (Restvolumen je Projekt,
-5.1) und das vollständige Domänenmodell außer der Simulation – inklusive
-Aufteilungsschlüssel je Person (5.4 Schritt 3) und Sollarbeitszeit (Teil von 5.3). Das
-Dashboard zeigt den Umsatz der letzten zwölf Monate und das offene Auftragsvolumen.
+Prototyp-Phase. Umgesetzt ist der Datenzugriff nach Spec Abschnitt 4, der Prognose-Scope
+(5.0), das Restvolumen je Projekt (5.1) und das vollständige Domänenmodell außer der
+Simulation – inklusive Aufteilungsschlüssel je Person (5.4 Schritt 3) und
+Sollarbeitszeit (Teil von 5.3). Das Dashboard zeigt den Umsatz der letzten zwölf Monate
+und das offene Auftragsvolumen.
 
-Die Monte-Carlo-Simulation (5.4) ist noch nicht gebaut: dafür fehlen die
-Abrufquote-Verteilung (5.2) und die Referenzklassen (6), die beide in Spec v0.3 stehen,
-die nicht im Repository liegt. Das Dashboard zeigt an ihrer Stelle diese Begründung an,
-statt eine Zahl zu erfinden.
+Die Monte-Carlo-Simulation (5.4) ist noch nicht gebaut. Offen sind dafür die Schätzung
+der Abrufquote-Verteilung (5.2 legt ihre Form fest, die Zahlen fehlen) und die
+verfügbare Kapazität (5.3, es fehlen die Abwesenheiten). Referenzklassen sind in v0.6
+zurückgestellt und blockieren nichts. Das Dashboard zeigt an der Stelle der Bandbreite
+diese Begründung an, statt eine Zahl zu erfinden.
 
 ## Setup
 
