@@ -61,8 +61,9 @@ baut ein anderes Modell:
 
 1. Restvolumen je Projekt: `budget.amount − revenue_kumuliert` (aus `entrygroups`).
    Pauschalleistungen werden über einen abgeleiteten effektiven Stundensatz normalisiert.
+   Initialisiert wird mit dem **prognosewirksamen** Restvolumen, also `max(0, …)`.
 2. Abrufquote je Monat aus der Verteilung der **Referenzklasse** des Projekts ziehen
-   → gewünschter Euro-Verbrauch.
+   → gewünschter Euro-Verbrauch, **begrenzt auf das verbleibende Restvolumen**.
 3. Über den effektiven Stundensatz in Personentage umrechnen und auf Personen aufteilen –
    Schlüssel ist der **historische Anteil je Person am jeweiligen Projekt** (`users_id`
    je Entry, Anteil an den Gesamtstunden), unverändert in die Zukunft fortgeschrieben.
@@ -70,7 +71,7 @@ baut ein anderes Modell:
    Überschreitung anteilig kürzen. Der Deckel ist projektübergreifend, nicht pro Projekt.
 5. Gelieferte Personentage zurück in Euro → Monatsumsatz je Projekt.
 6. Restvolumen um den tatsächlichen Euro-Verbrauch reduzieren, in den nächsten Monat
-   übertragen.
+   übertragen. Durch die Begrenzung in Schritt 2 bleibt es ≥ 0.
 
 Neben den Konfidenzniveaus ist der **Anteil der Läufe, in denen Kapazität der limitierende
 Faktor war**, ein geforderter Output – er unterscheidet Nachfrage- von Kapazitätsengpass.
@@ -92,8 +93,14 @@ kein Versehen, sondern Stand der Clockodo-API:
 | Geplante Abwesenheit | Absence-Endpunkt (Legacy `/api`) | Zeitraum, Art, Person |
 
 `budget.hard` ist in dieser Installation `false` – Budgets sind also weiche Grenzen und
-dürfen im Modell nicht als harte Kappung behandelt werden. Konkret: das rohe Restvolumen
-kann negativ werden, und dass es das wird, ist ein Kalibrierungssignal und kein Fehler.
+sind kein technisches Limit: der Verbrauch kann sie übersteigen, das rohe Restvolumen
+wird dann negativ. Das ist ein Kalibrierungssignal und kein Fehler.
+
+Für die Prognose gilt trotzdem eine harte Grenze (Spec 5.1, seit v0.5): **eine
+Überschreitung kann nur historisch entstehen, die Prognose überschreitet das Budget
+nicht.** Projekte mit historisch überschrittenem Budget tragen 0 zur Prognose bei.
+Deshalb führt `restvolumen.py` beide Größen getrennt – `roh` (vorzeichenbehaftet, für
+die Kalibrierung) und `prognosewirksam` (bei 0 gekappt, für die Simulation).
 
 Basis-URL ist `https://my.clockodo.com/api`. Authentifizierung über drei Header, alle
 drei sind Pflicht: `X-ClockodoApiUser` (E-Mail des Benutzers), `X-ClockodoApiKey` und
@@ -116,7 +123,7 @@ Kalibrierung prüfen, nicht die Simulationslogik umbauen.
 
 ## Wichtige Einschränkung der Spec-Datei
 
-v0.4 ist ein Delta-Dokument: viele Abschnitte (Begriffe, Abrufquote-Verteilung,
+v0.5 ist wie schon v0.4 ein Delta-Dokument: viele Abschnitte (Begriffe, Abrufquote-Verteilung,
 Referenzklassen, Kalibrierung, Verhältnis zur Gesamtprognose) stehen dort nur als
 „Unverändert zu v0.3“. **v0.3 liegt nicht im Repository.** Fehlen für eine Aufgabe
 Details – etwa die konkrete Form der Abrufquote-Verteilung oder die Definition der

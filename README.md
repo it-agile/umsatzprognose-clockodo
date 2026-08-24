@@ -3,7 +3,7 @@
 Rollierende 1–3-Monats-Prognose des Umsatzes aus laufenden, in Clockodo angelegten
 Projekten – als Bandbreite (95 % / 85 % / 50 %), nicht als Punktwert.
 
-Maßgeblich ist die Spezifikation: [`spec/spec-umsatzprognose-clockodo-modul-v0.4.md`](spec/spec-umsatzprognose-clockodo-modul-v0.4.md).
+Maßgeblich ist die Spezifikation: [`spec/spec-umsatzprognose-clockodo-modul-v0.5.md`](spec/spec-umsatzprognose-clockodo-modul-v0.5.md).
 
 ## Stand
 
@@ -42,9 +42,77 @@ uv run jupyter lab             # Notebooks lokal
   Rechenlogik gehört ins Paket, nicht ins Notebook.
 - `spec/` – Spezifikation.
 
-## Google Colab
+## Deployment (Google Colab)
 
-Zielwerkzeug laut Spec ist ein Notebook in Google Colab. Das lokale venv steht dort
-nicht zur Verfügung, deshalb beginnt jedes Notebook mit einer Installationszelle, die
-nur in Colab ausgeführt wird. Zugangsdaten in Colab über die Secrets-Verwaltung
-bereitstellen, nicht über eine `.env`.
+Es gibt keinen Server und keinen Build-Artefakt-Upload. Zielwerkzeug laut Spec
+(Abschnitt 9) ist ein Notebook in **Google Colab**; „deployen“ heißt hier: den Stand
+nach GitHub pushen und das Notebook in Colab gegen diesen Stand laufen lassen. Die
+Prognose wird manuell ausgeführt, es gibt keinen Scheduler.
+
+Das Repository `it-agile/umsatzprognose-clockodo` ist **privat**. Das ist der Grund für
+die Extraschritte 2 und 3 – bei einem öffentlichen Repository entfielen sie.
+
+### 1. Stand veröffentlichen
+
+Colab installiert aus GitHub, nicht aus dem lokalen Arbeitsverzeichnis. Was nicht
+gepusht ist, existiert für Colab nicht:
+
+```bash
+uv run pytest && uv run ruff check .
+git push origin main
+```
+
+Für nachvollziehbare Läufe einen Tag setzen – dann ist später belegbar, welche
+Modellversion eine Prognose erzeugt hat:
+
+```bash
+git tag -a v0.1.0 -m "Restvolumen je Projekt (Spec 5.1)"
+git push origin v0.1.0
+```
+
+### 2. Notebook in Colab öffnen
+
+Bei einem privaten Repository muss Colab einmalig für den GitHub-Zugriff autorisiert
+werden (in Colab unter *Notebook öffnen → GitHub*, inklusive privater Repositories).
+Danach lässt sich `notebooks/01_restvolumen.ipynb` direkt öffnen.
+
+Wenn diese Autorisierung nicht erwünscht ist: Notebook-Datei herunterladen und in Colab
+hochladen, oder über Google Drive einbinden. Funktional gleichwertig, nur ohne
+Verknüpfung zum Repository – Änderungen müssen dann manuell zurückgeführt werden.
+
+### 3. Paket in Colab installieren
+
+Das lokale venv steht in Colab nicht zur Verfügung, deshalb beginnt jedes Notebook mit
+einer Installationszelle, die nur dort greift. Für ein privates Repository braucht `pip`
+ein GitHub-Token – Colab hat weder SSH-Key noch GitHub-Anmeldung.
+
+Ein **fine-grained Personal Access Token** mit ausschließlich Leserechten auf dieses
+Repository anlegen und in Colab als Secret `GITHUB_TOKEN` ablegen. Das Token gehört
+nicht in eine Notebook-Zelle und nicht ins Repository: Colab-Secrets sind an das
+jeweilige Google-Konto gebunden und werden beim Teilen des Notebooks nicht mitgegeben,
+ein im Zellcode eingetragenes Token dagegen schon.
+
+Die Installationszelle zieht das Paket dann anhand des gesetzten Tags. Statt `main` eine
+Version zu pinnen ist der Unterschied zwischen „die Prognose von letztem Monat“ und
+„die Prognose mit dem Code von letztem Monat“.
+
+### 4. Zugangsdaten in Colab
+
+Die vier Clockodo-Variablen aus `.env.sample` als Colab-Secrets anlegen –
+`CLOCKODO_API_USER`, `CLOCKODO_API_KEY`, `CLOCKODO_APP_NAME`, `CLOCKODO_APP_EMAIL`.
+Keine `.env` in Colab. Das Notebook hebt die Secrets in die Umgebung und ruft
+`load_credentials(use_dotenv=False)` auf.
+
+### Bekannte Einschränkungen
+
+- **Abhängigkeitsversionen weichen ab.** `uv.lock` gilt nur lokal; `pip` in Colab
+  ignoriert die Lockfile und löst gegen die dort vorinstallierten Pakete auf. Ein
+  lokal grüner Testlauf garantiert daher kein identisches Verhalten in Colab.
+- **Der API-Teil des Notebooks ist ungetestet.** JSON-Envelope und Query-Parameter der
+  Clockodo-Endpunkte sind nicht verifiziert und im Notebook mit `PRÜFEN` markiert.
+  Beim ersten echten Lauf prüfen und korrigieren.
+- **Kein automatisierter Lauf.** Ob die monatliche Prognose dauerhaft manuell in Colab
+  ausgeführt wird, ist nicht entschieden. Sobald sie regelmäßig und unbeaufsichtigt
+  laufen soll, ist Colab das falsche Werkzeug – dann braucht es einen Scheduler und
+  einen Ort für die Zugangsdaten, der nicht an ein persönliches Google-Konto hängt.
+  Das hängt an der offenen Verantwortlichkeitsfrage aus Spec Abschnitt 9.

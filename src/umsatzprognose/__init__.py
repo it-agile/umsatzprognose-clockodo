@@ -1,6 +1,6 @@
 """Umsatzprognose - Baustein Bestand (Clockodo).
 
-Siehe ``spec/spec-umsatzprognose-clockodo-modul-v0.4.md`` fuer das Modell.
+Siehe ``spec/spec-umsatzprognose-clockodo-modul-v0.5.md`` fuer das Modell.
 """
 
 from umsatzprognose.restvolumen import (

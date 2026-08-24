@@ -3,18 +3,17 @@
 Formel laut Spec: ``budget.amount - revenue_kumuliert``, wobei ``revenue_kumuliert``
 aus ``/v2/entrygroups`` stammt.
 
-Zwei Punkte deckt die Spec v0.4 nicht ab; sie sind hier bewusst explizit gemacht
-statt stillschweigend entschieden:
+Budgetueberschreitungen sind seit Spec v0.5 geregelt: ``budget.hard`` ist ``false``,
+der Verbrauch kann das Budget also uebersteigen - aber nur in der Historie. Die
+Prognose ueberschreitet das Budget nicht. Daher die zwei Groessen
+:attr:`ProjektRestvolumen.roh` (vorzeichenbehaftet, macht Ueberschreitungen fuer die
+Kalibrierung sichtbar) und :attr:`ProjektRestvolumen.prognosewirksam` (bei 0 gekappt,
+Ausgangswert der Simulation). Fuer ein Projekt mit historisch ueberschrittenem Budget
+wird kein zukuenftiger Umsatz prognostiziert.
 
-1. ``budget.hard`` ist in dieser Installation ``false``. Der Verbrauch kann das
-   Budget also uebersteigen, das rohe Restvolumen wird dann negativ. Fuer die
-   Prognose ist daraus nichts mehr abrufbar, deshalb liefert
-   :attr:`ProjektRestvolumen.prognosewirksam` den bei 0 gekappten Wert. Das rohe
-   Ergebnis bleibt als :attr:`ProjektRestvolumen.roh` erhalten, damit
-   Budgetueberschreitungen bei der Kalibrierung sichtbar bleiben.
-2. Projekte ohne gesetztes Budget haben kein bezifferbares Auftragsvolumen und
-   damit kein Restvolumen. Sie werden nicht auf 0 gerechnet, sondern von
-   :func:`restvolumen_je_projekt` uebersprungen und separat zurueckgemeldet.
+Nicht von der Spec abgedeckt: Projekte ohne gesetztes Budget haben kein bezifferbares
+Auftragsvolumen und damit kein Restvolumen. Sie werden nicht auf 0 gerechnet, sondern
+von :func:`restvolumen_je_projekt` uebersprungen und separat zurueckgemeldet.
 
 Die in 5.1 erwaehnte Normalisierung von Pauschalleistungen ueber den effektiven
 Stundensatz ist hier noch nicht umgesetzt: die Definition des effektiven

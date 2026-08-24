@@ -1,9 +1,11 @@
 # Spec: Umsatzprognose – Baustein Bestand (Clockodo)
 
-**Version:** 0.4
+**Version:** 0.5
 **Stand:** 24.08.2026
-**Änderung zu v0.3:** Aufteilungsschlüssel und Zielwerkzeug entschieden.
-Verantwortlichkeit bewusst noch offen (siehe Abschnitt 9) – muss vor
+**Änderung zu v0.4:** Umgang mit Budgetüberschreitungen entschieden – die
+Prognose überschreitet das Budget eines Projekts nicht (Abschnitte 5.1 und 5.4).
+**Änderung zu v0.3 (aus v0.4):** Aufteilungsschlüssel und Zielwerkzeug
+entschieden. Verantwortlichkeit bewusst noch offen (siehe Abschnitt 9) – muss vor
 produktivem Rollout geklärt sein, nicht vor dem Prototyp.
 
 ---
@@ -45,9 +47,28 @@ Unverändert zu v0.3:
 
 ### 5.1 Restvolumen je Projekt (in Euro)
 
-Unverändert zu v0.3: `budget.amount − revenue_kumuliert` (aus
+Grundformel unverändert zu v0.3: `budget.amount − revenue_kumuliert` (aus
 `entrygroups`), Pauschalleistungen über abgeleiteten effektiven Stundensatz
 normalisiert.
+
+**Neu in v0.5 – Budgetüberschreitungen.** `budget.hard` ist bei uns `false`, das
+Budget ist also eine weiche Grenze. Eine Überschreitung ist damit möglich, aber
+**nur in der Historie** – sie entsteht durch bereits gebuchte Zeiten. **Die
+Prognose überschreitet das Budget eines Projekts nicht.**
+
+Daraus folgen zwei Größen, die auseinanderzuhalten sind:
+
+- **Rohes Restvolumen:** `budget.amount − revenue_kumuliert`, vorzeichenbehaftet.
+  Ist es negativ, ist das Budget historisch überschritten.
+- **Prognosewirksames Restvolumen:** `max(0, rohes Restvolumen)`. Nur dieser
+  Betrag kann im Prognosezeitraum noch abgerufen werden.
+
+Für ein Projekt mit historisch überschrittenem Budget wird demnach **kein
+zukünftiger Umsatz prognostiziert**; sein Beitrag zur Prognose ist 0.
+
+Das rohe Restvolumen wird trotzdem geführt und nicht verworfen: Häufigkeit und
+Höhe von Überschreitungen sind ein Kalibrierungssignal (Abschnitt 7) und kein
+Fehler.
 
 ### 5.2 Abrufquote-Verteilung
 
@@ -62,9 +83,14 @@ Abschlag für ungeplante Abwesenheit.
 
 Pro Durchlauf (10.000 Läufe), je Monat des Horizonts:
 
-1. Restvolumen (Euro) je Projekt aus Vormonat übernehmen bzw. initialisieren.
+1. Restvolumen (Euro) je Projekt aus Vormonat übernehmen bzw. mit dem
+   **prognosewirksamen** Restvolumen aus 5.1 initialisieren. Projekte, deren
+   Budget historisch überschritten ist, starten damit bei 0 und liefern über den
+   gesamten Horizont keinen Umsatz.
 2. Abrufquote aus Referenzklassen-Verteilung ziehen → gewünschter
-   Euro-Verbrauch im Monat.
+   Euro-Verbrauch im Monat. **Der gewünschte Verbrauch wird auf das verbleibende
+   Restvolumen begrenzt** – das Budget wird in der Prognose nicht überschritten.
+   Das gilt unabhängig davon, ob die gezogene Abrufquote über 100 % liegen kann.
 3. Über den effektiven Stundensatz in Personentage umrechnen. **Aufteilung
    auf beteiligte Personen: historischer Anteil je Person am jeweiligen
    Projekt** – ermittelt aus den vergangenen Zeiteinträgen (`users_id` je
@@ -76,7 +102,8 @@ Pro Durchlauf (10.000 Läufe), je Monat des Horizonts:
    deckeln, bei Überschreitung anteilig kürzen.
 5. Tatsächlich gelieferte Personentage zurück in Euro umrechnen →
    Monatsumsatz je Projekt, summiert.
-6. Restvolumen um tatsächlichen Euro-Verbrauch reduzieren.
+6. Restvolumen um tatsächlichen Euro-Verbrauch reduzieren. Durch die Begrenzung
+   in Schritt 2 bleibt es dabei stets ≥ 0.
 
 ### 5.5 Ausgabe
 
