@@ -11,9 +11,9 @@ angelegtes venv.
 Die 3.13 ist kein Zufall: **Colab läuft auf Python 3.13** (verifiziert am 24.08.2026 an
 einem Traceback aus einer echten Colab-Sitzung). Ein früherer Pin auf 3.12 mit
 `requires-python = ">=3.12,<3.13"` ließ die Installation in Colab fehlschlagen. Deshalb
-ist `requires-python` jetzt offen (`>=3.12`) – ein Colab-Upgrade darf die Installation
-nicht brechen. Wer die Version anfasst, prüft sie gegen Colab, nicht gegen lokale
-Bequemlichkeit.
+ist `requires-python` auf `>=3.13` gesetzt, ohne Obergrenze – ein Colab-Upgrade darf die
+Installation nicht brechen. Wer die Version anfasst, prüft sie gegen Colab, nicht gegen
+lokale Bequemlichkeit.
 
 ```bash
 uv sync --extra notebook       # Umgebung herstellen
@@ -114,11 +114,29 @@ drei sind Pflicht: `X-ClockodoApiUser` (E-Mail des Benutzers), `X-ClockodoApiKey
 `X-Clockodo-External-Application` im Format `name;email` mit **maximal 50 Zeichen
 Gesamtlänge**. `config.ClockodoCredentials` kapselt das und prüft die Längengrenze.
 
-**Nicht verifiziert:** JSON-Envelope, Feldnamen jenseits der in der Spec genannten und
-Query-Parameter der Endpunkte. `docs.clockodo.com` wird als JavaScript-Anwendung
-ausgeliefert und war nicht auslesbar. Die betroffenen Stellen in
-`notebooks/01_restvolumen.ipynb` sind mit `PRÜFEN` markiert und geben die Roh-Keys aus.
-Diese Annahmen beim ersten echten API-Lauf korrigieren, statt sie fortzuschreiben.
+`docs.clockodo.com` wird als JavaScript-Anwendung ausgeliefert und war nicht auslesbar;
+die Response-Strukturen stammen daher aus echten Läufen, nicht aus der Doku.
+
+**Verifiziert am 24.08.2026 an einer echten Antwort** – `/v4/projects` liefert
+
+```
+{"paging": {"items_per_page": 1000, "current_page": 1, "count_pages": 1, "count_items": 895},
+ "data": [{"id": …, "customers_id": …, "name": …, "number": …, "active": …, …}]}
+```
+
+Also: Envelope-Key ist `data` (nicht `projects`), die Projekt-ID heißt `id`, und es gibt
+ein `paging`-Objekt. `items_per_page` ist 1000 bei aktuell 895 Projekten – die Grenze ist
+nah, deshalb läuft das Notebook über alle Seiten statt nur über die erste.
+
+**Weiterhin nicht verifiziert:** Envelope und Query-Parameter von `/v2/entrygroups`, der
+Name des Seiten-Parameters für v4 (bei `count_pages == 1` bisher nie ausgeführt) und ob
+`budget` überhaupt in jeder Projekt-Antwort steckt. Diese Stellen sind im Notebook mit
+`PRÜFEN` markiert und geben die Roh-Keys aus; beim nächsten Lauf korrigieren, statt sie
+fortzuschreiben.
+
+**Offene fachliche Abgrenzung:** Von den 895 Projekten haben viele `active: false`, sind
+also abgeschlossen oder archiviert. Das Notebook filtert über `NUR_AKTIVE = True` auf
+laufende Projekte – eine Annahme, die die Spec nicht abdeckt und die bestätigt gehört.
 
 ## Kalibrierung als Teil des Modells
 
