@@ -52,8 +52,10 @@ Es gibt keinen Server und keinen Build-Artefakt-Upload. Zielwerkzeug laut Spec
 nach GitHub pushen und das Notebook in Colab gegen diesen Stand laufen lassen. Die
 Prognose wird manuell ausgeführt, es gibt keinen Scheduler.
 
-Das Repository `it-agile/umsatzprognose-clockodo` ist **privat**. Das ist der Grund für
-die Extraschritte 2 und 3 – bei einem öffentlichen Repository entfielen sie.
+Das Repository `it-agile/umsatzprognose-clockodo` ist **öffentlich**. Damit brauchen
+weder Colab noch `pip` ein GitHub-Token. Umgekehrt gilt: alles, was hier committet wird,
+ist weltweit lesbar – Zugangsdaten gehören ausschließlich in `.env` (gitignored) bzw. in
+die Colab-Secrets, niemals in eine Notebook-Zelle oder eine Zellausgabe.
 
 ### 1. Stand veröffentlichen
 
@@ -75,27 +77,25 @@ git push origin v0.1.0
 
 ### 2. Notebook in Colab öffnen
 
-Bei einem privaten Repository muss Colab einmalig für den GitHub-Zugriff autorisiert
-werden (in Colab unter *Notebook öffnen → GitHub*, inklusive privater Repositories).
-Danach lässt sich `notebooks/01_restvolumen.ipynb` direkt öffnen.
+In Colab unter *Notebook öffnen → GitHub* das Repository angeben und
+`notebooks/01_restvolumen.ipynb` öffnen. Da das Repository öffentlich ist, braucht Colab
+dafür keine GitHub-Autorisierung.
 
-Wenn diese Autorisierung nicht erwünscht ist: Notebook-Datei herunterladen und in Colab
-hochladen, oder über Google Drive einbinden. Funktional gleichwertig, nur ohne
-Verknüpfung zum Repository – Änderungen müssen dann manuell zurückgeführt werden.
+Alternativ Notebook-Datei herunterladen und in Colab hochladen, oder über Google Drive
+einbinden. Funktional gleichwertig, nur ohne Verknüpfung zum Repository – Änderungen
+müssen dann manuell zurückgeführt werden.
 
 ### 3. Paket in Colab installieren
 
 Das lokale venv steht in Colab nicht zur Verfügung, deshalb beginnt jedes Notebook mit
-einer Installationszelle, die nur dort greift. Für ein privates Repository braucht `pip`
-ein GitHub-Token – Colab hat weder SSH-Key noch GitHub-Anmeldung.
+einer Installationszelle, die nur dort greift. Sie installiert das Paket direkt aus
+GitHub; die Abhängigkeiten kommen als Requirements mit. Ein Token ist nicht nötig.
 
-Ein **fine-grained Personal Access Token** mit ausschließlich Leserechten auf dieses
-Repository anlegen und in Colab als Secret `GITHUB_TOKEN` ablegen. Das Token gehört
-nicht in eine Notebook-Zelle und nicht ins Repository: Colab-Secrets sind an das
-jeweilige Google-Konto gebunden und werden beim Teilen des Notebooks nicht mitgegeben,
-ein im Zellcode eingetragenes Token dagegen schon.
+Wichtig nach einem Push: in Colab die **Runtime neu starten** und die Zelle erneut
+ausführen. Ohne Neustart bleibt das zuvor installierte Paket im Runtime aktiv, und
+Korrekturen wirken nicht.
 
-Die Installationszelle zieht das Paket dann anhand des gesetzten Tags. Statt `main` eine
+Die Installationszelle zieht das Paket anhand von `PAKET_REF`. Statt `main` eine
 Version zu pinnen ist der Unterschied zwischen „die Prognose von letztem Monat“ und
 „die Prognose mit dem Code von letztem Monat“.
 
