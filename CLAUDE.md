@@ -128,6 +128,15 @@ Also: Envelope-Key ist `data` (nicht `projects`), die Projekt-ID heißt `id`, un
 ein `paging`-Objekt. `items_per_page` ist 1000 bei aktuell 895 Projekten – die Grenze ist
 nah, deshalb läuft das Notebook über alle Seiten statt nur über die erste.
 
+**Widerlegt am 24.08.2026:** `GET /v2/entrygroups?time_since=…&time_until=…&grouping=projects_id`
+antwortet mit **400 Bad Request**. Welcher der drei Parameter beanstandet wird, ist offen –
+Kandidaten sind die Schreibweise des Gruppierungsparameters (`grouping[]` als
+Array-Parameter statt `grouping`), der erlaubte Wert und das Format der Zeitgrenzen.
+Das Notebook probiert diese Varianten in einer Probe-Zelle durch und gibt den
+Antwortkörper aus; `get()` hängt den Körper an jede Fehlermeldung, weil
+`raise_for_status()` nur Status und URL zeigt und Clockodo die Begründung im Körper
+liefert. Nicht weiter raten, sondern die Probe laufen lassen.
+
 **Weiterhin nicht verifiziert:** Envelope und Query-Parameter von `/v2/entrygroups`, der
 Name des Seiten-Parameters für v4 (bei `count_pages == 1` bisher nie ausgeführt) und ob
 `budget` überhaupt in jeder Projekt-Antwort steckt. Diese Stellen sind im Notebook mit
