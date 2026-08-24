@@ -107,7 +107,7 @@ class ClockodoClient:
     def get_paged(
         self, path: str, params: Mapping[str, Any] | None = None
     ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
-        """Alle Seiten eines v4-Endpunkts einsammeln.
+        """Alle Seiten eines paginierten Endpunkts einsammeln.
 
         Returns:
             Die zusammengefuegte ``data``-Liste und das ``paging``-Objekt der letzten
@@ -125,6 +125,17 @@ class ClockodoClient:
     def projects(self) -> tuple[list[dict[str, Any]], dict[str, Any]]:
         """Alle Projekte aus ``/v4/projects``, ueber alle Seiten."""
         return self.get_paged("/v4/projects")
+
+    def customers(self) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+        """Alle Kunden aus ``/v3/customers``, ueber alle Seiten.
+
+        Nur fuer die Beschriftung der Tabelle: ``/v4/projects`` liefert lediglich
+        ``customers_id``, den Kundennamen gibt es hier. Die Version ist keine freie
+        Wahl - ``/v4/customers`` antwortet mit 404 ``RouteNotFound``, ``/v2/customers``
+        mit 410 ``deprecated`` (geprueft am 24.08.2026). Envelope und ``paging`` haben
+        dieselbe Form wie bei ``/v4/projects``.
+        """
+        return self.get_paged("/v3/customers")
 
     def entrygroups_je_projekt(
         self,

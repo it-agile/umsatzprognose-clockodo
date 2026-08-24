@@ -29,7 +29,9 @@ uv run jupyter lab             # Notebooks lokal
 - `src/umsatzprognose/` – testbare Logik. `config.py` (Zugangsdaten, Header),
   `api.py` (`ClockodoClient`: HTTP, Paginierung, die verifizierte Parameterform je
   Endpunkt, `ClockodoError` mit Antwortkörper), `tabellen.py` (Ergebnisse als
-  DataFrame – der einzige Ort mit pandas). Die Rechenmodule tragen die Begriffe der
+  DataFrame – der einzige Ort mit pandas), `stammdaten.py` (Kunden- und Projektname je
+  `projects_id` – reine Beschriftung, keine Spec-Größe, geht nur in die Darstellung
+  ein). Die Rechenmodule tragen die Begriffe der
   Spec, je Datei eine Größe: `auftragsvolumen.py` (`budget.amount` aus
   `/v4/projects`), `verbrauchtes_volumen.py` (`revenue` aus `/v2/entrygroups`),
   `restvolumen.py` (Spec 5.1, roh und prognosewirksam). Die beiden ersten sind reine
@@ -132,6 +134,7 @@ kein Versehen, sondern Stand der Clockodo-API:
 | Verbrauch, effektiver Satz | `GET /v2/entrygroups` (nach Projekt gruppiert) | `revenue`, `duration` (nicht `hourly_rate`, siehe unten) |
 | Einzeleinträge | `GET /v2/entries` | `type`, `duration`, `revenue`, `users_id` |
 | Sollarbeitszeit | `GET /v3/users` | `default_target_hours` |
+| Kundenname (Beschriftung) | `GET /v3/customers` | `id`, `name` |
 | Geplante Abwesenheit | Absence-Endpunkt (Legacy `/api`) | Zeitraum, Art, Person |
 
 `budget.hard` ist in dieser Installation `false` – Budgets sind also weiche Grenzen und
@@ -220,6 +223,14 @@ Drei Fallen darin, alle an den 870 Gruppen dieser Installation belegt:
   `revenue / (duration/3600)` vom nominalen `hourly_rate` ab – nicht abgerechnete Zeit.
   8 Gruppen haben Umsatz bei `duration == 0`, das sind reine Pauschalleistungen.
 
+**Kundennamen nur über `/v3/customers`** (geprüft am 24.08.2026): `/v4/customers`
+antwortet mit 404 `RouteNotFound`, `/v2/customers` mit 410 `deprecated`. Die Antwortform
+gleicht `/v4/projects` – `{"paging": {...}, "data": [{"id": …, "name": …, …}]}`, bei 324
+Kunden auf einer Seite. `/v4/projects` selbst führt nur `customers_id`, keinen
+Kundennamen. Alle 895 Projekte tragen einen `name` und eine auflösbare `customers_id`;
+`stammdaten.py` lässt eine Lücke trotzdem als `None` durch, statt einen Abruf mit einem
+`KeyError` zu beenden – eine fehlende Beschriftung darf keine Zahl kosten.
+
 `revenue` deckt die ganze Historie ab, sobald die untere Zeitgrenze weit genug liegt:
 `time_since=2010-01-01` liefert dieselben 870 Gruppen und dieselbe Umsatzsumme wie
 `2020-01-01`. Die Antwort hat **kein `paging`** – alle Gruppen kommen in einem Rutsch
@@ -249,7 +260,9 @@ ebenfalls keines aktiv.
 - **78 dieser 122 aktiven Projekte haben kein Budget** und fallen damit aus der Prognose;
   es bleiben 44 mit zusammen 2,38 Mio. EUR Budget und rund 729.200 EUR
   prognosewirksamem Restvolumen. Die Namen der 78 sind überwiegend Schulungs- und Ausbildungsprodukte
-  (`A-CSM`, `A-CSPO`, `ACC`), also Katalogpositionen ohne beauftragtes Volumen – das
+  (`A-CSM`, `A-CSPO`, `ACC`) beim Kunden **„Öffentliche Schulung“** – der Kundenname ist
+  seit der Beschriftung sichtbar und stützt die Deutung als Katalogposition ohne
+  beauftragtes Volumen. Das
   rechnet die Spec dem Kurzfristgeschäft zu und schließt es aus dem MVP aus. Ob darunter
   echte Bestandsprojekte mit fehlendem Budget stecken, ist ein Pflegethema.
 - **Zwei aktive Projekte tragen `completed: true`**, eines mit 12.424 EUR offenem Budget.

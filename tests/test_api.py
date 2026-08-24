@@ -94,3 +94,15 @@ def test_fehlerkoerper_steht_in_der_meldung():
     assert "Array expected." in str(fehler.value)
     assert "grouping" in str(fehler.value)
     assert "400" in str(fehler.value)
+
+
+def test_kunden_kommen_von_der_v3_route():
+    # /v4/customers antwortet mit 404, /v2/customers mit 410 - die Version ist keine
+    # freie Wahl, deshalb steht sie hier fest.
+    client, requests = client_mit(
+        lambda _: httpx.Response(200, json={"data": [{"id": 1, "name": "Kunde"}]})
+    )
+    kunden, _ = client.customers()
+
+    assert kunden == [{"id": 1, "name": "Kunde"}]
+    assert requests[0].url.path == "/api/v3/customers"
