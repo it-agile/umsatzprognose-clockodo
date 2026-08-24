@@ -54,7 +54,7 @@ darstellung  ──►  domaene  ◄──  clockodo
   Antworten samt ihrer Fallen.
 - `notebooks/` – zwei Notebooks mit verschiedenen Zielgruppen, siehe unten.
 - `spec/spec-umsatzprognose-clockodo-modul.md` – die Spezifikation, eine Datei ohne
-  Versionsnummer im Namen. Die Fassung ist der Git-Tag (zuletzt `v0.6`); frühere
+  Versionsnummer im Namen. Die Fassung ist der Git-Tag (`git describe`); frühere
   Fassungen stehen nur in der Historie.
 
 **Die Domäne kennt kein JSON und keinen HTTP-Client.** Das ist die tragende Regel: das
@@ -273,7 +273,7 @@ Bei `/v2/entrygroups` ist es umgekehrt: dort führt ein falscher Parameter zu 40
 **Ebenfalls verifiziert am 24.08.2026** – `/v2/entrygroups` verlangt genau diese Form:
 
 ```
-GET /v2/entrygroups?time_since=2020-01-01T00:00:00Z&time_until=2026-12-31T23:59:59Z&grouping[]=projects_id
+GET /v2/entrygroups?time_since=2020-01-01T00:00:00Z&time_until=2026-08-31T23:59:59Z&grouping[]=projects_id
 → {"groups": [...]}
 ```
 
@@ -385,6 +385,16 @@ Platzhalterobjekt, ihre Stunden gehen nicht verloren.
 `2020-01-01`. Die Antwort hat **kein `paging`** – alle Gruppen kommen in einem Rutsch
 (870 Gruppen ≈ 800 KB).
 
+**Die obere Zeitgrenze ist eine Funktion, keine Konstante.** `client.historie_bis()`
+liefert das Ende des laufenden Monats – Monatsende und nicht Stichtag, weil eine später
+in diesem Monat datierte Buchung schon Ist ist. Der Unterschied zur Konstante ist nicht
+kosmetisch: ein Modulwert würde beim Import einmal berechnet und einfrieren, und ein
+Colab-Notebook bleibt tagelang offen. Über einen Monatswechsel hinweg schnitte es den
+neuen Monat stumm ab. Aus demselben Grund steht der Wert **nicht** als Default-Parameter
+– Python wertet Defaults ebenfalls nur beim Import aus. Die Aufrufer nehmen `None`, und
+`entrygroups()` löst spät auf. Vorher stand dort ein festes `2026-12-31`, das ab dem
+01.01.2027 lautlos alles abgeschnitten hätte.
+
 `budget` in `/v4/projects` ist immer als Schlüssel vorhanden, aber bei 236 von 895
 Projekten `null`. Ist es gesetzt, hat es mehr Felder als die Spec nennt:
 
@@ -404,8 +414,9 @@ ebenfalls keines aktiv.
 
 **Offene fachliche Abgrenzungen** (Zahlen vom 24.08.2026):
 
-- Von 895 Projekten sind **122 aktiv**; nur sie gehen in die Prognose ein
-  (`Projekt.im_prognose_scope`). Die Spec deckt diese Abgrenzung nicht ab.
+- Von 895 Projekten sind **122 aktiv**. Der Prognose-Scope (Spec 5.0,
+  `Projekt.im_prognose_scope`) verlangt drei Dinge: aktiv, **nicht** `completed`, und ein
+  als Euro-Gesamtbudget lesbares Budget.
 - **78 dieser 122 aktiven Projekte haben kein Budget** und fallen damit aus der Prognose;
   es bleiben 44 mit zusammen 2,38 Mio. EUR Budget und rund 729.000 EUR
   prognosewirksamem Restvolumen. Die Namen der 78 sind überwiegend Schulungs- und Ausbildungsprodukte
@@ -414,7 +425,10 @@ ebenfalls keines aktiv.
   beauftragtes Volumen. Das rechnet die Spec dem Kurzfristgeschäft zu und schließt es aus dem MVP aus. Ob darunter
   echte Bestandsprojekte mit fehlendem Budget stecken, ist ein Pflegethema.
 - **Zwei aktive Projekte tragen `completed: true`**, eines mit 12.424 EUR offenem Budget.
-  Sie gehen derzeit in die Prognose ein; das Feld kennt die Spec nicht.
+  Sie fallen aus dem Scope – `completed` schlägt `active`, weil Spec 7 es für ein
+  zuverlässiges Endesignal hält, während `active` ein nicht nachgezogener Schalter sein
+  kann. Ein Hinweis weist sie aus, statt sie still verschwinden zu lassen. Die Zahl 44
+  oben ist **vor** dieser Regel gemessen.
 - `revenue_factor` ist bei allen aktiven Projekten 1, `test_data` überall `false`, und
   kein aktives Projekt hat Teilprojekte. Diese drei Felder brauchen also keine
   Sonderbehandlung, solange das so bleibt.
@@ -455,8 +469,8 @@ Antwort prüfen.**
 
 Offen und bewusst zurückgestellt: Verantwortlichkeit für die monatliche Kalibrierung
 (9.5). Blockiert den produktiven Rollout, nicht den Prototyp. Ebenfalls offen laut 9.1
-bis 9.4: aktive Projekte mit `completed: true` (sie gehen derzeit ein), aktive Projekte
-ohne Budget, die Korrelationsannahme und die Behandlung von Feiertagen.
+bis 9.4: aktive Projekte ohne Budget, die Korrelationsannahme, die Behandlung von
+Feiertagen und die Frage, ob es Buchungen jenseits des laufenden Monats gibt.
 
 ## Nächster geplanter Schritt
 

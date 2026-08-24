@@ -69,6 +69,17 @@ def test_prognose_scope_verlangt_aktiv_und_verwertbares_budget():
     assert not projekt(budget=Budget(betrag=48.0, monetaer=False)).im_prognose_scope
 
 
+def test_abgeschlossenes_projekt_faellt_aus_dem_scope_trotz_aktiv():
+    """Spec 5.0: ``completed`` schliesst aus, auch wenn ``active`` gesetzt ist.
+
+    Die Kombination kommt in der Installation vor. Ihr offenes Restvolumen bleibt
+    lesbar - nur prognostisch zaehlt es nicht mehr.
+    """
+    p = projekt(aktiv=True, abgeschlossen=True)
+    assert not p.im_prognose_scope
+    assert p.restvolumen_prognosewirksam is not None
+
+
 def test_effektiver_stundensatz_aus_umsatz_und_zeit():
     p = projekt(verbrauchtes_volumen=15000.0, verbrauchte_stunden=100.0)
     assert p.effektiver_stundensatz == 150.0

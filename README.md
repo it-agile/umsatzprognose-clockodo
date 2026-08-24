@@ -5,7 +5,7 @@ Projekten – als Bandbreite (95 % / 85 % / 50 %), nicht als Punktwert.
 
 Maßgeblich ist die Spezifikation: [`spec/spec-umsatzprognose-clockodo-modul.md`](spec/spec-umsatzprognose-clockodo-modul.md).
 Sie trägt keine Versionsnummer im Namen – die Fassung ist der Git-Tag, der auf den
-Commit zeigt (zuletzt `v0.6`). Frühere Fassungen liegen nicht im Verzeichnis, sondern in
+Commit zeigt (`git describe`). Frühere Fassungen liegen nicht im Verzeichnis, sondern in
 der Historie.
 
 ## Stand

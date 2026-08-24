@@ -44,7 +44,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any
 
-from umsatzprognose.clockodo.client import HISTORIE_BIS, HISTORIE_VON, ClockodoClient
+from umsatzprognose.clockodo.client import HISTORIE_VON, ClockodoClient
 from umsatzprognose.domaene.hinweis import Hinweis
 from umsatzprognose.domaene.kunde import Kunde
 from umsatzprognose.domaene.mitarbeiter import Mitarbeiter
@@ -74,7 +74,7 @@ class ProjektRepository:
         *,
         mit_anteilen: bool = True,
         time_since: str = HISTORIE_VON,
-        time_until: str = HISTORIE_BIS,
+        time_until: str | None = None,
     ) -> tuple[Projekt, ...]:
         """Alle Projekte der Anlage - auch die inaktiven.
 
@@ -87,6 +87,8 @@ class ProjektRepository:
             mit_anteilen: auch die Anteile je Person laden. Kostet nichts extra an
                 Requests, aber Zeit: die Antwort waechst von rund 800 KB auf 1,9 MB
                 und braucht etwa 20 statt 10 Sekunden.
+            time_since: untere Grenze des Verbrauchsfensters.
+            time_until: obere Grenze; ohne Angabe das Ende des laufenden Monats.
         """
         projekte, _ = self._client.projects()
         gruppen = self._client.entrygroups_je_projekt_und_person(

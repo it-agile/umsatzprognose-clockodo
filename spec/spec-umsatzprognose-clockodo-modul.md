@@ -1,9 +1,9 @@
 # Spec: Umsatzprognose – Baustein Bestand (Clockodo)
 
-**Die Version dieses Dokuments ist der Git-Tag, der auf den Commit zeigt** – zuletzt
-`v0.6`. Deshalb trägt die Datei keine Versionsnummer im Namen: eine im Dateinamen
-gepflegte Nummer wäre eine zweite Wahrheit neben der Historie und veraltet still.
-`git tag -l` nennt die Fassungen, `git log --follow` diese Datei zeigt, was sich wann
+**Die Version dieses Dokuments ist der Git-Tag, der auf den Commit zeigt.** Deshalb
+steht hier keine Nummer und keine im Dateinamen: eine gepflegte Nummer wäre eine zweite
+Wahrheit neben der Historie und veraltet still. `git tag -l` nennt die Fassungen,
+`git describe` die aktuelle, `git log --follow` auf diese Datei zeigt, was sich wann
 geändert hat.
 
 **Dies ist ein vollständiges Dokument.** v0.4 und v0.5 waren Delta-Dokumente, die
@@ -145,8 +145,16 @@ Weiter zu beachten, ebenfalls verifiziert:
 
 Welche Projekte in die Prognose eingehen, hat v0.3 nicht festgelegt. Es gilt:
 
-Ein Projekt ist **im Prognose-Scope**, wenn es `active` ist und sein Budget als
-Euro-Gesamtbudget lesbar ist.
+Ein Projekt ist **im Prognose-Scope**, wenn es `active` ist, **nicht** `completed`
+trägt und sein Budget als Euro-Gesamtbudget lesbar ist.
+
+**`completed` schließt aus, auch wenn `active` zugleich gesetzt ist.** Die Kombination
+kommt vor – zwei Projekte am 24.08.2026, eines mit 12.424 EUR offenem Restvolumen. Sie
+ist kein aufzulösender Widerspruch: Abschnitt 7 hält `completed` für ein zuverlässiges
+Endesignal, während `active` auch ein nicht nachgezogener Schalter sein kann. Das offene
+Restvolumen eines beendeten Projekts wird nicht mehr abgerufen; es prognostisch
+mitzunehmen hieße, Umsatz zu erwarten, den niemand mehr leistet. Die betroffenen
+Projekte werden als Hinweis ausgewiesen, statt still zu verschwinden.
 
 `budget.amount` ist nicht immer ein Euro-Gesamtbudget. Drei Felder entscheiden darüber,
 und ist eines davon gesetzt, gilt das Budget als **nicht verwertbar**:
@@ -164,13 +172,15 @@ Projekt aus dem Scope, und der Grund wird als Hinweis bis in die Darstellung gef
 **Eine sichtbare Untererfassung ist besser als eine still falsche Euro-Zahl.** Dasselbe
 gilt für die 236 von 895 Projekten, deren `budget` `null` ist.
 
-Größenordnung am 24.08.2026: 895 Projekte, davon 122 aktiv, davon 44 im Prognose-Scope
-mit zusammen 2,38 Mio. EUR Auftragsvolumen und rund 729.000 EUR prognosewirksamem
-Restvolumen. Die 78 aktiven Projekte ohne Budget sind überwiegend Schulungs- und
+Größenordnung am 24.08.2026: 895 Projekte, davon 122 aktiv, davon 44 mit verwertbarem
+Budget, zusammen 2,38 Mio. EUR Auftragsvolumen und rund 729.000 EUR prognosewirksames
+Restvolumen. Diese Zahlen sind **vor** der `completed`-Regel gemessen; mit ihr fallen bis
+zu zwei Projekte weg, eines davon mit 12.424 EUR. Der Scope ist beim nächsten Lauf neu
+zu messen. Die 78 aktiven Projekte ohne Budget sind überwiegend Schulungs- und
 Ausbildungsprodukte beim Kunden „Öffentliche Schulung“, also Katalogpositionen ohne
 beauftragtes Volumen – das rechnet Abschnitt 2 dem Kurzfristgeschäft zu. Ob darunter
 echte Bestandsprojekte mit bloß fehlendem Budget stecken, ist ein Pflegethema und kein
-Modellthema (siehe 9.2).
+Modellthema (siehe 9.1).
 
 ### 5.1 Restvolumen je Projekt (in Euro)
 
@@ -183,6 +193,14 @@ prognosewirksames Restvolumen       = max(0, rohes Restvolumen)
 gesamte Historie. Ein Abruf deckt alle Projekte ab; eine Abfrage je Projekt – wie v0.3
 sie formulierte – wäre 895 Abrufe für dieselbe Zahl.
 
+**Das Zeitfenster endet am letzten Tag des laufenden Monats**, nicht am Stichtag: eine
+Buchung, die später in diesem Monat datiert ist, ist bereits Ist und gehört in den
+Verbrauch. Dieselbe obere Grenze zieht die Umsatzhistorie für ihren laufenden Balken.
+Die untere Grenze liegt vor dem ältesten Eintrag; `time_since=2010-01-01` liefert
+dieselben 870 Gruppen und dieselbe Summe wie `2020-01-01`. **Eine feste obere Grenze im
+Code ist ein Fehler** – sie schneidet nach ihrem Ablauf stumm Buchungen ab, und die
+Zahlen sinken, ohne dass etwas abbricht.
+
 **Budgetüberschreitungen.** `budget.hard` ist in dieser Installation `false`, wo es
 zählt: Budgets sind weiche Grenzen, der Verbrauch kann sie übersteigen. Eine
 Überschreitung kann damit nur **historisch** entstehen. **Die Prognose überschreitet das
@@ -193,8 +211,9 @@ Das rohe Restvolumen wird trotzdem geführt und nicht verworfen: Häufigkeit und
 Überschreitungen sind ein Kalibrierungssignal (Abschnitt 7) und kein Fehler.
 
 Ein Enddatum je Projekt wird nicht verwendet; ein auslaufendes Projekt erkennt das
-Modell am sinkenden Restvolumen. (`completed_at` existiert und wäre auswertbar – siehe
-9.1.)
+Modell am sinkenden Restvolumen. Ein **beendetes** Projekt erkennt es dagegen an
+`completed` (5.0); `completed_at` bleibt ungenutzt, weil der Scope nur die Gegenwart
+braucht.
 
 **Pauschalleistungen.** v0.3 wollte sie über `/v2/entries` (`type` 2 und 3)
 identifizieren und je Leistung einen Satz aus Pauschalbetrag und gebuchter Zeit
@@ -236,7 +255,7 @@ Zwei Einschränkungen, die zur Schätzung gehören und nicht wegdefiniert werden
 - **Die unabhängige Ziehung ignoriert Korrelation zwischen Projekten.** Ein
   portfolioweiter Nachfrageeinbruch träfe alle Projekte gleichzeitig; unabhängige
   Ziehungen mitteln ihn weg und liefern damit eine **zu enge** Bandbreite. Die Richtung
-  des Fehlers ist bekannt, seine Größe nicht (siehe 9.3).
+  des Fehlers ist bekannt, seine Größe nicht (siehe 9.2).
 
 ### 5.3 Kapazitätsdeckel
 
@@ -262,7 +281,7 @@ verfügbare Kapazität(Person, Monat) = Sollstunden(Person, Monat)
   Prozentsatz. Noch nicht geschätzt (11.2).
 
 Feiertage sind in `/targethours` nicht enthalten und in den Abwesenheiten
-voraussichtlich auch nicht; ob und wie Clockodo sie führt, ist ungeprüft (9.4).
+voraussichtlich auch nicht; ob und wie Clockodo sie führt, ist ungeprüft (9.3).
 
 ### 5.4 Simulationslogik
 
@@ -362,20 +381,24 @@ Zusammenführung ist nicht Teil dieser Spec.
 
 ## 9. Offene Punkte
 
-**Fachlich:**
+**Geklärt:**
 
-1. **Aktive Projekte mit `completed: true`.** Zwei Fälle, einer mit 12.424 EUR offenem
-   Budget. Sie gehen derzeit in die Prognose ein. Abschnitt 7 hält `completed` für ein
-   zuverlässiges Endesignal – dann gehören sie aus dem Scope. Ändert die Zahlen, deshalb
-   nicht einseitig entschieden.
-2. **Aktive Projekte ohne Budget** (78 von 122). Die Deutung als Katalogpositionen ohne
+- ~~Aktive Projekte mit `completed: true`~~ → sie fallen aus dem Prognose-Scope (5.0).
+
+**Fachlich offen:**
+
+1. **Aktive Projekte ohne Budget** (78 von 122). Die Deutung als Katalogpositionen ohne
    beauftragtes Volumen stützt sich auf die Projekt- und Kundennamen. Zu prüfen, ob
    darunter echte Bestandsprojekte mit bloß fehlendem Budget sind.
-3. **Korrelation zwischen Projekten** (5.2). Die unabhängige Ziehung liefert eine zu
+2. **Korrelation zwischen Projekten** (5.2). Die unabhängige Ziehung liefert eine zu
    enge Bandbreite. Ob das für eine 1–3-Monats-Prognose vertretbar ist, ist eine
    fachliche Entscheidung.
-4. **Feiertage** (5.3). Ungeprüft, ob und wo Clockodo sie führt. Ohne sie ist die
+3. **Feiertage** (5.3). Ungeprüft, ob und wo Clockodo sie führt. Ohne sie ist die
    Sollzeit im Monat zu hoch angesetzt.
+4. **Buchungen jenseits des laufenden Monats.** Ob es Einträge gibt, die weiter in der
+   Zukunft datiert sind, ist ungeprüft. Sie fielen mit der Grenze aus 5.1 aus dem
+   Verbrauch und erhöhten damit das Restvolumen. Am einfachsten an einer
+   Monatsgruppierung über die kommenden Monate zu sehen.
 
 **Organisatorisch:**
 
@@ -383,7 +406,7 @@ Zusammenführung ist nicht Teil dieser Spec.
    Muss vor dem produktiven Rollout geklärt sein – nicht vor dem Prototyp, sonst
    veraltet das Modell nach der ersten Version unbemerkt.
 
-## 10. Stand der Umsetzung (24.08.2026)
+## 10. Stand der Umsetzung
 
 Umgesetzt als Python-Paket `umsatzprognose` mit Notebook-Oberfläche in Google Colab
 (Zielwerkzeug, entschieden in v0.4):
@@ -395,11 +418,14 @@ Umgesetzt als Python-Paket `umsatzprognose` mit Notebook-Oberfläche in Google C
   geplante Abwesenheiten und der Abschlag für ungeplante (5.3). An der Stelle der
   Bandbreite steht die Begründung.
 
-Kennzahlen des Prototyps: 895 Projekte, 122 aktiv, 44 im Prognose-Scope; 59 Personen,
-26 aktiv mit zusammen 801 Wochenstunden; 2,38 Mio. EUR Auftragsvolumen, rund
-729.000 EUR prognosewirksames Restvolumen; Umsatz der zwölf abgeschlossenen Monate
-09/2025–08/2026 rund 3,48 Mio. EUR. Die Zahlen bewegen sich mit jeder Zeitbuchung – sie
-taugen als Größenordnung, nicht als Regressionswert.
+Kennzahlen des Prototyps, gemessen am 24.08.2026: 895 Projekte, 122 aktiv, 44 mit
+verwertbarem Budget; 59 Personen, 26 aktiv mit zusammen 801 Wochenstunden; 2,38 Mio. EUR
+Auftragsvolumen, rund 729.000 EUR prognosewirksames Restvolumen; Umsatz der zwölf
+abgeschlossenen Monate 09/2025–08/2026 rund 3,48 Mio. EUR.
+
+Die Messung liegt **vor** der `completed`-Regel aus 5.0; mit ihr fallen bis zu zwei
+Projekte aus dem Scope, eines davon mit 12.424 EUR. Die Zahlen bewegen sich ohnehin mit
+jeder Zeitbuchung – sie taugen als Größenordnung, nicht als Regressionswert.
 
 ## 11. Nächste Schritte
 

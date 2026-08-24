@@ -8,11 +8,13 @@ wird, ob Paginierung, Parameterform und Fehlerbehandlung dem entsprechen, was am
 
 from __future__ import annotations
 
+from datetime import date
+
 import httpx
 import pytest
 
 from conftest import CREDS, client_mit
-from umsatzprognose.clockodo.client import ClockodoClient, ClockodoError
+from umsatzprognose.clockodo.client import ClockodoClient, ClockodoError, historie_bis
 from umsatzprognose.clockodo.config import ClockodoCredentials
 
 
@@ -110,3 +112,27 @@ def test_zu_lange_anwendungskennung_wird_abgelehnt():
 def test_client_nimmt_eine_abweichende_basis_url():
     client = ClockodoClient(CREDS, base_url="https://example.test/api")
     assert client.base_url == "https://example.test/api"
+
+
+@pytest.mark.parametrize(
+    ("tag", "erwartet"),
+    [
+        (date(2026, 8, 24), "2026-08-31T23:59:59Z"),
+        (date(2026, 2, 1), "2026-02-28T23:59:59Z"),
+        (date(2028, 2, 15), "2028-02-29T23:59:59Z"),
+        (date(2026, 12, 31), "2026-12-31T23:59:59Z"),
+    ],
+)
+def test_obere_zeitgrenze_ist_das_monatsende(tag, erwartet):
+    assert historie_bis(tag) == erwartet
+
+
+def test_obere_zeitgrenze_wird_je_aufruf_bestimmt():
+    """Kein eingefrorener Wert - weder als Modulkonstante noch als Default-Parameter.
+
+    Ein Notebook bleibt in Colab tagelang offen. Wuerde die Grenze beim Import
+    festgelegt, schnitte sie nach einem Monatswechsel den neuen Monat stumm ab.
+    """
+    client, requests = client_mit(lambda _: httpx.Response(200, json={"groups": []}))
+    client.entrygroups(["projects_id"])
+    assert dict(requests[0].url.params)["time_until"] == historie_bis()

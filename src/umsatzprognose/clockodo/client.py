@@ -55,7 +55,9 @@ und verwirft genau diese Information, deshalb :class:`ClockodoError`.
 
 from __future__ import annotations
 
+from calendar import monthrange
 from collections.abc import Mapping, Sequence
+from datetime import date
 from typing import Any
 
 import httpx
@@ -64,16 +66,35 @@ from umsatzprognose.clockodo.config import BASE_URL, ClockodoCredentials
 
 DEFAULT_TIMEOUT = 60.0
 
-# Zeitfenster fuer den kumulierten Verbrauch. ``revenue_kumuliert`` aus Spec 5.1 ist
-# der Gesamtverbrauch eines Projekts, nicht der eines Monats - die untere Grenze muss
-# deshalb vor dem aeltesten Eintrag liegen. 2020 schneidet nichts ab: mit
+# Untere Grenze des Verbrauchsfensters. ``revenue_kumuliert`` aus Spec 5.1 ist der
+# Gesamtverbrauch eines Projekts, nicht der eines Monats - die Grenze muss deshalb vor
+# dem aeltesten Eintrag liegen. 2020 schneidet nichts ab: mit
 # ``time_since=2010-01-01`` kommen dieselben 870 Gruppen und dieselbe Umsatzsumme.
 HISTORIE_VON = "2020-01-01T00:00:00Z"
-HISTORIE_BIS = "2026-12-31T23:59:59Z"
 
 GRUPPIERUNG_PROJEKT = "projects_id"
 GRUPPIERUNG_PERSON = "users_id"
 GRUPPIERUNG_MONAT = "month"
+
+
+def historie_bis(tag: date | None = None) -> str:
+    """Obere Grenze des Verbrauchsfensters: das Ende des Monats, in dem ``tag`` liegt.
+
+    Monatsende und nicht ``tag`` selbst, weil eine Buchung spaeter in diesem Monat
+    datiert sein kann und trotzdem schon Ist ist - dieselbe Grenze zieht die
+    Umsatzhistorie fuer den laufenden Balken.
+
+    **Das ist eine Funktion und keine Konstante**, und der Unterschied ist nicht
+    kosmetisch: als Modulkonstante wuerde der Wert beim Import einmal berechnet und
+    danach einfrieren. Ein Notebook bleibt in Colab tagelang offen; ueber einen
+    Monatswechsel hinweg wuerde es Buchungen des neuen Monats stumm abschneiden. Aus
+    demselben Grund ist der Wert **nicht** als Default-Parameter eingetragen - Python
+    wertet Defaults ebenfalls nur beim Import aus. Die Aufrufer nehmen ``None`` und
+    loesen erst hier auf.
+    """
+    tag = tag or date.today()
+    letzter = monthrange(tag.year, tag.month)[1]
+    return f"{tag.year:04d}-{tag.month:02d}-{letzter:02d}T23:59:59Z"
 
 
 class ClockodoError(RuntimeError):
@@ -165,7 +186,7 @@ class ClockodoClient:
         grouping: Sequence[str],
         *,
         time_since: str = HISTORIE_VON,
-        time_until: str = HISTORIE_BIS,
+        time_until: str | None = None,
     ) -> list[dict[str, Any]]:
         """Aggregierte Eintraege aus ``/v2/entrygroups``.
 
@@ -173,7 +194,9 @@ class ClockodoClient:
             grouping: ein oder mehrere Gruppierungswerte. Bei mehreren haengt die
                 zweite Ebene als ``sub_groups`` unter der ersten.
             time_since: untere Zeitgrenze, volle ISO-Form mit Uhrzeit.
-            time_until: obere Zeitgrenze, volle ISO-Form mit Uhrzeit.
+            time_until: obere Zeitgrenze, volle ISO-Form mit Uhrzeit. Ohne Angabe das
+                Ende des laufenden Monats, hier und nicht als Default aufgeloest -
+                siehe :func:`historie_bis`.
 
         Returns:
             Die ``groups``-Liste.
@@ -182,14 +205,14 @@ class ClockodoClient:
             "/v2/entrygroups",
             {
                 "time_since": time_since,
-                "time_until": time_until,
+                "time_until": time_until or historie_bis(),
                 "grouping[]": list(grouping),
             },
         )
         return payload["groups"]
 
     def entrygroups_je_projekt_und_person(
-        self, *, time_since: str = HISTORIE_VON, time_until: str = HISTORIE_BIS
+        self, *, time_since: str = HISTORIE_VON, time_until: str | None = None
     ) -> list[dict[str, Any]]:
         """Verbrauch je Projekt, darunter die Anteile je Person.
 

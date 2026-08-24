@@ -119,7 +119,8 @@ class Bestand:
         if beendet:
             gefunden.append(
                 Hinweis(
-                    "Projekte, die als abgeschlossen markiert und trotzdem aktiv sind",
+                    "Projekte, die als abgeschlossen markiert und trotzdem aktiv sind - "
+                    "sie gehen nicht in die Prognose ein",
                     tuple(p.id for p in beendet),
                 )
             )

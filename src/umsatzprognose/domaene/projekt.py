@@ -146,14 +146,21 @@ class Projekt:
 
     @property
     def im_prognose_scope(self) -> bool:
-        """Ob das Projekt in die Prognose eingeht: aktiv und mit verwertbarem Budget.
+        """Ob das Projekt in die Prognose eingeht (Spec 5.0).
 
-        Spec 5.0 (seit v0.6) legt diesen Scope fest: aktiv und mit einem als
-        Euro-Gesamtbudget lesbaren Budget. Von 895 Projekten sind 122 aktiv, davon 44 im
-        Scope. Offen bleibt laut 9.1 der Umgang mit aktiven Projekten, die
-        ``completed`` tragen - sie gehen hier derzeit ein.
+        Drei Bedingungen, alle drei noetig: das Projekt ist ``aktiv``, es ist **nicht**
+        ``abgeschlossen``, und sein Budget ist als Euro-Gesamtbudget lesbar.
+
+        ``abgeschlossen`` schliesst aus, obwohl ``aktiv`` zugleich gesetzt ist. Die
+        Kombination kommt vor - zwei Projekte am 24.08.2026, eines mit 12.424 EUR rohem
+        Restvolumen -, und sie ist kein Widerspruch, den man aufloesen muesste: Spec 7
+        haelt ``completed`` fuer ein zuverlaessiges Endesignal, waehrend ``active`` auch
+        ein nicht nachgezogener Schalter sein kann. Das offene Restvolumen eines beendeten
+        Projekts wird nicht mehr abgerufen; es prognostisch mitzunehmen hiesse, Umsatz zu
+        erwarten, den niemand mehr leistet. Die betroffenen Projekte werden ueber einen
+        Hinweis ausgewiesen, statt still zu verschwinden.
         """
-        return self.aktiv and self.budget.verwertbar
+        return self.aktiv and not self.abgeschlossen and self.budget.verwertbar
 
     @property
     def effektiver_stundensatz(self) -> float | None:
