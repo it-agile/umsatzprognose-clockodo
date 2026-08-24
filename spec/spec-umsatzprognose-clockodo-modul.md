@@ -1,12 +1,17 @@
 # Spec: Umsatzprognose – Baustein Bestand (Clockodo)
 
-**Version:** 0.6
-**Stand:** 24.08.2026
+**Die Version dieses Dokuments ist der Git-Tag, der auf den Commit zeigt** – zuletzt
+`v0.6`. Deshalb trägt die Datei keine Versionsnummer im Namen: eine im Dateinamen
+gepflegte Nummer wäre eine zweite Wahrheit neben der Historie und veraltet still.
+`git tag -l` nennt die Fassungen, `git log --follow` diese Datei zeigt, was sich wann
+geändert hat.
 
 **Dies ist ein vollständiges Dokument.** v0.4 und v0.5 waren Delta-Dokumente, die
 tragende Abschnitte nur als „unverändert zu v0.3“ führten; damit war die Spec ohne v0.3
-nicht lesbar und als maßgebliche Quelle unbrauchbar. Ab dieser Version steht das Modell
-geschlossen an einer Stelle. v0.3 und v0.5 bleiben als Historie liegen.
+nicht lesbar und als maßgebliche Quelle unbrauchbar. Seit v0.6 steht das Modell
+geschlossen an einer Stelle. v0.3 und v0.5 liegen nicht mehr im Verzeichnis, sind aber
+über die Historie erreichbar (`git show 7e35123:spec/…-v0.3.md` bzw.
+`git show 8a6ec11:spec/…-v0.5.md`).
 
 **Änderungen zu v0.5:**
 

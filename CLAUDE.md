@@ -53,8 +53,9 @@ darstellung  ──►  domaene  ◄──  clockodo
 - `tests/` – pytest. Die Antwortausschnitte in `conftest.py` sind gekürzte, aber echte
   Antworten samt ihrer Fallen.
 - `notebooks/` – zwei Notebooks mit verschiedenen Zielgruppen, siehe unten.
-- `spec/` – Spezifikation. Maßgeblich ist **v0.6**, ein vollständiges Dokument; v0.3
-  und v0.5 liegen als Historie daneben und sind nicht mehr zu zitieren.
+- `spec/spec-umsatzprognose-clockodo-modul.md` – die Spezifikation, eine Datei ohne
+  Versionsnummer im Namen. Die Fassung ist der Git-Tag (zuletzt `v0.6`); frühere
+  Fassungen stehen nur in der Historie.
 
 **Die Domäne kennt kein JSON und keinen HTTP-Client.** Das ist die tragende Regel: das
 teuer erarbeitete Wissen über Clockodos Eigenheiten steht in `clockodo/`, je Endpunkt
@@ -432,12 +433,19 @@ Restvolumina bei nachträglich erhöhten Budgets zu niedrige Quoten liefern; und
 unabhängige Ziehung je Projekt ignoriert Korrelation und liefert damit eine **zu enge**
 Bandbreite. Die Richtung beider Fehler ist bekannt, ihre Größe nicht.
 
-## Die Spec-Historie: nur v0.6 zitieren
+## Die Spec-Historie: nur die Datei im Arbeitsverzeichnis zitieren
 
-v0.4 und v0.5 waren Delta-Dokumente, die tragende Abschnitte nur als „unverändert zu
-v0.3“ führten. Das hat die Spec ohne v0.3 unlesbar gemacht. **v0.6 ist ein vollständiges
-Dokument** und die einzige maßgebliche Fassung; v0.3 und v0.5 liegen daneben, sind aber
-an mehreren Stellen widerlegt.
+Es gibt genau **eine** Spec-Datei, `spec/spec-umsatzprognose-clockodo-modul.md`, und sie
+ist immer die maßgebliche. Versioniert wird über Git-Tags, nicht über Dateinamen – eine
+Nummer im Namen wäre eine zweite Wahrheit neben der Historie. `git tag -l` nennt die
+Fassungen, `git log --follow` auf die Datei zeigt die Änderungen.
+
+Frühere Fassungen liegen deshalb **nicht** im Verzeichnis, sondern in der Historie: v0.3
+in Commit `7e35123`, v0.5 in `8a6ec11`. Beide sind an mehreren Stellen widerlegt und
+taugen nicht als Beleg. v0.4 und v0.5 waren Delta-Dokumente, die tragende Abschnitte nur
+als „unverändert zu v0.3“ führten; genau daran ist die Spec ohne v0.3 unlesbar geworden.
+**Ein Delta-Dokument ist hier nicht mehr zulässig** – Änderungen gehen in die eine
+Datei, der Tag markiert die Fassung.
 
 Wichtig zu wissen, warum: v0.3 bezog seine Feldangaben aus
 `docs.clockodo.com/openapi.yaml`, also aus der Dokumentation. Genau drei davon hat der

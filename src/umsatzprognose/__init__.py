@@ -1,7 +1,7 @@
 """Umsatzprognose - Baustein Bestand (Clockodo).
 
 Rollierende 1-3-Monats-Prognose des Umsatzes aus laufenden, in Clockodo angelegten
-Projekten. Massgeblich ist ``spec/spec-umsatzprognose-clockodo-modul-v0.5.md``.
+Projekten. Massgeblich ist ``spec/spec-umsatzprognose-clockodo-modul.md``.
 
 Das Paket ist in drei Schichten geschnitten, mit genau einer erlaubten
 Abhaengigkeitsrichtung::

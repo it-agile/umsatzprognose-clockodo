@@ -3,9 +3,10 @@
 Rollierende 1–3-Monats-Prognose des Umsatzes aus laufenden, in Clockodo angelegten
 Projekten – als Bandbreite (95 % / 85 % / 50 %), nicht als Punktwert.
 
-Maßgeblich ist die Spezifikation: [`spec/spec-umsatzprognose-clockodo-modul-v0.6.md`](spec/spec-umsatzprognose-clockodo-modul-v0.6.md).
-Sie ist seit v0.6 ein vollständiges Dokument; v0.3 und v0.5 liegen als Historie daneben
-und sind nicht mehr maßgeblich.
+Maßgeblich ist die Spezifikation: [`spec/spec-umsatzprognose-clockodo-modul.md`](spec/spec-umsatzprognose-clockodo-modul.md).
+Sie trägt keine Versionsnummer im Namen – die Fassung ist der Git-Tag, der auf den
+Commit zeigt (zuletzt `v0.6`). Frühere Fassungen liegen nicht im Verzeichnis, sondern in
+der Historie.
 
 ## Stand
 
