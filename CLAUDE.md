@@ -2,16 +2,41 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Status des Repositories
+## Kommandos
 
-Dieses Repository enthält **noch keinen Code** – ausschließlich die Spezifikation
-`spec/spec-umsatzprognose-clockodo-modul-v0.4.md`. Es gibt kein Git-Repository, keine
-Build-, Test- oder Lint-Konfiguration und keine Abhängigkeitsdeklaration. Entsprechend
-existieren keine Build-/Test-Kommandos, die hier dokumentiert werden könnten.
+Abhängigkeits- und Python-Verwaltung läuft ausschließlich über **uv**; die Version ist
+in `.python-version` auf 3.12 gepinnt (Colab-Nähe, siehe unten). Kein `pip install` im
+Projekt-venv, kein manuell angelegtes venv.
 
-Vor dem Erfinden von Struktur: Zielwerkzeug ist laut Spec (Abschnitt 9) ein
-**Jupyter Notebook in Google Colab**, nicht ein Paket oder Service. Neue Artefakte
-sollten dieser Entscheidung folgen, solange sie nicht explizit revidiert wird.
+```bash
+uv sync --extra notebook       # Umgebung herstellen
+uv run pytest                  # alle Tests
+uv run pytest tests/test_restvolumen.py::test_summe_ignoriert_ueberschreitungen   # ein Test
+uv run ruff check .            # Lint
+uv run ruff format .           # Formatierung
+uv run jupyter lab             # Notebooks lokal
+```
+
+## Aufbau und wo was hingehört
+
+- `src/umsatzprognose/` – testbare Logik. `config.py` (Zugangsdaten, Header),
+  `restvolumen.py` (Spec 5.1).
+- `tests/` – pytest.
+- `notebooks/` – Prototyp-Notebooks: API-Abrufe, Exploration, Darstellung.
+- `spec/` – Spezifikation, maßgeblich für alle Modellfragen.
+
+Rechenlogik gehört ins Paket, nicht ins Notebook. Zielwerkzeug ist laut Spec
+(Abschnitt 9) ein Notebook in **Google Colab**, deshalb bleibt der Notebook-Layer dünn
+und beginnt mit einer nur in Colab greifenden Installationszelle – das lokale venv
+steht dort nicht zur Verfügung. Zugangsdaten in Colab über die Secrets-Verwaltung,
+lokal über `.env` (`load_credentials(use_dotenv=False)` in Colab).
+
+## Stand der Implementierung
+
+Umgesetzt ist Schritt 1 aus Spec Abschnitt 10: Restvolumen je Projekt (5.1), plus
+`notebooks/01_restvolumen.ipynb`, das die beiden Endpunkte abfragt. Die Monte-Carlo-
+Simulation (5.4), Abrufquote-Verteilungen, Referenzklassen und der Kapazitätsdeckel
+existieren noch nicht.
 
 ## Was das Modul fachlich tut
 
@@ -67,7 +92,19 @@ kein Versehen, sondern Stand der Clockodo-API:
 | Geplante Abwesenheit | Absence-Endpunkt (Legacy `/api`) | Zeitraum, Art, Person |
 
 `budget.hard` ist in dieser Installation `false` – Budgets sind also weiche Grenzen und
-dürfen im Modell nicht als harte Kappung behandelt werden.
+dürfen im Modell nicht als harte Kappung behandelt werden. Konkret: das rohe Restvolumen
+kann negativ werden, und dass es das wird, ist ein Kalibrierungssignal und kein Fehler.
+
+Basis-URL ist `https://my.clockodo.com/api`. Authentifizierung über drei Header, alle
+drei sind Pflicht: `X-ClockodoApiUser` (E-Mail des Benutzers), `X-ClockodoApiKey` und
+`X-Clockodo-External-Application` im Format `name;email` mit **maximal 50 Zeichen
+Gesamtlänge**. `config.ClockodoCredentials` kapselt das und prüft die Längengrenze.
+
+**Nicht verifiziert:** JSON-Envelope, Feldnamen jenseits der in der Spec genannten und
+Query-Parameter der Endpunkte. `docs.clockodo.com` wird als JavaScript-Anwendung
+ausgeliefert und war nicht auslesbar. Die betroffenen Stellen in
+`notebooks/01_restvolumen.ipynb` sind mit `PRÜFEN` markiert und geben die Roh-Keys aus.
+Diese Annahmen beim ersten echten API-Lauf korrigieren, statt sie fortzuschreiben.
 
 ## Kalibrierung als Teil des Modells
 
