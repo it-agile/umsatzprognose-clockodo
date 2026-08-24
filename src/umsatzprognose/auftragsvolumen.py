@@ -1,12 +1,14 @@
-"""Extraktion der beiden Eingangsgroessen aus den Clockodo-Antworten.
+"""Auftragsvolumen je Projekt - ``budget.amount`` aus ``/v4/projects``.
 
-Reine Abbildung von Antwort-JSON auf ``projects_id -> Wert``, ohne HTTP. Die
-Regeln hier stammen nicht aus der Doku (``docs.clockodo.com`` ist eine
-JavaScript-Anwendung und nicht auslesbar), sondern aus per curl geprueften
-Antworten der Installation, verifiziert am 24.08.2026:
+Spec Abschnitt 4 nennt ``budget.amount`` als Auftragsvolumen; zusammen mit dem
+verbrauchten Volumen (:mod:`umsatzprognose.verbrauchtes_volumen`) ergibt sich daraus
+das Restvolumen aus 5.1.
 
-``/v4/projects`` - ``budget`` ist immer als Schluessel vorhanden, aber bei 236 von
-895 Projekten ``null``. Ist es gesetzt, hat es die Form::
+Reine Abbildung von Antwort-JSON auf ``projects_id -> Betrag``, ohne HTTP. Die Regeln
+hier stammen nicht aus der Doku (``docs.clockodo.com`` ist eine JavaScript-Anwendung
+und nicht auslesbar), sondern aus per curl geprueften Antworten der Installation,
+verifiziert am 24.08.2026: ``budget`` ist immer als Schluessel vorhanden, aber bei 236
+von 895 Projekten ``null``. Ist es gesetzt, hat es die Form::
 
     {"monetary": true, "hard": false, "from_subprojects": false,
      "interval": null, "amount": 11300, "subprojects_budget_total": 0}
@@ -25,10 +27,6 @@ Bisher ist keiner der drei Faelle bei einem aktiven Projekt aufgetreten, deshalb
 keiner an einer echten Antwort durchgerechnet. Statt eine plausible Umrechnung zu
 erfinden, bleiben solche Budgets hier unbenutzt und werden als Hinweis gemeldet:
 eine sichtbare Untererfassung ist besser als eine still falsche Euro-Zahl.
-
-``/v2/entrygroups`` mit ``grouping[]=projects_id`` - die Projekt-ID steht als
-**String** in ``group``, und der Wert ``0`` (dort als Zahl) steht fuer Buchungen ohne
-Projekt. Ohne Filter entstuende daraus ein Phantom-Projekt 0.
 """
 
 from __future__ import annotations
@@ -110,30 +108,3 @@ def budgets_je_projekt(
         auszug.budgets[pid] = float(betrag) if verwertbar else None
 
     return auszug
-
-
-def revenue_je_projekt(
-    gruppen: Iterable[Mapping[str, object]],
-) -> tuple[dict[int, float], list[Mapping[str, object]]]:
-    """Bildet ``projects_id -> kumuliertes revenue`` aus ``/v2/entrygroups`` ab.
-
-    Args:
-        gruppen: die ``groups``-Liste einer Abfrage mit ``grouping[]=projects_id``.
-
-    Returns:
-        Den Verbrauch je Projekt sowie die Gruppen ohne Projektbezug (``group == 0``),
-        damit deren Umsatz nicht unbemerkt verschwindet.
-    """
-    revenue: dict[int, float] = {}
-    ohne_projekt: list[Mapping[str, object]] = []
-
-    for gruppe in gruppen:
-        pid = int(gruppe["group"])  # type: ignore[arg-type]
-        if pid == 0:
-            ohne_projekt.append(gruppe)
-            continue
-        # Summiert statt zugewiesen: eine Gruppierung liefert je Projekt eine Gruppe,
-        # ein doppelter Schluessel wuerde sonst still eine Zeile verwerfen.
-        revenue[pid] = revenue.get(pid, 0.0) + float(gruppe.get("revenue") or 0.0)
-
-    return revenue, ohne_projekt

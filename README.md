@@ -39,7 +39,9 @@ uv run jupyter lab             # Notebooks lokal
 ## Aufbau
 
 - `src/umsatzprognose/` – testbare Logik. `config.py` (Zugangsdaten, Header),
-  `restvolumen.py` (Spec 5.1).
+  `api.py` (Clockodo-Client), `tabellen.py` (Darstellung als DataFrame). Die
+  Rechenmodule sind nach den Begriffen der Spec benannt: `auftragsvolumen.py`,
+  `verbrauchtes_volumen.py`, `restvolumen.py` (Spec 5.1).
 - `tests/` – pytest.
 - `notebooks/` – Prototyp-Notebooks. Sie rufen die API auf und nutzen das Paket;
   Rechenlogik gehört ins Paket, nicht ins Notebook.
@@ -103,8 +105,8 @@ Version zu pinnen ist der Unterschied zwischen „die Prognose von letztem Monat
 
 Die vier Clockodo-Variablen aus `.env.sample` als Colab-Secrets anlegen –
 `CLOCKODO_API_USER`, `CLOCKODO_API_KEY`, `CLOCKODO_APP_NAME`, `CLOCKODO_APP_EMAIL`.
-Keine `.env` in Colab. Das Notebook hebt die Secrets in die Umgebung und ruft
-`load_credentials(use_dotenv=False)` auf.
+Keine `.env` in Colab. Das Notebook ruft `load_credentials_auto()` auf; die Funktion
+erkennt Colab und liest dort die Secrets, lokal die `.env`.
 
 ### Bekannte Einschränkungen
 

@@ -79,3 +79,46 @@ def load_credentials(*, use_dotenv: bool = True) -> ClockodoCredentials:
         app_name=_require("CLOCKODO_APP_NAME"),
         app_email=_require("CLOCKODO_APP_EMAIL"),
     )
+
+
+def in_colab() -> bool:
+    """Ob der Code in Google Colab laeuft."""
+    try:
+        import google.colab  # noqa: F401
+    except ImportError:
+        return False
+    return True
+
+
+def _colab_secret(name: str) -> str:
+    """Ein Colab-Secret lesen und im Fehlerfall sagen, was zu tun ist."""
+    from google.colab import userdata  # type: ignore[import-not-found]
+
+    try:
+        value = userdata.get(name)
+    except Exception as fehler:
+        raise MissingCredentialsError(
+            f"Colab-Secret '{name}' nicht nutzbar ({type(fehler).__name__}).\n"
+            "Anlegen: linke Seitenleiste, Schluessel-Symbol -> 'Neues Secret'.\n"
+            "Danach den Schalter 'Notebook-Zugriff' fuer dieses Notebook aktivieren - "
+            "ohne ihn existiert das Secret, ist aber gesperrt.\n"
+            "Details im README, Abschnitt 'Deployment (Google Colab)'."
+        ) from fehler
+    if not (value or "").strip():
+        raise MissingCredentialsError(f"Colab-Secret '{name}' ist leer.")
+    return value.strip()
+
+
+def load_credentials_colab() -> ClockodoCredentials:
+    """Zugangsdaten aus der Colab-Secrets-Verwaltung. Keine ``.env`` in Colab."""
+    return ClockodoCredentials(
+        api_user=_colab_secret("CLOCKODO_API_USER"),
+        api_key=_colab_secret("CLOCKODO_API_KEY"),
+        app_name=_colab_secret("CLOCKODO_APP_NAME"),
+        app_email=_colab_secret("CLOCKODO_APP_EMAIL"),
+    )
+
+
+def load_credentials_auto() -> ClockodoCredentials:
+    """Zugangsdaten aus der passenden Quelle: Colab-Secrets in Colab, sonst ``.env``."""
+    return load_credentials_colab() if in_colab() else load_credentials(use_dotenv=True)

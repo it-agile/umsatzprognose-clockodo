@@ -27,8 +27,13 @@ uv run jupyter lab             # Notebooks lokal
 ## Aufbau und wo was hingehört
 
 - `src/umsatzprognose/` – testbare Logik. `config.py` (Zugangsdaten, Header),
-  `extraktion.py` (Antwort-JSON → `projects_id -> Wert`, samt der geprüften Randfälle),
-  `restvolumen.py` (Spec 5.1).
+  `api.py` (`ClockodoClient`: HTTP, Paginierung, die verifizierte Parameterform je
+  Endpunkt, `ClockodoError` mit Antwortkörper), `tabellen.py` (Ergebnisse als
+  DataFrame – der einzige Ort mit pandas). Die Rechenmodule tragen die Begriffe der
+  Spec, je Datei eine Größe: `auftragsvolumen.py` (`budget.amount` aus
+  `/v4/projects`), `verbrauchtes_volumen.py` (`revenue` aus `/v2/entrygroups`),
+  `restvolumen.py` (Spec 5.1, roh und prognosewirksam). Die beiden ersten sind reine
+  Abbildung von Antwort-JSON auf `projects_id -> Wert`, samt der geprüften Randfälle.
 - `tests/` – pytest.
 - `notebooks/` – Prototyp-Notebooks: API-Abrufe, Exploration, Darstellung.
 - `spec/` – Spezifikation, maßgeblich für alle Modellfragen.
@@ -36,15 +41,19 @@ uv run jupyter lab             # Notebooks lokal
 Rechenlogik gehört ins Paket, nicht ins Notebook. Zielwerkzeug ist laut Spec
 (Abschnitt 9) ein Notebook in **Google Colab**, deshalb bleibt der Notebook-Layer dünn
 und beginnt mit einer nur in Colab greifenden Installationszelle – das lokale venv
-steht dort nicht zur Verfügung. Zugangsdaten in Colab über die Secrets-Verwaltung,
-lokal über `.env` (`load_credentials(use_dotenv=False)` in Colab).
+steht dort nicht zur Verfügung. Auch der HTTP-Zugriff gehört ins Paket: das Notebook ruft
+`ClockodoClient` auf, statt eigene Requests zu bauen. Zugangsdaten in Colab über die
+Secrets-Verwaltung, lokal über `.env`; `load_credentials_auto()` wählt die Quelle
+anhand von `in_colab()`.
 
 ## Stand der Implementierung
 
 Umgesetzt ist Schritt 1 aus Spec Abschnitt 10: Restvolumen je Projekt (5.1), plus
 `notebooks/01_restvolumen.ipynb`, das die beiden Endpunkte abfragt. Das Notebook läuft
-am 24.08.2026 gegen die echte Installation durch und liefert 729.678 EUR
-prognosewirksames Restvolumen über 44 aktive Projekte mit Budget. Die Monte-Carlo-
+am 24.08.2026 gegen die echte Installation durch und liefert rund 729.200 EUR
+prognosewirksames Restvolumen über 44 aktive Projekte mit Budget. Die Zahl bewegt sich
+mit jeder Zeitbuchung – am selben Nachmittag lag sie 480 EUR unter dem Vormittagswert;
+sie taugt als Größenordnung, nicht als Regressionswert. Die Monte-Carlo-
 Simulation (5.4), Abrufquote-Verteilungen, Referenzklassen und der Kapazitätsdeckel
 existieren noch nicht.
 
@@ -205,7 +214,7 @@ Drei davon entscheiden, ob `amount` überhaupt ein Euro-Gesamtbudget ist – `mo
 (bei `false` steht dort eine **Stundenzahl**: 8 Projekte, alle inaktiv, mit Werten wie
 6, 12, 48), `interval` (Budget je Intervall statt Gesamtbudget) und `from_subprojects`
 (Summe in `subprojects_budget_total`). Bei den aktiven Projekten trat keiner der drei
-Fälle auf, keiner ist also durchgerechnet. `extraktion.budgets_je_projekt` benutzt
+Fälle auf, keiner ist also durchgerechnet. `auftragsvolumen.budgets_je_projekt` benutzt
 solche Budgets deshalb nicht und meldet sie einzeln: eine sichtbare Untererfassung ist
 besser als eine still falsche Euro-Zahl. Von den 3 Projekten mit `hard: true` ist
 ebenfalls keines aktiv.
@@ -215,8 +224,8 @@ ebenfalls keines aktiv.
 - Von 895 Projekten sind **122 aktiv**; das Notebook filtert über `NUR_AKTIVE = True`.
   Die Spec deckt diese Abgrenzung nicht ab.
 - **78 dieser 122 aktiven Projekte haben kein Budget** und fallen damit aus der Prognose;
-  es bleiben 44 mit zusammen 2,38 Mio. EUR Budget und 729.678 EUR prognosewirksamem
-  Restvolumen. Die Namen der 78 sind überwiegend Schulungs- und Ausbildungsprodukte
+  es bleiben 44 mit zusammen 2,38 Mio. EUR Budget und rund 729.200 EUR
+  prognosewirksamem Restvolumen. Die Namen der 78 sind überwiegend Schulungs- und Ausbildungsprodukte
   (`A-CSM`, `A-CSPO`, `ACC`), also Katalogpositionen ohne beauftragtes Volumen – das
   rechnet die Spec dem Kurzfristgeschäft zu und schließt es aus dem MVP aus. Ob darunter
   echte Bestandsprojekte mit fehlendem Budget stecken, ist ein Pflegethema.
