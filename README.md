@@ -111,9 +111,11 @@ Keine `.env` in Colab. Das Notebook hebt die Secrets in die Umgebung und ruft
 - **Abhängigkeitsversionen weichen ab.** `uv.lock` gilt nur lokal; `pip` in Colab
   ignoriert die Lockfile und löst gegen die dort vorinstallierten Pakete auf. Ein
   lokal grüner Testlauf garantiert daher kein identisches Verhalten in Colab.
-- **Der API-Teil des Notebooks ist ungetestet.** JSON-Envelope und Query-Parameter der
-  Clockodo-Endpunkte sind nicht verifiziert und im Notebook mit `PRÜFEN` markiert.
-  Beim ersten echten Lauf prüfen und korrigieren.
+- **Der API-Teil ist gegen die echte Installation geprüft, aber nicht in Colab.**
+  Envelope, Query-Parameter und Feldnamen von `/v4/projects` und `/v2/entrygroups` sind
+  am 24.08.2026 per `curl` verifiziert, und das Notebook läuft lokal durch. Offen sind
+  keine Strukturfragen mehr, sondern zwei fachliche Abgrenzungen, im Notebook mit
+  `ENTSCHEIDEN` markiert.
 - **Kein automatisierter Lauf.** Ob die monatliche Prognose dauerhaft manuell in Colab
   ausgeführt wird, ist nicht entschieden. Sobald sie regelmäßig und unbeaufsichtigt
   laufen soll, ist Colab das falsche Werkzeug – dann braucht es einen Scheduler und

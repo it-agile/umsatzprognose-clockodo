@@ -27,6 +27,7 @@ uv run jupyter lab             # Notebooks lokal
 ## Aufbau und wo was hingehört
 
 - `src/umsatzprognose/` – testbare Logik. `config.py` (Zugangsdaten, Header),
+  `extraktion.py` (Antwort-JSON → `projects_id -> Wert`, samt der geprüften Randfälle),
   `restvolumen.py` (Spec 5.1).
 - `tests/` – pytest.
 - `notebooks/` – Prototyp-Notebooks: API-Abrufe, Exploration, Darstellung.
@@ -41,7 +42,9 @@ lokal über `.env` (`load_credentials(use_dotenv=False)` in Colab).
 ## Stand der Implementierung
 
 Umgesetzt ist Schritt 1 aus Spec Abschnitt 10: Restvolumen je Projekt (5.1), plus
-`notebooks/01_restvolumen.ipynb`, das die beiden Endpunkte abfragt. Die Monte-Carlo-
+`notebooks/01_restvolumen.ipynb`, das die beiden Endpunkte abfragt. Das Notebook läuft
+am 24.08.2026 gegen die echte Installation durch und liefert 729.678 EUR
+prognosewirksames Restvolumen über 44 aktive Projekte mit Budget. Die Monte-Carlo-
 Simulation (5.4), Abrufquote-Verteilungen, Referenzklassen und der Kapazitätsdeckel
 existieren noch nicht.
 
@@ -94,7 +97,7 @@ kein Versehen, sondern Stand der Clockodo-API:
 | Zweck | Endpunkt | Felder |
 |---|---|---|
 | Auftragsvolumen | `GET /v4/projects`, `/v4/projects/{id}` | `budget.amount`, `budget.hard` |
-| Verbrauch, effektiver Satz | `GET /v2/entrygroups` (nach Projekt gruppiert) | `revenue`, `hourly_rate` |
+| Verbrauch, effektiver Satz | `GET /v2/entrygroups` (nach Projekt gruppiert) | `revenue`, `duration` (nicht `hourly_rate`, siehe unten) |
 | Einzeleinträge | `GET /v2/entries` | `type`, `duration`, `revenue`, `users_id` |
 | Sollarbeitszeit | `GET /v3/users` | `default_target_hours` |
 | Geplante Abwesenheit | Absence-Endpunkt (Legacy `/api`) | Zeitraum, Art, Person |
@@ -128,6 +131,15 @@ Also: Envelope-Key ist `data` (nicht `projects`), die Projekt-ID heißt `id`, un
 ein `paging`-Objekt. `items_per_page` ist 1000 bei aktuell 895 Projekten – die Grenze ist
 nah, deshalb läuft das Notebook über alle Seiten statt nur über die erste.
 
+Die Paginierung ist inzwischen ausgeführt und nicht mehr geraten: `items_per_page` setzt
+die Seitengröße, `page` wählt die Seite. Mit `items_per_page=3` antwortet die API mit
+`count_pages: 299`, und `page=2` liefert `current_page: 2` samt anderer IDs.
+
+**Unbekannte Query-Parameter werden still ignoriert, nicht abgelehnt.** `count=3` und
+`limit=3` antworten mit 200 und den vollen 895 Projekten. Ein 200 belegt einen
+Parameternamen also nicht – dafür muss das `paging`-Objekt der Antwort geprüft werden.
+Bei `/v2/entrygroups` ist es umgekehrt: dort führt ein falscher Parameter zu 400.
+
 **Ebenfalls verifiziert am 24.08.2026** – `/v2/entrygroups` verlangt genau diese Form:
 
 ```
@@ -155,16 +167,64 @@ genau diese Information – deshalb wirft `get()` im Notebook einen eigenen
 `ClockodoError` mit angehängtem Antwortkörper. Bei einem neuen 400er also den Körper
 lesen, statt Parametervarianten zu raten.
 
-**Weiterhin nicht verifiziert:** die Feldnamen innerhalb einer Entrygroup (`group` für
-die Projekt-ID, `revenue`, `hourly_rate` stammen aus der Spec), der Name des
-Seiten-Parameters für v4 (bei `count_pages == 1` bisher nie ausgeführt) und ob `budget`
-überhaupt in jeder Projekt-Antwort steckt. Diese Stellen sind im Notebook mit `PRÜFEN`
-markiert und geben die Roh-Keys aus; beim nächsten Lauf korrigieren, statt sie
-fortzuschreiben.
+Eine Entrygroup sieht so aus (Felder gekürzt):
 
-**Offene fachliche Abgrenzung:** Von den 895 Projekten haben viele `active: false`, sind
-also abgeschlossen oder archiviert. Das Notebook filtert über `NUR_AKTIVE = True` auf
-laufende Projekte – eine Annahme, die die Spec nicht abdeckt und die bestätigt gehört.
+```
+{"group": "1375839", "name": …, "number": …, "duration": 27314640, "revenue": 1132440.7,
+ "hourly_rate": null, "hourly_rate_is_equal_and_has_no_lumpsums": false,
+ "budget_used": false, "grouped_by": "projects_id", "restrictions": {"customers_id": …}}
+```
+
+Drei Fallen darin, alle an den 870 Gruppen dieser Installation belegt:
+
+- **Die Projekt-ID kommt als String** (`"1375839"`), nicht als Zahl.
+- **`group == 0`** (dort als Zahl) steht für Buchungen auf einen Kunden ohne Projekt.
+  Ohne Filter entsteht daraus ein Phantom-Projekt 0.
+- **`hourly_rate` ist als effektiver Stundensatz unbrauchbar.** Es ist genau dann
+  gesetzt, wenn `hourly_rate_is_equal_and_has_no_lumpsums` `true` ist – bei 92 von 870
+  Gruppen, und dort meist `0`. Für die 778 Gruppen mit gemischten Sätzen oder
+  Pauschalleistungen ist es `null`. Der effektive Satz muss aus `revenue` und `duration`
+  (**Sekunden**) abgeleitet werden. Auch dort, wo beide vorliegen, weicht
+  `revenue / (duration/3600)` vom nominalen `hourly_rate` ab – nicht abgerechnete Zeit.
+  8 Gruppen haben Umsatz bei `duration == 0`, das sind reine Pauschalleistungen.
+
+`revenue` deckt die ganze Historie ab, sobald die untere Zeitgrenze weit genug liegt:
+`time_since=2010-01-01` liefert dieselben 870 Gruppen und dieselbe Umsatzsumme wie
+`2020-01-01`. Die Antwort hat **kein `paging`** – alle Gruppen kommen in einem Rutsch
+(870 Gruppen ≈ 800 KB).
+
+`budget` in `/v4/projects` ist immer als Schlüssel vorhanden, aber bei 236 von 895
+Projekten `null`. Ist es gesetzt, hat es mehr Felder als die Spec nennt:
+
+```
+{"monetary": true, "hard": false, "from_subprojects": false, "interval": null,
+ "amount": 11300, "subprojects_budget_total": 0}
+```
+
+Drei davon entscheiden, ob `amount` überhaupt ein Euro-Gesamtbudget ist – `monetary`
+(bei `false` steht dort eine **Stundenzahl**: 8 Projekte, alle inaktiv, mit Werten wie
+6, 12, 48), `interval` (Budget je Intervall statt Gesamtbudget) und `from_subprojects`
+(Summe in `subprojects_budget_total`). Bei den aktiven Projekten trat keiner der drei
+Fälle auf, keiner ist also durchgerechnet. `extraktion.budgets_je_projekt` benutzt
+solche Budgets deshalb nicht und meldet sie einzeln: eine sichtbare Untererfassung ist
+besser als eine still falsche Euro-Zahl. Von den 3 Projekten mit `hard: true` ist
+ebenfalls keines aktiv.
+
+**Offene fachliche Abgrenzungen** (Zahlen vom 24.08.2026):
+
+- Von 895 Projekten sind **122 aktiv**; das Notebook filtert über `NUR_AKTIVE = True`.
+  Die Spec deckt diese Abgrenzung nicht ab.
+- **78 dieser 122 aktiven Projekte haben kein Budget** und fallen damit aus der Prognose;
+  es bleiben 44 mit zusammen 2,38 Mio. EUR Budget und 729.678 EUR prognosewirksamem
+  Restvolumen. Die Namen der 78 sind überwiegend Schulungs- und Ausbildungsprodukte
+  (`A-CSM`, `A-CSPO`, `ACC`), also Katalogpositionen ohne beauftragtes Volumen – das
+  rechnet die Spec dem Kurzfristgeschäft zu und schließt es aus dem MVP aus. Ob darunter
+  echte Bestandsprojekte mit fehlendem Budget stecken, ist ein Pflegethema.
+- **Zwei aktive Projekte tragen `completed: true`**, eines mit 12.424 EUR offenem Budget.
+  Sie gehen derzeit in die Prognose ein; das Feld kennt die Spec nicht.
+- `revenue_factor` ist bei allen aktiven Projekten 1, `test_data` überall `false`, und
+  kein aktives Projekt hat Teilprojekte. Diese drei Felder brauchen also keine
+  Sonderbehandlung, solange das so bleibt.
 
 ## Kalibrierung als Teil des Modells
 

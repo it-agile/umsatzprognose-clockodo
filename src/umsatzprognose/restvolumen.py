@@ -3,7 +3,8 @@
 Formel laut Spec: ``budget.amount - revenue_kumuliert``, wobei ``revenue_kumuliert``
 aus ``/v2/entrygroups`` stammt.
 
-Budgetueberschreitungen sind seit Spec v0.5 geregelt: ``budget.hard`` ist ``false``,
+Budgetueberschreitungen sind seit Spec v0.5 geregelt: ``budget.hard`` ist bei allen
+aktiven Projekten ``false`` (Stand 24.08.2026; drei inaktive Projekte haben ``true``),
 der Verbrauch kann das Budget also uebersteigen - aber nur in der Historie. Die
 Prognose ueberschreitet das Budget nicht. Daher die zwei Groessen
 :attr:`ProjektRestvolumen.roh` (vorzeichenbehaftet, macht Ueberschreitungen fuer die
@@ -17,7 +18,9 @@ von :func:`restvolumen_je_projekt` uebersprungen und separat zurueckgemeldet.
 
 Die in 5.1 erwaehnte Normalisierung von Pauschalleistungen ueber den effektiven
 Stundensatz ist hier noch nicht umgesetzt: die Definition des effektiven
-Stundensatzes steht in Spec v0.3, die dem Repository nicht vorliegt.
+Stundensatzes steht in Spec v0.3, die dem Repository nicht vorliegt. Das Feld
+``hourly_rate`` aus ``/v2/entrygroups`` taugt dafuer ohnehin nicht - es ist bei 778 von
+870 Gruppen ``null``; der Satz muss aus ``revenue`` und ``duration`` kommen.
 """
 
 from __future__ import annotations
