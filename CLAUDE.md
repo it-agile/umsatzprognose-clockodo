@@ -41,7 +41,19 @@ uv run jupyter lab             # Notebooks lokal
 Rechenlogik gehört ins Paket, nicht ins Notebook. Zielwerkzeug ist laut Spec
 (Abschnitt 9) ein Notebook in **Google Colab**, deshalb bleibt der Notebook-Layer dünn
 und beginnt mit einer nur in Colab greifenden Installationszelle – das lokale venv
-steht dort nicht zur Verfügung. Auch der HTTP-Zugriff gehört ins Paket: das Notebook ruft
+steht dort nicht zur Verfügung.
+
+Diese Zelle installiert mit **`--force-reinstall`**, und das ist kein Ritual: die
+Versionsnummer bleibt über Commits hinweg 0.1.0, weshalb `pip install git+…@main` einen
+bereits installierten Stand stehen lässt – ohne Fehlermeldung, aber auch ohne Wirkung.
+`--upgrade` hilft nicht. Am 24.08.2026 in frischen venvs nachgestellt: nach `@5b672de`
+und anschließendem `@main` fehlten die neuen Module weiterhin, in Colab endete das in
+`ModuleNotFoundError: No module named 'umsatzprognose.api'`. Wirksam sind
+`--force-reinstall` (so gelöst, zieht auch die Abhängigkeiten neu), `uninstall` +
+`install` oder ein **Versionssprung** – letzterer ist ebenfalls belegt, taugt aber nicht
+als Verlass, weil ein vergessener Sprung lautlos scheitert und Colab dann alte
+Rechenlogik ausführt. Ein Runtime-Neustart allein genügt nicht, ist nach einem Push
+aber zusätzlich nötig, weil sonst das alte Paket im Speicher bleibt. Auch der HTTP-Zugriff gehört ins Paket: das Notebook ruft
 `ClockodoClient` auf, statt eigene Requests zu bauen. Zugangsdaten in Colab über die
 Secrets-Verwaltung, lokal über `.env`; `load_credentials_auto()` wählt die Quelle
 anhand von `in_colab()`.

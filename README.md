@@ -97,6 +97,24 @@ Wichtig nach einem Push: in Colab die **Runtime neu starten** und die Zelle erne
 ausführen. Ohne Neustart bleibt das zuvor installierte Paket im Runtime aktiv, und
 Korrekturen wirken nicht.
 
+Der Neustart allein genügt aber nicht. Die Versionsnummer des Pakets ändert sich mit
+einem Commit nicht, und **`pip install git+…@main` lässt einen bereits installierten
+Stand deshalb unangetastet** – es meldet keinen Fehler, installiert aber auch nichts;
+`--upgrade` ändert daran nichts (am 24.08.2026 nachgestellt: erst der alte Commit,
+dann `@main`, danach fehlten die neuen Module weiterhin und der Import scheiterte mit
+`ModuleNotFoundError`). Die Installationszelle installiert deshalb mit
+`--force-reinstall`:
+
+```python
+!pip install --quiet --force-reinstall "$PAKET_URL"
+```
+
+Der Aufruf zieht auch die Abhängigkeiten neu und dauert entsprechend länger. Ein
+Versionssprung in `pyproject.toml` würde denselben Effekt haben – nachgestellt: bei
+gleicher Version installiert pip nichts, bei `0.3.0` installiert es. Darauf ist aber
+kein Verlass, denn ein vergessener Sprung scheitert lautlos: Colab importiert den alten
+Code und liefert eine plausible Zahl aus veralteter Logik.
+
 Die Installationszelle zieht das Paket anhand von `PAKET_REF`. Statt `main` eine
 Version zu pinnen ist der Unterschied zwischen „die Prognose von letztem Monat“ und
 „die Prognose mit dem Code von letztem Monat“.
