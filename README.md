@@ -106,14 +106,29 @@ dann `@main`, danach fehlten die neuen Module weiterhin und der Import scheitert
 `--force-reinstall`:
 
 ```python
-!pip install --quiet --force-reinstall "$PAKET_URL"
+!pip install --quiet "$PAKET_URL"
+!pip install --quiet --force-reinstall --no-deps "$PAKET_URL"
 ```
 
-Der Aufruf zieht auch die Abhängigkeiten neu und dauert entsprechend länger. Ein
-Versionssprung in `pyproject.toml` würde denselben Effekt haben – nachgestellt: bei
-gleicher Version installiert pip nichts, bei `0.3.0` installiert es. Darauf ist aber
-kein Verlass, denn ein vergessener Sprung scheitert lautlos: Colab importiert den alten
-Code und liefert eine plausible Zahl aus veralteter Logik.
+Der erste Aufruf beschafft die Abhängigkeiten, der zweite erneuert nur unseren Code.
+**Das `--no-deps` im zweiten ist wichtig:** ohne es zieht `--force-reinstall` auch
+pandas und numpy in der neuesten Version nach und bricht damit Colabs eigene Pins –
+beobachtet am 24.08.2026:
+
+```
+google-colab 1.0.0 requires pandas==2.2.3, but you have pandas 3.0.5
+numba 0.61.2 requires numpy<2.3,>=1.24, but you have numpy 2.5.2
+```
+
+Mit beiden Aufrufen bleiben pandas 2.2.3 und numpy 2.2.6 unverändert stehen
+(nachgestellt in einem venv mit denselben Pins), und der neue Code kommt trotzdem an.
+Aus demselben Grund deklariert `pyproject.toml` **kein numpy**: es wird noch nicht
+benutzt, und `numpy>=2.1` würde in Colab eine Aktualisierung erzwingen.
+
+Ein Versionssprung in `pyproject.toml` würde den Reinstall ebenfalls erübrigen –
+nachgestellt: bei gleicher Version installiert pip nichts, bei `0.3.0` installiert es.
+Darauf ist aber kein Verlass, denn ein vergessener Sprung scheitert lautlos: Colab
+importiert den alten Code und liefert eine plausible Zahl aus veralteter Logik.
 
 Die Installationszelle zieht das Paket anhand von `PAKET_REF`. Statt `main` eine
 Version zu pinnen ist der Unterschied zwischen „die Prognose von letztem Monat“ und

@@ -49,11 +49,22 @@ bereits installierten Stand stehen lässt – ohne Fehlermeldung, aber auch ohne
 `--upgrade` hilft nicht. Am 24.08.2026 in frischen venvs nachgestellt: nach `@5b672de`
 und anschließendem `@main` fehlten die neuen Module weiterhin, in Colab endete das in
 `ModuleNotFoundError: No module named 'umsatzprognose.api'`. Wirksam sind
-`--force-reinstall` (so gelöst, zieht auch die Abhängigkeiten neu), `uninstall` +
-`install` oder ein **Versionssprung** – letzterer ist ebenfalls belegt, taugt aber nicht
-als Verlass, weil ein vergessener Sprung lautlos scheitert und Colab dann alte
-Rechenlogik ausführt. Ein Runtime-Neustart allein genügt nicht, ist nach einem Push
-aber zusätzlich nötig, weil sonst das alte Paket im Speicher bleibt. Auch der HTTP-Zugriff gehört ins Paket: das Notebook ruft
+`--force-reinstall`, `uninstall` + `install` oder ein **Versionssprung** – letzterer ist
+ebenfalls belegt, taugt aber nicht als Verlass, weil ein vergessener Sprung lautlos
+scheitert und Colab dann alte Rechenlogik ausführt.
+
+Der Reinstall läuft mit **`--no-deps`**, und davor ein gewöhnliches `pip install` für
+die Abhängigkeiten. Ohne `--no-deps` zieht `--force-reinstall` pandas und numpy neu und
+bricht Colabs Pins (`google-colab` verlangt `pandas==2.2.3`, `numba` `numpy<2.3`; am
+24.08.2026 real gesehen mit pandas 3.0.5 und numpy 2.5.2). Aus demselben Grund steht
+**numpy nicht in den Abhängigkeiten**, obwohl die Simulation es später braucht: ein
+unbenutzter Pin, der in Colab eine Aktualisierung erzwingt, ist reiner Schaden.
+
+Ein Runtime-Neustart allein genügt nicht, ist nach einem Push aber zusätzlich nötig:
+Python liefert für bereits geladene Module das Objekt aus `sys.modules`, auch wenn die
+Datei auf der Platte ersetzt wurde. Das erzeugt einen gemischten Zustand – neue Module
+werden frisch geladen, alte bleiben alt – und endet als `ImportError: cannot import
+name …` auf eine Funktion, die in der installierten Datei durchaus steht. Auch der HTTP-Zugriff gehört ins Paket: das Notebook ruft
 `ClockodoClient` auf, statt eigene Requests zu bauen. Zugangsdaten in Colab über die
 Secrets-Verwaltung, lokal über `.env`; `load_credentials_auto()` wählt die Quelle
 anhand von `in_colab()`.

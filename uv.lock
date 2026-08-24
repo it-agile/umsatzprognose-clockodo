@@ -1635,7 +1635,6 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "httpx" },
-    { name = "numpy" },
     { name = "pandas" },
     { name = "python-dotenv" },
 ]
@@ -1657,7 +1656,6 @@ requires-dist = [
     { name = "httpx", specifier = ">=0.28" },
     { name = "ipykernel", marker = "extra == 'notebook'", specifier = ">=6.29" },
     { name = "jupyterlab", marker = "extra == 'notebook'", specifier = ">=4.2" },
-    { name = "numpy", specifier = ">=2.1" },
     { name = "pandas", specifier = ">=2.2" },
     { name = "python-dotenv", specifier = ">=1.0" },
 ]
