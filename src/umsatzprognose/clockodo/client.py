@@ -2,14 +2,26 @@
 
 Die Struktur der Antworten und die zulaessigen Query-Parameter sind nicht der Doku
 entnommen (``docs.clockodo.com`` ist eine JavaScript-Anwendung und war nicht
-auslesbar), sondern am 24.08.2026 per ``curl`` gegen die echte Installation geprueft.
-Was dabei herauskam und hier abgebildet ist:
+auslesbar), sondern per ``curl`` und im Python-Aufruf gegen die echte Installation
+geprueft. Was dabei herauskam und hier abgebildet ist:
 
-``/v4/projects`` liefert ``{"paging": {...}, "data": [...]}``. ``items_per_page`` setzt
-die Seitengroesse, ``page`` waehlt die Seite - mit ``items_per_page=3`` antwortet die API
-mit ``count_pages: 299``, und ``page=2`` liefert ``current_page: 2`` samt anderer IDs.
-Bei 895 Projekten und einer Standardseite von 1000 ist die Grenze nah, deshalb laeuft
-:meth:`ClockodoClient.projects` ueber alle Seiten.
+**Vier API-Generationen nebeneinander**, kein Versehen, sondern Stand der Clockodo-API.
+Die Version je Endpunkt ist keine freie Wahl, sondern ausprobiert:
+
+===========================  ==========================================================
+``/v4/projects``             Auftragsvolumen (``budget``), Paginierung, ``data``-Envelope
+``/v3/customers``            Kundennamen. ``/v4`` -> 404, ``/v2`` -> 410 deprecated
+``/v3/users``                Personen. ``default_target_hours`` ist ein Schalter!
+``/targethours``             Sollarbeitszeit, unversioniert. ``/v2`` und ``/v3`` -> 404
+``/v2/entrygroups``          Verbrauch und Umsatz, aggregiert
+``/v4/absences``             geplante Abwesenheiten (5.3). ``/``, ``/v2``, ``/v3`` -> 410
+===========================  ==========================================================
+
+**Paginierung** gibt es bei ``/v4/projects``, ``/v3/customers`` und ``/v3/users``:
+``items_per_page`` setzt die Seitengroesse, ``page`` waehlt die Seite - mit
+``items_per_page=3`` antwortet die API mit ``count_pages: 299``, und ``page=2`` liefert
+``current_page: 2`` samt anderer IDs. Bei 895 Projekten und einer Standardseite von 1000
+ist die Grenze nah, deshalb laeuft :meth:`ClockodoClient.projects` ueber alle Seiten.
 
 **Unbekannte Query-Parameter werden dort still ignoriert, nicht abgelehnt** (``count=3``
 und ``limit=3`` antworten mit 200 und den vollen 895 Projekten). Ein 200 belegt einen
@@ -22,14 +34,18 @@ akzeptierte Form, jeder Punkt an einer 400er-Antwort belegt:
   ``{"error":{"message":"Array expected.","fields":["grouping"]}}``; erst
   ``grouping[]=…`` wird akzeptiert. Der Name ist kein gueltiges Python-Schluesselwort,
   deshalb nehmen die Methoden hier ein Params-Dict statt Schluesselwoerter.
-* Gueltiger Gruppierungswert ist ``projects_id``, nicht ``projects``
-  (``Unknown group option``).
+* Gueltige Werte fuer Objekte tragen das Suffix ``_id`` (``projects_id``,
+  ``customers_id``, ``users_id``); ``projects`` gibt ``Unknown group option``.
+  **Zeitgruppierungen tragen es nicht und stehen im Singular**: ``month``, ``year``,
+  ``week``, ``day`` sind gueltig, ``months``, ``years`` und ``date`` antworten mit 400.
 * ``grouping`` und ``time_since`` sind Pflicht (``Missing data: …``).
 * Zeitgrenzen brauchen die volle ISO-Form mit Uhrzeit; ein reines Datum gibt
   ``{"error":{"message":"Wrong format","fields":["time_since"]}}``.
+* **Mehrfachgruppierung** ist erlaubt: mit ``grouping[]=projects_id&grouping[]=users_id``
+  haengen die Personen als ``sub_groups`` unter dem Projekt.
 
 Die Antwort hat **kein** ``paging`` - alle Gruppen kommen in einem Rutsch (870 Gruppen
-sind rund 800 KB).
+mit Personen-Untergruppen sind rund 1,9 MB und brauchen etwa 20 Sekunden).
 
 **Fehler werden am Koerper diagnostiziert, nicht am Status.** Clockodo begruendet einen
 400 in der Form ``{"error": {"message": …, "fields": [...]}}`` und benennt dort den
@@ -39,14 +55,14 @@ und verwirft genau diese Information, deshalb :class:`ClockodoError`.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from typing import Any
 
 import httpx
 
-from umsatzprognose.config import BASE_URL, ClockodoCredentials
+from umsatzprognose.clockodo.config import BASE_URL, ClockodoCredentials
 
-DEFAULT_TIMEOUT = 30.0
+DEFAULT_TIMEOUT = 60.0
 
 # Zeitfenster fuer den kumulierten Verbrauch. ``revenue_kumuliert`` aus Spec 5.1 ist
 # der Gesamtverbrauch eines Projekts, nicht der eines Monats - die untere Grenze muss
@@ -55,8 +71,9 @@ DEFAULT_TIMEOUT = 30.0
 HISTORIE_VON = "2020-01-01T00:00:00Z"
 HISTORIE_BIS = "2026-12-31T23:59:59Z"
 
-# Nur dieser Gruppierungswert wird gebraucht; ``customers_id`` waere die Alternative.
 GRUPPIERUNG_PROJEKT = "projects_id"
+GRUPPIERUNG_PERSON = "users_id"
+GRUPPIERUNG_MONAT = "month"
 
 
 class ClockodoError(RuntimeError):
@@ -72,8 +89,8 @@ class ClockodoClient:
     """Lesender Zugriff auf die Endpunkte, die die Prognose braucht.
 
     Je Aufruf wird ein eigener ``httpx.Client`` geoeffnet und geschlossen. Fuer die
-    wenigen Requests einer Prognose ist das ausreichend und erspart im Notebook jede
-    Lebenszyklus-Verwaltung.
+    halbe Handvoll Requests einer Prognose ist das ausreichend und erspart im Notebook
+    jede Lebenszyklus-Verwaltung.
     """
 
     def __init__(
@@ -127,35 +144,66 @@ class ClockodoClient:
         return self.get_paged("/v4/projects")
 
     def customers(self) -> tuple[list[dict[str, Any]], dict[str, Any]]:
-        """Alle Kunden aus ``/v3/customers``, ueber alle Seiten.
-
-        Nur fuer die Beschriftung der Tabelle: ``/v4/projects`` liefert lediglich
-        ``customers_id``, den Kundennamen gibt es hier. Die Version ist keine freie
-        Wahl - ``/v4/customers`` antwortet mit 404 ``RouteNotFound``, ``/v2/customers``
-        mit 410 ``deprecated`` (geprueft am 24.08.2026). Envelope und ``paging`` haben
-        dieselbe Form wie bei ``/v4/projects``.
-        """
+        """Alle Kunden aus ``/v3/customers``, ueber alle Seiten."""
         return self.get_paged("/v3/customers")
 
-    def entrygroups_je_projekt(
+    def users(self) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+        """Alle Personen aus ``/v3/users``, ueber alle Seiten (59 in dieser Anlage)."""
+        return self.get_paged("/v3/users")
+
+    def targethours(self) -> list[dict[str, Any]]:
+        """Sollarbeitszeiten aus dem unversionierten ``/targethours``.
+
+        Envelope-Key ist ``targethours``, es gibt kein ``paging`` (186 Eintraege). Die
+        Version ist keine freie Wahl: ``/v2/targethours`` und ``/v3/targethours``
+        antworten mit 404 ``RouteNotFound``.
+        """
+        return self.get("/targethours")["targethours"]
+
+    def entrygroups(
         self,
+        grouping: Sequence[str],
         *,
         time_since: str = HISTORIE_VON,
         time_until: str = HISTORIE_BIS,
     ) -> list[dict[str, Any]]:
-        """Nach Projekt gruppierte Eintraege aus ``/v2/entrygroups``.
+        """Aggregierte Eintraege aus ``/v2/entrygroups``.
+
+        Args:
+            grouping: ein oder mehrere Gruppierungswerte. Bei mehreren haengt die
+                zweite Ebene als ``sub_groups`` unter der ersten.
+            time_since: untere Zeitgrenze, volle ISO-Form mit Uhrzeit.
+            time_until: obere Zeitgrenze, volle ISO-Form mit Uhrzeit.
 
         Returns:
-            Die ``groups``-Liste. Eine Gruppe traegt die Projekt-ID als String in
-            ``group``, den Umsatz in ``revenue`` (Euro) und die Zeit in ``duration``
-            (Sekunden).
+            Die ``groups``-Liste.
         """
         payload = self.get(
             "/v2/entrygroups",
             {
                 "time_since": time_since,
                 "time_until": time_until,
-                "grouping[]": GRUPPIERUNG_PROJEKT,
+                "grouping[]": list(grouping),
             },
         )
         return payload["groups"]
+
+    def entrygroups_je_projekt_und_person(
+        self, *, time_since: str = HISTORIE_VON, time_until: str = HISTORIE_BIS
+    ) -> list[dict[str, Any]]:
+        """Verbrauch je Projekt, darunter die Anteile je Person.
+
+        Ein Abruf statt zweier: die Projektsummen dieser Antwort sind mit denen der
+        einfachen Gruppierung identisch (am 24.08.2026 ueber alle 870 Gruppen
+        verglichen, keine Abweichung), und die Untergruppen summieren sich exakt auf
+        sie. Damit sind Verbrauch und Aufteilungsschluessel garantiert konsistent.
+        """
+        return self.entrygroups(
+            [GRUPPIERUNG_PROJEKT, GRUPPIERUNG_PERSON],
+            time_since=time_since,
+            time_until=time_until,
+        )
+
+    def entrygroups_je_monat(self, *, time_since: str, time_until: str) -> list[dict[str, Any]]:
+        """Umsatz je Kalendermonat - alle Buchungen, auch die ohne Projektbezug."""
+        return self.entrygroups([GRUPPIERUNG_MONAT], time_since=time_since, time_until=time_until)

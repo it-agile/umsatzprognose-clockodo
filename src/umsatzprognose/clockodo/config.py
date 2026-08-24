@@ -20,12 +20,26 @@ EXTERNAL_APPLICATION_MAX_LENGTH = 50
 
 
 class MissingCredentialsError(RuntimeError):
-    """Eine benoetigte Umgebungsvariable ist nicht gesetzt."""
+    """Eine benoetigte Umgebungsvariable oder ein Colab-Secret fehlt."""
+
+
+def in_colab() -> bool:
+    """Ob der Code in Google Colab laeuft."""
+    try:
+        import google.colab  # noqa: F401
+    except ImportError:
+        return False
+    return True
 
 
 @dataclass(frozen=True)
 class ClockodoCredentials:
-    """Alles, was fuer einen authentifizierten Clockodo-Request noetig ist."""
+    """Alles, was fuer einen authentifizierten Clockodo-Request noetig ist.
+
+    Gebaut wird ueber die benannten Konstruktoren: :meth:`automatisch` waehlt die
+    Quelle selbst, :meth:`aus_umgebung` liest ``.env`` und Umgebungsvariablen,
+    :meth:`aus_colab_secrets` die Colab-Secrets-Verwaltung.
+    """
 
     api_user: str
     api_key: str
@@ -41,6 +55,33 @@ class ClockodoCredentials:
                 f"{self.external_application!r}"
             )
 
+    @classmethod
+    def automatisch(cls) -> ClockodoCredentials:
+        """Aus der passenden Quelle: Colab-Secrets in Colab, sonst ``.env``."""
+        return cls.aus_colab_secrets() if in_colab() else cls.aus_umgebung()
+
+    @classmethod
+    def aus_umgebung(cls, *, use_dotenv: bool = True) -> ClockodoCredentials:
+        """Aus Umgebungsvariablen; lokal wird eine ``.env`` beruecksichtigt."""
+        if use_dotenv:
+            load_dotenv()
+        return cls(
+            api_user=_umgebungsvariable("CLOCKODO_API_USER"),
+            api_key=_umgebungsvariable("CLOCKODO_API_KEY"),
+            app_name=_umgebungsvariable("CLOCKODO_APP_NAME"),
+            app_email=_umgebungsvariable("CLOCKODO_APP_EMAIL"),
+        )
+
+    @classmethod
+    def aus_colab_secrets(cls) -> ClockodoCredentials:
+        """Aus der Colab-Secrets-Verwaltung. Keine ``.env`` in Colab."""
+        return cls(
+            api_user=_colab_secret("CLOCKODO_API_USER"),
+            api_key=_colab_secret("CLOCKODO_API_KEY"),
+            app_name=_colab_secret("CLOCKODO_APP_NAME"),
+            app_email=_colab_secret("CLOCKODO_APP_EMAIL"),
+        )
+
     @property
     def external_application(self) -> str:
         return f"{self.app_name};{self.app_email}"
@@ -53,7 +94,7 @@ class ClockodoCredentials:
         }
 
 
-def _require(name: str) -> str:
+def _umgebungsvariable(name: str) -> str:
     value = os.environ.get(name, "").strip()
     if not value:
         raise MissingCredentialsError(
@@ -62,32 +103,6 @@ def _require(name: str) -> str:
             "die Secrets-Verwaltung bereitstellen."
         )
     return value
-
-
-def load_credentials(*, use_dotenv: bool = True) -> ClockodoCredentials:
-    """Liest die Zugangsdaten aus der Umgebung.
-
-    Lokal wird eine ``.env`` im Projektwurzelverzeichnis beruecksichtigt. In Colab
-    ``use_dotenv=False`` setzen und die Werte vorher via ``os.environ`` aus den
-    Colab-Secrets uebernehmen.
-    """
-    if use_dotenv:
-        load_dotenv()
-    return ClockodoCredentials(
-        api_user=_require("CLOCKODO_API_USER"),
-        api_key=_require("CLOCKODO_API_KEY"),
-        app_name=_require("CLOCKODO_APP_NAME"),
-        app_email=_require("CLOCKODO_APP_EMAIL"),
-    )
-
-
-def in_colab() -> bool:
-    """Ob der Code in Google Colab laeuft."""
-    try:
-        import google.colab  # noqa: F401
-    except ImportError:
-        return False
-    return True
 
 
 def _colab_secret(name: str) -> str:
@@ -107,18 +122,3 @@ def _colab_secret(name: str) -> str:
     if not (value or "").strip():
         raise MissingCredentialsError(f"Colab-Secret '{name}' ist leer.")
     return value.strip()
-
-
-def load_credentials_colab() -> ClockodoCredentials:
-    """Zugangsdaten aus der Colab-Secrets-Verwaltung. Keine ``.env`` in Colab."""
-    return ClockodoCredentials(
-        api_user=_colab_secret("CLOCKODO_API_USER"),
-        api_key=_colab_secret("CLOCKODO_API_KEY"),
-        app_name=_colab_secret("CLOCKODO_APP_NAME"),
-        app_email=_colab_secret("CLOCKODO_APP_EMAIL"),
-    )
-
-
-def load_credentials_auto() -> ClockodoCredentials:
-    """Zugangsdaten aus der passenden Quelle: Colab-Secrets in Colab, sonst ``.env``."""
-    return load_credentials_colab() if in_colab() else load_credentials(use_dotenv=True)

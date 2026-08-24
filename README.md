@@ -7,8 +7,15 @@ Maßgeblich ist die Spezifikation: [`spec/spec-umsatzprognose-clockodo-modul-v0.
 
 ## Stand
 
-Prototyp-Phase. Umgesetzt ist Schritt 1 aus Spec Abschnitt 10: das Restvolumen je
-Projekt (Abschnitt 5.1). Die Monte-Carlo-Simulation (5.4) ist noch nicht gebaut.
+Prototyp-Phase. Umgesetzt sind Schritt 1 aus Spec Abschnitt 10 (Restvolumen je Projekt,
+5.1) und das vollständige Domänenmodell außer der Simulation – inklusive
+Aufteilungsschlüssel je Person (5.4 Schritt 3) und Sollarbeitszeit (Teil von 5.3). Das
+Dashboard zeigt den Umsatz der letzten zwölf Monate und das offene Auftragsvolumen.
+
+Die Monte-Carlo-Simulation (5.4) ist noch nicht gebaut: dafür fehlen die
+Abrufquote-Verteilung (5.2) und die Referenzklassen (6), die beide in Spec v0.3 stehen,
+die nicht im Repository liegt. Das Dashboard zeigt an ihrer Stelle diese Begründung an,
+statt eine Zahl zu erfinden.
 
 ## Setup
 
@@ -38,14 +45,36 @@ uv run jupyter lab             # Notebooks lokal
 
 ## Aufbau
 
-- `src/umsatzprognose/` – testbare Logik. `config.py` (Zugangsdaten, Header),
-  `api.py` (Clockodo-Client), `tabellen.py` (Darstellung als DataFrame). Die
-  Rechenmodule sind nach den Begriffen der Spec benannt: `auftragsvolumen.py`,
-  `verbrauchtes_volumen.py`, `restvolumen.py` (Spec 5.1).
+Das Paket bildet den Gegenstand ab – Kunde, Projekt, Mitarbeiter, Umsatz – und ist in
+drei Schichten geschnitten, mit genau einer erlaubten Abhängigkeitsrichtung:
+
+```
+darstellung  ──►  domaene  ◄──  clockodo
+```
+
+- `src/umsatzprognose/domaene/` – die Fachobjekte, unveränderlich und ohne
+  Bibliotheksabhängigkeit: `Projekt` und `Budget` (Restvolumen nach Spec 5.1, effektiver
+  Stundensatz), `Kunde`, `Mitarbeiter`, `Projektanteil` (der Aufteilungsschlüssel aus
+  5.4), `Umsatzhistorie` und `Bestand` als Aggregat. Kennt weder JSON noch HTTP.
+- `src/umsatzprognose/clockodo/` – Zugriff auf die API und Übersetzung ihrer Antworten
+  in Fachobjekte. Hier steht alles, was über die Eigenheiten dieser API bekannt ist.
+- `src/umsatzprognose/darstellung/` – Diagramme (plotly), Tabellen (pandas) und die
+  Fassade `Dashboard`, die die Notebooks benutzen.
 - `tests/` – pytest.
-- `notebooks/` – Prototyp-Notebooks. Sie rufen die API auf und nutzen das Paket;
-  Rechenlogik gehört ins Paket, nicht ins Notebook.
+- `notebooks/` – `01_dashboard.ipynb` für Fachexperten (je Zelle ein Aufruf,
+  Fachsprache, keine technischen Details) und `02_technik_restvolumen.ipynb` für die
+  Entwicklung (Prüfsummen, Datenlage, offene fachliche Fragen). Rechenlogik gehört ins
+  Paket, nicht ins Notebook.
 - `spec/` – Spezifikation.
+
+Der übliche Einstieg ist eine Zeile:
+
+```python
+from umsatzprognose import Dashboard
+
+dashboard = Dashboard.laden()
+dashboard.umsatzverlauf()
+```
 
 ## Deployment (Google Colab)
 
@@ -80,8 +109,14 @@ git push origin v0.1.0
 ### 2. Notebook in Colab öffnen
 
 In Colab unter *Notebook öffnen → GitHub* das Repository angeben und
-`notebooks/01_restvolumen.ipynb` öffnen. Da das Repository öffentlich ist, braucht Colab
-dafür keine GitHub-Autorisierung.
+`notebooks/01_dashboard.ipynb` öffnen (für die Entwicklung:
+`notebooks/02_technik_restvolumen.ipynb`). Da das Repository öffentlich ist, braucht
+Colab dafür keine GitHub-Autorisierung.
+
+**Nach einer Notebook-Änderung im Repository muss das Notebook hier neu geladen
+werden.** Die Installationszelle erneuert das Paket, nie die `.ipynb`. Erkennbar ist der
+Fall an der ersten Ausgabe: sie nennt den Stand der Zelle. Fehlt sie, ist das Notebook
+alt.
 
 Alternativ Notebook-Datei herunterladen und in Colab hochladen, oder über Google Drive
 einbinden. Funktional gleichwertig, nur ohne Verknüpfung zum Repository – Änderungen
@@ -123,7 +158,9 @@ numba 0.61.2 requires numpy<2.3,>=1.24, but you have numpy 2.5.2
 Mit beiden Aufrufen bleiben pandas 2.2.3 und numpy 2.2.6 unverändert stehen
 (nachgestellt in einem venv mit denselben Pins), und der neue Code kommt trotzdem an.
 Aus demselben Grund deklariert `pyproject.toml` **kein numpy**: es wird noch nicht
-benutzt, und `numpy>=2.1` würde in Colab eine Aktualisierung erzwingen.
+benutzt, und `numpy>=2.1` würde in Colab eine Aktualisierung erzwingen. plotly steht
+mit `>=5` und ohne Obergrenze darin – Colab bringt es mit, die Anforderung ist damit
+erfüllt, und der erste `pip install` lässt die vorhandene Version stehen.
 
 Ein Versionssprung in `pyproject.toml` würde den Reinstall ebenfalls erübrigen –
 nachgestellt: bei gleicher Version installiert pip nichts, bei `0.3.0` installiert es.
@@ -138,8 +175,8 @@ Version zu pinnen ist der Unterschied zwischen „die Prognose von letztem Monat
 
 Die vier Clockodo-Variablen aus `.env.sample` als Colab-Secrets anlegen –
 `CLOCKODO_API_USER`, `CLOCKODO_API_KEY`, `CLOCKODO_APP_NAME`, `CLOCKODO_APP_EMAIL`.
-Keine `.env` in Colab. Das Notebook ruft `load_credentials_auto()` auf; die Funktion
-erkennt Colab und liest dort die Secrets, lokal die `.env`.
+Keine `.env` in Colab. `Dashboard.laden()` erkennt Colab und liest dort die Secrets,
+lokal die `.env`.
 
 ### Bekannte Einschränkungen
 
@@ -147,10 +184,13 @@ erkennt Colab und liest dort die Secrets, lokal die `.env`.
   ignoriert die Lockfile und löst gegen die dort vorinstallierten Pakete auf. Ein
   lokal grüner Testlauf garantiert daher kein identisches Verhalten in Colab.
 - **Der API-Teil ist gegen die echte Installation geprüft, aber nicht in Colab.**
-  Envelope, Query-Parameter und Feldnamen von `/v4/projects` und `/v2/entrygroups` sind
-  am 24.08.2026 per `curl` verifiziert, und das Notebook läuft lokal durch. Offen sind
-  keine Strukturfragen mehr, sondern zwei fachliche Abgrenzungen, im Notebook mit
-  `ENTSCHEIDEN` markiert.
+  Envelope, Query-Parameter und Feldnamen aller benutzten Endpunkte sind am 24.08.2026
+  gegen die Installation verifiziert, und beide Notebooks laufen lokal durch. Offen sind
+  keine Strukturfragen mehr, sondern zwei fachliche Abgrenzungen, im Technik-Notebook
+  mit `ENTSCHEIDEN` markiert.
+- **Ob die plotly-Diagramme in Colab rendern, ist noch nicht geprüft.** Lokal tun sie
+  es. In Colab ist beim ersten Lauf zu kontrollieren, dass der `pip`-Aufruf plotly,
+  pandas und numpy unangetastet lässt; tut er es nicht, ist die Versionsangabe zu eng.
 - **Kein automatisierter Lauf.** Ob die monatliche Prognose dauerhaft manuell in Colab
   ausgeführt wird, ist nicht entschieden. Sobald sie regelmäßig und unbeaufsichtigt
   laufen soll, ist Colab das falsche Werkzeug – dann braucht es einen Scheduler und

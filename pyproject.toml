@@ -10,6 +10,11 @@ dependencies = [
     # Aktualisierung erzwingen (numba dort verlangt numpy < 2.3). Kommt mit der
     # Monte-Carlo-Simulation (Spec 5.4) wieder herein.
     "pandas>=2.2",
+    # Untergrenze niedrig und ohne Obergrenze mit Absicht: Colab bringt plotly mit,
+    # "plotly>=5" ist damit erfuellt und pip laesst die vorhandene Version stehen.
+    # Ein enger Pin wuerde dort eine Neuinstallation erzwingen - genau das, was bei
+    # numpy schon einmal google-colab und numba gebrochen hat.
+    "plotly>=5",
     "python-dotenv>=1.0",
 ]
 
@@ -17,6 +22,8 @@ dependencies = [
 notebook = [
     "ipykernel>=6.29",
     "jupyterlab>=4.2",
+    # Ohne nbformat rendert fig.show() in lokalem JupyterLab nicht. In Colab ist es da.
+    "nbformat>=4.2",
 ]
 
 [build-system]
@@ -28,6 +35,9 @@ packages = ["src/umsatzprognose"]
 
 [dependency-groups]
 dev = [
+    # Nur lokal: rendert Diagramme als PNG, damit man sie vor dem Ausliefern ansieht.
+    # Bewusst keine Laufzeitabhaengigkeit - in Colab zeichnet der Browser.
+    "kaleido>=0.2",
     "pytest>=8.3",
     "ruff>=0.8",
 ]

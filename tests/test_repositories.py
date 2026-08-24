@@ -1,0 +1,199 @@
+"""Tests zur Abbildung der Clockodo-Antworten auf Fachobjekte.
+
+Hier wird geprueft, was beim Lesen der Antworten schiefgehen kann - Typen, die nicht
+sind, wonach sie aussehen, Sonderwerte, fehlende Verknuepfungen. Die Rechenregeln
+stehen in den Domaenentests.
+"""
+
+from __future__ import annotations
+
+from datetime import date
+
+from conftest import client_mit_routen
+from umsatzprognose.clockodo.bestand import BestandRepository
+from umsatzprognose.clockodo.kunden import KundenRepository
+from umsatzprognose.clockodo.mitarbeiter import MitarbeiterRepository
+from umsatzprognose.clockodo.projekte import ProjektRepository, budget, projekt_id
+from umsatzprognose.clockodo.umsatz import UmsatzRepository
+
+STICHTAG = date(2026, 8, 24)
+
+
+def routen(
+    projekt_antwort,
+    kunden_antwort,
+    benutzer_antwort,
+    sollzeit_antwort,
+    entrygroup_antwort,
+    monats_antwort,
+) -> dict:
+    return {
+        "/v4/projects": projekt_antwort,
+        "/v3/customers": kunden_antwort,
+        "/v3/users": benutzer_antwort,
+        "/targethours": sollzeit_antwort,
+        "/v2/entrygroups": entrygroup_antwort,
+    }  # fmt: skip
+
+
+def test_kunden_werden_nach_id_abgelegt(kunden_antwort):
+    client, _ = client_mit_routen({"/v3/customers": kunden_antwort})
+    kunden = KundenRepository(client).laden()
+
+    assert kunden[1361511].name == "it-agile GmbH"
+    assert str(kunden[4035662]) == "Beispiel AG"
+
+
+def test_sollarbeitszeit_kommt_nicht_aus_default_target_hours(benutzer_antwort, sollzeit_antwort):
+    # default_target_hours ist ein Schalter (hier False bei der aktiven Person). Die
+    # Stunden stehen in /targethours, mit Gueltigkeitszeitraum.
+    client, _ = client_mit_routen({"/v3/users": benutzer_antwort, "/targethours": sollzeit_antwort})
+    personen = MitarbeiterRepository(client).laden()
+
+    carmen = personen[143323]
+    assert carmen.aktiv
+    assert carmen.wochenstunden(STICHTAG) == 35.0
+    assert carmen.wochenstunden(date(2021, 1, 1)) == 40.0
+    assert personen[235532].wochenstunden(STICHTAG) is None
+
+
+def test_projekt_id_und_budgetformen(projekt_antwort):
+    daten = projekt_antwort["data"]
+    assert projekt_id(daten[0]) == 1375839
+    assert budget(daten[0]).auftragsvolumen == 160000.0
+    # budget ist null - der Schluessel ist da, ein Betrag nicht.
+    assert budget(daten[1]).auftragsvolumen is None
+    # monetary=false: der Betrag sind Stunden, kein Euro-Wert.
+    assert budget(daten[2]).auftragsvolumen is None
+    assert "Stunden" in budget(daten[2]).sonderfall
+
+
+def test_projekte_bekommen_kunde_verbrauch_und_anteile(
+    projekt_antwort, kunden_antwort, benutzer_antwort, sollzeit_antwort, entrygroup_antwort
+):
+    client, _ = client_mit_routen(
+        {
+            "/v4/projects": projekt_antwort,
+            "/v3/customers": kunden_antwort,
+            "/v3/users": benutzer_antwort,
+            "/targethours": sollzeit_antwort,
+            "/v2/entrygroups": entrygroup_antwort,
+        }
+    )
+    kunden = KundenRepository(client).laden()
+    personen = MitarbeiterRepository(client).laden()
+    projekte = ProjektRepository(client, kunden, personen).laden()
+
+    gefunden = {p.id: p for p in projekte}
+    assert len(gefunden) == 3  # auch inaktive Projekte werden geladen
+    coaching = gefunden[1375839]
+    assert str(coaching.kunde) == "it-agile GmbH"
+    assert coaching.verbrauchtes_volumen == 86661.88
+    assert coaching.verbrauchte_stunden == 2306880 / 3600
+    assert len(coaching.anteile) == 2
+
+
+def test_person_ohne_stammdatensatz_verliert_ihre_stunden_nicht(
+    projekt_antwort, kunden_antwort, benutzer_antwort, sollzeit_antwort, entrygroup_antwort
+):
+    client, _ = client_mit_routen(
+        {
+            "/v4/projects": projekt_antwort,
+            "/v3/customers": kunden_antwort,
+            "/v3/users": benutzer_antwort,
+            "/targethours": sollzeit_antwort,
+            "/v2/entrygroups": entrygroup_antwort,
+        }
+    )
+    personen = MitarbeiterRepository(client).laden()
+    projekte = ProjektRepository(client, {}, personen).laden()
+
+    coaching = next(p for p in projekte if p.id == 1375839)
+    unbekannt = next(a for a in coaching.anteile if a.mitarbeiter.id == 700000)
+    assert unbekannt.mitarbeiter.name is None
+    assert unbekannt.stunden > 0
+    assert sum(a.stunden for a in coaching.anteile) == coaching.verbrauchte_stunden
+
+
+def test_buchungen_ohne_projekt_werden_nicht_zu_projekt_null(projekt_antwort, entrygroup_antwort):
+    # group == 0 steht fuer Buchungen auf einen Kunden ohne Projekt. Ohne Filter
+    # entstuende daraus ein Phantom-Projekt mit der ID 0.
+    client, _ = client_mit_routen(
+        {"/v4/projects": projekt_antwort, "/v2/entrygroups": entrygroup_antwort}
+    )
+    repository = ProjektRepository(client)
+    projekte = repository.laden()
+
+    assert 0 not in {p.id for p in projekte}
+    assert any("ohne Projekt" in h.text for h in repository.hinweise)
+    assert any("6,0 h" in h.text for h in repository.hinweise)
+
+
+def test_verbrauch_auf_unbekanntes_projekt_wird_gemeldet(entrygroup_antwort):
+    client, _ = client_mit_routen(
+        {"/v4/projects": {"data": []}, "/v2/entrygroups": entrygroup_antwort}
+    )
+    repository = ProjektRepository(client)
+    repository.laden()
+
+    assert any("Stammdaten" in h.text for h in repository.hinweise)
+
+
+def test_ohne_anteile_wird_der_verbrauch_trotzdem_gelesen(projekt_antwort, entrygroup_antwort):
+    client, _ = client_mit_routen(
+        {"/v4/projects": projekt_antwort, "/v2/entrygroups": entrygroup_antwort}
+    )
+    projekte = ProjektRepository(client).laden(mit_anteilen=False)
+
+    coaching = next(p for p in projekte if p.id == 1375839)
+    assert coaching.anteile == ()
+    assert coaching.verbrauchtes_volumen == 86661.88
+
+
+def test_monatsumsaetze_werden_gelesen_und_luecken_gefuellt(monats_antwort):
+    client, requests = client_mit_routen({"/v2/entrygroups": monats_antwort})
+    historie = UmsatzRepository(client).laden(STICHTAG)
+
+    assert len(historie.monate) == 13
+    assert historie.monate[-1].schluessel == (2026, 8)
+    assert next(m for m in historie.monate if m.schluessel == (2026, 7)).umsatz == 0.0
+    assert next(m for m in historie.monate if m.schluessel == (2026, 6)).umsatz == 292188.83
+    # Das Fenster beginnt zwoelf Monate vor dem laufenden und endet am Monatsende.
+    params = requests[0].url.params
+    assert params["time_since"] == "2025-08-01T00:00:00Z"
+    assert params["time_until"] == "2026-08-31T23:59:59Z"
+
+
+def test_bestand_setzt_alles_zusammen(
+    projekt_antwort,
+    kunden_antwort,
+    benutzer_antwort,
+    sollzeit_antwort,
+    entrygroup_antwort,
+    monats_antwort,
+):
+    def entrygroups(request):
+        # Derselbe Pfad, zwei voellig verschiedene Antworten - je nach Gruppierung.
+        gruppierung = request.url.params.get_list("grouping[]")
+        return monats_antwort if gruppierung == ["month"] else entrygroup_antwort
+
+    client, requests = client_mit_routen(
+        {
+            "/v4/projects": projekt_antwort,
+            "/v3/customers": kunden_antwort,
+            "/v3/users": benutzer_antwort,
+            "/targethours": sollzeit_antwort,
+            "/v2/entrygroups": entrygroups,
+        }
+    )
+    bestand = BestandRepository(client).laden(stichtag=STICHTAG)
+
+    assert bestand.stichtag == STICHTAG
+    assert len(bestand.projekte) == 3
+    assert len(bestand.mitarbeiter) == 2
+    assert [p.id for p in bestand.im_prognose_scope] == [1375839]
+    assert bestand.restvolumen_prognosewirksam == 160000.0 - 86661.88
+    assert bestand.umsatzhistorie.summe() == 292188.83
+    # Sechs Abrufe: Kunden, Personen, Sollzeiten, Projekte, Verbrauch, Monatsumsatz.
+    assert len(requests) == 6
+    assert any("ohne Projekt" in h.text for h in bestand.hinweise())
