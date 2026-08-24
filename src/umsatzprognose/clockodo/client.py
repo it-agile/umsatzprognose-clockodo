@@ -77,20 +77,27 @@ GRUPPIERUNG_PERSON = "users_id"
 GRUPPIERUNG_MONAT = "month"
 
 
-def historie_bis(tag: date | None = None) -> str:
-    """Obere Grenze des Verbrauchsfensters: das Ende des Monats, in dem ``tag`` liegt.
+def verbrauch_bis(stichtag: date | None = None) -> str:
+    """Obere Grenze des Verbrauchsfensters: der Stichtag selbst (Spec 5.1).
 
-    Monatsende und nicht ``tag`` selbst, weil eine Buchung spaeter in diesem Monat
-    datiert sein kann und trotzdem schon Ist ist - dieselbe Grenze zieht die
-    Umsatzhistorie fuer den laufenden Balken.
+    Der Stichtag und **nicht** das Monatsende: Verbrauch ist streng Vergangenheit. Was
+    spaeter datiert ist, liegt im Prognosehorizont und wird laut Spec 5.4 dort
+    angerechnet, statt vorab vom Restvolumen abgezogen zu werden - sonst waere der
+    Umsatz weder in der Historie noch in der Bandbreite zu finden. Am 24.08.2026 waren
+    das 13.440 EUR in zwei Projekten.
 
-    **Das ist eine Funktion und keine Konstante**, und der Unterschied ist nicht
-    kosmetisch: als Modulkonstante wuerde der Wert beim Import einmal berechnet und
-    danach einfrieren. Ein Notebook bleibt in Colab tagelang offen; ueber einen
-    Monatswechsel hinweg wuerde es Buchungen des neuen Monats stumm abschneiden. Aus
-    demselben Grund ist der Wert **nicht** als Default-Parameter eingetragen - Python
-    wertet Defaults ebenfalls nur beim Import aus. Die Aufrufer nehmen ``None`` und
-    loesen erst hier auf.
+    Nicht zu verwechseln mit :func:`monatsende`, das die Umsatzhistorie zieht: dort ist
+    der laufende Kalendermonat der Balken, hier der Schnitt zwischen Ist und Prognose.
+    """
+    return f"{(stichtag or date.today()).isoformat()}T23:59:59Z"
+
+
+def monatsende(tag: date | None = None) -> str:
+    """Letzter Tag des Monats, in dem ``tag`` liegt - das Fenster der Umsatzhistorie.
+
+    Monatsende und nicht ``tag`` selbst, weil eine spaeter in diesem Monat datierte
+    Buchung in den laufenden Balken gehoert; dass der Monat unvollstaendig ist, fuehrt
+    die Historie getrennt.
     """
     tag = tag or date.today()
     letzter = monthrange(tag.year, tag.month)[1]
@@ -194,9 +201,11 @@ class ClockodoClient:
             grouping: ein oder mehrere Gruppierungswerte. Bei mehreren haengt die
                 zweite Ebene als ``sub_groups`` unter der ersten.
             time_since: untere Zeitgrenze, volle ISO-Form mit Uhrzeit.
-            time_until: obere Zeitgrenze, volle ISO-Form mit Uhrzeit. Ohne Angabe das
-                Ende des laufenden Monats, hier und nicht als Default aufgeloest -
-                siehe :func:`historie_bis`.
+            time_until: obere Zeitgrenze, volle ISO-Form mit Uhrzeit. Ohne Angabe der
+                heutige Tag (:func:`verbrauch_bis`), aufgeloest **hier** und nicht als
+                Default: eine Modulkonstante oder ein Default-Parameter wird beim
+                Import einmal berechnet und friert ein. Ein Colab-Notebook bleibt
+                tagelang offen und schnitte ueber einen Tageswechsel hinweg stumm ab.
 
         Returns:
             Die ``groups``-Liste.
@@ -205,7 +214,7 @@ class ClockodoClient:
             "/v2/entrygroups",
             {
                 "time_since": time_since,
-                "time_until": time_until or historie_bis(),
+                "time_until": time_until or verbrauch_bis(),
                 "grouping[]": list(grouping),
             },
         )

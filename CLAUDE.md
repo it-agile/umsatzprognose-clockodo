@@ -143,11 +143,13 @@ vollständige Domänenmodell außer der Simulation – inklusive Aufteilungsschl
 Person (5.4 Schritt 3) und Sollarbeitszeit (Teil von 5.3).
 
 Beide Notebooks laufen am 24.08.2026 gegen die echte Installation durch: 895 Projekte,
-davon 122 aktiv und 44 im Prognose-Scope, 59 Personen (26 aktiv, zusammen 801
-Wochenstunden), rund **729.000 EUR** prognosewirksames Restvolumen bei 2,38 Mio. EUR
+davon 122 aktiv und **42 im Prognose-Scope**, 59 Personen (26 aktiv, zusammen 801
+Wochenstunden), **721.126 EUR** prognosewirksames Restvolumen bei 2.318.333 EUR
 Auftragsvolumen, Umsatz der zwölf abgeschlossenen Monate 09/2025–08/2026 rund
 **3,48 Mio. EUR**. Die Zahlen bewegen sich mit jeder Zeitbuchung – sie taugen als
-Größenordnung, nicht als Regressionswert. Ein vollständiger Ladevorgang dauert rund
+Größenordnung, nicht als Regressionswert. Und sie hängen an zwei Regeln: der
+`completed`-Regel (Spec 5.0) und dem Verbrauchsfenster am Stichtag (5.1). Wer ältere
+Zahlen vergleicht, vergleicht andere Regeln. Ein vollständiger Ladevorgang dauert rund
 15 Sekunden.
 
 Es fehlen: die Monte-Carlo-Simulation (5.4), die **Schätzung** der
@@ -186,11 +188,19 @@ baut ein anderes Modell. Stunden und nicht Personentage, weil `/targethours` Stu
 Wochentag liefert (20–35 h/Woche, meist 7 h/Tag) und keine Taglänge hinterlegt ist; eine
 angenommene würde den Deckel still verschieben (Spec 5.3 seit v0.6).
 
-Der Horizont **beginnt mit dem laufenden Monat**. Er ist angebrochen, deshalb werden
-gezogene Abrufquote und Kapazität für Monat 1 mit dem Anteil der verbleibenden
-Arbeitstage skaliert. Der bereits gebuchte Verbrauch dieses Monats steckt schon im
-Ausgangs-Restvolumen und wird nicht doppelt gezählt; für die Darstellung wird er neben
-der Bandbreite ausgewiesen (5.5).
+Der Horizont **beginnt mit dem laufenden Monat**, genauer: am Stichtag. Monat 1 ist nur
+der Rest des Monats, deshalb werden gezogene Abrufquote und Kapazität mit dem Anteil der
+verbleibenden Arbeitstage skaliert. Was **vor** dem Stichtag gebucht wurde, ist Verbrauch
+und aus dem Restvolumen abgezogen; es taucht in der Bandbreite nicht wieder auf, wird für
+die Darstellung aber daneben ausgewiesen (5.5).
+
+**Was nach dem Stichtag datiert ist, ist die Untergrenze**, nicht Verbrauch (5.4):
+
+    Monatsumsatz = max(simulierter Umsatz, bereits gebuchter Umsatz dieses Monats)
+
+Ohne diese Grenze könnte das 95-%-Niveau eines Monats unter dem liegen, was schon
+feststeht – die Simulation zieht eine Abrufquote und weiß nichts von der Buchung. Der
+gebuchte Betrag zählt gegen dasselbe Restvolumen, wird also nicht zusätzlich abgerufen.
 
 1. Restvolumen je Projekt: `budget.amount − revenue_kumuliert` (aus `entrygroups`).
    Pauschalleistungen werden über einen abgeleiteten effektiven Stundensatz normalisiert.
@@ -385,15 +395,34 @@ Platzhalterobjekt, ihre Stunden gehen nicht verloren.
 `2020-01-01`. Die Antwort hat **kein `paging`** – alle Gruppen kommen in einem Rutsch
 (870 Gruppen ≈ 800 KB).
 
-**Die obere Zeitgrenze ist eine Funktion, keine Konstante.** `client.historie_bis()`
-liefert das Ende des laufenden Monats – Monatsende und nicht Stichtag, weil eine später
-in diesem Monat datierte Buchung schon Ist ist. Der Unterschied zur Konstante ist nicht
-kosmetisch: ein Modulwert würde beim Import einmal berechnet und einfrieren, und ein
-Colab-Notebook bleibt tagelang offen. Über einen Monatswechsel hinweg schnitte es den
-neuen Monat stumm ab. Aus demselben Grund steht der Wert **nicht** als Default-Parameter
-– Python wertet Defaults ebenfalls nur beim Import aus. Die Aufrufer nehmen `None`, und
-`entrygroups()` löst spät auf. Vorher stand dort ein festes `2026-12-31`, das ab dem
-01.01.2027 lautlos alles abgeschnitten hätte.
+**Zwei obere Zeitgrenzen, und sie sind nicht dieselbe.** Beide in `client.py`, beide
+Funktionen:
+
+- `verbrauch_bis(stichtag)` – **der Stichtag selbst**, Grenze des Verbrauchs (Spec 5.1).
+  Verbrauch ist streng Vergangenheit. `BestandRepository.laden()` bindet sie an den
+  Stichtag des Bestands, nicht an heute; erst damit ist ein Bestand zu einem vergangenen
+  Stichtag konsistent – Voraussetzung für den Rückwärtstest (Spec 11.4).
+- `monatsende(tag)` – der letzte Tag des Kalendermonats, Fenster der **Umsatzhistorie**.
+  Dort ist der laufende Monat ein Balken, und eine später im Monat datierte Buchung
+  gehört hinein.
+
+Wer beide zusammenlegt, bricht eines von beidem. Bis zum 24.08.2026 lag die
+Verbrauchsgrenze am Monatsende: das schlug 600 EUR aus dem Restaugust stumm dem Verbrauch
+zu, statt sie der Prognose anzurechnen.
+
+**Funktionen und nicht Konstanten**, und das ist der Punkt: ein Modulwert würde beim
+Import einmal berechnet und einfrieren, und ein Colab-Notebook bleibt tagelang offen.
+Aus demselben Grund steht der Wert **nicht** als Default-Parameter – Python wertet
+Defaults ebenfalls nur beim Import aus. Die Aufrufer nehmen `None`, `entrygroups()` löst
+spät auf. Ganz früher stand dort ein festes `2026-12-31`, das ab dem 01.01.2027 lautlos
+alles abgeschnitten hätte.
+
+**Nach dem Stichtag datierte Buchungen gibt es wirklich**: am 24.08.2026 13.440 EUR in
+zwei Projekten (09, 10 und 11/2026), alle mit `duration == 0`, also reine
+Pauschalleistungen. Sie sind kein Verbrauch, sondern Teil des Horizonts, und laut Spec 5.4
+die **Untergrenze** der Bandbreite ihres Monats – sonst könnte das 95-%-Niveau unter dem
+liegen, was schon feststeht. Im Horizont 25.08.–31.10. sind das 4.515 EUR, 0,63 % des
+Restvolumens.
 
 `budget` in `/v4/projects` ist immer als Schlüssel vorhanden, aber bei 236 von 895
 Projekten `null`. Ist es gesetzt, hat es mehr Felder als die Spec nennt:
@@ -418,8 +447,8 @@ ebenfalls keines aktiv.
   `Projekt.im_prognose_scope`) verlangt drei Dinge: aktiv, **nicht** `completed`, und ein
   als Euro-Gesamtbudget lesbares Budget.
 - **78 dieser 122 aktiven Projekte haben kein Budget** und fallen damit aus der Prognose;
-  es bleiben 44 mit zusammen 2,38 Mio. EUR Budget und rund 729.000 EUR
-  prognosewirksamem Restvolumen. Die Namen der 78 sind überwiegend Schulungs- und Ausbildungsprodukte
+  mit der `completed`-Regel bleiben **42** mit zusammen 2.318.333 EUR Budget und
+  721.126 EUR prognosewirksamem Restvolumen. Die Namen der 78 sind überwiegend Schulungs- und Ausbildungsprodukte
   (`A-CSM`, `A-CSPO`, `ACC`) beim Kunden **„Öffentliche Schulung“** – der Kundenname ist
   seit der Beschriftung sichtbar und stützt die Deutung als Katalogposition ohne
   beauftragtes Volumen. Das rechnet die Spec dem Kurzfristgeschäft zu und schließt es aus dem MVP aus. Ob darunter
@@ -470,7 +499,9 @@ Antwort prüfen.**
 Offen und bewusst zurückgestellt: Verantwortlichkeit für die monatliche Kalibrierung
 (9.5). Blockiert den produktiven Rollout, nicht den Prototyp. Ebenfalls offen laut 9.1
 bis 9.4: aktive Projekte ohne Budget, die Korrelationsannahme, die Behandlung von
-Feiertagen und die Frage, ob es Buchungen jenseits des laufenden Monats gibt.
+Feiertagen und Buchungen jenseits des **Horizonts** – die stehen im Restvolumen, obwohl
+ihr Umsatz erst danach anfällt (am 24.08.2026: 9.525 EUR in 11/2026, Projekt außerhalb
+des Scope).
 
 ## Nächster geplanter Schritt
 

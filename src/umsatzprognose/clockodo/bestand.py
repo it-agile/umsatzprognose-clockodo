@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from datetime import date
 
-from umsatzprognose.clockodo.client import ClockodoClient
+from umsatzprognose.clockodo.client import ClockodoClient, verbrauch_bis
 from umsatzprognose.clockodo.config import ClockodoCredentials
 from umsatzprognose.clockodo.kunden import KundenRepository
 from umsatzprognose.clockodo.mitarbeiter import MitarbeiterRepository
@@ -45,7 +45,11 @@ class BestandRepository:
         """Den vollstaendigen Bestand zum Stichtag.
 
         Args:
-            stichtag: Tag, auf den sich die Prognose bezieht; ohne Angabe heute.
+            stichtag: Tag, auf den sich die Prognose bezieht; ohne Angabe heute. Er
+                begrenzt auch den Verbrauch (Spec 5.1) - ein Bestand zu einem
+                vergangenen Stichtag rechnet damit nicht mit Buchungen, die es damals
+                noch nicht gab. Das ist die Voraussetzung fuer den Rueckwaertstest aus
+                Spec 11.4.
             mit_anteilen: die Anteile je Person mitladen (Spec 5.4, Schritt 3).
             abgeschlossene_monate: Laenge der Umsatzhistorie vor dem laufenden Monat.
         """
@@ -56,7 +60,9 @@ class BestandRepository:
         mitarbeiter = personen.laden()
 
         projekte = ProjektRepository(self._client, kunden, mitarbeiter)
-        geladene_projekte = projekte.laden(mit_anteilen=mit_anteilen)
+        geladene_projekte = projekte.laden(
+            mit_anteilen=mit_anteilen, time_until=verbrauch_bis(stichtag)
+        )
 
         umsatzhistorie = UmsatzRepository(self._client).laden(
             stichtag, abgeschlossene=abgeschlossene_monate

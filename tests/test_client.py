@@ -14,7 +14,12 @@ import httpx
 import pytest
 
 from conftest import CREDS, client_mit
-from umsatzprognose.clockodo.client import ClockodoClient, ClockodoError, historie_bis
+from umsatzprognose.clockodo.client import (
+    ClockodoClient,
+    ClockodoError,
+    monatsende,
+    verbrauch_bis,
+)
 from umsatzprognose.clockodo.config import ClockodoCredentials
 
 
@@ -114,6 +119,17 @@ def test_client_nimmt_eine_abweichende_basis_url():
     assert client.base_url == "https://example.test/api"
 
 
+def test_verbrauchsfenster_endet_am_stichtag_nicht_am_monatsende():
+    """Spec 5.1: Verbrauch ist streng Vergangenheit.
+
+    Was spaeter datiert ist, liegt im Horizont und wird dort angerechnet (5.4). Am
+    24.08.2026 waren das 13.440 EUR in zwei Projekten - reichte das Fenster bis zum
+    Monatsende, verschwaenden die Augustanteile davon lautlos aus der Prognose.
+    """
+    assert verbrauch_bis(date(2026, 8, 24)) == "2026-08-24T23:59:59Z"
+    assert monatsende(date(2026, 8, 24)) == "2026-08-31T23:59:59Z"
+
+
 @pytest.mark.parametrize(
     ("tag", "erwartet"),
     [
@@ -123,16 +139,16 @@ def test_client_nimmt_eine_abweichende_basis_url():
         (date(2026, 12, 31), "2026-12-31T23:59:59Z"),
     ],
 )
-def test_obere_zeitgrenze_ist_das_monatsende(tag, erwartet):
-    assert historie_bis(tag) == erwartet
+def test_monatsende_traegt_die_laenge_des_monats(tag, erwartet):
+    assert monatsende(tag) == erwartet
 
 
 def test_obere_zeitgrenze_wird_je_aufruf_bestimmt():
     """Kein eingefrorener Wert - weder als Modulkonstante noch als Default-Parameter.
 
     Ein Notebook bleibt in Colab tagelang offen. Wuerde die Grenze beim Import
-    festgelegt, schnitte sie nach einem Monatswechsel den neuen Monat stumm ab.
+    festgelegt, schnitte sie nach einem Tageswechsel stumm ab.
     """
     client, requests = client_mit(lambda _: httpx.Response(200, json={"groups": []}))
     client.entrygroups(["projects_id"])
-    assert dict(requests[0].url.params)["time_until"] == historie_bis()
+    assert dict(requests[0].url.params)["time_until"] == verbrauch_bis()

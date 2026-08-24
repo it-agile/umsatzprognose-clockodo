@@ -17,9 +17,9 @@ Sollarbeitszeit (Teil von 5.3). Das Dashboard zeigt den Umsatz der letzten zwöl
 und das offene Auftragsvolumen.
 
 Die Monte-Carlo-Simulation (5.4) ist noch nicht gebaut. Offen sind dafür die Schätzung
-der Abrufquote-Verteilung (5.2 legt ihre Form fest, die Zahlen fehlen) und die
-verfügbare Kapazität (5.3, es fehlen die Abwesenheiten). Referenzklassen sind in v0.6
-zurückgestellt und blockieren nichts. Das Dashboard zeigt an der Stelle der Bandbreite
+der Abrufquote-Verteilung (5.2 legt ihre Form fest, die Zahlen fehlen), die verfügbare
+Kapazität (5.3, es fehlen die Abwesenheiten) und die Untergrenze aus bereits gebuchten
+Beträgen im Horizont (5.4). Referenzklassen sind zurückgestellt und blockieren nichts. Das Dashboard zeigt an der Stelle der Bandbreite
 diese Begründung an, statt eine Zahl zu erfinden.
 
 ## Setup

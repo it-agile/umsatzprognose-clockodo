@@ -172,11 +172,10 @@ Projekt aus dem Scope, und der Grund wird als Hinweis bis in die Darstellung gef
 **Eine sichtbare Untererfassung ist besser als eine still falsche Euro-Zahl.** Dasselbe
 gilt für die 236 von 895 Projekten, deren `budget` `null` ist.
 
-Größenordnung am 24.08.2026: 895 Projekte, davon 122 aktiv, davon 44 mit verwertbarem
-Budget, zusammen 2,38 Mio. EUR Auftragsvolumen und rund 729.000 EUR prognosewirksames
-Restvolumen. Diese Zahlen sind **vor** der `completed`-Regel gemessen; mit ihr fallen bis
-zu zwei Projekte weg, eines davon mit 12.424 EUR. Der Scope ist beim nächsten Lauf neu
-zu messen. Die 78 aktiven Projekte ohne Budget sind überwiegend Schulungs- und
+Größenordnung am 24.08.2026, gemessen mit den Regeln dieses Abschnitts: 895 Projekte,
+davon 122 aktiv, davon **42 im Prognose-Scope** mit zusammen 2.318.333 EUR
+Auftragsvolumen und 721.126 EUR prognosewirksamem Restvolumen. Die 78 aktiven Projekte
+ohne Budget sind überwiegend Schulungs- und
 Ausbildungsprodukte beim Kunden „Öffentliche Schulung“, also Katalogpositionen ohne
 beauftragtes Volumen – das rechnet Abschnitt 2 dem Kurzfristgeschäft zu. Ob darunter
 echte Bestandsprojekte mit bloß fehlendem Budget stecken, ist ein Pflegethema und kein
@@ -193,13 +192,29 @@ prognosewirksames Restvolumen       = max(0, rohes Restvolumen)
 gesamte Historie. Ein Abruf deckt alle Projekte ab; eine Abfrage je Projekt – wie v0.3
 sie formulierte – wäre 895 Abrufe für dieselbe Zahl.
 
-**Das Zeitfenster endet am letzten Tag des laufenden Monats**, nicht am Stichtag: eine
-Buchung, die später in diesem Monat datiert ist, ist bereits Ist und gehört in den
-Verbrauch. Dieselbe obere Grenze zieht die Umsatzhistorie für ihren laufenden Balken.
+**Das Zeitfenster endet am Stichtag.** Verbrauch ist streng Vergangenheit. Eine Buchung,
+die später datiert ist, ist zwar erfasst, gehört aber in den Prognosehorizont: sie wird
+dort angerechnet (5.4), statt vorab vom Restvolumen abgezogen zu werden. Zöge man sie ab,
+wäre dieser Umsatz weder in der Historie noch in der Bandbreite zu finden – er
+verschwände.
+
+Das ist kein theoretischer Fall. Am 24.08.2026 waren **13.440 EUR** in zwei Projekten
+nach dem Stichtag datiert, verteilt auf 09/2026, 10/2026 und 11/2026, alle mit
+`duration == 0` (reine Pauschalleistungen). Ein Projekt trug allein 600 EUR mit einem
+Datum im Restaugust – eine Grenze am Monatsende hätte diesen Betrag stumm dem Verbrauch
+zugeschlagen.
+
 Die untere Grenze liegt vor dem ältesten Eintrag; `time_since=2010-01-01` liefert
-dieselben 870 Gruppen und dieselbe Summe wie `2020-01-01`. **Eine feste obere Grenze im
-Code ist ein Fehler** – sie schneidet nach ihrem Ablauf stumm Buchungen ab, und die
-Zahlen sinken, ohne dass etwas abbricht.
+dieselben 870 Gruppen und dieselbe Summe wie `2020-01-01`.
+
+**Beide Grenzen müssen zur Laufzeit bestimmt werden, nicht beim Programmstart.** Eine
+feste obere Grenze im Code schneidet nach ihrem Ablauf stumm Buchungen ab: die Zahlen
+sinken, ohne dass etwas abbricht. Dasselbe gilt für einen Wert, der beim Import einmal
+berechnet wird – ein Colab-Notebook bleibt tagelang offen.
+
+Weil das Fenster am Stichtag endet, ist ein Bestand zu einem **vergangenen** Stichtag
+konsistent rechenbar: er kennt nur Buchungen, die es damals gab. Das ist die
+Voraussetzung für den Rückwärtstest aus 11.4.
 
 **Budgetüberschreitungen.** `budget.hard` ist in dieser Installation `false`, wo es
 zählt: Budgets sind weiche Grenzen, der Verbrauch kann sie übersteigen. Eine
@@ -288,12 +303,31 @@ voraussichtlich auch nicht; ob und wie Clockodo sie führt, ist ungeprüft (9.3)
 10.000 Läufe. Der Horizont umfasst 1 bis 3 Monate und **beginnt mit dem laufenden
 Monat** – gefragt ist, was ab dem Stichtag noch hereinkommt.
 
-**Der laufende Monat ist angebrochen**, und das an zwei Stellen:
+**Der laufende Monat ist angebrochen.** Monat 1 umfasst nur den Rest des Monats ab dem
+Stichtag; gezogene Abrufquote und verfügbare Kapazität werden dafür mit dem **Anteil der
+verbleibenden Arbeitstage am Monat** skaliert. Was vor dem Stichtag gebucht wurde, ist
+Verbrauch (5.1) und aus dem Restvolumen bereits abgezogen – es taucht hier nicht wieder
+auf.
 
-- Das Ausgangs-Restvolumen aus 5.1 enthält den bereits gebuchten Verbrauch dieses
-  Monats. Er wird also nicht doppelt gezählt.
-- Gezogene Abrufquote und verfügbare Kapazität werden für Monat 1 mit dem **Anteil der
-  verbleibenden Arbeitstage am Monat** skaliert.
+**Bereits gebuchte Beträge im Horizont sind die Untergrenze der Bandbreite.** Eine
+Buchung, die nach dem Stichtag datiert und in einen Horizontmonat fällt, ist sicherer
+Umsatz. Die Simulation zieht für ihr Projekt trotzdem eine Abrufquote und weiß nichts
+davon; ohne Untergrenze könnte das 95-%-Niveau eines Monats **unter** dem liegen, was
+schon feststeht. Deshalb gilt je Projekt und Horizontmonat:
+
+```
+Monatsumsatz = max(simulierter Umsatz, bereits gebuchter Umsatz dieses Monats)
+```
+
+Der gebuchte Betrag zählt gegen dasselbe Restvolumen wie der simulierte, wird also nicht
+zusätzlich abgerufen. Datenquelle ist `/v2/entrygroups` mit
+`grouping[]=projects_id&grouping[]=month` über den Horizont – dieselbe
+Gruppierungskombination, die 11.1 für die Schätzung der Verteilung braucht.
+
+Größenordnung am 24.08.2026 für einen 3-Monats-Horizont (25.08.–31.10.): **4.515 EUR**
+in zwei Projekten, beide im Scope – 600 EUR im Restaugust und 3.915 EUR in September und
+Oktober. Das sind 0,63 % des prognosewirksamen Restvolumens. Klein, aber es entscheidet
+über das Vorzeichen der Aussage „mindestens".
 
 Je Lauf und Monat:
 
@@ -326,8 +360,13 @@ wechselt. Das ist ein Kalibrierungsthema (Abschnitt 7), keine Modelländerung.
 - **Anteil der Läufe, in denen die Kapazität der limitierende Faktor war** – die Größe
   unterscheidet einen Nachfrage- von einem Kapazitätsengpass und ist ein geforderter
   Output, kein Nebenprodukt.
-- Für den laufenden Monat zusätzlich das **bereits gebuchte Ist**, getrennt von der
-  Bandbreite. Erst beides zusammen ist mit den Monatswerten der Historie vergleichbar.
+- Je Horizontmonat der **bereits gebuchte Betrag**, getrennt ausgewiesen. Er ist laut
+  5.4 die Untergrenze der Bandbreite; sichtbar gemacht wird er trotzdem, weil der
+  Unterschied zwischen „steht fest" und „ist erwartet" für die Steuerung der wichtigere
+  ist als die Bandbreite selbst.
+- Für den laufenden Monat zusätzlich der **Verbrauch vor dem Stichtag**. Er steckt nicht
+  in der Bandbreite, weil er aus dem Restvolumen schon abgezogen ist – erst zusammen mit
+  ihr ist der Monat mit den Werten der Historie vergleichbar.
 - Die Hinweise aus 5.0, 5.1 und 5.3 zu allem, was nicht oder nur genähert erfasst ist.
 
 **Solange die Simulation nicht gebaut ist, wird keine Bandbreite ausgewiesen**, sondern
@@ -384,6 +423,9 @@ Zusammenführung ist nicht Teil dieser Spec.
 **Geklärt:**
 
 - ~~Aktive Projekte mit `completed: true`~~ → sie fallen aus dem Prognose-Scope (5.0).
+- ~~Buchungen jenseits des laufenden Monats~~ → gemessen (13.440 EUR in zwei Projekten am
+  24.08.2026) und entschieden: das Verbrauchsfenster endet am Stichtag (5.1), im Horizont
+  liegende Beträge sind die Untergrenze der Bandbreite (5.4).
 
 **Fachlich offen:**
 
@@ -395,10 +437,11 @@ Zusammenführung ist nicht Teil dieser Spec.
    fachliche Entscheidung.
 3. **Feiertage** (5.3). Ungeprüft, ob und wo Clockodo sie führt. Ohne sie ist die
    Sollzeit im Monat zu hoch angesetzt.
-4. **Buchungen jenseits des laufenden Monats.** Ob es Einträge gibt, die weiter in der
-   Zukunft datiert sind, ist ungeprüft. Sie fielen mit der Grenze aus 5.1 aus dem
-   Verbrauch und erhöhten damit das Restvolumen. Am einfachsten an einer
-   Monatsgruppierung über die kommenden Monate zu sehen.
+4. **Buchungen jenseits des Horizonts.** Sie sind nach 5.1 kein Verbrauch und stehen
+   damit im Restvolumen, aus dem die Simulation innerhalb des Horizonts schöpft – obwohl
+   ihr Umsatz erst danach anfällt. Das überschätzt den Horizont. Am 24.08.2026 betraf das
+   9.525 EUR in 11/2026, in einem Projekt ohne Budget und damit außerhalb des Scope; der
+   Fall ist also derzeit ohne Wirkung, aber nicht ausgeschlossen.
 
 **Organisatorisch:**
 
@@ -418,20 +461,24 @@ Umgesetzt als Python-Paket `umsatzprognose` mit Notebook-Oberfläche in Google C
   geplante Abwesenheiten und der Abschlag für ungeplante (5.3). An der Stelle der
   Bandbreite steht die Begründung.
 
-Kennzahlen des Prototyps, gemessen am 24.08.2026: 895 Projekte, 122 aktiv, 44 mit
-verwertbarem Budget; 59 Personen, 26 aktiv mit zusammen 801 Wochenstunden; 2,38 Mio. EUR
-Auftragsvolumen, rund 729.000 EUR prognosewirksames Restvolumen; Umsatz der zwölf
-abgeschlossenen Monate 09/2025–08/2026 rund 3,48 Mio. EUR.
+Kennzahlen des Prototyps, gemessen am 24.08.2026 mit den Regeln dieser Fassung: 895
+Projekte, 122 aktiv, **42 im Prognose-Scope**; 59 Personen, 26 aktiv mit zusammen 801
+Wochenstunden; 2.318.333 EUR Auftragsvolumen, 721.126 EUR prognosewirksames Restvolumen;
+Umsatz der zwölf abgeschlossenen Monate 09/2025–08/2026 rund 3,48 Mio. EUR. Im Horizont
+25.08.–31.10. sind 4.515 EUR bereits gebucht.
 
-Die Messung liegt **vor** der `completed`-Regel aus 5.0; mit ihr fallen bis zu zwei
-Projekte aus dem Scope, eines davon mit 12.424 EUR. Die Zahlen bewegen sich ohnehin mit
-jeder Zeitbuchung – sie taugen als Größenordnung, nicht als Regressionswert.
+Die Zahlen bewegen sich mit jeder Zeitbuchung – sie taugen als Größenordnung, nicht als
+Regressionswert. Wer sie vergleicht, achtet auf die Regeln, unter denen sie entstanden
+sind: die `completed`-Regel aus 5.0 und das Verbrauchsfenster aus 5.1 verschieben sie
+gegenüber früheren Messungen.
 
 ## 11. Nächste Schritte
 
 1. **Abrufquote-Verteilung schätzen** (5.2): `/v2/entrygroups` mit
    `grouping[]=projects_id&grouping[]=month`, Restvolumen je Monatsbeginn rückwärts
-   rekonstruieren, empirische Verteilung bilden.
+   rekonstruieren, empirische Verteilung bilden. Dieselbe Gruppierung liefert über den
+   Horizont die bereits gebuchten Beträge für die Untergrenze aus 5.4 – ein Abruf, zwei
+   Zwecke. Der Client bietet diese Kombination noch nicht an.
 2. **Abwesenheiten auswerten** (5.3): `/v4/absences` anbinden und aus der Historie den
    Abschlag für ungeplante Abwesenheit schätzen.
 3. **Simulation bauen** (5.4) und die Ausgabe aus 5.5 vollständig liefern.

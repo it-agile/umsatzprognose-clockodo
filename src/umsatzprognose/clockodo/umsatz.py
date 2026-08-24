@@ -27,7 +27,7 @@ from __future__ import annotations
 from datetime import date
 from typing import Any
 
-from umsatzprognose.clockodo.client import ClockodoClient, historie_bis
+from umsatzprognose.clockodo.client import ClockodoClient, monatsende
 from umsatzprognose.domaene.umsatzhistorie import Monatsumsatz, Umsatzhistorie
 
 SEKUNDEN_JE_STUNDE = 3600.0
@@ -49,7 +49,7 @@ class UmsatzRepository:
         """
         monate = self._client.entrygroups_je_monat(
             time_since=_monatsanfang(stichtag, minus=abgeschlossene),
-            time_until=historie_bis(stichtag),
+            time_until=monatsende(stichtag),
         )
         return Umsatzhistorie.zum_stichtag(
             (monatsumsatz(gruppe) for gruppe in monate),
