@@ -128,19 +128,38 @@ Also: Envelope-Key ist `data` (nicht `projects`), die Projekt-ID heißt `id`, un
 ein `paging`-Objekt. `items_per_page` ist 1000 bei aktuell 895 Projekten – die Grenze ist
 nah, deshalb läuft das Notebook über alle Seiten statt nur über die erste.
 
-**Widerlegt am 24.08.2026:** `GET /v2/entrygroups?time_since=…&time_until=…&grouping=projects_id`
-antwortet mit **400 Bad Request**. Welcher der drei Parameter beanstandet wird, ist offen –
-Kandidaten sind die Schreibweise des Gruppierungsparameters (`grouping[]` als
-Array-Parameter statt `grouping`), der erlaubte Wert und das Format der Zeitgrenzen.
-Das Notebook probiert diese Varianten in einer Probe-Zelle durch und gibt den
-Antwortkörper aus; `get()` hängt den Körper an jede Fehlermeldung, weil
-`raise_for_status()` nur Status und URL zeigt und Clockodo die Begründung im Körper
-liefert. Nicht weiter raten, sondern die Probe laufen lassen.
+**Ebenfalls verifiziert am 24.08.2026** – `/v2/entrygroups` verlangt genau diese Form:
 
-**Weiterhin nicht verifiziert:** Envelope und Query-Parameter von `/v2/entrygroups`, der
-Name des Seiten-Parameters für v4 (bei `count_pages == 1` bisher nie ausgeführt) und ob
-`budget` überhaupt in jeder Projekt-Antwort steckt. Diese Stellen sind im Notebook mit
-`PRÜFEN` markiert und geben die Roh-Keys aus; beim nächsten Lauf korrigieren, statt sie
+```
+GET /v2/entrygroups?time_since=2020-01-01T00:00:00Z&time_until=2026-12-31T23:59:59Z&grouping[]=projects_id
+→ {"groups": [...]}
+```
+
+Vier Punkte, jeder an einer 400er-Antwort belegt:
+
+- `grouping` ist ein **Array-Parameter**. `grouping=projects_id` antwortet mit
+  `{"error":{"message":"Array expected.","fields":["grouping"]}}`; erst `grouping[]=…`
+  wird akzeptiert. In httpx heißt das ein Dict mit dem Schlüssel `"grouping[]"` – als
+  Python-Schlüsselwort ist der Name nicht schreibbar, deshalb nimmt `get()` im Notebook
+  ein Params-Dict.
+- Gültiger Gruppierungswert ist `projects_id`, nicht `projects` (`Unknown group option`).
+  `customers_id` funktioniert ebenfalls, die Werte tragen also durchgehend das Suffix.
+- `grouping` und `time_since` sind Pflicht (`Missing data: …`).
+- Zeitgrenzen brauchen die volle ISO-Form mit Uhrzeit; ein reines Datum gibt
+  `{"error":{"message":"Wrong format","fields":["time_since"]}}`.
+
+**Fehler immer am Körper diagnostizieren, nicht am Status.** Clockodo begründet 400er in
+der Form `{"error": {"message": …, "fields": [...]}}` und benennt dort den beanstandeten
+Parameter. `httpx.Response.raise_for_status()` zeigt nur Status und URL und verwirft
+genau diese Information – deshalb wirft `get()` im Notebook einen eigenen
+`ClockodoError` mit angehängtem Antwortkörper. Bei einem neuen 400er also den Körper
+lesen, statt Parametervarianten zu raten.
+
+**Weiterhin nicht verifiziert:** die Feldnamen innerhalb einer Entrygroup (`group` für
+die Projekt-ID, `revenue`, `hourly_rate` stammen aus der Spec), der Name des
+Seiten-Parameters für v4 (bei `count_pages == 1` bisher nie ausgeführt) und ob `budget`
+überhaupt in jeder Projekt-Antwort steckt. Diese Stellen sind im Notebook mit `PRÜFEN`
+markiert und geben die Roh-Keys aus; beim nächsten Lauf korrigieren, statt sie
 fortzuschreiben.
 
 **Offene fachliche Abgrenzung:** Von den 895 Projekten haben viele `active: false`, sind
