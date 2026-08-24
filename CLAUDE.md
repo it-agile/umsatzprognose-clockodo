@@ -66,7 +66,19 @@ Ein Runtime-Neustart allein genügt nicht, ist nach einem Push aber zusätzlich 
 Python liefert für bereits geladene Module das Objekt aus `sys.modules`, auch wenn die
 Datei auf der Platte ersetzt wurde. Das erzeugt einen gemischten Zustand – neue Module
 werden frisch geladen, alte bleiben alt – und endet als `ImportError: cannot import
-name …` auf eine Funktion, die in der installierten Datei durchaus steht. Auch der HTTP-Zugriff gehört ins Paket: das Notebook ruft
+name …` auf eine Funktion, die in der installierten Datei durchaus steht.
+
+**Die Installationszelle erneuert das Paket, nie das Notebook.** Die `.ipynb` liegt in
+der Colab-Sitzung (oder als Kopie in Drive); `pip install git+…@main` fasst sie nicht
+an, ein Runtime-Neustart auch nicht. Nach einer Notebook-Änderung im Repository muss
+das Notebook selbst neu geladen werden: *File → Open notebook → GitHub*. Der Fehler ist
+tückisch, weil nichts abbricht – neues Paket plus alte Zelle läuft durch und liefert
+still ein altes Ergebnis. Am 24.08.2026 genau so aufgetreten: die Tabelle hatte die
+neuen Spalten `kunde` und `projekt`, aber die alte Zelle übergab keine Bezeichnungen,
+also standen dort durchgehend `None`. Erkennbar an den Prints – fehlt eine Ausgabe, die
+die neue Zelle erzeugt, ist die Zelle alt und nicht das Paket.
+
+Auch der HTTP-Zugriff gehört ins Paket: das Notebook ruft
 `ClockodoClient` auf, statt eigene Requests zu bauen. Zugangsdaten in Colab über die
 Secrets-Verwaltung, lokal über `.env`; `load_credentials_auto()` wählt die Quelle
 anhand von `in_colab()`.
