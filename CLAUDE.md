@@ -5,8 +5,15 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Kommandos
 
 Abhängigkeits- und Python-Verwaltung läuft ausschließlich über **uv**; die Version ist
-in `.python-version` auf 3.12 gepinnt (Colab-Nähe, siehe unten). Kein `pip install` im
-Projekt-venv, kein manuell angelegtes venv.
+in `.python-version` auf 3.13 gepinnt. Kein `pip install` im Projekt-venv, kein manuell
+angelegtes venv.
+
+Die 3.13 ist kein Zufall: **Colab läuft auf Python 3.13** (verifiziert am 24.08.2026 an
+einem Traceback aus einer echten Colab-Sitzung). Ein früherer Pin auf 3.12 mit
+`requires-python = ">=3.12,<3.13"` ließ die Installation in Colab fehlschlagen. Deshalb
+ist `requires-python` jetzt offen (`>=3.12`) – ein Colab-Upgrade darf die Installation
+nicht brechen. Wer die Version anfasst, prüft sie gegen Colab, nicht gegen lokale
+Bequemlichkeit.
 
 ```bash
 uv sync --extra notebook       # Umgebung herstellen

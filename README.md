@@ -13,7 +13,10 @@ Projekt (Abschnitt 5.1). Die Monte-Carlo-Simulation (5.4) ist noch nicht gebaut.
 ## Setup
 
 Voraussetzung ist [uv](https://docs.astral.sh/uv/). Die Python-Version ist über
-`.python-version` auf 3.12 festgelegt – uv lädt sie bei Bedarf selbst.
+`.python-version` auf 3.13 festgelegt – uv lädt sie bei Bedarf selbst. 3.13, weil
+Google Colab darauf läuft (am 24.08.2026 in einem Colab-Traceback verifiziert) und das
+Notebook dort ausgeführt wird. `requires-python` ist bewusst offen (`>=3.12`), damit
+ein Colab-Upgrade die Installation nicht bricht.
 
 ```bash
 uv sync --extra notebook
