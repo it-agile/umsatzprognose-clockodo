@@ -1,41 +1,12 @@
 # Spec: Umsatzprognose – Baustein Bestand (Clockodo)
-
-**Die Version dieses Dokuments ist der Git-Tag, der auf den Commit zeigt.** Deshalb
-steht hier keine Nummer und keine im Dateinamen: eine gepflegte Nummer wäre eine zweite
-Wahrheit neben der Historie und veraltet still. `git tag -l` nennt die Fassungen,
-`git describe` die aktuelle, `git log --follow` auf diese Datei zeigt, was sich wann
-geändert hat.
-
-**Dies ist ein vollständiges Dokument.** v0.4 und v0.5 waren Delta-Dokumente, die
-tragende Abschnitte nur als „unverändert zu v0.3“ führten; damit war die Spec ohne v0.3
-nicht lesbar und als maßgebliche Quelle unbrauchbar. Seit v0.6 steht das Modell
-geschlossen an einer Stelle. v0.3 und v0.5 liegen nicht mehr im Verzeichnis, sind aber
-über die Historie erreichbar (`git show 7e35123:spec/…-v0.3.md` bzw.
-`git show 8a6ec11:spec/…-v0.5.md`).
-
-**Änderungen zu v0.5:**
-
-1. Abschnitt 4 gegen die echte API korrigiert – vier von sechs Zeilen waren falsch
-   (siehe den Provenienz-Hinweis dort).
-2. Referenzklassen zurückgestellt: die Abrufquote-Verteilung wird zunächst
-   portfolioweit geschätzt (Abschnitte 5.2 und 6).
-3. Kapazität und Bedarf rechnen durchgehend in **Stunden** statt in Personentagen
-   (5.3, 5.4).
-4. Pauschalleistungen werden ohne `/v2/entries` behandelt; der Sonderfall wird
-   ausgewiesen statt geschätzt (5.1).
-5. Der Prognosehorizont beginnt mit dem **laufenden** Monat (5.4).
-6. Neuer Abschnitt 5.0: der Prognose-Scope – welche Projekte überhaupt eingehen.
-7. Neuer Abschnitt 10: Stand der Umsetzung.
-
----
+--
 
 ## 1. Ziel
 
 Eine rollierende 1–3-Monats-Prognose des Umsatzes aus laufenden, in Clockodo
-angelegten Projekten – mit Bandbreite statt Punktwert, ausschließlich aus
-Clockodo-Daten.
+angelegten Projekten – mit Bandbreite statt Punktwert.
 
-Ist ein Projekt in Clockodo angelegt, gilt es als beauftragt. Storno auf Projektebene
+Ist ein Projekt in Clockodo angelegt, gilt es als beauftragt. Storno auf Projekteben 
 ist damit kein Thema. Die zentrale Unsicherheit: **Wie viel vom beauftragten Volumen
 wird im Prognosezeitraum tatsächlich abgerufen?**
 
@@ -71,14 +42,8 @@ wird im Prognosezeitraum tatsächlich abgerufen?**
 
 ## 4. Datenmodell aus Clockodo
 
-**Zur Herkunft dieser Tabelle.** In v0.3 stammten die Feldangaben aus
-`docs.clockodo.com/openapi.yaml`, also aus der Dokumentation. Der Prototyp hat drei
-davon an echten Antworten widerlegt – die Dokumentation ist hier keine verlässliche
-Quelle. `docs.clockodo.com` wird inzwischen als JavaScript-Anwendung ausgeliefert und
-war nicht auslesbar. Alle Angaben unten sind am 24.08.2026 gegen die Installation
-geprüft. **Wer die Tabelle ändert, prüft gegen eine echte Antwort, nicht gegen die
-Doku.**
-
+**Zur Herkunft dieser Tabelle.** Alle Angaben unten sind gegen die Installation
+geprüft.
 | Zweck | Endpunkt | Relevante Felder |
 |---|---|---|
 | Auftragsvolumen | `GET /v4/projects` | `budget` (`amount`, `hard`, `monetary`, `interval`, `from_subprojects`), `active`, `completed`, `customers_id`, `name` |
@@ -94,8 +59,6 @@ Basis-URL ist `https://my.clockodo.com/api`. Authentifizierung über drei Pflich
 `X-ClockodoApiUser` (E-Mail), `X-ClockodoApiKey` und
 `X-Clockodo-External-Application` im Format `name;email` mit **maximal 50 Zeichen
 Gesamtlänge**.
-
-Vier Korrekturen gegenüber v0.3 und v0.5, jede an einer echten Antwort belegt:
 
 - **`entrygroups.hourly_rate` ist als effektiver Stundensatz unbrauchbar.** Es ist nur
   gesetzt, wenn `hourly_rate_is_equal_and_has_no_lumpsums` `true` ist – bei 92 von 870
@@ -143,18 +106,16 @@ Weiter zu beachten, ebenfalls verifiziert:
 
 ### 5.0 Prognose-Scope
 
-Welche Projekte in die Prognose eingehen, hat v0.3 nicht festgelegt. Es gilt:
+Welche Projekte in die Prognose eingehen, es gilt:
 
 Ein Projekt ist **im Prognose-Scope**, wenn es `active` ist, **nicht** `completed`
 trägt und sein Budget als Euro-Gesamtbudget lesbar ist.
 
-**`completed` schließt aus, auch wenn `active` zugleich gesetzt ist.** Die Kombination
-kommt vor – zwei Projekte am 24.08.2026, eines mit 12.424 EUR offenem Restvolumen. Sie
-ist kein aufzulösender Widerspruch: Abschnitt 7 hält `completed` für ein zuverlässiges
+**`completed` schließt aus, auch wenn `active` zugleich gesetzt ist.** Abschnitt 7 hält `completed` für ein zuverlässiges
 Endesignal, während `active` auch ein nicht nachgezogener Schalter sein kann. Das offene
 Restvolumen eines beendeten Projekts wird nicht mehr abgerufen; es prognostisch
 mitzunehmen hieße, Umsatz zu erwarten, den niemand mehr leistet. Die betroffenen
-Projekte werden als Hinweis ausgewiesen, statt still zu verschwinden.
+Projekte werden als Hinweis ausgewiesen.
 
 `budget.amount` ist nicht immer ein Euro-Gesamtbudget. Drei Felder entscheiden darüber,
 und ist eines davon gesetzt, gilt das Budget als **nicht verwertbar**:
@@ -170,16 +131,7 @@ Bei den aktiven Projekten trat keiner der drei Fälle auf, keiner ist also an ec
 Zahlen durchgerechnet. Statt eine plausible Umrechnung zu erfinden, fällt ein solches
 Projekt aus dem Scope, und der Grund wird als Hinweis bis in die Darstellung geführt.
 **Eine sichtbare Untererfassung ist besser als eine still falsche Euro-Zahl.** Dasselbe
-gilt für die 236 von 895 Projekten, deren `budget` `null` ist.
-
-Größenordnung am 24.08.2026, gemessen mit den Regeln dieses Abschnitts: 895 Projekte,
-davon 122 aktiv, davon **42 im Prognose-Scope** mit zusammen 2.318.333 EUR
-Auftragsvolumen und 721.126 EUR prognosewirksamem Restvolumen. Die 78 aktiven Projekte
-ohne Budget sind überwiegend Schulungs- und
-Ausbildungsprodukte beim Kunden „Öffentliche Schulung“, also Katalogpositionen ohne
-beauftragtes Volumen – das rechnet Abschnitt 2 dem Kurzfristgeschäft zu. Ob darunter
-echte Bestandsprojekte mit bloß fehlendem Budget stecken, ist ein Pflegethema und kein
-Modellthema (siehe 9.1).
+gilt Projekte, deren `budget` `null` ist.
 
 ### 5.1 Restvolumen je Projekt (in Euro)
 
@@ -189,28 +141,17 @@ prognosewirksames Restvolumen       = max(0, rohes Restvolumen)
 ```
 
 `revenue_kumuliert` kommt aus `/v2/entrygroups` mit `grouping[]=projects_id` über die
-gesamte Historie. Ein Abruf deckt alle Projekte ab; eine Abfrage je Projekt – wie v0.3
-sie formulierte – wäre 895 Abrufe für dieselbe Zahl.
+gesamte Historie. Ein Abruf deckt alle Projekte ab.
 
 **Das Zeitfenster endet am Stichtag.** Verbrauch ist streng Vergangenheit. Eine Buchung,
 die später datiert ist, ist zwar erfasst, gehört aber in den Prognosehorizont: sie wird
-dort angerechnet (5.4), statt vorab vom Restvolumen abgezogen zu werden. Zöge man sie ab,
-wäre dieser Umsatz weder in der Historie noch in der Bandbreite zu finden – er
-verschwände.
+dort angerechnet (5.4), statt vorab vom Restvolumen abgezogen zu werden.
 
-Das ist kein theoretischer Fall. Am 24.08.2026 waren **13.440 EUR** in zwei Projekten
-nach dem Stichtag datiert, verteilt auf 09/2026, 10/2026 und 11/2026, alle mit
-`duration == 0` (reine Pauschalleistungen). Ein Projekt trug allein 600 EUR mit einem
-Datum im Restaugust – eine Grenze am Monatsende hätte diesen Betrag stumm dem Verbrauch
-zugeschlagen.
-
-Die untere Grenze liegt vor dem ältesten Eintrag; `time_since=2010-01-01` liefert
-dieselben 870 Gruppen und dieselbe Summe wie `2020-01-01`.
 
 **Beide Grenzen müssen zur Laufzeit bestimmt werden, nicht beim Programmstart.** Eine
 feste obere Grenze im Code schneidet nach ihrem Ablauf stumm Buchungen ab: die Zahlen
 sinken, ohne dass etwas abbricht. Dasselbe gilt für einen Wert, der beim Import einmal
-berechnet wird – ein Colab-Notebook bleibt tagelang offen.
+berechnet wird.
 
 Weil das Fenster am Stichtag endet, ist ein Bestand zu einem **vergangenen** Stichtag
 konsistent rechenbar: er kennt nur Buchungen, die es damals gab. Das ist die
@@ -230,25 +171,17 @@ Modell am sinkenden Restvolumen. Ein **beendetes** Projekt erkennt es dagegen an
 `completed` (5.0); `completed_at` bleibt ungenutzt, weil der Scope nur die Gegenwart
 braucht.
 
-**Pauschalleistungen.** v0.3 wollte sie über `/v2/entries` (`type` 2 und 3)
-identifizieren und je Leistung einen Satz aus Pauschalbetrag und gebuchter Zeit
-ableiten. Das ist verworfen: `entrygroups.revenue` schließt Pauschalleistungen bereits
-ein, der Zusatzabruf kostet sieben Seiten je Jahr Historie und löst den entscheidenden
-Fall nicht. Stattdessen gilt:
-
+**Pauschalleistungen.**
 - Der effektive Stundensatz eines Projekts ist `revenue / (duration/3600)` über seine
   gesamte Historie. Pauschalleistungen mit gebuchter Zeit sind darin normalisiert
   enthalten, ohne eigenen Modellzweig.
 - **Umsatz ohne jede erfasste Zeit** (8 Gruppen; `duration == 0`) liefert keinen Satz.
   Solche Projekte gehen mit ihrem Restvolumen in die Simulation ein, verbrauchen aber
-  **keine Kapazität** – sie umgehen den Deckel aus 5.4 Schritt 3. Das ist eine
-  benannte Näherung, nicht eine stille: die betroffenen Projekte werden als Hinweis
-  ausgewiesen.
+  **keine Kapazität**
 
 ### 5.2 Abrufquote-Verteilung
 
-Die Abrufquote wird als **empirische Verteilung** aus der eigenen Historie geschätzt,
-nicht als parametrische Verteilungsfamilie – für eine Familie gibt es keine Begründung.
+Die Abrufquote wird als **empirische Verteilung** aus der eigenen Historie geschätzt.
 
 - **Beobachtungseinheit** ist ein Projekt-Monat.
 - **Quote** = Verbrauch im Monat geteilt durch das Restvolumen zu Monatsbeginn.
@@ -274,12 +207,8 @@ Zwei Einschränkungen, die zur Schätzung gehören und nicht wegdefiniert werden
 
 ### 5.3 Kapazitätsdeckel
 
-**Gerechnet wird in Stunden**, nicht in Personentagen. v0.3 sprach von
-Nettoarbeitstagen; die Länge eines Arbeitstags ist aber nirgends hinterlegt, und
-`/targethours` liefert Stunden je Wochentag (20–35 h/Woche, meist 7 h/Tag). Eine
-angenommene Taglänge würde den Deckel still verschieben. Arbeitstage bleiben eine
-Darstellungsgröße.
-
+**Gerechnet wird in Stunden**, nicht in Personentagen. Die Länge eines Arbeitstags ist in
+`/targethours`hinterlegt und liefert Stunden je Wochentag (20–35 h/Woche, meist 7 h/Tag).
 ```
 verfügbare Kapazität(Person, Monat) = Sollstunden(Person, Monat)
                                      − geplante Abwesenheit
@@ -324,11 +253,6 @@ zusätzlich abgerufen. Datenquelle ist `/v2/entrygroups` mit
 `grouping[]=projects_id&grouping[]=month` über den Horizont – dieselbe
 Gruppierungskombination, die 11.1 für die Schätzung der Verteilung braucht.
 
-Größenordnung am 24.08.2026 für einen 3-Monats-Horizont (25.08.–31.10.): **4.515 EUR**
-in zwei Projekten, beide im Scope – 600 EUR im Restaugust und 3.915 EUR in September und
-Oktober. Das sind 0,63 % des prognosewirksamen Restvolumens. Klein, aber es entscheidet
-über das Vorzeichen der Aussage „mindestens".
-
 Je Lauf und Monat:
 
 1. Restvolumen (Euro) je Projekt aus dem Vormonat übernehmen bzw. mit dem
@@ -372,26 +296,7 @@ wechselt. Das ist ein Kalibrierungsthema (Abschnitt 7), keine Modelländerung.
 **Solange die Simulation nicht gebaut ist, wird keine Bandbreite ausgewiesen**, sondern
 die Begründung, was ihr fehlt. Eine erfundene Kurve wäre der schlechtere Platzhalter.
 
-## 6. Referenzklassen – zurückgestellt
-
-v0.3 nannte vier Referenzklassen: laufendes Coaching-/Beratungsmandat bei
-Bestandskund:in, neues Projekt bei Bestandskund:in, Neukund:in, Abruf aus
-Rahmenvertrag.
-
-**Sie sind zurückgestellt.** Grund: Clockodo führt kein Feld, aus dem die Klasse eines
-Projekts hervorgeht. „Abruf aus Rahmenvertrag“ und „laufendes Mandat“ lassen sich aus
-Budget, Buchungsverlauf und Kundennummer nicht ableiten, und eine geratene
-Zuordnungsregel wäre eine zweite unkalibrierte Größe neben der Verteilung selbst.
-
-Die Abrufquote-Verteilung wird deshalb zunächst **portfolioweit** über alle Projekte im
-Scope geschätzt (5.2). Das unterschätzt die Streuung zwischen Projekttypen – ein
-Rahmenvertrag ruft anders ab als ein laufendes Mandat –, ist aber eine Näherung mit
-bekannter Richtung statt einer erfundenen Zuordnung.
-
-Eingeführt werden Klassen, wenn der Rückwärtstest (11.4) zeigt, dass eine
-portfolioweite Verteilung die beobachteten Monatsumsätze nicht trägt. Dann braucht es
-zuerst eine Zuordnungsquelle: eine gepflegte Liste im Repository oder ein Feld in
-Clockodo.
+## 6. entfallen
 
 ## 7. Kalibrierung
 
@@ -420,13 +325,6 @@ Zusammenführung ist nicht Teil dieser Spec.
 
 ## 9. Offene Punkte
 
-**Geklärt:**
-
-- ~~Aktive Projekte mit `completed: true`~~ → sie fallen aus dem Prognose-Scope (5.0).
-- ~~Buchungen jenseits des laufenden Monats~~ → gemessen (13.440 EUR in zwei Projekten am
-  24.08.2026) und entschieden: das Verbrauchsfenster endet am Stichtag (5.1), im Horizont
-  liegende Beträge sind die Untergrenze der Bandbreite (5.4).
-
 **Fachlich offen:**
 
 1. **Aktive Projekte ohne Budget** (78 von 122). Die Deutung als Katalogpositionen ohne
@@ -437,22 +335,10 @@ Zusammenführung ist nicht Teil dieser Spec.
    fachliche Entscheidung.
 3. **Feiertage** (5.3). Ungeprüft, ob und wo Clockodo sie führt. Ohne sie ist die
    Sollzeit im Monat zu hoch angesetzt.
-4. **Buchungen jenseits des Horizonts.** Sie sind nach 5.1 kein Verbrauch und stehen
-   damit im Restvolumen, aus dem die Simulation innerhalb des Horizonts schöpft – obwohl
-   ihr Umsatz erst danach anfällt. Das überschätzt den Horizont. Am 24.08.2026 betraf das
-   9.525 EUR in 11/2026, in einem Projekt ohne Budget und damit außerhalb des Scope; der
-   Fall ist also derzeit ohne Wirkung, aber nicht ausgeschlossen.
-
-**Organisatorisch:**
-
-5. **Verantwortlichkeit:** Wer führt die monatliche Kalibrierung durch (Abschnitt 7)?
-   Muss vor dem produktiven Rollout geklärt sein – nicht vor dem Prototyp, sonst
-   veraltet das Modell nach der ersten Version unbemerkt.
 
 ## 10. Stand der Umsetzung
 
-Umgesetzt als Python-Paket `umsatzprognose` mit Notebook-Oberfläche in Google Colab
-(Zielwerkzeug, entschieden in v0.4):
+Umgesetzt als Python-Paket `umsatzprognose` mit Notebook-Oberfläche in Google Colab:
 
 - **Vollständig:** Abschnitte 4, 5.0, 5.1 (ohne die Näherung für Umsatz ohne Zeit, die
   als Hinweis ausgewiesen wird), der Aufteilungsschlüssel aus 5.4 Schritt 3, die
@@ -460,17 +346,6 @@ Umgesetzt als Python-Paket `umsatzprognose` mit Notebook-Oberfläche in Google C
 - **Nicht gebaut:** die Simulation (5.4), die Schätzung der Abrufquote-Verteilung (5.2),
   geplante Abwesenheiten und der Abschlag für ungeplante (5.3). An der Stelle der
   Bandbreite steht die Begründung.
-
-Kennzahlen des Prototyps, gemessen am 24.08.2026 mit den Regeln dieser Fassung: 895
-Projekte, 122 aktiv, **42 im Prognose-Scope**; 59 Personen, 26 aktiv mit zusammen 801
-Wochenstunden; 2.318.333 EUR Auftragsvolumen, 721.126 EUR prognosewirksames Restvolumen;
-Umsatz der zwölf abgeschlossenen Monate 09/2025–08/2026 rund 3,48 Mio. EUR. Im Horizont
-25.08.–31.10. sind 4.515 EUR bereits gebucht.
-
-Die Zahlen bewegen sich mit jeder Zeitbuchung – sie taugen als Größenordnung, nicht als
-Regressionswert. Wer sie vergleicht, achtet auf die Regeln, unter denen sie entstanden
-sind: die `completed`-Regel aus 5.0 und das Verbrauchsfenster aus 5.1 verschieben sie
-gegenüber früheren Messungen.
 
 ## 11. Nächste Schritte
 
@@ -484,4 +359,3 @@ gegenüber früheren Messungen.
 3. **Simulation bauen** (5.4) und die Ausgabe aus 5.5 vollständig liefern.
 4. **Rückwärtstest über 12 Stichtage.** Er entscheidet auch, ob Referenzklassen nötig
    sind (Abschnitt 6).
-5. **Vor produktivem Einsatz:** Verantwortlichkeit (9.5) klären.
