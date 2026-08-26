@@ -129,18 +129,21 @@ def umsatzverlauf(
         _legendeintrag(fig, "Läuft noch", SERIE_HELL)
     if prognose is not None and prognose.vorhanden:
         _legendeintrag(fig, "Prognostiziert", SERIE_HELL, deckkraft=PROGNOSE_DECKKRAFT)
+    # Waagerecht unterhalb der x-Achse statt rechts daneben: das braucht nur zusaetzliche
+    # Hoehe, keine zusaetzliche Breite - ein rechter Rand wurde in Notebook-Umgebungen
+    # mit fester Zellenbreite (etwa Colab) abgeschnitten, bevor er sichtbar wurde.
     fig.update_layout(
         showlegend=True,
         legend={
-            "orientation": "v",
-            "yanchor": "middle",
-            "y": 0.5,
-            "xanchor": "left",
-            "x": 1.02,
+            "orientation": "h",
+            "yanchor": "top",
+            "y": -0.22,
+            "xanchor": "center",
+            "x": 0.5,
             "font": {"size": 12, "color": TINTE_ZWEITRANGIG},
             "bgcolor": "rgba(0,0,0,0)",
         },
-        margin={"r": 130},
+        margin={"b": 60},
     )
 
     achsen(fig)
