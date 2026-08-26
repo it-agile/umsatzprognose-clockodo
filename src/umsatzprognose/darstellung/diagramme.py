@@ -94,7 +94,7 @@ def umsatzverlauf(
         },
         customdata=[[euro(m.umsatz), f"{m.stunden:,.0f}".replace(",", ".")] for m in monate],
         hovertemplate="<b>%{x}</b><br>%{customdata[0]}<br>%{customdata[1]} Stunden<extra></extra>",
-        showlegend=False,
+        showlegend=True,
         name="Historie",
     )
 
