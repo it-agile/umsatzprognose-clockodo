@@ -15,10 +15,10 @@ from umsatzprognose.domaene.hinweis import Hinweis
 from umsatzprognose.domaene.prognose import Prognose
 from umsatzprognose.domaene.projekt import Projekt
 from umsatzprognose.domaene.umsatzhistorie import MONATSNAMEN, Umsatzhistorie
-from umsatzprognose.domaene.zahlen import euro, stunden
+from umsatzprognose.domaene.zahlen import euro
 
 PROJEKTSPALTEN = ["Kunde", "Projekt", "Beauftragt", "Verbraucht", "Offen", "Budget überschritten"]
-UMSATZSPALTEN = ["Monat", "Umsatz", "Stunden", "Status"]
+UMSATZSPALTEN = ["Monat", "Abgerechnet", "Nicht abgerechnet", "Prognostiziert", "Summe"]
 HINWEISSPALTEN = ["Hinweis", "Betroffen", "Projekte"]
 
 
@@ -45,28 +45,31 @@ def projekttabelle(projekte: Sequence[Projekt]) -> pd.DataFrame:
 def umsatztabelle(historie: Umsatzhistorie, prognose: Prognose | None = None) -> pd.DataFrame:
     """Ein Monat je Zeile, juengster zuletzt, und daran anschliessend der Prognosehorizont.
 
-    Dieselben Monate und derselbe Median wie im Diagramm (:func:`~umsatzprognose.
-    darstellung.diagramme.umsatzverlauf`): fuer den laufenden Monat die Summe aus dem
-    schon gebuchten Betrag (``historie.laufender``) und dem Median dieses Monats, fuer
-    die folgenden Monate der Median allein - der enthaelt die Untergrenze aus bereits
-    Gebuchtem schon (Spec 5.4, ``Monatsumsatz = max(simuliert, gebucht)``), ein zweites
-    Draufaddieren waere falsch. Prognostizierte Zeilen tragen ein ``*`` am Betrag statt
-    einer zweiten Schriftart - die Tabelle bleibt eine gewoehnliche DataFrame.
+    Der Umsatz steht nicht mehr in einer Spalte, sondern nach Rechnungsstellung
+    aufgeteilt - dieselbe Unterscheidung wie im Diagramm (:func:`~umsatzprognose.
+    darstellung.diagramme.umsatzverlauf`): **Abgerechnet** fuer abgeschlossene
+    Vergangenheitsmonate, **Nicht abgerechnet** fuer schon in Clockodo gebuchte, aber
+    per Definition noch nicht abgerechnete Betraege (der laufende Monat, und im
+    Prognosehorizont bereits gebuchte kuenftige Monate, :meth:`Prognose.gebucht`), und
+    **Prognostiziert** fuer den Rest bis zum Median der Simulation. Die Summenspalte
+    fasst die drei je Monat zusammen.
 
-    Der Status folgt der Rechnungsstellung, nicht dem Kalender: abgeschlossene
-    Vergangenheitsmonate sind ``"abgerechnet"``, der laufende Monat ist
-    ``"nicht abgerechnet"`` - genau wie in :func:`~umsatzprognose.darstellung.diagramme.
-    umsatzverlauf`.
+    Der erste Horizontmonat ist derselbe Kalendermonat wie der laufende (Spec 5.4) und
+    ergaenzt dessen Zeile deshalb nur um die Prognose, statt eine zweite Zeile fuer
+    denselben Monat anzuhaengen.
     """
     laufender = historie.laufender
     zeilen = [
         {
             "Monat": monat.beschriftung,
-            "Umsatz": euro(monat.umsatz),
-            "Stunden": stunden(monat.stunden),
-            "Status": "nicht abgerechnet"
+            "Abgerechnet": ""
             if laufender and monat.schluessel == laufender.schluessel
-            else "abgerechnet",
+            else euro(monat.umsatz),
+            "Nicht abgerechnet": euro(monat.umsatz)
+            if laufender and monat.schluessel == laufender.schluessel
+            else "",
+            "Prognostiziert": "",
+            "Summe": euro(monat.umsatz),
         }
         for monat in historie.monate
     ]
@@ -74,17 +77,24 @@ def umsatztabelle(historie: Umsatzhistorie, prognose: Prognose | None = None) ->
     if prognose is not None and prognose.vorhanden:
         horizont = prognose.horizontmonate()
         median = prognose.monatswerte()[0.50]
-        basis0 = laufender.umsatz if laufender else 0.0
-        gesamt = [basis0 + median[0], *median[1:]]
-        zeilen.extend(
-            {
-                "Monat": f"{MONATSNAMEN[monat - 1]} {jahr}",
-                "Umsatz": f"{euro(betrag)} *",
-                "Stunden": "",
-                "Status": "prognostiziert",
-            }
-            for (jahr, monat), betrag in zip(horizont, gesamt, strict=True)
-        )
+        gebucht = prognose.gebucht()
+        basis = laufender.umsatz if laufender else 0.0
+
+        for (jahr, monat), wert, gebuchter_betrag in zip(horizont, median, gebucht, strict=True):
+            beschriftung = f"{MONATSNAMEN[monat - 1]} {jahr}"
+            if zeilen and zeilen[-1]["Monat"] == beschriftung:
+                zeilen[-1]["Prognostiziert"] = euro(wert)
+                zeilen[-1]["Summe"] = euro(basis + wert)
+            else:
+                zeilen.append(
+                    {
+                        "Monat": beschriftung,
+                        "Abgerechnet": "",
+                        "Nicht abgerechnet": euro(gebuchter_betrag) if gebuchter_betrag else "",
+                        "Prognostiziert": euro(wert - gebuchter_betrag),
+                        "Summe": euro(wert),
+                    }
+                )
 
     return pd.DataFrame(zeilen, columns=UMSATZSPALTEN)
 

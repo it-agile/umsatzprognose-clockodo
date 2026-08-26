@@ -189,12 +189,13 @@ def test_kennzahlen_zeigen_eine_kachel_je_eintrag():
 def test_umsatztabelle_kennzeichnet_den_laufenden_monat():
     tabelle = tabellen.umsatztabelle(HISTORIE)
     assert len(tabelle) == 13
-    assert tabelle.iloc[-1]["Status"] == "nicht abgerechnet"
-    assert tabelle.iloc[-2]["Status"] == "abgerechnet"
-    assert tabelle.iloc[-2]["Umsatz"] == "300.000,00 EUR"
+    assert tabelle.iloc[-1]["Nicht abgerechnet"] == "50.000,00 EUR"
+    assert tabelle.iloc[-1]["Abgerechnet"] == ""
+    assert tabelle.iloc[-2]["Abgerechnet"] == "300.000,00 EUR"
+    assert tabelle.iloc[-2]["Nicht abgerechnet"] == ""
 
 
-def test_umsatztabelle_ergaenzt_die_prognose_mit_stern():
+def test_umsatztabelle_verschmilzt_laufenden_monat_mit_der_prognose():
     stichtag = date(2026, 9, 1)
     historie = Umsatzhistorie.zum_stichtag(
         [Monatsumsatz(2026, 8, 100000.0, 800.0), Monatsumsatz(2026, 9, 20000.0, 150.0)],
@@ -216,21 +217,30 @@ def test_umsatztabelle_ergaenzt_die_prognose_mit_stern():
 
     tabelle = tabellen.umsatztabelle(historie, prognose)
 
-    # Zwei Historienmonate plus zwei Horizontmonate - der laufende Monat also doppelt:
-    # einmal "nicht abgerechnet" mit dem bisher Gebuchten, einmal "prognostiziert" mit
-    # der Voll-Monats-Schätzung, wie im Diagramm gestapelt.
-    assert len(tabelle) == 4
-    prognostizierte = tabelle[tabelle["Status"] == "prognostiziert"]
-    assert len(prognostizierte) == 2
-    assert all(wert.endswith(" *") for wert in prognostizierte["Umsatz"])
-    assert list(prognostizierte["Monat"]) == ["Sep 2026", "Okt 2026"]
-    assert all(wert == "" for wert in prognostizierte["Stunden"])
+    # Zwei Historienmonate plus ein zusaetzlicher Horizontmonat - der laufende Monat
+    # (Sep) ist derselbe wie der erste Horizontmonat und bekommt keine eigene zweite
+    # Zeile mehr, sondern nur eine ergaenzte Prognose-Spalte.
+    assert list(tabelle["Monat"]) == ["Aug 2026", "Sep 2026", "Okt 2026"]
+
+    aug, sep, okt = tabelle.iloc[0], tabelle.iloc[1], tabelle.iloc[2]
+    assert aug["Abgerechnet"] == "100.000,00 EUR"
+    assert aug["Nicht abgerechnet"] == ""
+    assert aug["Prognostiziert"] == ""
+
+    assert sep["Abgerechnet"] == ""
+    assert sep["Nicht abgerechnet"] == "20.000,00 EUR"
+    assert sep["Prognostiziert"] != ""
+
+    assert okt["Abgerechnet"] == ""
+    assert okt["Prognostiziert"] != ""
+
+    assert all(wert.endswith("EUR") for wert in tabelle["Summe"])
 
 
 def test_umsatztabelle_ohne_prognose_bleibt_wie_zuvor():
     tabelle = tabellen.umsatztabelle(HISTORIE, BESTAND.simulieren())
     assert len(tabelle) == 13
-    assert (tabelle["Status"] == "prognostiziert").sum() == 0
+    assert (tabelle["Prognostiziert"] != "").sum() == 0
 
 
 def test_projekttabelle_zeigt_leere_zellen_statt_erfundener_nullen():
