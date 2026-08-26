@@ -502,10 +502,10 @@ Für 5.3 sind zwei weitere Endpunkte die kürzere Strecke, beide mit Paginierung
   `paging`, anders als `/v4/absences`), `MitarbeiterRepository.laden_async(jahre=…)`
   holt ihn je Jahr im Horizont gleichzeitig mit Personen, Sollzeiten und Abwesenheiten.
   `Mitarbeiter.feiertage` führt das Ergebnis als `Feiertag`-Tupel (`datum`,
-  `halber_tag`, `name`) – roh, ohne Wirkung auf die Sollstunden zu ziehen.
-  **`year` ist hier ein einfacher Query-Parameter**, kein `deepObject` wie
-  `filter[year]` bei `/v4/absences` – beide Endpunkte filtern nach Jahr, aber nicht auf
-  dieselbe Art.
+  `halber_tag`, `name`). `Mitarbeiter.feiertagsstunden(jahr, monat)` zieht daraus den
+  Sollstunden-Abzug eines Monats. **`year` ist hier ein einfacher Query-Parameter**,
+  kein `deepObject` wie `filter[year]` bei `/v4/absences` – beide Endpunkte filtern
+  nach Jahr, aber nicht auf dieselbe Art.
 - `/v3/usersNonbusinessGroups` liefert die Zuordnung Person → Gruppe **mit
   Gültigkeitszeitraum** (`date_since`, `date_until`); es gibt mehr Einträge als Personen,
   eine Zuordnung hat also schon gewechselt. `users.nonbusinessgroups_id` kennt nur den
@@ -513,10 +513,14 @@ Für 5.3 sind zwei weitere Endpunkte die kürzere Strecke, beide mit Paginierung
   falsche Wert. **Ungenutzt**, weil `/v2/usersNonbusinessDays` die Zuordnung bereits
   auflöst.
 
-**Was die Doku nicht klärt: was `half_day` bewirkt.** Sie deklariert nur ein Boolean.
-Dass ein halber Feiertag die Sollstunden des Tages halbiert, bleibt damit die Annahme aus
-Spec 5.3 – belegt ist jetzt lediglich, dass es ein Schalter ist und keine Stundenzahl.
-`Feiertag.halber_tag` führt ihn deshalb ungedeutet mit.
+**Was die Doku nicht klärt: was `half_day` bewirkt.** Sie deklariert nur ein Boolean,
+keine Wirkung. Spec 5.3 nennt eine Halbierung der Sollstunden als Annahme; **entschieden
+wurde stattdessen (26.08.2026): ein Feiertag setzt die Sollstunden seines Wochentags auf
+0, ob ganz oder halb.** Grund ist die Praxis, nicht die Doku – an einem halben Feiertag
+nehmen die Kollegen den Rest in aller Regel als Urlaub, eine Halbierung würde den Tag
+doppelt und uneinheitlich erfassen (einmal über den Feiertag, einmal über die
+Abwesenheit). `Feiertag.halber_tag` bleibt als Rohwert der API erhalten, geht aber nicht
+mehr in `Mitarbeiter.feiertagsstunden()` ein.
 
 **Kundennamen nur über `/v3/customers`**: `/v4/customers`
 antwortet mit 404 `RouteNotFound`, `/v2/customers` mit 410 `deprecated`. Die Antwortform
@@ -568,21 +572,27 @@ automatisch je zwei Abrufe statt einem. `Mitarbeiter.abwesenheiten` und
 `Mitarbeiter.feiertage` führen die Ergebnisse als `Abwesenheit`- bzw. `Feiertag`-Tupel,
 roh mit Clockodos eigenen Codes.
 
-**Offen bleibt die Deutung**, nicht der Zugriff:
+**Die Feiertage sind inzwischen gedeutet.** Entscheidung 26.08.2026: ein Feiertag setzt
+die Sollstunden seines Wochentags auf 0, ob ganz oder halb – an einem halben Feiertag
+nehmen die Kollegen den Rest in aller Regel als Urlaub, eine Halbierung würde ihn doppelt
+erfassen. `Mitarbeiter.feiertagsstunden(jahr, monat)` liefert den Abzug; `halber_tag`
+bleibt als Rohwert erhalten, geht aber nicht mehr ein. Details unter „Feiertage: zwei
+Generationen" oben.
+
+**Offen bleibt die Deutung der Abwesenheiten**, nicht der Zugriff:
 
 - Welche Status (`Approved` gegenüber `Enquired`, `Declined`, …) und welche Typen einer
   `Abwesenheit` als Kapazitätsabzug zählen – `Home office` und `Work out of office`
   tragen laut Doku die geplanten Stunden und sind damit vermutlich keine Abwesenheit vom
   Arbeiten.
-- Wie `Feiertag.halber_tag` die Sollstunden mindert (halbiert oder auf 0 gesetzt).
 - Wie aus alldem der Abschlag für ungeplante Abwesenheit geschätzt wird – eine
   Schätzgröße, die die Spec der Kalibrierung zuordnet und nicht beziffert.
 
-Erst wenn das entschieden ist, lässt sich der Kapazitätsdeckel aus 5.3 bauen –
-Sollstunden minus geplante Abwesenheit minus Feiertage minus Abschlag. Danach die
-Simulation (5.4) samt vollständiger Ausgabe (5.5), dann der Rückwärtstest über 12
-Stichtage – der braucht wegen des Limits von 10 `entrygroups`-Abrufen je Minute eine
-Drosselung oder wiederverwendete Antworten.
+Erst wenn das entschieden ist, lässt sich der Kapazitätsdeckel aus 5.3 vollständig bauen –
+Sollstunden minus Feiertage (steht) minus geplante Abwesenheit minus Abschlag (beide
+offen). Danach die Simulation (5.4) samt vollständiger Ausgabe (5.5), dann der
+Rückwärtstest über 12 Stichtage – der braucht wegen des Limits von 10
+`entrygroups`-Abrufen je Minute eine Drosselung oder wiederverwendete Antworten.
 
 Zwei Dinge aus der Doku-Gegenprobe sind inzwischen entschieden, aber noch nicht in eine
 Simulation verdrahtet, weil es die noch nicht gibt:

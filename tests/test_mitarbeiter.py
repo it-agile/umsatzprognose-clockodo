@@ -72,3 +72,61 @@ def test_feiertage_bleiben_ohne_hinterlegung_leer():
         id=1, feiertage=(Feiertag(datum=date(2026, 12, 24), halber_tag=True, name="Heiligabend"),)
     )
     assert person_mit_feiertag.feiertage[0].halber_tag
+
+
+def test_feiertagsstunden_ignoriert_den_halben_tag():
+    # Entscheidung 26.08.2026: ein halber Feiertag zaehlt wie ein ganzer, siehe
+    # Modul-Docstring - die Kollegen nehmen den Rest in aller Regel als Urlaub.
+    person = Mitarbeiter(
+        id=1,
+        arbeitszeiten=(Wochenarbeitszeit(SIEBEN_STUNDEN, date(2020, 1, 1)),),
+        feiertage=(
+            Feiertag(datum=date(2026, 10, 1), halber_tag=False, name="Ganzer Feiertag"),
+            Feiertag(datum=date(2026, 12, 24), halber_tag=True, name="Heiligabend"),
+        ),
+    )
+    assert person.feiertagsstunden(2026, 10) == 7.0
+    assert person.feiertagsstunden(2026, 12) == 7.0
+
+
+def test_feiertag_am_wochenende_wirkt_von_selbst_nicht():
+    # 2026-10-03 (Tag der Deutschen Einheit) faellt auf einen Samstag - dort steht
+    # ohnehin keine Sollstunde, es gibt also nichts abzuziehen.
+    person = Mitarbeiter(
+        id=1,
+        arbeitszeiten=(Wochenarbeitszeit(SIEBEN_STUNDEN, date(2020, 1, 1)),),
+        feiertage=(Feiertag(datum=date(2026, 10, 3), halber_tag=False),),
+    )
+    assert person.feiertagsstunden(2026, 10) == 0.0
+
+
+def test_feiertagsstunden_ohne_sollzeit_bleibt_null():
+    person = Mitarbeiter(id=1, feiertage=(Feiertag(datum=date(2026, 10, 1), halber_tag=False),))
+    assert person.feiertagsstunden(2026, 10) == 0.0
+
+
+def test_feiertage_ausserhalb_des_monats_zaehlen_nicht():
+    person = Mitarbeiter(
+        id=1,
+        arbeitszeiten=(Wochenarbeitszeit(SIEBEN_STUNDEN, date(2020, 1, 1)),),
+        feiertage=(Feiertag(datum=date(2026, 10, 1), halber_tag=False),),
+    )
+    assert person.feiertagsstunden(2026, 11) == 0.0
+
+
+def test_feiertagsstunden_nutzt_die_am_feiertag_gueltige_sollzeit():
+    # Ein Wechsel mitten im Monat: der Feiertag am 1. zaehlt noch mit der alten
+    # Sollzeit, der am 15. schon mit der neuen - je Feiertag einzeln nachgeschlagen,
+    # nicht einmal fuer den ganzen Monat.
+    person = Mitarbeiter(
+        id=1,
+        arbeitszeiten=(
+            Wochenarbeitszeit(ACHT_STUNDEN, date(2020, 1, 1), date(2026, 10, 14)),
+            Wochenarbeitszeit(SIEBEN_STUNDEN, date(2026, 10, 15)),
+        ),
+        feiertage=(
+            Feiertag(datum=date(2026, 10, 1), halber_tag=False),
+            Feiertag(datum=date(2026, 10, 15), halber_tag=False),
+        ),
+    )
+    assert person.feiertagsstunden(2026, 10) == 8.0 + 7.0

@@ -12,17 +12,24 @@ unversionierten Legacy-Endpunkt ``/targethours``, je Person mit Gueltigkeitszeit
 Stunden je Wochentag. Details in :mod:`umsatzprognose.clockodo.mitarbeiter`.
 
 Die geplante Abwesenheit (``Abwesenheit``, aus ``/v4/absences``) und die Feiertage
-(``Feiertag``, aus ``/v2/usersNonbusinessDays``) sind inzwischen hier - roh, ohne
-Deutung. Noch nicht hier: die **verfuegbare** Kapazitaet aus 5.3, also Sollarbeitszeit
-minus geplante Abwesenheit minus Feiertage minus Abschlag fuer ungeplante Abwesenheit.
-Diese Rechnung entscheidet, welche Typen und Status der Abwesenheit ueberhaupt als
-Kapazitaetsabzug zaehlen - eine unbestaetigte (``status`` "Enquired") oder eine
-abgelehnte Abwesenheit zaehlt vermutlich nicht mit, und die Typen "Home office" und
-"Work out of office" tragen laut Doku ohnehin die geplanten Stunden ("planned hours get
-applied"), sind also keine Abwesenheit vom Arbeiten - und was ``Feiertag.halber_tag``
-fuer die Sollstunden bedeutet (halbiert oder auf 0 gesetzt, siehe Spec 5.3). Nichts davon
-wird hier vorweggenommen; der Abschlag fuer ungeplante Abwesenheit ist zudem eine
-Schaetzgroesse, die die Spec der Kalibrierung zuordnet und nicht beziffert.
+(``Feiertag``, aus ``/v2/usersNonbusinessDays``) sind inzwischen hier.
+:meth:`Mitarbeiter.feiertagsstunden` zieht daraus den Sollstunden-Abzug eines Monats
+(Entscheidung 26.08.2026): ein Feiertag setzt die Sollstunden seines Wochentags auf 0,
+**auch wenn er nur ein halber ist** - Spec 5.3 nennt eine Halbierung als Annahme, in der
+Praxis nehmen die Kollegen den Rest eines halben Feiertags aber in aller Regel als
+Urlaub, und eine Halbierung wuerde diesen Tag doppelt und uneinheitlich erfassen: einmal
+ueber den Feiertag, einmal ueber die Abwesenheit. ``Feiertag.halber_tag`` bleibt am
+Objekt erhalten, geht aber nicht mehr in die Rechnung ein.
+
+Noch nicht hier: die **verfuegbare** Kapazitaet aus 5.3, also Sollarbeitszeit minus
+Feiertage minus geplante Abwesenheit minus Abschlag fuer ungeplante Abwesenheit. Offen
+bleibt, welche Typen und Status der Abwesenheit ueberhaupt als Kapazitaetsabzug zaehlen -
+eine unbestaetigte (``status`` "Enquired") oder eine abgelehnte Abwesenheit zaehlt
+vermutlich nicht mit, und die Typen "Home office" und "Work out of office" tragen laut
+Doku ohnehin die geplanten Stunden ("planned hours get applied"), sind also keine
+Abwesenheit vom Arbeiten. Nichts davon wird hier vorweggenommen; der Abschlag fuer
+ungeplante Abwesenheit ist zudem eine Schaetzgroesse, die die Spec der Kalibrierung
+zuordnet und nicht beziffert.
 """
 
 from __future__ import annotations
@@ -78,8 +85,9 @@ class Feiertag:
 
     Attributes:
         datum: der Kalendertag (``evaluated_date`` der API).
-        halber_tag: ob der Feiertag nur einen halben Tag umfasst. Was das fuer die
-            Sollstunden bedeutet, ist noch nicht entschieden - siehe Modul-Docstring.
+        halber_tag: ob der Feiertag nur einen halben Tag umfasst. Fuer
+            :meth:`Mitarbeiter.feiertagsstunden` ohne Wirkung (Entscheidung
+            26.08.2026, siehe Modul-Docstring); als Rohwert der API bleibt er erhalten.
         name: die Bezeichnung, sofern vorhanden.
     """
 
@@ -142,3 +150,27 @@ class Mitarbeiter:
         """Vereinbarte Wochenstunden am Stichtag, ``None`` wenn nicht hinterlegt."""
         vereinbarung = self.wochenarbeitszeit(stichtag)
         return vereinbarung.wochenstunden if vereinbarung else None
+
+    def feiertagsstunden(self, jahr: int, monat: int) -> float:
+        """Sollstunden-Abzug durch Feiertage in diesem Monat (Spec 5.3).
+
+        Jeder Feiertag - ganz oder halb - setzt die Sollstunden seines Wochentags auf 0
+        (Entscheidung 26.08.2026, siehe Modul-Docstring); ``halber_tag`` geht nicht ein.
+        Ein Feiertag auf einen Wochentag ohne Sollstunden (etwa ein Wochenende) wirkt
+        von selbst nicht, weil dort nichts abzuziehen ist. Die Wochenarbeitszeit wird je
+        Feiertag einzeln nachgeschlagen, nicht einmal fuer den Monat: eine Vereinbarung
+        kann mitten im Monat wechseln.
+
+        ``0.0`` sowohl ohne Feiertage im Monat als auch ohne hinterlegte
+        Wochenarbeitszeit - beides ist von hier aus nicht unterscheidbar und muss es
+        auch nicht sein: in beiden Faellen gibt es nichts abzuziehen.
+        """
+        abzug = 0.0
+        for feiertag in self.feiertage:
+            if feiertag.datum.year != jahr or feiertag.datum.month != monat:
+                continue
+            arbeitszeit = self.wochenarbeitszeit(feiertag.datum)
+            if arbeitszeit is None:
+                continue
+            abzug += arbeitszeit.stunden_je_wochentag[feiertag.datum.weekday()]
+        return abzug
