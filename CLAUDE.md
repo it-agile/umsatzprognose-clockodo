@@ -462,12 +462,23 @@ Für die geplanten Abwesenheiten (5.3) ist `/v4/absences` der richtige Endpunkt 
 Jahresfilter ist ein `deepObject`-Parameter (`filter[year]`, nicht `year` direkt),
 analog zu `grouping[]` bei `/v2/entrygroups`; die Antwort hat kein `paging`, Envelope-Key
 ist `data`. `ClockodoClient.absences(year)` und `MitarbeiterRepository.laden_async(jahre=…)`
-holen sie ungefiltert nach Status und Typ – Envelope und Feldnamen stehen fest, welche
-Status (etwa `Enquired` gegenüber `Approved`) und welche Typen (`Home office` und `Work
-out of office` tragen laut Doku ohnehin die geplanten Stunden, sind also keine
-Abwesenheit vom Arbeiten) tatsächlich in den Kapazitätsdeckel eingehen, ist damit noch
-nicht entschieden. `Mitarbeiter.abwesenheiten` führt sie roh, mit Clockodos `type`- und
-`status`-Codes.
+holen sie ungefiltert nach Status und Typ – Envelope und Feldnamen stehen fest, aber nicht
+jede Abwesenheit soll in den Kapazitätsdeckel eingehen. `Mitarbeiter.abwesenheiten` führt
+sie deshalb roh, mit Clockodos `type`- und `status`-Codes.
+
+**Welcher `type` als Abwesenheit vom Arbeiten zählt, ist entschieden (26.08.2026): nur
+Urlaub und Krankheit.** `Abwesenheit.gilt_als_abwesend` prüft das gegen
+`domaene.mitarbeiter.TYPEN_ABWESEND` – `TYP_URLAUB` (1, `RegularHoliday`, das
+Kontingent, nicht `SpecialLeave`/Sonderurlaub) und `TYPEN_KRANKHEIT` (4 `SickSelf`,
+5 `SickChild`, 11 `SickSelfUnpaid`, 12 `SickChildUnpaid`, 15
+`SickSelfWithCertificate` – alle fünf Krankheitsvarianten, bezahlt wie unbezahlt,
+eigene wie die des Kindes). Alle anderen Typen zählen ausdrücklich **nicht**, auch dort,
+wo das fachlich diskutabel ist – etwa `Quarantine` (13, „work not possible“) oder
+`MaternityProtection` (7). `Home office` (8) und `Work out of office` (9) fielen ohnehin
+schon vorher heraus: sie tragen laut Doku die geplanten Stunden („planned hours get
+applied“), sind also keine Abwesenheit vom Arbeiten. **Offen bleibt der `status`** – ob
+z. B. eine erst beantragte (`Enquired`) Abwesenheit schon zählt oder erst eine
+genehmigte (`Abwesenheit.genehmigt`, Status `Approved`).
 
 ### Feiertage: zwei Generationen, und die Schreibweise entscheidet
 
@@ -579,19 +590,23 @@ erfassen. `Mitarbeiter.feiertagsstunden(jahr, monat)` liefert den Abzug; `halber
 bleibt als Rohwert erhalten, geht aber nicht mehr ein. Details unter „Feiertage: zwei
 Generationen" oben.
 
-**Offen bleibt die Deutung der Abwesenheiten**, nicht der Zugriff:
+**Welcher Abwesenheits-`typ` zählt, ist inzwischen auch gedeutet.** Entscheidung
+26.08.2026: nur Urlaub (`TYP_URLAUB`, 1) und Krankheit (`TYPEN_KRANKHEIT`, alle fünf
+Sick*-Codes) – `Abwesenheit.gilt_als_abwesend` prüft das. Alles andere zählt
+ausdrücklich nicht, auch nicht `Quarantine` oder `MaternityProtection`, obwohl das
+fachlich diskutabel ist. Details unter „Geplante Abwesenheiten“ oben.
 
-- Welche Status (`Approved` gegenüber `Enquired`, `Declined`, …) und welche Typen einer
-  `Abwesenheit` als Kapazitätsabzug zählen – `Home office` und `Work out of office`
-  tragen laut Doku die geplanten Stunden und sind damit vermutlich keine Abwesenheit vom
-  Arbeiten.
+**Offen bleibt nur noch:**
+
+- Der `status` einer `Abwesenheit` – ob z. B. eine erst beantragte (`Enquired`) schon
+  zählt oder erst eine genehmigte (`Approved`, `Abwesenheit.genehmigt`).
 - Wie aus alldem der Abschlag für ungeplante Abwesenheit geschätzt wird – eine
   Schätzgröße, die die Spec der Kalibrierung zuordnet und nicht beziffert.
 
 Erst wenn das entschieden ist, lässt sich der Kapazitätsdeckel aus 5.3 vollständig bauen –
-Sollstunden minus Feiertage (steht) minus geplante Abwesenheit minus Abschlag (beide
-offen). Danach die Simulation (5.4) samt vollständiger Ausgabe (5.5), dann der
-Rückwärtstest über 12 Stichtage – der braucht wegen des Limits von 10
+Sollstunden minus Feiertage (steht) minus geplante Abwesenheit (Typ steht, Status offen)
+minus Abschlag (offen). Danach die Simulation (5.4) samt vollständiger Ausgabe (5.5),
+dann der Rückwärtstest über 12 Stichtage – der braucht wegen des Limits von 10
 `entrygroups`-Abrufen je Minute eine Drosselung oder wiederverwendete Antworten.
 
 Zwei Dinge aus der Doku-Gegenprobe sind inzwischen entschieden, aber noch nicht in eine

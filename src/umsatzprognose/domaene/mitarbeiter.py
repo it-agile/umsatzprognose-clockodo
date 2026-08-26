@@ -21,15 +21,18 @@ Urlaub, und eine Halbierung wuerde diesen Tag doppelt und uneinheitlich erfassen
 ueber den Feiertag, einmal ueber die Abwesenheit. ``Feiertag.halber_tag`` bleibt am
 Objekt erhalten, geht aber nicht mehr in die Rechnung ein.
 
+**Welcher ``typ`` als Abwesenheit vom Arbeiten zaehlt, ist entschieden (26.08.2026):
+nur Urlaub und Krankheit.** ``Abwesenheit.gilt_als_abwesend`` prueft das. Alle anderen
+Typen - Sonderurlaub, Ueberstundenabbau, Fortbildung, Mutterschutz, Home office, Work
+out of office, Quarantaene, Wehr-/Ersatzdienst - zaehlen nach dieser Entscheidung
+**nicht**, auch dort, wo das fachlich diskutabel ist (etwa Quarantaene). Noch offen:
+welcher ``status`` dazukommen muss - ob z. B. eine erst beantragte (``Enquired``)
+Abwesenheit schon zaehlt, oder erst eine genehmigte (siehe ``Abwesenheit.genehmigt``).
+
 Noch nicht hier: die **verfuegbare** Kapazitaet aus 5.3, also Sollarbeitszeit minus
-Feiertage minus geplante Abwesenheit minus Abschlag fuer ungeplante Abwesenheit. Offen
-bleibt, welche Typen und Status der Abwesenheit ueberhaupt als Kapazitaetsabzug zaehlen -
-eine unbestaetigte (``status`` "Enquired") oder eine abgelehnte Abwesenheit zaehlt
-vermutlich nicht mit, und die Typen "Home office" und "Work out of office" tragen laut
-Doku ohnehin die geplanten Stunden ("planned hours get applied"), sind also keine
-Abwesenheit vom Arbeiten. Nichts davon wird hier vorweggenommen; der Abschlag fuer
-ungeplante Abwesenheit ist zudem eine Schaetzgroesse, die die Spec der Kalibrierung
-zuordnet und nicht beziffert.
+Feiertage minus geplante Abwesenheit minus Abschlag fuer ungeplante Abwesenheit. Der
+Abschlag ist zudem eine Schaetzgroesse, die die Spec der Kalibrierung zuordnet und nicht
+beziffert.
 """
 
 from __future__ import annotations
@@ -47,14 +50,26 @@ STATUS_GENEHMIGT = 1
 # (``count_hours``) statt als Tagesabwesenheit (``count_days``) gefuehrt wird.
 TYP_UEBERSTUNDENABBAU = 3
 
+# AbsenceType.RegularHoliday laut clocodo-api.yaml - "Holiday from the quota", der
+# reguläre Urlaub aus dem Kontingent (nicht Typ 2 "SpecialLeave"/Sonderurlaub).
+TYP_URLAUB = 1
+
+# AbsenceType-Codes, die Krankheit sind: SickSelf, SickChild, SickSelfUnpaid,
+# SickChildUnpaid, SickSelfWithCertificate - eigene und Kind, bezahlt/unbezahlt, mit
+# Attest gehen laut Entscheidung 26.08.2026 alle als Krankheit ein.
+TYPEN_KRANKHEIT = frozenset({4, 5, 11, 12, 15})
+
+# Entscheidung 26.08.2026: nur Urlaub und Krankheit zaehlen als Abwesenheit vom
+# Arbeiten - siehe Modul-Docstring.
+TYPEN_ABWESEND = frozenset({TYP_URLAUB}) | TYPEN_KRANKHEIT
+
 
 @dataclass(frozen=True)
 class Abwesenheit:
     """Eine geplante Abwesenheit einer Person, aus ``/v4/absences`` (Spec 5.3).
 
     ``typ`` und ``status`` bleiben Clockodos numerische Codes (siehe
-    :mod:`umsatzprognose.clockodo.abwesenheiten` fuer ihre Bedeutung) - welche davon in
-    den Kapazitaetsdeckel eingehen, ist dort noch nicht entschieden.
+    :mod:`umsatzprognose.clockodo.abwesenheiten` fuer ihre Bedeutung).
 
     Attributes:
         mitarbeiter_id: die ``users_id``, zu der die Abwesenheit gehoert.
@@ -74,6 +89,17 @@ class Abwesenheit:
     @property
     def genehmigt(self) -> bool:
         return self.status == STATUS_GENEHMIGT
+
+    @property
+    def gilt_als_abwesend(self) -> bool:
+        """Ob ``typ`` als Abwesenheit vom Arbeiten zaehlt (Entscheidung 26.08.2026).
+
+        Nur Urlaub und Krankheit - siehe Modul-Docstring fuer die Begruendung und die
+        Liste der ausgeschlossenen Typen. Sagt nichts ueber ``status``: ob z. B. eine
+        erst beantragte Abwesenheit schon zaehlen soll, ist separat zu klaeren
+        (:attr:`genehmigt`).
+        """
+        return self.typ in TYPEN_ABWESEND
 
 
 @dataclass(frozen=True)

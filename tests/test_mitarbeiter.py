@@ -64,6 +64,25 @@ def test_genehmigt_ist_nur_status_approved():
     assert not unbestaetigt.genehmigt
 
 
+def _abwesenheit(typ: int) -> Abwesenheit:
+    return Abwesenheit(
+        mitarbeiter_id=1, beginnt=date(2026, 9, 1), endet=date(2026, 9, 1), typ=typ, status=1
+    )
+
+
+def test_gilt_als_abwesend_ist_nur_urlaub_und_krankheit():
+    # AbsenceType laut clocodo-api.yaml: 1 RegularHoliday (Urlaub), 4 SickSelf,
+    # 5 SickChild, 11 SickSelfUnpaid, 12 SickChildUnpaid, 15 SickSelfWithCertificate -
+    # alle fuenf Krankheitsvarianten zaehlen laut Entscheidung 26.08.2026 als Krankheit.
+    for urlaub_oder_krankheit in (1, 4, 5, 11, 12, 15):
+        assert _abwesenheit(urlaub_oder_krankheit).gilt_als_abwesend
+
+    # Sonderurlaub, Ueberstundenabbau, Home office, Quarantaene zaehlen nach dieser
+    # Entscheidung ausdruecklich nicht, auch wenn das fachlich diskutabel ist.
+    for anderer_typ in (2, 3, 8, 9, 13):
+        assert not _abwesenheit(anderer_typ).gilt_als_abwesend
+
+
 def test_feiertage_bleiben_ohne_hinterlegung_leer():
     person = Mitarbeiter(id=1)
     assert person.feiertage == ()
