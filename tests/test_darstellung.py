@@ -80,7 +80,7 @@ def test_balkenlaenge_bleibt_im_bild():
 
 def test_umsatzverlauf_ohne_prognose_zeigt_nur_die_historie_balken():
     fig = diagramme.umsatzverlauf(HISTORIE)
-    balkenspuren = [spur for spur in fig.data if len(spur.x or ()) > 0]
+    balkenspuren = [spur for spur in fig.data if spur.type == "bar"]
     assert len(balkenspuren) == 1
     assert len(balkenspuren[0].x) == 13
 

@@ -156,10 +156,18 @@ def _legendeintrag(fig: go.Figure, name: str, farbe: str, *, deckkraft: float = 
     Die echten Spuren tragen ``showlegend=False`` (die Historie-Spur faerbt ihre Balken
     ueber ein Array aus zwei Farben, "Bereits gebucht" teilt sich ihre Farbe absichtlich
     mit der Historie) - ein Legendenfeld direkt daraus waere pro Farbe nicht sauber zu
-    gewinnen. Diese Spur zeichnet nichts (leere ``x``/``y``), nur ihr Legendenfeld.
+    gewinnen. ``x=[None]`` statt einer leeren Liste: manche Plotly-Renderer (etwa Colab)
+    lassen eine Spur ganz ohne Datenpunkt auch aus der Legende verschwinden, ein
+    einzelner ``None``-Punkt zeichnet nichts, haelt die Spur aber sichtbar.
     """
-    fig.add_bar(
-        x=[], y=[], marker={"color": farbe, "opacity": deckkraft}, name=name, showlegend=True
+    fig.add_scatter(
+        x=[None],
+        y=[None],
+        mode="markers",
+        marker={"symbol": "square", "size": 11, "color": farbe, "opacity": deckkraft},
+        name=name,
+        showlegend=True,
+        hoverinfo="skip",
     )
 
 
