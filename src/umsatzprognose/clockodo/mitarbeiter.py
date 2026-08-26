@@ -50,7 +50,7 @@ if TYPE_CHECKING:
     from collections.abc import Sequence
     from typing import Any
 
-    from .config import ClockodoClient
+    from .client import ClockodoClient
 
 from collections import defaultdict
 from datetime import date
@@ -113,10 +113,15 @@ class MitarbeiterRepository:
         self,
         personen: list[dict[str, Any]],
         sollzeiten: list[dict[str, Any]],
-        abwesenheiten: list[dict[str, Any]] = (),
-        feiertage: list[dict[str, Any]] = (),
+        abwesenheiten: list[dict[str, Any]] | None = None,
+        feiertage: list[dict[str, Any]] | None = None,
     ) -> dict[int, Mitarbeiter]:
         """Alle vier Antworten zu Personen nach ID - setzt :attr:`hinweise`."""
+        if abwesenheiten is None:
+            abwesenheiten = []
+        if feiertage is None:
+            feiertage = []
+
         arbeitszeiten = self._arbeitszeiten(sollzeiten)
         abwesenheiten_je_person = self._abwesenheiten(abwesenheiten)
         feiertage_je_person = self._feiertage(feiertage)
@@ -159,7 +164,7 @@ class MitarbeiterRepository:
                 Hinweis(
                     "Personen mit einer Sollarbeitszeit, die nicht wöchentlich "
                     "vereinbart ist - ihre Kapazität ist nicht hinterlegt",
-                    tuple(sorted(set(andere_typen))),
+                    tuple(sorted({str(typ) for typ in andere_typen})),
                 ),
             )
         return je_person

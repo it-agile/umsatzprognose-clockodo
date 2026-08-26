@@ -278,7 +278,7 @@ def simulieren(
             for p in scope:
                 satz = saetze[p.id]
                 if p.id in gewuenscht_stunden:
-                    geliefert = gelieferte_stunden.get(p.id, 0.0) * satz
+                    geliefert = gelieferte_stunden.get(p.id, 0.0) * satz if satz else 0.0
                 elif p.id in gewuenscht_euro:
                     geliefert = gewuenscht_euro[p.id]
                 else:

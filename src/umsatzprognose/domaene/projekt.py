@@ -90,7 +90,7 @@ class Budget:
     @property
     def auftragsvolumen(self) -> float | None:
         """Das Auftragsvolumen in Euro, ``None`` wenn keines bezifferbar ist."""
-        return float(self.betrag) if self.verwertbar else None
+        return float(self.betrag) if self.betrag and self.verwertbar else None
 
 
 OHNE_BUDGET = Budget()

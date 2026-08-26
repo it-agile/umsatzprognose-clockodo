@@ -65,7 +65,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from typing import Any
 
-    from .config import ClockodoClient
+    from .client import ClockodoClient
 
 from collections.abc import Mapping
 from datetime import date
@@ -238,7 +238,7 @@ class ProjektRepository:
             self.hinweise += (
                 Hinweis(
                     "Gebuchter Umsatz auf Projekte, die es in den Stammdaten nicht gibt",
-                    tuple(verwaist),
+                    tuple(str(waise) for waise in verwaist),
                 ),
             )
 

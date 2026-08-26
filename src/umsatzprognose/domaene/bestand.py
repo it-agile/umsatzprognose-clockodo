@@ -196,7 +196,11 @@ class Bestand:
                     "(Spec 5.4); die Simulation berücksichtigt das noch nicht",
                     tuple(
                         f"{p.name if p.name else str(p.id)} "
-                        f"({p.automatischer_abschluss.strftime('%d.%m.%Y')})"
+                        f"({
+                            p.automatischer_abschluss.strftime('%d.%m.%Y')
+                            if p.automatischer_abschluss
+                            else None
+                        })"
                         for p in mit_automatischem_abschluss
                     ),
                 )

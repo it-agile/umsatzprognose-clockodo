@@ -49,7 +49,7 @@ if TYPE_CHECKING:
 
     from umsatzprognose.domaene import Projekt
 
-    from .config import ClockodoClient
+    from .client import ClockodoClient
 
 from datetime import date
 

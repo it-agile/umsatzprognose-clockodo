@@ -30,7 +30,7 @@ if TYPE_CHECKING:
     from datetime import date
     from typing import Any
 
-    from .config import ClockodoClient
+    from .client import ClockodoClient
 
 from umsatzprognose.domaene import Monatsumsatz, Umsatzhistorie
 
