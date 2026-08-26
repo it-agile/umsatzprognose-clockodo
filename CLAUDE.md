@@ -38,8 +38,9 @@ darstellung  ──►  domaene  ◄──  clockodo
   `config.py` (Zugangsdaten mit den benannten Konstruktoren `automatisch`,
   `aus_umgebung`, `aus_colab_secrets`), `client.py` (`ClockodoClient`: HTTP,
   Paginierung, die verifizierte Parameterform je Endpunkt, `ClockodoError` mit
-  Antwortkörper), dazu je Endpunkt ein Repository: `kunden.py`, `mitarbeiter.py`,
-  `projekte.py`, `umsatz.py` und `bestand.py` (`BestandRepository`, der eine Einstieg).
+  Antwortkörper), `nebenlaeufig.py` (`synchron`, `gleichzeitig` – siehe unten), dazu je
+  Endpunkt ein Repository: `kunden.py`, `mitarbeiter.py`, `projekte.py`, `umsatz.py`
+  und `bestand.py` (`BestandRepository`, der eine Einstieg).
 - `src/umsatzprognose/darstellung/` – der einzige Ort mit plotly (`diagramme.py`,
   `gestaltung.py`) und pandas (`tabellen.py`), dazu `dashboard.py` mit der Fassade
   `Dashboard`, die die Notebooks benutzen.
@@ -63,6 +64,35 @@ und Mitarbeiter liefern Regeln und Zustand, keine fertigen Prognosen.
 Restvolumen-Verläufe gleichzeitig; ein `projekt.restvolumen -= verbrauch` im
 Simulationsschritt würde die Stammdaten zum Lauf-Zustand machen und beim zweiten Lauf
 falsche Zahlen liefern. Der Lauf-Zustand gehört neben die Objekte.
+
+**Die Abrufe laufen gleichzeitig, die Abbildung nacheinander.** Die sechs Antworten
+einer Prognose – Kunden, Personen, Sollzeiten, Projekte, Verbrauch, Umsatzhistorie –
+hängen nicht voneinander ab; aufeinander angewiesen ist erst das Zusammensetzen, weil
+die Projekte Kunde und Person als Objekt tragen. Deshalb sind die Methoden von
+`ClockodoClient` **Coroutinen**, `BestandRepository.laden_async()` fächert sie mit
+`gleichzeitig()` auf, und erst danach bildet `ProjektRepository.abbilden()` ab. Abruf
+und Abbildung sind in den Repositories dafür getrennt (`laden_async` / `abbilden`,
+bei den Projekten zusätzlich die freie Funktion `projekte.rohdaten`).
+
+Die öffentlichen Einstiege bleiben gewöhnliche Funktionen: `Dashboard.laden()` und
+`BestandRepository.laden()` legen `synchron()` um die Coroutine. **Das ist mehr als ein
+`asyncio.run`** – in Colab und Jupyter läuft bereits ein Event-Loop, dort bricht
+`asyncio.run` mit `RuntimeError: asyncio.run() cannot be called from a running event
+loop` ab und `loop.run_until_complete` mit `This event loop is already running`.
+`synchron()` erkennt den Fall und führt die Coroutine in einem eigenen Thread mit
+eigenem Loop aus; `nest_asyncio` wäre eine Abhängigkeit, die nur an dieser Stelle
+gebraucht würde. Wer selbst in einem Loop steht, ruft `laden_async()` direkt auf.
+
+Nebenläufigkeitsprimitive gehören **nicht** an ein langlebiges Objekt: ein
+`asyncio.Semaphore` bindet sich an den Loop, in dem es zuerst benutzt wird, und jeder
+synchrone Ladevorgang bringt einen neuen Loop mit. `gleichzeitig()` erzeugt seine Sperre
+deshalb je Aufruf – und bricht bei einem Fehler die übrigen Abrufe ab, damit ein 400
+nicht erst nach den fünf anderen Antworten auffällt.
+
+Dass die Abrufe wirklich überlappen, prüft `tests/test_nebenlaeufig.py` mit einer
+`asyncio.Barrier`: laufen sie wieder nacheinander, wartet der erste Handler vergeblich.
+Ein Test auf die Zahlen allein würde die Umstellung nicht bemerken – sequenziell kommt
+dasselbe heraus, nur langsamer.
 
 **Zeitbuchungen werden nicht einzeln geladen.** Die Spec nennt dafür `/v2/entries` mit
 `users_id` je Eintrag – das wären allein für zwölf Monate 16.461 Einträge über sieben

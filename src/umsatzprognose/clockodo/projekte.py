@@ -45,6 +45,7 @@ from collections.abc import Mapping
 from typing import Any
 
 from umsatzprognose.clockodo.client import HISTORIE_VON, ClockodoClient
+from umsatzprognose.clockodo.nebenlaeufig import gleichzeitig, synchron
 from umsatzprognose.domaene.hinweis import Hinweis
 from umsatzprognose.domaene.kunde import Kunde
 from umsatzprognose.domaene.mitarbeiter import Mitarbeiter
@@ -76,6 +77,20 @@ class ProjektRepository:
         time_since: str = HISTORIE_VON,
         time_until: str | None = None,
     ) -> tuple[Projekt, ...]:
+        """Der Abruf, synchron - fuer den Aufruf ausserhalb eines Event-Loops."""
+        return synchron(
+            self.laden_async(
+                mit_anteilen=mit_anteilen, time_since=time_since, time_until=time_until
+            )
+        )
+
+    async def laden_async(
+        self,
+        *,
+        mit_anteilen: bool = True,
+        time_since: str = HISTORIE_VON,
+        time_until: str | None = None,
+    ) -> tuple[Projekt, ...]:
         """Alle Projekte der Anlage - auch die inaktiven.
 
         Gefiltert wird nicht hier, sondern in der Domaene
@@ -84,16 +99,30 @@ class ProjektRepository:
         Datenabrufs.
 
         Args:
-            mit_anteilen: auch die Anteile je Person laden. Kostet nichts extra an
+            mit_anteilen: auch die Anteile je Person abbilden. Kostet nichts extra an
                 Requests, aber Zeit: die Antwort waechst von rund 800 KB auf 1,9 MB
                 und braucht etwa 20 statt 10 Sekunden.
             time_since: untere Grenze des Verbrauchsfensters.
             time_until: obere Grenze; ohne Angabe das Ende des laufenden Monats.
         """
-        projekte, _ = self._client.projects()
-        gruppen = self._client.entrygroups_je_projekt_und_person(
-            time_since=time_since, time_until=time_until
+        projekte, gruppen = await rohdaten(
+            self._client, time_since=time_since, time_until=time_until
         )
+        return self.abbilden(projekte, gruppen, mit_anteilen=mit_anteilen)
+
+    def abbilden(
+        self,
+        projekte: list[dict[str, Any]],
+        gruppen: list[dict[str, Any]],
+        *,
+        mit_anteilen: bool = True,
+    ) -> tuple[Projekt, ...]:
+        """Stammdaten und Verbrauch zu Projekten verrechnen - setzt :attr:`hinweise`.
+
+        Getrennt vom Abruf, weil die Kunden- und Personennamen aus zwei weiteren
+        Antworten stammen: so koennen alle Abrufe gleichzeitig laufen und erst hier
+        zusammenkommen (siehe :class:`~umsatzprognose.clockodo.bestand.BestandRepository`).
+        """
         verbrauch = self._verbrauch(gruppen)
 
         gebaut = tuple(
@@ -217,3 +246,24 @@ def budget(rohprojekt: Mapping[str, Any]) -> Budget:
         intervall=rohbudget.get("interval"),
         aus_teilprojekten=bool(rohbudget.get("from_subprojects")),
     )
+
+
+async def rohdaten(
+    client: ClockodoClient,
+    *,
+    time_since: str = HISTORIE_VON,
+    time_until: str | None = None,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Die beiden Antworten, aus denen ein Projekt entsteht - gleichzeitig geholt.
+
+    ``/v4/projects`` traegt das Auftragsvolumen, ``/v2/entrygroups`` den Verbrauch; sie
+    haengen nicht voneinander ab, treffen sich aber in
+    :meth:`ProjektRepository.abbilden` ueber die Projekt-ID. Der Verbrauchsabruf ist
+    mit rund 20 Sekunden der langsamste der ganzen Prognose - nacheinander wuerde die
+    Projektliste seine Wartezeit verlaengern.
+    """
+    (projekte, _), gruppen = await gleichzeitig(
+        client.projects(),
+        client.entrygroups_je_projekt_und_person(time_since=time_since, time_until=time_until),
+    )
+    return projekte, gruppen

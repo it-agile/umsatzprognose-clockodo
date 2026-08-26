@@ -28,8 +28,10 @@ from __future__ import annotations
 
 from collections import defaultdict
 from datetime import date
+from typing import Any
 
 from umsatzprognose.clockodo.client import ClockodoClient
+from umsatzprognose.clockodo.nebenlaeufig import gleichzeitig, synchron
 from umsatzprognose.domaene.hinweis import Hinweis
 from umsatzprognose.domaene.mitarbeiter import Mitarbeiter, Wochenarbeitszeit
 
@@ -54,8 +56,26 @@ class MitarbeiterRepository:
         self.hinweise: tuple[Hinweis, ...] = ()
 
     def laden(self) -> dict[int, Mitarbeiter]:
-        personen, _ = self._client.users()
-        arbeitszeiten = self._arbeitszeiten()
+        """Der Abruf, synchron - fuer den Aufruf ausserhalb eines Event-Loops."""
+        return synchron(self.laden_async())
+
+    async def laden_async(self) -> dict[int, Mitarbeiter]:
+        """Personen und Sollzeiten gleichzeitig holen.
+
+        Zwei Endpunkte, aber keine Abhaengigkeit zwischen ihnen: ``/v3/users`` nennt die
+        Personen, ``/targethours`` ihre Wochenstunden. Verknuepft werden sie erst hier
+        ueber die ``users_id``.
+        """
+        (personen, _), sollzeiten = await gleichzeitig(
+            self._client.users(), self._client.targethours()
+        )
+        return self.abbilden(personen, sollzeiten)
+
+    def abbilden(
+        self, personen: list[dict[str, Any]], sollzeiten: list[dict[str, Any]]
+    ) -> dict[int, Mitarbeiter]:
+        """Beide Antworten zu Personen nach ID - setzt :attr:`hinweise`."""
+        arbeitszeiten = self._arbeitszeiten(sollzeiten)
         return {
             int(person["id"]): Mitarbeiter(
                 id=int(person["id"]),
@@ -67,11 +87,13 @@ class MitarbeiterRepository:
             if person.get("id") is not None
         }
 
-    def _arbeitszeiten(self) -> dict[int, list[Wochenarbeitszeit]]:
+    def _arbeitszeiten(
+        self, sollzeiten: list[dict[str, Any]]
+    ) -> dict[int, list[Wochenarbeitszeit]]:
         je_person: dict[int, list[Wochenarbeitszeit]] = defaultdict(list)
         andere_typen: list[int] = []
 
-        for eintrag in self._client.targethours():
+        for eintrag in sollzeiten:
             users_id = int(eintrag["users_id"])
             if eintrag.get("type") != TYP_WOECHENTLICH:
                 andere_typen.append(users_id)

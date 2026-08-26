@@ -23,6 +23,12 @@ Die Version je Endpunkt ist keine freie Wahl, sondern ausprobiert:
 ``current_page: 2`` samt anderer IDs. Bei 895 Projekten und einer Standardseite von 1000
 ist die Grenze nah, deshalb laeuft :meth:`ClockodoClient.projects` ueber alle Seiten.
 
+**Alle Methoden sind Coroutinen**, weil die Abrufe einer Prognose voneinander unabhaengig
+sind und sich ihre Wartezeiten sonst addieren (siehe
+:mod:`umsatzprognose.clockodo.nebenlaeufig`). Wer einzeln und synchron abrufen will,
+legt :func:`~umsatzprognose.clockodo.nebenlaeufig.synchron` darum - genau das tun die
+``laden``-Methoden der Repositories.
+
 **Unbekannte Query-Parameter werden dort still ignoriert, nicht abgelehnt** (``count=3``
 und ``limit=3`` antworten mit 200 und den vollen 895 Projekten). Ein 200 belegt einen
 Parameternamen also nicht; dafuer muss das ``paging``-Objekt geprueft werden.
@@ -63,6 +69,7 @@ from typing import Any
 import httpx
 
 from umsatzprognose.clockodo.config import BASE_URL, ClockodoCredentials
+from umsatzprognose.clockodo.nebenlaeufig import gleichzeitig
 
 DEFAULT_TIMEOUT = 60.0
 
@@ -116,9 +123,10 @@ class ClockodoError(RuntimeError):
 class ClockodoClient:
     """Lesender Zugriff auf die Endpunkte, die die Prognose braucht.
 
-    Je Aufruf wird ein eigener ``httpx.Client`` geoeffnet und geschlossen. Fuer die
+    Je Aufruf wird ein eigener ``httpx.AsyncClient`` geoeffnet und geschlossen. Fuer die
     halbe Handvoll Requests einer Prognose ist das ausreichend und erspart im Notebook
-    jede Lebenszyklus-Verwaltung.
+    jede Lebenszyklus-Verwaltung; auch ein gemeinsamer Verbindungspool haette fuer
+    gleichzeitige Abrufe je eine eigene Verbindung aufgebaut.
     """
 
     def __init__(
@@ -127,68 +135,80 @@ class ClockodoClient:
         *,
         base_url: str = BASE_URL,
         timeout: float = DEFAULT_TIMEOUT,
-        transport: httpx.BaseTransport | None = None,
+        transport: httpx.AsyncBaseTransport | None = None,
     ) -> None:
         self.credentials = credentials
         self.base_url = base_url
         self.timeout = timeout
         self._transport = transport
 
-    def get(self, path: str, params: Mapping[str, Any] | None = None) -> Any:
+    async def get(self, path: str, params: Mapping[str, Any] | None = None) -> Any:
         """Ein GET gegen die API. Wirft bei HTTP-Fehlern einen :class:`ClockodoError`."""
-        with httpx.Client(
+        async with httpx.AsyncClient(
             base_url=self.base_url,
             headers=self.credentials.headers(),
             timeout=self.timeout,
             transport=self._transport,
         ) as client:
-            response = client.get(path, params=dict(params) if params else None)
+            response = await client.get(path, params=dict(params) if params else None)
         if response.is_error:
             raise ClockodoError(
                 f"{response.status_code} fuer {response.request.url}\n{response.text[:1000]}"
             )
         return response.json()
 
-    def get_paged(
+    async def get_paged(
         self, path: str, params: Mapping[str, Any] | None = None
     ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
         """Alle Seiten eines paginierten Endpunkts einsammeln.
 
+        Die erste Seite muss allein kommen - erst ihr ``paging`` nennt ``count_pages``.
+        Danach steht die Seitenzahl fest, und die restlichen Seiten werden gleichzeitig
+        geholt statt eine nach der anderen. Bei 895 Projekten auf einer Seite von 1000
+        aendert das heute nichts; es wirkt an dem Tag, an dem die Grenze faellt.
+
         Returns:
-            Die zusammengefuegte ``data``-Liste und das ``paging``-Objekt der letzten
-            Seite - daran ist ablesbar, ob wirklich alles geladen wurde.
+            Die zusammengefuegte ``data``-Liste in Seitenreihenfolge und das
+            ``paging``-Objekt der letzten Seite - daran ist ablesbar, ob wirklich alles
+            geladen wurde.
         """
-        seite, alle, paging = 1, [], {}
-        while True:
-            payload = self.get(path, {**(params or {}), "page": seite})
+        erste = await self.get(path, {**(params or {}), "page": 1})
+        paging = erste.get("paging") or {}
+        seiten = int(paging.get("count_pages") or 1)
+        alle = list(erste["data"])
+        if seiten <= 1:
+            return alle, paging
+
+        weitere = await gleichzeitig(
+            *(self.get(path, {**(params or {}), "page": seite}) for seite in range(2, seiten + 1))
+        )
+        for payload in weitere:
             alle.extend(payload["data"])
-            paging = payload.get("paging") or {}
-            if seite >= paging.get("count_pages", 1):
-                return alle, paging
-            seite += 1
+            paging = payload.get("paging") or paging
+        return alle, paging
 
-    def projects(self) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    async def projects(self) -> tuple[list[dict[str, Any]], dict[str, Any]]:
         """Alle Projekte aus ``/v4/projects``, ueber alle Seiten."""
-        return self.get_paged("/v4/projects")
+        return await self.get_paged("/v4/projects")
 
-    def customers(self) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    async def customers(self) -> tuple[list[dict[str, Any]], dict[str, Any]]:
         """Alle Kunden aus ``/v3/customers``, ueber alle Seiten."""
-        return self.get_paged("/v3/customers")
+        return await self.get_paged("/v3/customers")
 
-    def users(self) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    async def users(self) -> tuple[list[dict[str, Any]], dict[str, Any]]:
         """Alle Personen aus ``/v3/users``, ueber alle Seiten (59 in dieser Anlage)."""
-        return self.get_paged("/v3/users")
+        return await self.get_paged("/v3/users")
 
-    def targethours(self) -> list[dict[str, Any]]:
+    async def targethours(self) -> list[dict[str, Any]]:
         """Sollarbeitszeiten aus dem unversionierten ``/targethours``.
 
         Envelope-Key ist ``targethours``, es gibt kein ``paging`` (186 Eintraege). Die
         Version ist keine freie Wahl: ``/v2/targethours`` und ``/v3/targethours``
         antworten mit 404 ``RouteNotFound``.
         """
-        return self.get("/targethours")["targethours"]
+        return (await self.get("/targethours"))["targethours"]
 
-    def entrygroups(
+    async def entrygroups(
         self,
         grouping: Sequence[str],
         *,
@@ -210,7 +230,7 @@ class ClockodoClient:
         Returns:
             Die ``groups``-Liste.
         """
-        payload = self.get(
+        payload = await self.get(
             "/v2/entrygroups",
             {
                 "time_since": time_since,
@@ -220,7 +240,7 @@ class ClockodoClient:
         )
         return payload["groups"]
 
-    def entrygroups_je_projekt_und_person(
+    async def entrygroups_je_projekt_und_person(
         self, *, time_since: str = HISTORIE_VON, time_until: str | None = None
     ) -> list[dict[str, Any]]:
         """Verbrauch je Projekt, darunter die Anteile je Person.
@@ -230,12 +250,16 @@ class ClockodoClient:
         verglichen, keine Abweichung), und die Untergruppen summieren sich exakt auf
         sie. Damit sind Verbrauch und Aufteilungsschluessel garantiert konsistent.
         """
-        return self.entrygroups(
+        return await self.entrygroups(
             [GRUPPIERUNG_PROJEKT, GRUPPIERUNG_PERSON],
             time_since=time_since,
             time_until=time_until,
         )
 
-    def entrygroups_je_monat(self, *, time_since: str, time_until: str) -> list[dict[str, Any]]:
+    async def entrygroups_je_monat(
+        self, *, time_since: str, time_until: str
+    ) -> list[dict[str, Any]]:
         """Umsatz je Kalendermonat - alle Buchungen, auch die ohne Projektbezug."""
-        return self.entrygroups([GRUPPIERUNG_MONAT], time_since=time_since, time_until=time_until)
+        return await self.entrygroups(
+            [GRUPPIERUNG_MONAT], time_since=time_since, time_until=time_until
+        )

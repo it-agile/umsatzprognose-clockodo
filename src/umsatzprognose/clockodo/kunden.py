@@ -16,7 +16,10 @@ weil dieselbe Grenze bei den Projekten (895 von 1000) schon knapp ist.
 
 from __future__ import annotations
 
+from typing import Any
+
 from umsatzprognose.clockodo.client import ClockodoClient
+from umsatzprognose.clockodo.nebenlaeufig import synchron
 from umsatzprognose.domaene.kunde import Kunde
 
 
@@ -27,12 +30,22 @@ class KundenRepository:
         self._client = client
 
     def laden(self) -> dict[int, Kunde]:
-        daten, _ = self._client.customers()
-        return {
-            int(eintrag["id"]): Kunde(id=int(eintrag["id"]), name=_name(eintrag))
-            for eintrag in daten
-            if eintrag.get("id") is not None
-        }
+        """Der Abruf, synchron - fuer den Aufruf ausserhalb eines Event-Loops."""
+        return synchron(self.laden_async())
+
+    async def laden_async(self) -> dict[int, Kunde]:
+        """Derselbe Abruf als Coroutine, damit er neben den anderen laufen kann."""
+        daten, _ = await self._client.customers()
+        return abbilden(daten)
+
+
+def abbilden(daten: list[dict[str, Any]]) -> dict[int, Kunde]:
+    """Eine ``/v3/customers``-Antwort als Kunden nach ID."""
+    return {
+        int(eintrag["id"]): Kunde(id=int(eintrag["id"]), name=_name(eintrag))
+        for eintrag in daten
+        if eintrag.get("id") is not None
+    }
 
 
 def _name(eintrag: dict) -> str | None:

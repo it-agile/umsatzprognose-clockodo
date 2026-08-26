@@ -40,10 +40,26 @@ class Dashboard:
         """Daten aus Clockodo holen und das Dashboard bereitstellen.
 
         Die Zugangsdaten kommen aus der Colab-Secrets-Verwaltung oder aus einer lokalen
-        ``.env``, je nachdem, wo das Notebook laeuft. Der Abruf dauert gegen die echte
-        Installation rund eine halbe Minute.
+        ``.env``, je nachdem, wo das Notebook laeuft. Die sechs Abrufe laufen
+        gleichzeitig; gegen die echte Installation bestimmt der langsamste die Dauer.
         """
         bestand = BestandRepository.mit_automatischen_zugangsdaten().laden(
+            stichtag=stichtag,
+            mit_anteilen=mit_anteilen,
+            abgeschlossene_monate=abgeschlossene_monate,
+        )
+        return cls(bestand)
+
+    @classmethod
+    async def laden_async(
+        cls,
+        *,
+        stichtag: date | None = None,
+        mit_anteilen: bool = True,
+        abgeschlossene_monate: int = 12,
+    ) -> Dashboard:
+        """Derselbe Ladevorgang fuer Aufrufer, die schon in einem Event-Loop stehen."""
+        bestand = await BestandRepository.mit_automatischen_zugangsdaten().laden_async(
             stichtag=stichtag,
             mit_anteilen=mit_anteilen,
             abgeschlossene_monate=abgeschlossene_monate,
