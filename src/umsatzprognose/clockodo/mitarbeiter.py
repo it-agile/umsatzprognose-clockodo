@@ -1,4 +1,4 @@
-"""Abbildung von ``/v3/users`` und ``/targethours`` auf
+"""Abbildung von ``/v3/users``, ``/targethours`` und ``/v4/absences`` auf
 :class:`~umsatzprognose.domaene.mitarbeiter.Mitarbeiter`.
 
 **Hier weicht die Umsetzung bewusst von der Spec ab.** Abschnitt 4 nennt
@@ -20,18 +20,25 @@ Die Historie fuehrt zu jeder Person mehrere Zeilen; abgeschlossene tragen ein
 Zeile. Ein anderer ``type`` als ``weekly`` ist nie aufgetreten und wird deshalb nicht
 gedeutet, sondern uebersprungen und gemeldet - raten waere hier besonders teuer, weil
 eine falsche Sollzeit den Kapazitaetsdeckel (Spec 5.3) still verschiebt.
+
+**Abwesenheiten kommen dazu, ungefiltert.** ``/v4/absences`` nimmt einen Jahresfilter
+(``filter[year]``, kein einfacher ``year``-Parameter); wer den Kapazitaetsdeckel spaeter
+baut, ruft :meth:`laden_async` deshalb mit den Jahren, die der Horizont ueberspannt.
+Ohne ``jahre`` bleibt ``Mitarbeiter.abwesenheiten`` leer - das ist der Stand vor diesem
+Schritt und bleibt fuer Aufrufer ohne Kapazitaetsbedarf ohne zusaetzlichen Abruf.
 """
 
 from __future__ import annotations
 
 from collections import defaultdict
+from collections.abc import Sequence
 from datetime import date
 from typing import Any
 
 from umsatzprognose.clockodo.client import ClockodoClient
 from umsatzprognose.clockodo.nebenlaeufig import gleichzeitig, synchron
 from umsatzprognose.domaene.hinweis import Hinweis
-from umsatzprognose.domaene.mitarbeiter import Mitarbeiter, Wochenarbeitszeit
+from umsatzprognose.domaene.mitarbeiter import Abwesenheit, Mitarbeiter, Wochenarbeitszeit
 
 # Reihenfolge wie in Wochenarbeitszeit.stunden_je_wochentag: Montag zuerst.
 WOCHENTAG_FELDER = (
@@ -47,39 +54,53 @@ TYP_WOECHENTLICH = "weekly"
 
 
 class MitarbeiterRepository:
-    """Laedt Personen samt ihrer vereinbarten Arbeitszeiten."""
+    """Laedt Personen samt ihrer vereinbarten Arbeitszeiten und Abwesenheiten."""
 
     def __init__(self, client: ClockodoClient) -> None:
         self._client = client
         self.hinweise: tuple[Hinweis, ...] = ()
 
-    def laden(self) -> dict[int, Mitarbeiter]:
+    def laden(self, *, jahre: Sequence[int] = ()) -> dict[int, Mitarbeiter]:
         """Der Abruf, synchron - fuer den Aufruf ausserhalb eines Event-Loops."""
-        return synchron(self.laden_async())
+        return synchron(self.laden_async(jahre=jahre))
 
-    async def laden_async(self) -> dict[int, Mitarbeiter]:
-        """Personen und Sollzeiten gleichzeitig holen.
+    async def laden_async(self, *, jahre: Sequence[int] = ()) -> dict[int, Mitarbeiter]:
+        """Personen, Sollzeiten und Abwesenheiten gleichzeitig holen.
 
-        Zwei Endpunkte, aber keine Abhaengigkeit zwischen ihnen: ``/v3/users`` nennt die
-        Personen, ``/targethours`` ihre Wochenstunden. Verknuepft werden sie erst hier
-        ueber die ``users_id``.
+        Drei Zwecke, keine Abhaengigkeit zwischen ihnen: ``/v3/users`` nennt die
+        Personen, ``/targethours`` ihre Wochenstunden, ``/v4/absences`` ihre geplanten
+        Abwesenheiten - je ein Abruf pro Jahr in ``jahre``. Verknuepft werden alle drei
+        erst hier ueber die ``users_id``.
+
+        Args:
+            jahre: die Kalenderjahre, fuer die Abwesenheiten geladen werden - der
+                Aufrufer kennt den Horizont, hier ist er nicht bekannt. Leer bleibt
+                ``Mitarbeiter.abwesenheiten`` ungeladen, ohne zusaetzlichen Abruf.
         """
-        (personen, _), sollzeiten = await gleichzeitig(
-            self._client.users(), self._client.targethours()
+        (personen, _), sollzeiten, abwesenheiten_je_jahr = await gleichzeitig(
+            self._client.users(),
+            self._client.targethours(),
+            gleichzeitig(*(self._client.absences(jahr) for jahr in jahre)),
         )
-        return self.abbilden(personen, sollzeiten)
+        abwesenheiten = [eintrag for jahr in abwesenheiten_je_jahr for eintrag in jahr]
+        return self.abbilden(personen, sollzeiten, abwesenheiten)
 
     def abbilden(
-        self, personen: list[dict[str, Any]], sollzeiten: list[dict[str, Any]]
+        self,
+        personen: list[dict[str, Any]],
+        sollzeiten: list[dict[str, Any]],
+        abwesenheiten: list[dict[str, Any]] = (),
     ) -> dict[int, Mitarbeiter]:
-        """Beide Antworten zu Personen nach ID - setzt :attr:`hinweise`."""
+        """Alle drei Antworten zu Personen nach ID - setzt :attr:`hinweise`."""
         arbeitszeiten = self._arbeitszeiten(sollzeiten)
+        abwesenheiten_je_person = self._abwesenheiten(abwesenheiten)
         return {
             int(person["id"]): Mitarbeiter(
                 id=int(person["id"]),
                 name=str(person["name"]) if person.get("name") else None,
                 aktiv=bool(person.get("active")),
                 arbeitszeiten=tuple(arbeitszeiten.get(int(person["id"]), ())),
+                abwesenheiten=tuple(abwesenheiten_je_person.get(int(person["id"]), ())),
             )
             for person in personen
             if person.get("id") is not None
@@ -113,6 +134,27 @@ class MitarbeiterRepository:
                     "vereinbart ist - ihre Kapazität ist nicht hinterlegt",
                     tuple(sorted(set(andere_typen))),
                 ),
+            )
+        return je_person
+
+    def _abwesenheiten(self, abwesenheiten: list[dict[str, Any]]) -> dict[int, list[Abwesenheit]]:
+        """Rohe Abwesenheiten zu Personen - ungefiltert nach Typ und Status.
+
+        Welche Typen und Status als Kapazitaetsabzug zaehlen, ist Teil des noch zu
+        bauenden Deckels (Spec 5.3) und wird hier nicht entschieden - siehe
+        :mod:`umsatzprognose.domaene.mitarbeiter`.
+        """
+        je_person: dict[int, list[Abwesenheit]] = defaultdict(list)
+        for eintrag in abwesenheiten:
+            users_id = int(eintrag["users_id"])
+            je_person[users_id].append(
+                Abwesenheit(
+                    mitarbeiter_id=users_id,
+                    beginnt=date.fromisoformat(eintrag["date_since"]),
+                    endet=date.fromisoformat(eintrag["date_until"]),
+                    typ=int(eintrag["type"]),
+                    status=int(eintrag["status"]),
+                )
             )
         return je_person
 

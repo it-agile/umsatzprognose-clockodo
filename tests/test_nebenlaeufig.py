@@ -12,6 +12,7 @@ vergeblich - der Test schlaegt mit einem Timeout fehl statt haengenzubleiben.
 from __future__ import annotations
 
 import asyncio
+from datetime import date
 
 import httpx
 import pytest
@@ -25,8 +26,14 @@ from umsatzprognose.clockodo.nebenlaeufig import gleichzeitig, synchron
 # Abrufe wieder nacheinander laufen.
 TIMEOUT = 5.0
 
-ERWARTETE_ABRUFE = 7
-"""Kunden, Personen, Sollzeiten, Projekte, Verbrauch, Umsatzhistorie, Monatsverbrauch."""
+# Fester Stichtag statt date.today(): der Dreimonatshorizont ab ihm bleibt im selben
+# Jahr, damit die Anzahl der Abwesenheits-Abrufe (einer je Jahr im Horizont) nicht vom
+# Tag der Testausfuehrung abhaengt.
+STICHTAG = date(2026, 8, 24)
+
+ERWARTETE_ABRUFE = 8
+"""Kunden, Personen, Sollzeiten, Abwesenheiten, Projekte, Verbrauch, Umsatzhistorie,
+Monatsverbrauch."""
 
 
 def treffpunkt_fuer(anzahl: int):
@@ -48,16 +55,18 @@ def test_alle_abrufe_eines_bestands_laufen_gleichzeitig(
     entrygroup_antwort,
     monats_antwort,
     projekt_monats_antwort,
+    abwesenheiten_antwort,
 ):
-    """Sieben Endpunkte, sieben offene Requests - keiner wartet auf einen anderen."""
+    """Acht Endpunkte, acht offene Requests - keiner wartet auf einen anderen."""
     warten = treffpunkt_fuer(ERWARTETE_ABRUFE)
     antworten = {
         "/v4/projects": projekt_antwort,
         "/v3/customers": kunden_antwort,
         "/v3/users": benutzer_antwort,
         "/targethours": sollzeit_antwort,
+        "/v4/absences": abwesenheiten_antwort,
     }
-    # Drei der sieben Requests gehen an /v2/entrygroups und unterscheiden sich nur in
+    # Drei der acht Requests gehen an /v2/entrygroups und unterscheiden sich nur in
     # der Gruppierung - Verbrauch je Person, Umsatz je Monat, Verbrauch je Projektmonat.
     nach_gruppierung = {
         ("projects_id", "users_id"): entrygroup_antwort,
@@ -74,7 +83,7 @@ def test_alle_abrufe_eines_bestands_laufen_gleichzeitig(
         return warten(request, koerper)
 
     client, requests = client_mit(handler)
-    bestand = BestandRepository(client).laden()
+    bestand = BestandRepository(client).laden(stichtag=STICHTAG)
 
     assert len(requests) == ERWARTETE_ABRUFE
     assert len(bestand.projekte) == 3
@@ -121,7 +130,12 @@ def test_ein_fehler_bricht_die_uebrigen_abrufe_ab():
 
 
 def test_laden_funktioniert_in_einem_laufenden_event_loop(
-    projekt_antwort, kunden_antwort, benutzer_antwort, sollzeit_antwort, monats_antwort
+    projekt_antwort,
+    kunden_antwort,
+    benutzer_antwort,
+    sollzeit_antwort,
+    monats_antwort,
+    abwesenheiten_antwort,
 ):
     """Der Fall Colab: dort laeuft immer schon ein Loop.
 
@@ -134,13 +148,14 @@ def test_laden_funktioniert_in_einem_laufenden_event_loop(
         "/v3/users": benutzer_antwort,
         "/targethours": sollzeit_antwort,
         "/v2/entrygroups": monats_antwort,
+        "/v4/absences": abwesenheiten_antwort,
     }
     client, _ = client_mit(
         lambda request: httpx.Response(200, json=antworten[request.url.path.removeprefix("/api")])
     )
 
     async def wie_in_einer_notebook_zelle():
-        return BestandRepository(client).laden()
+        return BestandRepository(client).laden(stichtag=STICHTAG)
 
     bestand = asyncio.run(wie_in_einer_notebook_zelle())
     assert len(bestand.projekte) == 3

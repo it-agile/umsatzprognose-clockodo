@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import date
 
-from umsatzprognose.domaene.mitarbeiter import Mitarbeiter, Wochenarbeitszeit
+from umsatzprognose.domaene.mitarbeiter import Abwesenheit, Mitarbeiter, Wochenarbeitszeit
 
 SIEBEN_STUNDEN = (7.0, 7.0, 7.0, 7.0, 7.0, 0.0, 0.0)
 ACHT_STUNDEN = (8.0, 8.0, 8.0, 8.0, 8.0, 0.0, 0.0)
@@ -48,3 +48,17 @@ def test_bei_ueberlappung_gilt_die_zuletzt_begonnene():
 
 def test_ohne_hinterlegte_sollzeit_bleibt_es_bei_none():
     assert Mitarbeiter(id=1).wochenstunden(date(2026, 8, 24)) is None
+
+
+def test_genehmigt_ist_nur_status_approved():
+    # AbsenceStatus laut clocodo-api.yaml: 0 Enquired, 1 Approved, 2 Declined,
+    # 3 ApprovalCancelled, 4 Cancelled.
+    genehmigt = Abwesenheit(
+        mitarbeiter_id=1, beginnt=date(2026, 9, 1), endet=date(2026, 9, 1), typ=1, status=1
+    )
+    unbestaetigt = Abwesenheit(
+        mitarbeiter_id=1, beginnt=date(2026, 9, 1), endet=date(2026, 9, 1), typ=1, status=0
+    )
+
+    assert genehmigt.genehmigt
+    assert not unbestaetigt.genehmigt

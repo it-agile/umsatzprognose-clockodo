@@ -14,7 +14,8 @@ Die Version je Endpunkt ist keine freie Wahl, sondern ausprobiert:
 ``/v3/users``                Personen. ``default_target_hours`` ist ein Schalter!
 ``/targethours``             Sollarbeitszeit, unversioniert. ``/v2`` und ``/v3`` -> 404
 ``/v2/entrygroups``          Verbrauch und Umsatz, aggregiert
-``/v4/absences``             geplante Abwesenheiten (5.3). ``/``, ``/v2``, ``/v3`` -> 410
+``/v4/absences``             geplante Abwesenheiten (5.3), Jahresfilter als ``filter[year]``.
+                              ``/``, ``/v2``, ``/v3`` -> 410 deprecated
 ===========================  ==========================================================
 
 **Paginierung** gibt es bei ``/v4/projects``, ``/v3/customers`` und ``/v3/users``:
@@ -307,3 +308,20 @@ class ClockodoClient:
         return await self.entrygroups(
             [GRUPPIERUNG_MONAT], time_since=time_since, time_until=time_until
         )
+
+    async def absences(self, year: int) -> list[dict[str, Any]]:
+        """Abwesenheiten eines Jahres aus ``/v4/absences`` (Spec 5.3).
+
+        Die Legacy-Pfade ``/absences``, ``/v2/absences`` und ``/v3/absences``
+        antworten mit 410 ``deprecated`` - ``/v4`` ist keine freie Wahl. Der
+        Jahresfilter ist ein ``deepObject``-Parameter (``filter[year]``, nicht
+        ``year`` direkt), analog zu ``grouping[]`` bei ``/v2/entrygroups``. Die
+        Antwort traegt kein ``paging`` - Envelope-Key ist ``data``.
+
+        Der Abruf ist ungefiltert nach Status und Typ: welche der beiden fuer den
+        Kapazitaetsdeckel zaehlen (etwa ob eine unbestaetigte oder eine abgelehnte
+        Abwesenheit mitzaehlt), ist Teil des noch zu bauenden Deckels und wird nicht
+        hier vorweggenommen.
+        """
+        payload = await self.get("/v4/absences", {"filter[year]": year})
+        return payload["data"]

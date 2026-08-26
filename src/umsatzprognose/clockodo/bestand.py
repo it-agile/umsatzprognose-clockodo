@@ -1,8 +1,11 @@
 """Der eine Einstieg, der aus Clockodo einen fertigen Bestand macht.
 
-**Sieben Abrufe, alle gleichzeitig.** Sie bauen nicht aufeinander auf - Kunden, Personen,
-Sollzeiten, Projekte, Verbrauch, Umsatzhistorie und der monatliche Verbrauch je Projekt
-sind sieben unabhaengige Antworten. Aufeinander angewiesen ist erst das
+**Sieben Abrufe, alle gleichzeitig - plus einen je Jahr im Horizont fuer
+Abwesenheiten.** Kunden, Personen, Sollzeiten, Projekte, Verbrauch, Umsatzhistorie und
+der monatliche Verbrauch je Projekt sind sieben unabhaengige Antworten, dazu die
+geplanten Abwesenheiten (Spec 5.3): ``/v4/absences`` nimmt nur einen Jahresfilter, ein
+Horizont ueber die Jahresgrenze braucht also zwei Abrufe statt einem. Keine dieser
+Antworten baut auf einer anderen auf. Aufeinander angewiesen ist erst das
 *Zusammensetzen*: die Projekte brauchen Kunden und Personen als Beschriftung und fuer die
 Anteile, die Verbrauchsverlaeufe brauchen die fertigen Projekte samt Budget. Deshalb ist
 der Abruf hier gefaechert und die Abbildung danach der Reihe nach.
@@ -26,7 +29,7 @@ from __future__ import annotations
 
 from datetime import date
 
-from umsatzprognose.clockodo.client import ClockodoClient, verbrauch_bis
+from umsatzprognose.clockodo.client import ClockodoClient, horizontende, verbrauch_bis
 from umsatzprognose.clockodo.config import ClockodoCredentials
 from umsatzprognose.clockodo.kunden import KundenRepository
 from umsatzprognose.clockodo.mitarbeiter import MitarbeiterRepository
@@ -101,14 +104,18 @@ class BestandRepository:
         """
         stichtag = stichtag or date.today()
         personen = MitarbeiterRepository(self._client)
+        # Der Horizont beginnt im Stichtagsjahr und kann bis ins naechste reichen
+        # (Spec 5.4); /v4/absences filtert nur nach einem Jahr, also eines oder zwei.
+        jahre = sorted({stichtag.year, int(horizontende(stichtag, horizont_monate)[:4])})
 
-        # Fuenf Faecher, sieben Requests - Personen und Projekte bringen je zwei mit.
-        # Der Stichtag wird hier festgelegt und nicht in den Abrufen aufgeloest: sonst
-        # koennten die gleichzeitigen Abrufe ueber einen Tageswechsel hinweg
-        # verschiedene Fenster erwischen.
+        # Fuenf Faecher, sieben plus bis zu zwei Requests - Personen und Projekte
+        # bringen je zwei mit, dazu Abwesenheiten je Jahr im Horizont. Der Stichtag
+        # wird hier festgelegt und nicht in den Abrufen aufgeloest: sonst koennten die
+        # gleichzeitigen Abrufe ueber einen Tageswechsel hinweg verschiedene Fenster
+        # erwischen.
         kunden, mitarbeiter, rohe_projekte, umsatzhistorie, monatsgruppen = await gleichzeitig(
             KundenRepository(self._client).laden_async(),
-            personen.laden_async(),
+            personen.laden_async(jahre=jahre),
             projekt_rohdaten(self._client, time_until=verbrauch_bis(stichtag)),
             UmsatzRepository(self._client).laden_async(
                 stichtag, abgeschlossene=abgeschlossene_monate

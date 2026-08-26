@@ -11,12 +11,17 @@ aktiven Personen. Die tatsaechliche Sollarbeitszeit steht im
 unversionierten Legacy-Endpunkt ``/targethours``, je Person mit Gueltigkeitszeitraum und
 Stunden je Wochentag. Details in :mod:`umsatzprognose.clockodo.mitarbeiter`.
 
-Noch nicht hier: die **verfuegbare** Kapazitaet aus 5.3, also Sollarbeitszeit minus
-geplante Abwesenheit minus Abschlag fuer ungeplante Abwesenheit. Die geplanten
-Abwesenheiten liegen in ``/v4/absences`` (geprueft: ``/absences``, ``/v2`` und ``/v3``
-antworten mit 410), der Abschlag ist eine Schaetzgroesse, die die Spec der Kalibrierung
-zuordnet und nicht beziffert. Beides gehoert an diese Klasse, sobald die Groessen
-feststehen - erfunden wird hier nichts.
+Die geplante Abwesenheit (``Abwesenheit``, aus ``/v4/absences``) ist inzwischen hier -
+roh, mit Clockodos eigenen Typ- und Statuscodes, ohne Deutung. Noch nicht hier: die
+**verfuegbare** Kapazitaet aus 5.3, also Sollarbeitszeit minus geplante Abwesenheit minus
+Abschlag fuer ungeplante Abwesenheit. Diese Rechnung braucht zusaetzlich die Feiertage
+(noch nicht angebunden) und entscheidet, welche Typen und Status ueberhaupt als
+Kapazitaetsabzug zaehlen - eine unbestaetigte (``status`` "Enquired") oder eine
+abgelehnte Abwesenheit zaehlt vermutlich nicht mit, und die Typen "Home office" und
+"Work out of office" tragen laut Doku ohnehin die geplanten Stunden ("planned hours get
+applied"), sind also keine Abwesenheit vom Arbeiten. Beides wird hier nicht
+vorweggenommen; der Abschlag fuer ungeplante Abwesenheit ist zudem eine Schaetzgroesse,
+die die Spec der Kalibrierung zuordnet und nicht beziffert.
 """
 
 from __future__ import annotations
@@ -25,6 +30,42 @@ from dataclasses import dataclass
 from datetime import date
 
 WOCHENTAGE = ("montag", "dienstag", "mittwoch", "donnerstag", "freitag", "samstag", "sonntag")
+
+# AbsenceStatus.Approved laut clocodo-api.yaml (0 Enquired, 1 Approved, 2 Declined,
+# 3 ApprovalCancelled, 4 Cancelled).
+STATUS_GENEHMIGT = 1
+
+# AbsenceType.OverTimeReduction - der einzige Typ, der als Stundenabwesenheit
+# (``count_hours``) statt als Tagesabwesenheit (``count_days``) gefuehrt wird.
+TYP_UEBERSTUNDENABBAU = 3
+
+
+@dataclass(frozen=True)
+class Abwesenheit:
+    """Eine geplante Abwesenheit einer Person, aus ``/v4/absences`` (Spec 5.3).
+
+    ``typ`` und ``status`` bleiben Clockodos numerische Codes (siehe
+    :mod:`umsatzprognose.clockodo.abwesenheiten` fuer ihre Bedeutung) - welche davon in
+    den Kapazitaetsdeckel eingehen, ist dort noch nicht entschieden.
+
+    Attributes:
+        mitarbeiter_id: die ``users_id``, zu der die Abwesenheit gehoert.
+        beginnt: erster Tag der Abwesenheit.
+        endet: letzter Tag der Abwesenheit, bei einem eintaegigen Eintrag gleich
+            ``beginnt``.
+        typ: der Clockodo-``AbsenceType`` (1-15).
+        status: der Clockodo-``AbsenceStatus`` (0-4).
+    """
+
+    mitarbeiter_id: int
+    beginnt: date
+    endet: date
+    typ: int
+    status: int
+
+    @property
+    def genehmigt(self) -> bool:
+        return self.status == STATUS_GENEHMIGT
 
 
 @dataclass(frozen=True)
@@ -59,6 +100,7 @@ class Mitarbeiter:
     name: str | None = None
     aktiv: bool = False
     arbeitszeiten: tuple[Wochenarbeitszeit, ...] = ()
+    abwesenheiten: tuple[Abwesenheit, ...] = ()
 
     def __str__(self) -> str:
         return self.name or f"Person {self.id}"

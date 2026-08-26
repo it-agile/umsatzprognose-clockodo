@@ -128,6 +128,15 @@ def test_sollarbeitszeit_kommt_vom_unversionierten_endpunkt():
     assert requests[0].url.path == "/api/targethours"
 
 
+def test_abwesenheiten_filtern_ueber_deepobject_jahresparameter():
+    # filter[year], nicht year direkt - deepObject-Form wie bei grouping[].
+    client, requests = client_mit(lambda _: httpx.Response(200, json={"data": []}))
+    synchron(client.absences(2026))
+
+    assert requests[0].url.path == "/api/v4/absences"
+    assert requests[0].url.params["filter[year]"] == "2026"
+
+
 def test_fehler_traegt_den_antwortkoerper():
     # raise_for_status wuerde genau die Begruendung verwerfen, die den beanstandeten
     # Parameter benennt.

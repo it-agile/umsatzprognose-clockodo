@@ -155,6 +155,39 @@ def sollzeit_antwort() -> dict:
 
 
 @pytest.fixture
+def abwesenheiten_antwort() -> dict:
+    """Eine genehmigte Tagesabwesenheit und eine abgelehnte, beide derselben Person.
+
+    Struktur einer ``AbsenceDayAbsenceV4`` aus ``clocodo-api.yaml`` - Envelope-Key
+    ``data``, kein ``paging``.
+    """
+    return {
+        "data": [
+            {
+                "id": 1,
+                "users_id": 301,
+                "date_since": "2026-09-14",
+                "date_until": "2026-09-18",
+                "type": 1,
+                "status": 1,
+                "public_note": None,
+                "count_days": 5.0,
+            },
+            {
+                "id": 2,
+                "users_id": 301,
+                "date_since": "2026-10-01",
+                "date_until": "2026-10-01",
+                "type": 4,
+                "status": 2,
+                "public_note": None,
+                "count_days": 1.0,
+            },
+        ]
+    }  # fmt: skip
+
+
+@pytest.fixture
 def entrygroup_antwort() -> dict:
     """Verbrauch je Projekt mit Personen-Untergruppen, inklusive ``group == 0``."""
     return {

@@ -58,6 +58,41 @@ def test_sollarbeitszeit_kommt_nicht_aus_default_target_hours(benutzer_antwort, 
     assert personen[302].wochenstunden(STICHTAG) is None
 
 
+def test_ohne_jahre_bleiben_abwesenheiten_ungeladen(benutzer_antwort, sollzeit_antwort):
+    # Kein Abruf auf /v4/absences ohne jahre - eine Route dafuer fehlt hier absichtlich.
+    client, requests = client_mit_routen(
+        {"/v3/users": benutzer_antwort, "/targethours": sollzeit_antwort}
+    )
+    personen = MitarbeiterRepository(client).laden()
+
+    assert personen[301].abwesenheiten == ()
+    assert not any(r.url.path.endswith("/v4/absences") for r in requests)
+
+
+def test_abwesenheiten_werden_der_person_zugeordnet(
+    benutzer_antwort, sollzeit_antwort, abwesenheiten_antwort
+):
+    client, requests = client_mit_routen(
+        {
+            "/v3/users": benutzer_antwort,
+            "/targethours": sollzeit_antwort,
+            "/v4/absences": abwesenheiten_antwort,
+        }
+    )
+    personen = MitarbeiterRepository(client).laden(jahre=[2026])
+
+    abwesenheiten = personen[301].abwesenheiten
+    assert len(abwesenheiten) == 2
+    genehmigt = next(a for a in abwesenheiten if a.genehmigt)
+    assert genehmigt.beginnt == date(2026, 9, 14)
+    assert genehmigt.endet == date(2026, 9, 18)
+    abgelehnt = next(a for a in abwesenheiten if not a.genehmigt)
+    assert abgelehnt.status == 2
+    assert personen[302].abwesenheiten == ()
+    absences_request = next(r for r in requests if r.url.path.endswith("/v4/absences"))
+    assert absences_request.url.params["filter[year]"] == "2026"
+
+
 def test_projekt_id_und_budgetformen(projekt_antwort):
     daten = projekt_antwort["data"]
     assert projekt_id(daten[0]) == 101
@@ -213,6 +248,7 @@ def test_bestand_setzt_alles_zusammen(
     entrygroup_antwort,
     monats_antwort,
     projekt_monats_antwort,
+    abwesenheiten_antwort,
 ):
     def entrygroups(request):
         # Derselbe Pfad, drei voellig verschiedene Antworten - je nach Gruppierung.
@@ -230,6 +266,7 @@ def test_bestand_setzt_alles_zusammen(
             "/v3/users": benutzer_antwort,
             "/targethours": sollzeit_antwort,
             "/v2/entrygroups": entrygroups,
+            "/v4/absences": abwesenheiten_antwort,
         }
     )
     bestand = BestandRepository(client).laden(stichtag=STICHTAG)
@@ -240,10 +277,13 @@ def test_bestand_setzt_alles_zusammen(
     assert [p.id for p in bestand.im_prognose_scope] == [101]
     assert bestand.restvolumen_prognosewirksam == 160000.0 - 60000.0
     assert bestand.umsatzhistorie.summe() == 300000.0
-    # Sieben Abrufe: Kunden, Personen, Sollzeiten, Projekte, Verbrauch, Monatsumsatz,
-    # Monatsverbrauch je Projekt.
-    assert len(requests) == 7
+    # Der Horizont ab STICHTAG (drei Monate) bleibt im selben Jahr - ein Abruf auf
+    # /v4/absences statt zwei.
+    assert len(next(p for p in bestand.mitarbeiter if p.id == 301).abwesenheiten) == 2
+    # Acht Abrufe: Kunden, Personen, Sollzeiten, Abwesenheiten, Projekte, Verbrauch,
+    # Monatsumsatz, Monatsverbrauch je Projekt.
+    assert len(requests) == 8
     assert any("ohne Projekt" in h.text for h in bestand.hinweise())
-    # Der siebte Abruf traegt die Verteilung aus Spec 5.2 bis in den Bestand.
+    # Der Monatsverbrauch je Projekt traegt die Verteilung aus Spec 5.2 bis in den Bestand.
     assert [v.projekt.id for v in bestand.verbrauchsverlaeufe] == [101]
     assert bestand.abrufquotenverteilung().anzahl == 4

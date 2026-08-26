@@ -251,7 +251,7 @@ Stand der Clockodo-API:
 | Kundenname (Beschriftung) | `GET /v3/customers` | `id`, `name` |
 | Personen | `GET /v3/users` | `id`, `name`, `active` – **nicht** `default_target_hours` |
 | Sollarbeitszeit | `GET /targethours` (unversioniert) | `users_id`, `date_since`/`date_until`, Stunden je Wochentag |
-| Geplante Abwesenheit | `GET /v4/absences?year=…` | noch nicht ausgewertet (Spec 5.3) |
+| Geplante Abwesenheit | `GET /v4/absences`, `filter[year]` (kein `year` direkt) | geladen in `Mitarbeiter.abwesenheiten`, roh – Deutung von Typ/Status noch offen (Spec 5.3) |
 | Feiertage | `GET /v2/nonbusinessDays` | `nonbusiness_group_id`, `evaluated_date`, `half_day` (bool) – noch nicht ausgewertet (Spec 5.3) |
 | Feiertage je Person | `GET /v2/usersNonbusinessDays?year=…` | `users_id`, `days[]` – noch nicht ausgewertet |
 | Feiertagsgruppe je Person | `GET /v3/usersNonbusinessGroups` | `users_id`, `nonbusiness_groups_id`, `date_since`/`date_until` |
@@ -457,8 +457,17 @@ Die Doku ergänzt vier Dinge dazu:
   stille Lücke, sobald jemand auf den Firmenstandard umgestellt wird.
 - `/targethours` nimmt einen `users_id`-Filter (Array, Zahl oder CSV), bisher unbenutzt.
 
-Für die geplanten Abwesenheiten (5.3) ist `/v4/absences?year=…` der richtige Endpunkt:
-`/absences`, `/v2/absences` und `/v3/absences` antworten mit 410 `deprecated`.
+Für die geplanten Abwesenheiten (5.3) ist `/v4/absences` der richtige Endpunkt –
+`/absences`, `/v2/absences` und `/v3/absences` antworten mit 410 `deprecated`. Der
+Jahresfilter ist ein `deepObject`-Parameter (`filter[year]`, nicht `year` direkt),
+analog zu `grouping[]` bei `/v2/entrygroups`; die Antwort hat kein `paging`, Envelope-Key
+ist `data`. `ClockodoClient.absences(year)` und `MitarbeiterRepository.laden_async(jahre=…)`
+holen sie ungefiltert nach Status und Typ – Envelope und Feldnamen stehen fest, welche
+Status (etwa `Enquired` gegenüber `Approved`) und welche Typen (`Home office` und `Work
+out of office` tragen laut Doku ohnehin die geplanten Stunden, sind also keine
+Abwesenheit vom Arbeiten) tatsächlich in den Kapazitätsdeckel eingehen, ist damit noch
+nicht entschieden. `Mitarbeiter.abwesenheiten` führt sie roh, mit Clockodos `type`- und
+`status`-Codes.
 
 ### Feiertage: zwei Generationen, und die Schreibweise entscheidet
 
@@ -536,10 +545,24 @@ laufenden Monats stumm dem Verbrauch zu, statt sie der Prognose anzurechnen.
 ## Nächster geplanter Schritt
 
 Laut Spec Abschnitt 11, Schritt 2: **Abwesenheiten und Feiertage auswerten** (5.3).
-`/v4/absences?year=…` anbinden und daraus den Abschlag für ungeplante Abwesenheit
-schätzen; für die Feiertage `/v2/usersNonbusinessDays?year=…`, das sie je Person fertig
-zugeordnet liefert – die Zuordnung über die Feiertagsgruppe von Hand erübrigt sich damit.
-Der Horizont reicht über eine Jahresgrenze, also zwei Abrufe je Endpunkt. Danach die
+
+**Abwesenheiten sind angebunden, aber nur der Abruf.** `ClockodoClient.absences(year)`
+liest `/v4/absences` mit `filter[year]`, `MitarbeiterRepository.laden_async(jahre=…)`
+holt sie je Jahr im Horizont gleichzeitig mit Personen und Sollzeiten und ordnet sie über
+`users_id` zu; `BestandRepository` bestimmt die Jahre aus Stichtag und `horizontende()`
+und reicht sie durch – bei einem Horizont über die Jahresgrenze automatisch zwei Abrufe.
+`Mitarbeiter.abwesenheiten` führt das Ergebnis als `Abwesenheit`-Tupel, roh mit
+Clockodos `type`- und `status`-Codes. **Offen bleibt die Deutung**, nicht der Zugriff:
+welche Status (`Approved` gegenüber `Enquired`, `Declined`, …) und welche Typen als
+Kapazitätsabzug zählen – `Home office` und `Work out of office` tragen laut Doku die
+geplanten Stunden und sind damit vermutlich keine Abwesenheit vom Arbeiten –, und wie
+daraus der Abschlag für ungeplante Abwesenheit geschätzt wird, ist noch zu entscheiden.
+
+Als Nächstes die Feiertage: `/v2/usersNonbusinessDays?year=…` anbinden, das sie je
+Person fertig zugeordnet liefert – die Zuordnung über die Feiertagsgruppe von Hand
+erübrigt sich damit. Auch hier reicht der Horizont ggf. über eine Jahresgrenze, also
+zwei Abrufe. Erst wenn beides steht, lässt sich der Kapazitätsdeckel aus 5.3 bauen –
+Sollstunden minus geplante Abwesenheit minus Feiertage minus Abschlag. Danach die
 Simulation (5.4) samt vollständiger Ausgabe (5.5), dann der Rückwärtstest über 12
 Stichtage – der braucht wegen des Limits von 10 `entrygroups`-Abrufen je Minute eine
 Drosselung oder wiederverwendete Antworten.
