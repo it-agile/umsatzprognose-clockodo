@@ -85,7 +85,7 @@ def test_hinweise_nennen_die_offenen_faelle():
     assert any("ohne bezifferbares Auftragsvolumen" in t for t in texte)
     assert any("überschrittenem Budget" in t for t in texte)
     ueberschritten = next(v for t, v in texte.items() if "überschrittenem" in t)
-    assert ueberschritten == (3,)
+    assert ueberschritten == ("Überzogen",)
 
 
 def test_abgeschlossene_aber_aktive_projekte_werden_gemeldet():

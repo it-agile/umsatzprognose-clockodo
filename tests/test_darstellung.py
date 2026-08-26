@@ -93,7 +93,7 @@ def test_hinweistabelle_kuerzt_lange_id_listen():
     hinweis = Hinweis("Viele Projekte", tuple(range(20)))
     zeile = tabellen.hinweistabelle([hinweis]).iloc[0]
     assert zeile["Betroffen"] == 20
-    assert zeile["IDs"].endswith("…")
+    assert zeile["Projekte"].endswith("…")
 
 
 def test_dashboard_rechnet_kennzahlen_ohne_den_laufenden_monat():
