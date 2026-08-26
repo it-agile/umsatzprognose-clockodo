@@ -126,12 +126,43 @@ Rechenlogik gehört ins Paket, nicht ins Notebook.
 
 ## Stand der Implementierung
 
-Umgesetzt sind die Schritte 1 und 2 aus Spec Abschnitt 11: Restvolumen je Projekt (5.1)
-und die **geschätzte Abrufquote-Verteilung** (5.2), dazu das vollständige Domänenmodell
-außer der Simulation selbst – inklusive Aufteilungsschlüssel je Person (5.4 Schritt 3)
-und der **verfügbaren Kapazität** (5.3, `Mitarbeiter.verfuegbare_kapazitaet(jahr, monat)`:
-Sollstunden minus Feiertage minus geplante Abwesenheit, taggenau gerechnet – der Abschlag
-für ungeplante Abwesenheit wird im MVP ignoriert, Entscheidung 26.08.2026).
+Umgesetzt sind die Schritte 1 bis 3 aus Spec Abschnitt 11: Restvolumen je Projekt (5.1),
+die **geschätzte Abrufquote-Verteilung** (5.2), die **verfügbare Kapazität** (5.3,
+`Mitarbeiter.verfuegbare_kapazitaet(jahr, monat)`: Sollstunden minus Feiertage minus
+geplante Abwesenheit, taggenau gerechnet – der Abschlag für ungeplante Abwesenheit wird
+im MVP ignoriert, Entscheidung 26.08.2026) und seit dem 26.08.2026 die **Monte-Carlo-
+Simulation** (5.4) selbst: `umsatzprognose.domaene.simulation.simulieren()`, aufgerufen
+über `Bestand.simulieren()`. Der Lauf-Zustand (Restvolumen je Projekt und Lauf) liegt als
+einfaches Dictionary neben den unveränderlichen Fachobjekten, nicht in ihnen – siehe der
+Moduldocstring von `simulation.py` und der Kommentar an `Bestand`.
+
+Drei Modellierungsentscheidungen dabei, alle 26.08.2026:
+
+- **Stundensatz `None` und `0.0` werden identisch behandelt**: ein Projekt ohne
+  ableitbaren Satz kann seinen gewünschten Euro-Betrag nicht in Stunden umrechnen und
+  geht deshalb ungedeckelt (ohne Kapazitätsverbrauch) in die Prognose ein, nur durch sein
+  Restvolumen begrenzt.
+- **Monat 1 skaliert über den Anteil der verbleibenden Wochentage Mo–Fr am Monat** –
+  ohne Feiertage oder individuelle Abwesenheiten einzurechnen, weil das schon die
+  Kapazitätsrechnung selbst leistet.
+- **Der Cutoff durch `automatic_completion`/`deadline` gilt monatsweise, nicht
+  taggenau**: der Horizontmonat, der die `deadline` enthält, zählt noch voll, der erste
+  vollständig danach liegende Monat liefert 0. Eine taggenaue Skalierung wie bei Monat 1
+  wäre je Projekt einzeln nötig statt einmal global für den ganzen Horizont – der
+  Mehraufwand stand in keinem Verhältnis zur gewonnenen Genauigkeit.
+
+Kapazitäten hängen nur an Stichtag und Horizontmonat, nicht am Lauf, und werden deshalb
+einmal vor der Lauf-Schleife berechnet statt bei jedem der 10.000 Läufe neu –
+`verfuegbare_kapazitaet()` iteriert selbst schon über jeden Tag des Monats.
+
+Noch nicht in die Simulation verdrahtet ist die **vollständige Ausgabe aus Spec 5.5**:
+`MonteCarloPrognose` liefert die vier über die `Prognose`-ABC geforderten Größen
+(Konfidenzniveaus je Monat und Summe, Anteil kapazitätslimitierter Läufe), aber noch
+nicht den separat auszuweisenden bereits gebuchten Betrag je Horizontmonat oder den
+Verbrauch vor dem Stichtag im laufenden Monat – beides reine Ausgabegrößen, die
+`Verbrauchsverlauf.gebucht()` bzw. `verbrauch_vor()` bereits liefern können, aber noch
+nicht an `MonteCarloPrognose` oder die Diagramme angebunden sind. Der Rückwärtstest über
+12 Stichtage (Spec 11.4) steht ebenfalls noch aus.
 
 Die Verteilung liegt an `Bestand.abrufquotenverteilung()` und stammt aus den
 `Verbrauchsverlauf`-Objekten. Ihre Kennzahlen stehen hier bewusst nicht: sie stammen aus
@@ -155,11 +186,11 @@ Zwei Punkte dazu, die man wissen muss:
   Schaden begrenzt, weil Schritt 2 auf das verbleibende Restvolumen kappt – eine Quote von
   weit über 1 heißt dort „ruf alles ab, was offen ist".
 
-Es fehlt: die Monte-Carlo-Simulation (5.4) selbst, die Abrufquote-Verteilung (5.2) und
-verfügbare Kapazität (5.3) gegen die Restvolumen und den Aufteilungsschlüssel führt.
-`Bestand.simulieren()` liefert deshalb weiterhin `NochKeinePrognose` mit Begründung, und
-das Dashboard zeigt an der Stelle der Bandbreite genau diese Begründung an – eine
-erfundene Kurve wäre der schlechtere Platzhalter.
+`Bestand.simulieren()` liefert weiterhin `NochKeinePrognose` mit Begründung, aber nur
+noch, wenn tatsächlich Daten fehlen – kein Projekt im Prognose-Scope oder keine
+Abrufquote-Verteilung mangels Beobachtungen. Das Dashboard zeigt an der Stelle der
+Bandbreite in dem Fall weiterhin genau diese Begründung an; eine erfundene Kurve wäre
+der schlechtere Platzhalter.
 
 ## Keine gelesenen Werte im Repository
 
@@ -576,9 +607,9 @@ laufenden Monats stumm dem Verbrauch zu, statt sie der Prognose anzurechnen.
 
 ## Nächster geplanter Schritt
 
-**Spec 5.3 (Abwesenheiten, Feiertage, verfügbare Kapazität) ist vollständig umgesetzt
-und entschieden**, alle Daten samt Deutung – nur noch die Monte-Carlo-Simulation (5.4)
-selbst fehlt.
+**Spec 5.3 (Abwesenheiten, Feiertage, verfügbare Kapazität) und 5.4 (Monte-Carlo-
+Simulation) sind vollständig umgesetzt und entschieden.** Es fehlen noch zwei Teile der
+Ausgabe aus Spec 5.5 und der Rückwärtstest – Details dazu am Ende dieses Abschnitts.
 
 Zugriff: `ClockodoClient.absences(year)` liest `/v4/absences` mit `filter[year]`,
 `ClockodoClient.users_nonbusiness_days(year)` liest `/v2/usersNonbusinessDays` mit dem
@@ -609,26 +640,35 @@ Tag, an dem sich Feiertag und Abwesenheit überschneiden (z. B. Urlaub über Wei
 nicht doppelt abgezogen wird. Details unter „Geplante Abwesenheiten" und „Feiertage: zwei
 Generationen" oben.
 
-Als Nächstes die **Simulation (5.4)** selbst: 10.000 Läufe, je Monat und Projekt eine
-Abrufquote aus der Verteilung (5.2) ziehen, in Stunden umrechnen, auf Personen aufteilen
-(`Projekt.anteil_je_mitarbeiter()`), gegen `Mitarbeiter.verfuegbare_kapazitaet()`
-projektübergreifend deckeln, zurück in Euro. Dazu die vollständige Ausgabe (5.5), dann
-der Rückwärtstest über 12 Stichtage – der braucht wegen des Limits von 10
+Die **Simulation (5.4)** ist seit dem 26.08.2026 gebaut:
+`umsatzprognose.domaene.simulation.simulieren()`, aufgerufen über `Bestand.simulieren()`.
+10.000 Läufe, je Monat und Projekt eine Abrufquote aus der Verteilung (5.2) gezogen, in
+Stunden umgerechnet, auf Personen aufgeteilt (`Projekt.anteil_je_mitarbeiter()`), gegen
+`Mitarbeiter.verfuegbare_kapazitaet()` projektübergreifend gedeckelt, zurück in Euro.
+Kapazitäten sind laufunabhängig und werden einmal vorab je Person und Horizontmonat
+berechnet, nicht 10.000-mal. `MonteCarloPrognose` trägt das Ergebnis; die beiden Fälle,
+in denen weiterhin `NochKeinePrognose` zurückkommt, stehen unter „Stand der
+Implementierung" oben.
+
+Zwei Punkte aus der Doku-Gegenprobe, die jetzt in der Simulation verdrahtet sind:
+
+- **Stundensatz genau 0** (kommt im Scope vor) erzeugt in Schritt 3 keinen
+  Stundenbedarf – die Simulation behandelt ihn identisch zu `None` (kein ableitbarer
+  Satz): der gewünschte Euro-Betrag geht ungedeckelt, ohne Kapazitätsverbrauch, direkt in
+  die Prognose ein. `Projekt.stundensatz_uebersteuerung` bleibt daneben verfügbar, um
+  einen belastbaren Satz von Hand zu hinterlegen (`Bestand.mit_stundensatz_uebersteuerungen()`,
+  `Dashboard.stundensatz_uebersteuern()`); ein Hinweis benennt betroffene Projekte, solange
+  keine Korrektur hinterlegt ist.
+- **Ein Projekt mit `deadline` und `automatic_completion`** trägt ab dem Horizontmonat
+  nach der `deadline` keinen Umsatz mehr bei (Spec 5.4 Schritt 1) – der Monat, der die
+  `deadline` selbst enthält, zählt noch voll (Entscheidung 26.08.2026: monatsweiser statt
+  taggenauer Cutoff, siehe `simulation.py`-Moduldocstring und
+  `_traegt_noch_bei()`). Eine `deadline` ohne `automatic_completion` bleibt unverbindlich
+  und ohne Wirkung.
+
+Offen sind noch zwei Teile der **Ausgabe aus Spec 5.5**: der separat auszuweisende
+bereits gebuchte Betrag je Horizontmonat und der Verbrauch vor dem Stichtag im laufenden
+Monat. Beide Werte liefern `Verbrauchsverlauf.gebucht()` bzw. `verbrauch_vor()` bereits;
+es fehlt die Anbindung an `MonteCarloPrognose` und an `diagramme.prognose()`. Danach der
+**Rückwärtstest über 12 Stichtage** – der braucht wegen des Limits von 10
 `entrygroups`-Abrufen je Minute eine Drosselung oder wiederverwendete Antworten.
-
-Zwei Dinge aus der Doku-Gegenprobe sind inzwischen entschieden, aber noch nicht in eine
-Simulation verdrahtet, weil es die noch nicht gibt:
-
-- **Stundensatz genau 0** (kommt im Scope vor) darf in 5.4 Schritt 3 keinen
-  Stundenbedarf erzeugen, sonst ist es eine Division durch Null. `Projekt` führt dafür
-  `stundensatz_uebersteuerung`: gesetzt, hat sie Vorrang vor dem abgeleiteten Satz.
-  `Bestand.mit_stundensatz_uebersteuerungen()` liefert einen korrigierten Bestand,
-  `Dashboard.stundensatz_uebersteuern()` macht das im Notebook nutzbar (geschlüsselt
-  über den Projektnamen wie in der Hinweistabelle, nicht über die ID). Ein Hinweis
-  benennt betroffene Projekte, solange keine Korrektur hinterlegt ist.
-- **Ein Projekt mit `deadline` und `automatic_completion`** trägt ab diesem Datum
-  keinen Umsatz mehr bei (Entscheidung 26.08.2026, Spec 5.4 Schritt 1) – eine
-  `deadline` ohne `automatic_completion` ist unverbindlich und bleibt ohne Wirkung.
-  `Projekt.automatischer_abschluss` liefert das Datum, sonst `None`. Ein Hinweis am
-  `Bestand` benennt betroffene Projekte samt Datum; die Simulation, die das Datum
-  tatsächlich als Cutoff je Horizontmonat auswertet, ist noch zu bauen.

@@ -25,13 +25,15 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass, field, replace
 from datetime import date
+from random import Random
 
 from umsatzprognose.domaene.abrufquote import Abrufquotenverteilung
 from umsatzprognose.domaene.hinweis import Hinweis
 from umsatzprognose.domaene.kunde import Kunde
 from umsatzprognose.domaene.mitarbeiter import Mitarbeiter
-from umsatzprognose.domaene.prognose import NochKeinePrognose, Prognose
+from umsatzprognose.domaene.prognose import Prognose
 from umsatzprognose.domaene.projekt import Projekt
+from umsatzprognose.domaene.simulation import simulieren
 from umsatzprognose.domaene.umsatzhistorie import Umsatzhistorie
 from umsatzprognose.domaene.verbrauchsverlauf import Verbrauchsverlauf
 from umsatzprognose.domaene.zahlen import euro
@@ -276,23 +278,19 @@ class Bestand:
             for quote in verlauf.abrufquoten(self.stichtag)
         )
 
-    def simulieren(self, monate: int = 3) -> Prognose:
-        """Die Monte-Carlo-Simulation aus Spec 5.4 - noch nicht gebaut.
+    def simulieren(
+        self, monate: int = 3, *, laeufe: int = 10000, zufall: Random | None = None
+    ) -> Prognose:
+        """Die Monte-Carlo-Simulation aus Spec 5.4.
 
-        Die Begruendung nennt, was jetzt noch fehlt, und nicht mehr, was einmal fehlte:
-        die Abrufquote-Verteilung ist geschaetzt, sobald die Verlaeufe geladen sind.
+        Delegiert an :func:`umsatzprognose.domaene.simulation.simulieren` - der Bestand
+        ist der fachlich richtige Einstieg (siehe Moduldocstring), die Rechnung selbst
+        steht in einem eigenen Modul, weil sie den Lauf-Zustand neben die unveraenderlichen
+        Fachobjekte stellt statt in sie hinein.
 
         Args:
             monate: Laenge des Prognosehorizonts; die Spec sieht 1 bis 3 vor.
+            laeufe: Anzahl der Monte-Carlo-Laeufe, 10.000 laut Spec.
+            zufall: der Zufallsgenerator; ungesetzt erzeugt jeder Aufruf einen neuen.
         """
-        verteilung = self.abrufquotenverteilung()
-        if not verteilung.vorhanden:
-            return NochKeinePrognose()
-        return NochKeinePrognose(
-            "Die Simulation nach Spec 5.4 ist noch nicht gebaut. Die Abrufquote-Verteilung "
-            f"(5.2) ist geschätzt - {verteilung.anzahl} Projekt-Monate, Median "
-            f"{verteilung.median:.2f} -, und die verfügbare Kapazität (5.3) ist über "
-            "Mitarbeiter.verfuegbare_kapazitaet() berechenbar (Sollstunden minus Feiertage "
-            "minus geplante Abwesenheit; der Abschlag für ungeplante Abwesenheit wird im "
-            "MVP ignoriert). Es fehlt die Simulation selbst, die beides zusammenführt."
-        )
+        return simulieren(self, monate, laeufe=laeufe, zufall=zufall)

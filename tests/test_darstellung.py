@@ -64,7 +64,6 @@ def test_balkenlaenge_bleibt_im_bild():
 def test_prognoseflaeche_nennt_den_grund():
     fig = diagramme.prognose(BESTAND.simulieren())
     text = fig.layout.annotations[0].text
-    assert "5.4" in text
     assert "Abrufquote" in text
 
 

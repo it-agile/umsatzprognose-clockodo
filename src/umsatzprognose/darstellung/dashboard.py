@@ -100,7 +100,7 @@ class Dashboard:
         return diagramme.restvolumen_je_projekt(self.bestand.im_prognose_scope, top=top)
 
     def prognose(self, monate: int = 3) -> go.Figure:
-        """Die Prognose der naechsten Monate - noch ohne Zahlen, siehe Spec 5.4."""
+        """Die Bandbreite der naechsten Monate aus der Monte-Carlo-Simulation (Spec 5.4)."""
         return diagramme.prognose(self.bestand.simulieren(monate))
 
     def umsatztabelle(self) -> pd.DataFrame:

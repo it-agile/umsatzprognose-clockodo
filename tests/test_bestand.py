@@ -176,8 +176,8 @@ def test_ohne_projekte_gibt_es_keine_hinweise_und_keine_summen():
     assert leer.restvolumen_prognosewirksam == 0.0
 
 
-def test_simulation_liefert_noch_keine_prognose():
+def test_simulation_ohne_abrufquotenverteilung_liefert_noch_keine_prognose():
     prognose = bestand(GROSS).simulieren()
     assert not prognose.vorhanden
-    assert "5.4" in prognose.begruendung
+    assert "Abrufquote" in prognose.begruendung
     assert prognose.monatswerte() == {}

@@ -463,11 +463,14 @@ Zusammenführung ist nicht Teil dieser Spec.
 Umgesetzt als Python-Paket `umsatzprognose` mit Notebook-Oberfläche in Google Colab:
 
 - **Vollständig:** Abschnitte 4, 5.0, 5.1 (ohne die Näherung für Umsatz ohne Zeit, die
-  als Hinweis ausgewiesen wird), **5.2**, der Aufteilungsschlüssel aus 5.4 Schritt 3, die
-  Sollarbeitszeit aus 5.3 sowie die Umsatzhistorie der letzten zwölf Monate.
-- **Nicht gebaut:** die Simulation (5.4) sowie geplante Abwesenheiten, Feiertage und der
-  Abschlag für ungeplante Abwesenheit (5.3). An der Stelle der Bandbreite steht die
-  Begründung.
+  als Hinweis ausgewiesen wird), 5.2, 5.3 (ohne den Abschlag für ungeplante Abwesenheit,
+  der laut Entscheidung vom 26.08.2026 im MVP ignoriert statt geschätzt wird) und die
+  Monte-Carlo-Simulation aus **5.4**, dazu die Umsatzhistorie der letzten zwölf Monate.
+- **Nicht vollständig:** die Ausgabe aus 5.5 – Konfidenzniveaus je Monat und Summe sowie
+  der Anteil kapazitätslimitierter Läufe liegen vor, der separat auszuweisende bereits
+  gebuchte Betrag je Horizontmonat und der Verbrauch vor dem Stichtag im laufenden Monat
+  noch nicht. An der Stelle der Bandbreite steht weiterhin eine Begründung, aber nur noch
+  dort, wo tatsächlich Daten fehlen (kein Projekt im Scope, keine Abrufquote-Verteilung).
 
 Die Abrufquote-Verteilung ist am 26.08.2026 geschätzt. Ihre Kennzahlen stehen bewusst
 nicht hier: sie stammen aus der Installation, bewegen sich mit jeder Zeitbuchung und
@@ -491,11 +494,14 @@ keine Verzerrung, die sich beheben ließe, ohne Referenzklassen einzuführen.
    Monate kommen **nach Dauer absteigend** und nie chronologisch, die Monatssummen gehen
    nur auf den Cent auf (Clockodo rundet jede Gruppe einzeln), und `group == 0` kommt
    mehrfach vor – je Kunde ohne Projekt einmal.
-2. **Abwesenheiten und Feiertage auswerten** (5.3): `/v4/absences` anbinden und aus der
-   Historie den Abschlag für ungeplante Abwesenheit schätzen; für die Feiertage
-   `/v2/usersNonbusinessDays?year=…` statt der Feiertagsgruppen von Hand zuzuordnen. Der
-   Horizont reicht über eine Jahresgrenze, also zwei Abrufe je Endpunkt.
-3. **Simulation bauen** (5.4) und die Ausgabe aus 5.5 vollständig liefern.
+2. ~~**Abwesenheiten und Feiertage auswerten** (5.3)~~ – gebaut am 26.08.2026:
+   `/v4/absences` und `/v2/usersNonbusinessDays?year=…` angebunden. Der Abschlag für
+   ungeplante Abwesenheit wird dagegen nicht geschätzt, sondern laut Entscheidung vom
+   selben Tag im MVP ignoriert – keine Schätzung, kein Abzug.
+3. ~~**Simulation bauen** (5.4)~~ – gebaut am 26.08.2026,
+   `umsatzprognose.domaene.simulation.simulieren()`. Die Ausgabe aus 5.5 ist noch nicht
+   vollständig: es fehlen der separat auszuweisende bereits gebuchte Betrag je
+   Horizontmonat und der Verbrauch vor dem Stichtag im laufenden Monat.
 4. **Rückwärtstest über 12 Stichtage.** Er entscheidet auch, ob Referenzklassen nötig
    sind (Abschnitt 6). Zu beachten: ein Ladevorgang verbraucht drei der 10 zulässigen
    `entrygroups`-Abrufe je Minute – 12 Stichtage brauchen also eine Drosselung oder eine
