@@ -15,6 +15,12 @@ entscheiden ``monetary``, ``interval`` und ``from_subprojects`` darueber, ob ``a
 ein Euro-Gesamtbudget ist - die Deutung steht bei
 :class:`~umsatzprognose.domaene.projekt.Budget`.
 
+``deadline`` (``date``, ``null`` moeglich) und ``automatic_completion`` (``bool``)
+gehoeren zusammen: laut Doku wird das Projekt genau dann automatisch zur ``deadline``
+abgeschlossen, wenn ``automatic_completion`` gesetzt ist - eine ``deadline`` allein ist
+unverbindlich. Siehe
+:attr:`~umsatzprognose.domaene.projekt.Projekt.automatischer_abschluss`.
+
 **Entrygroups** - eine Gruppe sieht so aus (Felder gekuerzt, Werte erfunden)::
 
     {"group": "101", "name": "Kunde / Projekt", "duration": 2160000,
@@ -42,6 +48,7 @@ Drei Fallen darin, alle an den Gruppen dieser Installation belegt:
 from __future__ import annotations
 
 from collections.abc import Mapping
+from datetime import date
 from typing import Any
 
 from umsatzprognose.clockodo.client import HISTORIE_VON, ClockodoClient
@@ -144,6 +151,7 @@ class ProjektRepository:
         gebucht = verbrauch.get(projects_id, {})
         customers_id = rohprojekt.get("customers_id")
         name = rohprojekt.get("name")
+        rohe_deadline = rohprojekt.get("deadline")
         return Projekt(
             id=projects_id,
             name=str(name) if name else None,
@@ -154,6 +162,8 @@ class ProjektRepository:
             verbrauchtes_volumen=float(gebucht.get("revenue", 0.0)),
             verbrauchte_stunden=float(gebucht.get("stunden", 0.0)),
             anteile=self._anteile(gebucht) if mit_anteilen else (),
+            deadline=date.fromisoformat(rohe_deadline) if rohe_deadline else None,
+            automatic_completion=bool(rohprojekt.get("automatic_completion")),
         )
 
     def _anteile(self, gebucht: Mapping[str, Any]) -> tuple[Projektanteil, ...]:

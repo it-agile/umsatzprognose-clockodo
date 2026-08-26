@@ -17,6 +17,7 @@ Projekt liefert deshalb Regeln und Zustand, die Simulation sitzt am
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import date
 
 from umsatzprognose.domaene.kunde import Kunde
 from umsatzprognose.domaene.mitarbeiter import Mitarbeiter
@@ -105,6 +106,8 @@ class Projekt:
     verbrauchte_stunden: float = 0.0
     anteile: tuple[Projektanteil, ...] = field(default_factory=tuple)
     stundensatz_uebersteuerung: float | None = None
+    deadline: date | None = None
+    automatic_completion: bool = False
 
     def __str__(self) -> str:
         return self.bezeichnung
@@ -167,6 +170,21 @@ class Projekt:
         Hinweis ausgewiesen, statt still zu verschwinden.
         """
         return self.aktiv and not self.abgeschlossen and self.budget.verwertbar
+
+    @property
+    def automatischer_abschluss(self) -> date | None:
+        """Ab wann das Projekt automatisch abgeschlossen wird, ``None`` ohne einen.
+
+        Nur gesetzt, wenn ``automatic_completion`` aktiv ist - eine reine ``deadline``
+        ohne diesen Schalter ist unverbindlich und beendet das Projekt nicht
+        zuverlaessig (Spec Abschnitt 7: nur ``active``, ``completed`` und
+        ``completed_at`` gelten als zuverlaessiges Endesignal). Ab diesem Datum traegt
+        das Projekt keinen Umsatz mehr bei (Spec 5.4); die Simulation, die das
+        auswertet, ist noch nicht gebaut - bis dahin macht ein Hinweis am
+        :class:`~umsatzprognose.domaene.bestand.Bestand` betroffene Projekte
+        sichtbar.
+        """
+        return self.deadline if self.automatic_completion else None
 
     @property
     def effektiver_stundensatz(self) -> float | None:

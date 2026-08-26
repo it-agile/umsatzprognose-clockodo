@@ -544,8 +544,19 @@ Simulation (5.4) samt vollständiger Ausgabe (5.5), dann der Rückwärtstest üb
 Stichtage – der braucht wegen des Limits von 10 `entrygroups`-Abrufen je Minute eine
 Drosselung oder wiederverwendete Antworten.
 
-Zwei Dinge, die vor der Simulation zu klären sind und aus der Doku-Gegenprobe stammen:
-ein Stundensatz von genau 0 (er kommt im Scope vor) darf in 5.4 Schritt 3 keinen
-Stundenbedarf erzeugen, sonst ist es eine Division durch Null; und ein Projekt mit
-`deadline` im Horizont und `automatic_completion` fällt mitten im Horizont aus dem
-Scope – mindestens eines ist heute betroffen.
+Zwei Dinge aus der Doku-Gegenprobe sind inzwischen entschieden, aber noch nicht in eine
+Simulation verdrahtet, weil es die noch nicht gibt:
+
+- **Stundensatz genau 0** (kommt im Scope vor) darf in 5.4 Schritt 3 keinen
+  Stundenbedarf erzeugen, sonst ist es eine Division durch Null. `Projekt` führt dafür
+  `stundensatz_uebersteuerung`: gesetzt, hat sie Vorrang vor dem abgeleiteten Satz.
+  `Bestand.mit_stundensatz_uebersteuerungen()` liefert einen korrigierten Bestand,
+  `Dashboard.stundensatz_uebersteuern()` macht das im Notebook nutzbar (geschlüsselt
+  über den Projektnamen wie in der Hinweistabelle, nicht über die ID). Ein Hinweis
+  benennt betroffene Projekte, solange keine Korrektur hinterlegt ist.
+- **Ein Projekt mit `deadline` und `automatic_completion`** trägt ab diesem Datum
+  keinen Umsatz mehr bei (Entscheidung 26.08.2026, Spec 5.4 Schritt 1) – eine
+  `deadline` ohne `automatic_completion` ist unverbindlich und bleibt ohne Wirkung.
+  `Projekt.automatischer_abschluss` liefert das Datum, sonst `None`. Ein Hinweis am
+  `Bestand` benennt betroffene Projekte samt Datum; die Simulation, die das Datum
+  tatsächlich als Cutoff je Horizontmonat auswertet, ist noch zu bauen.

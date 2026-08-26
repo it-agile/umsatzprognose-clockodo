@@ -100,6 +100,34 @@ def test_projekte_ohne_zeit_und_ohne_beteiligte_werden_gemeldet():
     assert any("niemand gebucht" in t for t in texte)
 
 
+def test_automatischer_abschluss_im_scope_wird_gemeldet():
+    frist = date(2026, 9, 30)
+    befristet = Projekt(
+        id=10,
+        name="Befristet",
+        aktiv=True,
+        budget=Budget(betrag=1000.0),
+        deadline=frist,
+        automatic_completion=True,
+    )
+    texte = {h.text: h.betroffene for h in bestand(befristet).hinweise()}
+    hinweis = next(t for t in texte if "automatischem Abschluss" in t)
+    assert texte[hinweis] == ("Befristet (30.09.2026)",)
+
+
+def test_deadline_ohne_automatic_completion_wird_nicht_gemeldet():
+    # Unverbindlich - siehe Projekt.automatischer_abschluss.
+    unverbindlich = Projekt(
+        id=11,
+        name="Ohne Schalter",
+        aktiv=True,
+        budget=Budget(betrag=1000.0),
+        deadline=date(2026, 9, 30),
+        automatic_completion=False,
+    )
+    assert not any("automatischem Abschluss" in h.text for h in bestand(unverbindlich).hinweise())
+
+
 def test_stundensatz_null_wird_gemeldet():
     ohne_umsatz = Projekt(
         id=6,

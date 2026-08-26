@@ -7,6 +7,8 @@ uebersieht.
 
 from __future__ import annotations
 
+from datetime import date
+
 from umsatzprognose.domaene.kunde import Kunde
 from umsatzprognose.domaene.mitarbeiter import Mitarbeiter
 from umsatzprognose.domaene.projekt import Budget, Projekt
@@ -88,6 +90,21 @@ def test_abgeschlossenes_projekt_faellt_aus_dem_scope_trotz_aktiv():
     p = projekt(aktiv=True, abgeschlossen=True)
     assert not p.im_prognose_scope
     assert p.restvolumen_prognosewirksam is not None
+
+
+def test_automatischer_abschluss_nur_mit_automatic_completion():
+    # Eine deadline allein ist laut Doku unverbindlich - erst automatic_completion
+    # macht sie zu einem festen Endedatum (Spec Abschnitt 4).
+    frist = date(2026, 9, 30)
+    mit_schalter = projekt(deadline=frist, automatic_completion=True)
+    ohne_schalter = projekt(deadline=frist, automatic_completion=False)
+    assert mit_schalter.automatischer_abschluss == frist
+    assert ohne_schalter.automatischer_abschluss is None
+
+
+def test_ohne_deadline_gibt_es_keinen_automatischen_abschluss():
+    assert projekt().automatischer_abschluss is None
+    assert projekt(automatic_completion=True).automatischer_abschluss is None
 
 
 def test_effektiver_stundensatz_aus_umsatz_und_zeit():

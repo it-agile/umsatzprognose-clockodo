@@ -79,6 +79,8 @@ def projekt_antwort() -> dict:
                     "amount": 160000,
                     "subprojects_budget_total": 0,
                 },
+                "deadline": "2026-09-30",
+                "automatic_completion": True,
             },
             {
                 "id": 102,

@@ -92,6 +92,11 @@ def test_projekte_bekommen_kunde_verbrauch_und_anteile(
     assert coaching.verbrauchtes_volumen == 60000.0
     assert coaching.verbrauchte_stunden == 2160000 / 3600
     assert len(coaching.anteile) == 2
+    assert coaching.deadline == date(2026, 9, 30)
+    assert coaching.automatischer_abschluss == date(2026, 9, 30)
+    # Kein deadline-Schluessel in der Antwort - nicht None am Zugriff verwechseln.
+    assert gefunden[102].deadline is None
+    assert gefunden[102].automatischer_abschluss is None
 
 
 def test_person_ohne_stammdatensatz_verliert_ihre_stunden_nicht(

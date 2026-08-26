@@ -152,13 +152,16 @@ Weiter zu beachten, ebenfalls verifiziert:
   darunter, wenn ein hartes Budget überzogen wurde (bei 400 % Nutzung `0.25`). Weil
   `budget.hard` hier überall `false` ist, bleibt er 1 – bei einem harten Budget müsste er
   in Umsatz und Stundensatz eingerechnet werden.
-- **`start_date`, `deadline` und `automatic_completion` sind bisher unbenutzt** (geprüft
-  am 26.08.2026). `automatic_completion` ist bei fast allen aktiven Projekten `true`,
-  eine `deadline` haben nur wenige – mindestens eine davon liegt **innerhalb des
-  heutigen Horizonts**: dieses Projekt wird zum Monatsende automatisch abgeschlossen und
-  trägt danach nichts mehr bei. Für 5.4 ist das relevant und nicht modelliert.
-  `start_date` ist nur bei einer Handvoll Projekte gesetzt und taugt damit nicht dazu,
-  den Beginn des Beobachtungsfensters aus 5.2 zu bestimmen.
+- **`deadline` und `automatic_completion` sind ab Projekt-Ebene abgebildet** (Entscheidung
+  26.08.2026): ein Projekt mit `automatic_completion: true` und gesetzter `deadline`
+  trägt ab diesem Datum keinen Umsatz mehr bei – die Simulation (5.4) muss das je
+  Horizontmonat berücksichtigen, sobald sie gebaut wird. `automatic_completion` ist bei
+  fast allen aktiven Projekten `true`, eine `deadline` haben nur wenige – mindestens
+  eine davon liegt **innerhalb des heutigen Horizonts**. Eine `deadline` **ohne**
+  `automatic_completion` ist unverbindlich und bleibt ohne Wirkung, weil Abschnitt 7 nur
+  `active`, `completed` und `completed_at` als zuverlässiges Endesignal führt.
+  `start_date` bleibt unbenutzt: nur bei einer Handvoll Projekte gesetzt und damit
+  ungeeignet, den Beginn des Beobachtungsfensters aus 5.2 zu bestimmen.
 - **`budget.interval` ist ein Integer-Enum** (0 wochenweise, 1 monatlich, 2 quartalsweise,
   3 jährlich), kein String. Die 0 ist gültig und falsy – eine Prüfung auf den
   Wahrheitswert würde ein Wochenbudget still als Gesamtbudget lesen. In dieser
@@ -377,7 +380,9 @@ Je Lauf und Monat:
 1. Restvolumen (Euro) je Projekt aus dem Vormonat übernehmen bzw. mit dem
    **prognosewirksamen** Restvolumen aus 5.1 initialisieren. Projekte mit historisch
    überschrittenem Budget starten bei 0 und liefern über den gesamten Horizont keinen
-   Umsatz.
+   Umsatz. Ebenso Projekte mit `automatic_completion` und einer `deadline` **ab** dem
+   Datum der `deadline`: sie werden automatisch abgeschlossen und liefern ab da keinen
+   Umsatz mehr, unabhängig vom verbleibenden Restvolumen (Abschnitt 4).
 2. Abrufquote aus der Verteilung (5.2) ziehen, für Monat 1 skalieren → gewünschter
    Euro-Verbrauch. **Auf das verbleibende Restvolumen begrenzt** – das Budget wird in der
    Prognose nicht überschritten, unabhängig davon, wie hoch die gezogene Quote liegt.
