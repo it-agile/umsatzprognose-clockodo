@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import date
 
-from umsatzprognose.domaene.mitarbeiter import Abwesenheit, Mitarbeiter, Wochenarbeitszeit
+from umsatzprognose.domaene.mitarbeiter import Abwesenheit, Feiertag, Mitarbeiter, Wochenarbeitszeit
 
 SIEBEN_STUNDEN = (7.0, 7.0, 7.0, 7.0, 7.0, 0.0, 0.0)
 ACHT_STUNDEN = (8.0, 8.0, 8.0, 8.0, 8.0, 0.0, 0.0)
@@ -62,3 +62,13 @@ def test_genehmigt_ist_nur_status_approved():
 
     assert genehmigt.genehmigt
     assert not unbestaetigt.genehmigt
+
+
+def test_feiertage_bleiben_ohne_hinterlegung_leer():
+    person = Mitarbeiter(id=1)
+    assert person.feiertage == ()
+
+    person_mit_feiertag = Mitarbeiter(
+        id=1, feiertage=(Feiertag(datum=date(2026, 12, 24), halber_tag=True, name="Heiligabend"),)
+    )
+    assert person_mit_feiertag.feiertage[0].halber_tag

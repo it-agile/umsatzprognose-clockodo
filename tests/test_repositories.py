@@ -58,25 +58,32 @@ def test_sollarbeitszeit_kommt_nicht_aus_default_target_hours(benutzer_antwort, 
     assert personen[302].wochenstunden(STICHTAG) is None
 
 
-def test_ohne_jahre_bleiben_abwesenheiten_ungeladen(benutzer_antwort, sollzeit_antwort):
-    # Kein Abruf auf /v4/absences ohne jahre - eine Route dafuer fehlt hier absichtlich.
+def test_ohne_jahre_bleiben_abwesenheiten_und_feiertage_ungeladen(
+    benutzer_antwort, sollzeit_antwort
+):
+    # Kein Abruf auf /v4/absences oder /v2/usersNonbusinessDays ohne jahre - beide
+    # Routen fehlen hier absichtlich.
     client, requests = client_mit_routen(
         {"/v3/users": benutzer_antwort, "/targethours": sollzeit_antwort}
     )
     personen = MitarbeiterRepository(client).laden()
 
     assert personen[301].abwesenheiten == ()
-    assert not any(r.url.path.endswith("/v4/absences") for r in requests)
+    assert personen[301].feiertage == ()
+    aufgerufene_pfade = {r.url.path for r in requests}
+    assert "/api/v4/absences" not in aufgerufene_pfade
+    assert "/api/v2/usersNonbusinessDays" not in aufgerufene_pfade
 
 
 def test_abwesenheiten_werden_der_person_zugeordnet(
-    benutzer_antwort, sollzeit_antwort, abwesenheiten_antwort
+    benutzer_antwort, sollzeit_antwort, abwesenheiten_antwort, feiertage_antwort
 ):
     client, requests = client_mit_routen(
         {
             "/v3/users": benutzer_antwort,
             "/targethours": sollzeit_antwort,
             "/v4/absences": abwesenheiten_antwort,
+            "/v2/usersNonbusinessDays": feiertage_antwort,
         }
     )
     personen = MitarbeiterRepository(client).laden(jahre=[2026])
@@ -91,6 +98,33 @@ def test_abwesenheiten_werden_der_person_zugeordnet(
     assert personen[302].abwesenheiten == ()
     absences_request = next(r for r in requests if r.url.path.endswith("/v4/absences"))
     assert absences_request.url.params["filter[year]"] == "2026"
+
+
+def test_feiertage_werden_der_person_zugeordnet(
+    benutzer_antwort, sollzeit_antwort, abwesenheiten_antwort, feiertage_antwort
+):
+    client, requests = client_mit_routen(
+        {
+            "/v3/users": benutzer_antwort,
+            "/targethours": sollzeit_antwort,
+            "/v4/absences": abwesenheiten_antwort,
+            "/v2/usersNonbusinessDays": feiertage_antwort,
+        }
+    )
+    personen = MitarbeiterRepository(client).laden(jahre=[2026])
+
+    feiertage = personen[301].feiertage
+    assert len(feiertage) == 2
+    ganzer_tag = next(f for f in feiertage if not f.halber_tag)
+    assert ganzer_tag.datum == date(2026, 10, 3)
+    assert ganzer_tag.name == "Tag der Deutschen Einheit"
+    halber_tag = next(f for f in feiertage if f.halber_tag)
+    assert halber_tag.datum == date(2026, 12, 24)
+    assert personen[302].feiertage == ()
+    # year ist hier ein einfacher Parameter, kein deepObject wie filter[year] bei
+    # /v4/absences - beide Endpunkte filtern nach Jahr, aber nicht gleich.
+    feiertage_request = next(r for r in requests if r.url.path.endswith("/usersNonbusinessDays"))
+    assert feiertage_request.url.params["year"] == "2026"
 
 
 def test_projekt_id_und_budgetformen(projekt_antwort):
@@ -249,6 +283,7 @@ def test_bestand_setzt_alles_zusammen(
     monats_antwort,
     projekt_monats_antwort,
     abwesenheiten_antwort,
+    feiertage_antwort,
 ):
     def entrygroups(request):
         # Derselbe Pfad, drei voellig verschiedene Antworten - je nach Gruppierung.
@@ -267,6 +302,7 @@ def test_bestand_setzt_alles_zusammen(
             "/targethours": sollzeit_antwort,
             "/v2/entrygroups": entrygroups,
             "/v4/absences": abwesenheiten_antwort,
+            "/v2/usersNonbusinessDays": feiertage_antwort,
         }
     )
     bestand = BestandRepository(client).laden(stichtag=STICHTAG)
@@ -277,12 +313,14 @@ def test_bestand_setzt_alles_zusammen(
     assert [p.id for p in bestand.im_prognose_scope] == [101]
     assert bestand.restvolumen_prognosewirksam == 160000.0 - 60000.0
     assert bestand.umsatzhistorie.summe() == 300000.0
-    # Der Horizont ab STICHTAG (drei Monate) bleibt im selben Jahr - ein Abruf auf
-    # /v4/absences statt zwei.
-    assert len(next(p for p in bestand.mitarbeiter if p.id == 301).abwesenheiten) == 2
-    # Acht Abrufe: Kunden, Personen, Sollzeiten, Abwesenheiten, Projekte, Verbrauch,
-    # Monatsumsatz, Monatsverbrauch je Projekt.
-    assert len(requests) == 8
+    # Der Horizont ab STICHTAG (drei Monate) bleibt im selben Jahr - je ein Abruf auf
+    # /v4/absences und /v2/usersNonbusinessDays statt zwei.
+    person = next(p for p in bestand.mitarbeiter if p.id == 301)
+    assert len(person.abwesenheiten) == 2
+    assert len(person.feiertage) == 2
+    # Neun Abrufe: Kunden, Personen, Sollzeiten, Abwesenheiten, Feiertage, Projekte,
+    # Verbrauch, Monatsumsatz, Monatsverbrauch je Projekt.
+    assert len(requests) == 9
     assert any("ohne Projekt" in h.text for h in bestand.hinweise())
     # Der Monatsverbrauch je Projekt traegt die Verteilung aus Spec 5.2 bis in den Bestand.
     assert [v.projekt.id for v in bestand.verbrauchsverlaeufe] == [101]

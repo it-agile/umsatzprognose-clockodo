@@ -16,6 +16,8 @@ Die Version je Endpunkt ist keine freie Wahl, sondern ausprobiert:
 ``/v2/entrygroups``          Verbrauch und Umsatz, aggregiert
 ``/v4/absences``             geplante Abwesenheiten (5.3), Jahresfilter als ``filter[year]``.
                               ``/``, ``/v2``, ``/v3`` -> 410 deprecated
+``/v2/usersNonbusinessDays``  Feiertage je Person (5.3), Jahresfilter als einfaches
+                              ``year``. Paginiert wie ``/v4/projects``
 ===========================  ==========================================================
 
 **Paginierung** gibt es bei ``/v4/projects``, ``/v3/customers`` und ``/v3/users``:
@@ -325,3 +327,24 @@ class ClockodoClient:
         """
         payload = await self.get("/v4/absences", {"filter[year]": year})
         return payload["data"]
+
+    async def users_nonbusiness_days(
+        self, year: int
+    ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+        """Feiertage eines Jahres, fertig je Person zugeordnet (Spec 5.3).
+
+        ``/v2/usersNonbusinessDays`` erspart die eigene Zuordnung ueber die
+        Feiertagsgruppe (``/v3/usersNonbusinessGroups``) und damit den Fehler, dafuer
+        die heutige Zuordnung statt der zu einem vergangenen Stichtag zu benutzen.
+
+        **``year`` ist hier ein einfacher Query-Parameter**, kein ``deepObject`` wie
+        ``filter[year]`` bei :meth:`absences` - beide Endpunkte filtern nach Jahr, aber
+        nicht auf dieselbe Art. Anders als bei ``absences`` traegt die Antwort ein
+        ``paging``-Objekt (analog zu ``/v4/projects``), deshalb ueber
+        :meth:`get_paged`.
+
+        Returns:
+            Je Seite zusammengefuegt: ``{"users_id": …, "days": [...]}`` - die
+            ``days`` je Eintrag sind die Feiertage dieser Person in diesem Jahr.
+        """
+        return await self.get_paged("/v2/usersNonbusinessDays", {"year": year})

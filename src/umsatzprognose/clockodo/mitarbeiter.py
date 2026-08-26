@@ -1,5 +1,5 @@
-"""Abbildung von ``/v3/users``, ``/targethours`` und ``/v4/absences`` auf
-:class:`~umsatzprognose.domaene.mitarbeiter.Mitarbeiter`.
+"""Abbildung von ``/v3/users``, ``/targethours``, ``/v4/absences`` und
+``/v2/usersNonbusinessDays`` auf :class:`~umsatzprognose.domaene.mitarbeiter.Mitarbeiter`.
 
 **Hier weicht die Umsetzung bewusst von der Spec ab.** Abschnitt 4 nennt
 ``default_target_hours`` aus ``/v3/users`` als Sollarbeitszeit. Das Feld ist ein
@@ -21,11 +21,13 @@ Zeile. Ein anderer ``type`` als ``weekly`` ist nie aufgetreten und wird deshalb 
 gedeutet, sondern uebersprungen und gemeldet - raten waere hier besonders teuer, weil
 eine falsche Sollzeit den Kapazitaetsdeckel (Spec 5.3) still verschiebt.
 
-**Abwesenheiten kommen dazu, ungefiltert.** ``/v4/absences`` nimmt einen Jahresfilter
-(``filter[year]``, kein einfacher ``year``-Parameter); wer den Kapazitaetsdeckel spaeter
-baut, ruft :meth:`laden_async` deshalb mit den Jahren, die der Horizont ueberspannt.
-Ohne ``jahre`` bleibt ``Mitarbeiter.abwesenheiten`` leer - das ist der Stand vor diesem
-Schritt und bleibt fuer Aufrufer ohne Kapazitaetsbedarf ohne zusaetzlichen Abruf.
+**Abwesenheiten und Feiertage kommen dazu, beide ungefiltert und beide je Jahr.**
+``/v4/absences`` nimmt einen Jahresfilter als ``filter[year]``, ``/v2/usersNonbusinessDays``
+dagegen ein einfaches ``year`` - zwei verschiedene Parameterformen fuer denselben
+Zweck, keine Wahl. Wer den Kapazitaetsdeckel spaeter baut, ruft :meth:`laden_async`
+deshalb mit den Jahren, die der Horizont ueberspannt. Ohne ``jahre`` bleiben
+``Mitarbeiter.abwesenheiten`` und ``Mitarbeiter.feiertage`` leer - das ist der Stand vor
+diesem Schritt und bleibt fuer Aufrufer ohne Kapazitaetsbedarf ohne zusaetzlichen Abruf.
 """
 
 from __future__ import annotations
@@ -38,7 +40,7 @@ from typing import Any
 from umsatzprognose.clockodo.client import ClockodoClient
 from umsatzprognose.clockodo.nebenlaeufig import gleichzeitig, synchron
 from umsatzprognose.domaene.hinweis import Hinweis
-from umsatzprognose.domaene.mitarbeiter import Abwesenheit, Mitarbeiter, Wochenarbeitszeit
+from umsatzprognose.domaene.mitarbeiter import Abwesenheit, Feiertag, Mitarbeiter, Wochenarbeitszeit
 
 # Reihenfolge wie in Wochenarbeitszeit.stunden_je_wochentag: Montag zuerst.
 WOCHENTAG_FELDER = (
@@ -54,7 +56,7 @@ TYP_WOECHENTLICH = "weekly"
 
 
 class MitarbeiterRepository:
-    """Laedt Personen samt ihrer vereinbarten Arbeitszeiten und Abwesenheiten."""
+    """Laedt Personen samt ihrer vereinbarten Arbeitszeiten, Abwesenheiten und Feiertage."""
 
     def __init__(self, client: ClockodoClient) -> None:
         self._client = client
@@ -65,35 +67,41 @@ class MitarbeiterRepository:
         return synchron(self.laden_async(jahre=jahre))
 
     async def laden_async(self, *, jahre: Sequence[int] = ()) -> dict[int, Mitarbeiter]:
-        """Personen, Sollzeiten und Abwesenheiten gleichzeitig holen.
+        """Personen, Sollzeiten, Abwesenheiten und Feiertage gleichzeitig holen.
 
-        Drei Zwecke, keine Abhaengigkeit zwischen ihnen: ``/v3/users`` nennt die
+        Vier Zwecke, keine Abhaengigkeit zwischen ihnen: ``/v3/users`` nennt die
         Personen, ``/targethours`` ihre Wochenstunden, ``/v4/absences`` ihre geplanten
-        Abwesenheiten - je ein Abruf pro Jahr in ``jahre``. Verknuepft werden alle drei
-        erst hier ueber die ``users_id``.
+        Abwesenheiten, ``/v2/usersNonbusinessDays`` ihre Feiertage - je ein Abruf pro
+        Jahr in ``jahre`` fuer die letzten beiden. Verknuepft werden alle vier erst hier
+        ueber die ``users_id``.
 
         Args:
-            jahre: die Kalenderjahre, fuer die Abwesenheiten geladen werden - der
-                Aufrufer kennt den Horizont, hier ist er nicht bekannt. Leer bleibt
-                ``Mitarbeiter.abwesenheiten`` ungeladen, ohne zusaetzlichen Abruf.
+            jahre: die Kalenderjahre, fuer die Abwesenheiten und Feiertage geladen
+                werden - der Aufrufer kennt den Horizont, hier ist er nicht bekannt.
+                Leer bleiben ``Mitarbeiter.abwesenheiten`` und ``Mitarbeiter.feiertage``
+                ungeladen, ohne zusaetzlichen Abruf.
         """
-        (personen, _), sollzeiten, abwesenheiten_je_jahr = await gleichzeitig(
+        (personen, _), sollzeiten, abwesenheiten_je_jahr, feiertage_je_jahr = await gleichzeitig(
             self._client.users(),
             self._client.targethours(),
             gleichzeitig(*(self._client.absences(jahr) for jahr in jahre)),
+            gleichzeitig(*(self._client.users_nonbusiness_days(jahr) for jahr in jahre)),
         )
         abwesenheiten = [eintrag for jahr in abwesenheiten_je_jahr for eintrag in jahr]
-        return self.abbilden(personen, sollzeiten, abwesenheiten)
+        feiertage = [eintrag for daten, _paging in feiertage_je_jahr for eintrag in daten]
+        return self.abbilden(personen, sollzeiten, abwesenheiten, feiertage)
 
     def abbilden(
         self,
         personen: list[dict[str, Any]],
         sollzeiten: list[dict[str, Any]],
         abwesenheiten: list[dict[str, Any]] = (),
+        feiertage: list[dict[str, Any]] = (),
     ) -> dict[int, Mitarbeiter]:
-        """Alle drei Antworten zu Personen nach ID - setzt :attr:`hinweise`."""
+        """Alle vier Antworten zu Personen nach ID - setzt :attr:`hinweise`."""
         arbeitszeiten = self._arbeitszeiten(sollzeiten)
         abwesenheiten_je_person = self._abwesenheiten(abwesenheiten)
+        feiertage_je_person = self._feiertage(feiertage)
         return {
             int(person["id"]): Mitarbeiter(
                 id=int(person["id"]),
@@ -101,6 +109,7 @@ class MitarbeiterRepository:
                 aktiv=bool(person.get("active")),
                 arbeitszeiten=tuple(arbeitszeiten.get(int(person["id"]), ())),
                 abwesenheiten=tuple(abwesenheiten_je_person.get(int(person["id"]), ())),
+                feiertage=tuple(feiertage_je_person.get(int(person["id"]), ())),
             )
             for person in personen
             if person.get("id") is not None
@@ -156,6 +165,27 @@ class MitarbeiterRepository:
                     status=int(eintrag["status"]),
                 )
             )
+        return je_person
+
+    def _feiertage(self, eintraege: list[dict[str, Any]]) -> dict[int, list[Feiertag]]:
+        """Feiertage zu Personen - je Eintrag schon eine Person mit ihren Tagen.
+
+        Ein Eintrag je Person und Jahr (``users_id`` und ``days``); ueber mehrere Jahre
+        kommt dieselbe ``users_id`` mehrfach vor, ihre Tage werden hier zusammengefuehrt.
+        Was ein halber Tag (``half_day``) fuer die Sollstunden bedeutet, ist Teil des
+        noch zu bauenden Kapazitaetsdeckels (Spec 5.3) und wird hier nicht entschieden.
+        """
+        je_person: dict[int, list[Feiertag]] = defaultdict(list)
+        for eintrag in eintraege:
+            users_id = int(eintrag["users_id"])
+            for tag in eintrag.get("days") or ():
+                je_person[users_id].append(
+                    Feiertag(
+                        datum=date.fromisoformat(tag["evaluated_date"]),
+                        halber_tag=bool(tag.get("half_day")),
+                        name=str(tag["name"]) if tag.get("name") else None,
+                    )
+                )
         return je_person
 
 

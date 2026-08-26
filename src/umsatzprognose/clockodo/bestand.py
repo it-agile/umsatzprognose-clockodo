@@ -1,14 +1,15 @@
 """Der eine Einstieg, der aus Clockodo einen fertigen Bestand macht.
 
-**Sieben Abrufe, alle gleichzeitig - plus einen je Jahr im Horizont fuer
-Abwesenheiten.** Kunden, Personen, Sollzeiten, Projekte, Verbrauch, Umsatzhistorie und
+**Sieben Abrufe, alle gleichzeitig - plus zwei je Jahr im Horizont fuer Abwesenheiten
+und Feiertage.** Kunden, Personen, Sollzeiten, Projekte, Verbrauch, Umsatzhistorie und
 der monatliche Verbrauch je Projekt sind sieben unabhaengige Antworten, dazu die
-geplanten Abwesenheiten (Spec 5.3): ``/v4/absences`` nimmt nur einen Jahresfilter, ein
-Horizont ueber die Jahresgrenze braucht also zwei Abrufe statt einem. Keine dieser
-Antworten baut auf einer anderen auf. Aufeinander angewiesen ist erst das
-*Zusammensetzen*: die Projekte brauchen Kunden und Personen als Beschriftung und fuer die
-Anteile, die Verbrauchsverlaeufe brauchen die fertigen Projekte samt Budget. Deshalb ist
-der Abruf hier gefaechert und die Abbildung danach der Reihe nach.
+geplanten Abwesenheiten und Feiertage (Spec 5.3): ``/v4/absences`` und
+``/v2/usersNonbusinessDays`` filtern beide nur nach einem Jahr, ein Horizont ueber die
+Jahresgrenze braucht also je zwei Abrufe statt einem. Keine dieser Antworten baut auf
+einer anderen auf. Aufeinander angewiesen ist erst das *Zusammensetzen*: die Projekte
+brauchen Kunden und Personen als Beschriftung und fuer die Anteile, die
+Verbrauchsverlaeufe brauchen die fertigen Projekte samt Budget. Deshalb ist der Abruf
+hier gefaechert und die Abbildung danach der Reihe nach.
 
 Nacheinander abgerufen addierten sich die Wartezeiten auf rund 30 Sekunden gegen die
 echte Installation; gleichzeitig zaehlt im Wesentlichen der langsamste Abruf - die
@@ -105,14 +106,15 @@ class BestandRepository:
         stichtag = stichtag or date.today()
         personen = MitarbeiterRepository(self._client)
         # Der Horizont beginnt im Stichtagsjahr und kann bis ins naechste reichen
-        # (Spec 5.4); /v4/absences filtert nur nach einem Jahr, also eines oder zwei.
+        # (Spec 5.4); /v4/absences und /v2/usersNonbusinessDays filtern beide nur nach
+        # einem Jahr, also eines oder zwei je Endpunkt.
         jahre = sorted({stichtag.year, int(horizontende(stichtag, horizont_monate)[:4])})
 
-        # Fuenf Faecher, sieben plus bis zu zwei Requests - Personen und Projekte
-        # bringen je zwei mit, dazu Abwesenheiten je Jahr im Horizont. Der Stichtag
-        # wird hier festgelegt und nicht in den Abrufen aufgeloest: sonst koennten die
-        # gleichzeitigen Abrufe ueber einen Tageswechsel hinweg verschiedene Fenster
-        # erwischen.
+        # Fuenf Faecher, sieben plus bis zu vier Requests - Personen und Projekte
+        # bringen je zwei mit, dazu Abwesenheiten und Feiertage je Jahr im Horizont.
+        # Der Stichtag wird hier festgelegt und nicht in den Abrufen aufgeloest: sonst
+        # koennten die gleichzeitigen Abrufe ueber einen Tageswechsel hinweg
+        # verschiedene Fenster erwischen.
         kunden, mitarbeiter, rohe_projekte, umsatzhistorie, monatsgruppen = await gleichzeitig(
             KundenRepository(self._client).laden_async(),
             personen.laden_async(jahre=jahre),

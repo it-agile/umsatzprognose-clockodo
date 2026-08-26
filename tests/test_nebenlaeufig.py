@@ -31,9 +31,9 @@ TIMEOUT = 5.0
 # Tag der Testausfuehrung abhaengt.
 STICHTAG = date(2026, 8, 24)
 
-ERWARTETE_ABRUFE = 8
-"""Kunden, Personen, Sollzeiten, Abwesenheiten, Projekte, Verbrauch, Umsatzhistorie,
-Monatsverbrauch."""
+ERWARTETE_ABRUFE = 9
+"""Kunden, Personen, Sollzeiten, Abwesenheiten, Feiertage, Projekte, Verbrauch,
+Umsatzhistorie, Monatsverbrauch."""
 
 
 def treffpunkt_fuer(anzahl: int):
@@ -56,8 +56,9 @@ def test_alle_abrufe_eines_bestands_laufen_gleichzeitig(
     monats_antwort,
     projekt_monats_antwort,
     abwesenheiten_antwort,
+    feiertage_antwort,
 ):
-    """Acht Endpunkte, acht offene Requests - keiner wartet auf einen anderen."""
+    """Neun Endpunkte, neun offene Requests - keiner wartet auf einen anderen."""
     warten = treffpunkt_fuer(ERWARTETE_ABRUFE)
     antworten = {
         "/v4/projects": projekt_antwort,
@@ -65,8 +66,9 @@ def test_alle_abrufe_eines_bestands_laufen_gleichzeitig(
         "/v3/users": benutzer_antwort,
         "/targethours": sollzeit_antwort,
         "/v4/absences": abwesenheiten_antwort,
+        "/v2/usersNonbusinessDays": feiertage_antwort,
     }
-    # Drei der acht Requests gehen an /v2/entrygroups und unterscheiden sich nur in
+    # Drei der neun Requests gehen an /v2/entrygroups und unterscheiden sich nur in
     # der Gruppierung - Verbrauch je Person, Umsatz je Monat, Verbrauch je Projektmonat.
     nach_gruppierung = {
         ("projects_id", "users_id"): entrygroup_antwort,
@@ -136,6 +138,7 @@ def test_laden_funktioniert_in_einem_laufenden_event_loop(
     sollzeit_antwort,
     monats_antwort,
     abwesenheiten_antwort,
+    feiertage_antwort,
 ):
     """Der Fall Colab: dort laeuft immer schon ein Loop.
 
@@ -149,6 +152,7 @@ def test_laden_funktioniert_in_einem_laufenden_event_loop(
         "/targethours": sollzeit_antwort,
         "/v2/entrygroups": monats_antwort,
         "/v4/absences": abwesenheiten_antwort,
+        "/v2/usersNonbusinessDays": feiertage_antwort,
     }
     client, _ = client_mit(
         lambda request: httpx.Response(200, json=antworten[request.url.path.removeprefix("/api")])

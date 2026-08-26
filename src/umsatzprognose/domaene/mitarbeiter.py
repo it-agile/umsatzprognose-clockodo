@@ -11,17 +11,18 @@ aktiven Personen. Die tatsaechliche Sollarbeitszeit steht im
 unversionierten Legacy-Endpunkt ``/targethours``, je Person mit Gueltigkeitszeitraum und
 Stunden je Wochentag. Details in :mod:`umsatzprognose.clockodo.mitarbeiter`.
 
-Die geplante Abwesenheit (``Abwesenheit``, aus ``/v4/absences``) ist inzwischen hier -
-roh, mit Clockodos eigenen Typ- und Statuscodes, ohne Deutung. Noch nicht hier: die
-**verfuegbare** Kapazitaet aus 5.3, also Sollarbeitszeit minus geplante Abwesenheit minus
-Abschlag fuer ungeplante Abwesenheit. Diese Rechnung braucht zusaetzlich die Feiertage
-(noch nicht angebunden) und entscheidet, welche Typen und Status ueberhaupt als
+Die geplante Abwesenheit (``Abwesenheit``, aus ``/v4/absences``) und die Feiertage
+(``Feiertag``, aus ``/v2/usersNonbusinessDays``) sind inzwischen hier - roh, ohne
+Deutung. Noch nicht hier: die **verfuegbare** Kapazitaet aus 5.3, also Sollarbeitszeit
+minus geplante Abwesenheit minus Feiertage minus Abschlag fuer ungeplante Abwesenheit.
+Diese Rechnung entscheidet, welche Typen und Status der Abwesenheit ueberhaupt als
 Kapazitaetsabzug zaehlen - eine unbestaetigte (``status`` "Enquired") oder eine
 abgelehnte Abwesenheit zaehlt vermutlich nicht mit, und die Typen "Home office" und
 "Work out of office" tragen laut Doku ohnehin die geplanten Stunden ("planned hours get
-applied"), sind also keine Abwesenheit vom Arbeiten. Beides wird hier nicht
-vorweggenommen; der Abschlag fuer ungeplante Abwesenheit ist zudem eine Schaetzgroesse,
-die die Spec der Kalibrierung zuordnet und nicht beziffert.
+applied"), sind also keine Abwesenheit vom Arbeiten - und was ``Feiertag.halber_tag``
+fuer die Sollstunden bedeutet (halbiert oder auf 0 gesetzt, siehe Spec 5.3). Nichts davon
+wird hier vorweggenommen; der Abschlag fuer ungeplante Abwesenheit ist zudem eine
+Schaetzgroesse, die die Spec der Kalibrierung zuordnet und nicht beziffert.
 """
 
 from __future__ import annotations
@@ -69,6 +70,25 @@ class Abwesenheit:
 
 
 @dataclass(frozen=True)
+class Feiertag:
+    """Ein Feiertag, der fuer eine Person gilt, aus ``/v2/usersNonbusinessDays`` (Spec 5.3).
+
+    Die Zuordnung Person -> Feiertagsgruppe hat Clockodo bereits aufgeloest; das Modell
+    kennt nur noch das Ergebnis, keine Gruppe.
+
+    Attributes:
+        datum: der Kalendertag (``evaluated_date`` der API).
+        halber_tag: ob der Feiertag nur einen halben Tag umfasst. Was das fuer die
+            Sollstunden bedeutet, ist noch nicht entschieden - siehe Modul-Docstring.
+        name: die Bezeichnung, sofern vorhanden.
+    """
+
+    datum: date
+    halber_tag: bool
+    name: str | None = None
+
+
+@dataclass(frozen=True)
 class Wochenarbeitszeit:
     """Vereinbarte Stunden je Wochentag, gueltig in einem Zeitraum.
 
@@ -101,6 +121,7 @@ class Mitarbeiter:
     aktiv: bool = False
     arbeitszeiten: tuple[Wochenarbeitszeit, ...] = ()
     abwesenheiten: tuple[Abwesenheit, ...] = ()
+    feiertage: tuple[Feiertag, ...] = ()
 
     def __str__(self) -> str:
         return self.name or f"Person {self.id}"

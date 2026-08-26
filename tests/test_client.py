@@ -137,6 +137,23 @@ def test_abwesenheiten_filtern_ueber_deepobject_jahresparameter():
     assert requests[0].url.params["filter[year]"] == "2026"
 
 
+def test_feiertage_filtern_ueber_einfaches_jahr_und_sind_paginiert():
+    # year direkt, kein deepObject wie bei absences - und mit paging, anders als dort.
+    client, requests = client_mit(
+        lambda _: httpx.Response(
+            200,
+            json={
+                "paging": {"current_page": 1, "count_pages": 1, "count_items": 0},
+                "data": [],
+            },
+        )
+    )
+    synchron(client.users_nonbusiness_days(2026))
+
+    assert requests[0].url.path == "/api/v2/usersNonbusinessDays"
+    assert requests[0].url.params["year"] == "2026"
+
+
 def test_fehler_traegt_den_antwortkoerper():
     # raise_for_status wuerde genau die Begruendung verwerfen, die den beanstandeten
     # Parameter benennt.

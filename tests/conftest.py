@@ -188,6 +188,41 @@ def abwesenheiten_antwort() -> dict:
 
 
 @pytest.fixture
+def feiertage_antwort() -> dict:
+    """Zwei Feiertage einer Person aus ``/v2/usersNonbusinessDays`` - ein ganzer und ein
+    halber Tag. Struktur einer ``UsersNonbusinessDayV2``, paginiert wie ``/v4/projects``.
+    """
+    return {
+        "paging": {"items_per_page": 100, "current_page": 1, "count_pages": 1, "count_items": 1},
+        "data": [
+            {
+                "users_id": 301,
+                "days": [
+                    {
+                        "id": 1,
+                        "nonbusiness_group_id": 401,
+                        "type": "SPECIAL",
+                        "name": "Tag der Deutschen Einheit",
+                        "half_day": False,
+                        "surcharge_special": False,
+                        "evaluated_date": "2026-10-03",
+                    },
+                    {
+                        "id": 2,
+                        "nonbusiness_group_id": 401,
+                        "type": "SPECIAL",
+                        "name": "Heiligabend",
+                        "half_day": True,
+                        "surcharge_special": False,
+                        "evaluated_date": "2026-12-24",
+                    },
+                ],
+            }
+        ],
+    }  # fmt: skip
+
+
+@pytest.fixture
 def entrygroup_antwort() -> dict:
     """Verbrauch je Projekt mit Personen-Untergruppen, inklusive ``group == 0``."""
     return {

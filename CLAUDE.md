@@ -252,9 +252,9 @@ Stand der Clockodo-API:
 | Personen | `GET /v3/users` | `id`, `name`, `active` – **nicht** `default_target_hours` |
 | Sollarbeitszeit | `GET /targethours` (unversioniert) | `users_id`, `date_since`/`date_until`, Stunden je Wochentag |
 | Geplante Abwesenheit | `GET /v4/absences`, `filter[year]` (kein `year` direkt) | geladen in `Mitarbeiter.abwesenheiten`, roh – Deutung von Typ/Status noch offen (Spec 5.3) |
-| Feiertage | `GET /v2/nonbusinessDays` | `nonbusiness_group_id`, `evaluated_date`, `half_day` (bool) – noch nicht ausgewertet (Spec 5.3) |
-| Feiertage je Person | `GET /v2/usersNonbusinessDays?year=…` | `users_id`, `days[]` – noch nicht ausgewertet |
-| Feiertagsgruppe je Person | `GET /v3/usersNonbusinessGroups` | `users_id`, `nonbusiness_groups_id`, `date_since`/`date_until` |
+| Feiertage | `GET /v2/nonbusinessDays` | `nonbusiness_group_id`, `evaluated_date`, `half_day` (bool) – ungenutzt, siehe unten |
+| Feiertage je Person | `GET /v2/usersNonbusinessDays`, `year` | `users_id`, `days[]` – geladen in `Mitarbeiter.feiertage`, roh (Spec 5.3) |
+| Feiertagsgruppe je Person | `GET /v3/usersNonbusinessGroups` | `users_id`, `nonbusiness_groups_id`, `date_since`/`date_until` – ungenutzt, siehe unten |
 | Einzeleinträge | `GET /v2/entries` | **wird nicht benutzt**, siehe unten |
 
 `budget.hard` ist in dieser Installation `false` – Budgets sind also weiche Grenzen und
@@ -497,16 +497,26 @@ Für 5.3 sind zwei weitere Endpunkte die kürzere Strecke, beide mit Paginierung
 
 - `/v2/usersNonbusinessDays?year=…` liefert die Feiertage **je Person** fertig
   zugeordnet, `{"users_id": …, "days": [...]}` – die eigene Zuordnung über die
-  Feiertagsgruppe erspart sich damit.
+  Feiertagsgruppe erspart sich damit. **Dieser ist angebunden**:
+  `ClockodoClient.users_nonbusiness_days(year)` liest ihn über `get_paged` (er trägt
+  `paging`, anders als `/v4/absences`), `MitarbeiterRepository.laden_async(jahre=…)`
+  holt ihn je Jahr im Horizont gleichzeitig mit Personen, Sollzeiten und Abwesenheiten.
+  `Mitarbeiter.feiertage` führt das Ergebnis als `Feiertag`-Tupel (`datum`,
+  `halber_tag`, `name`) – roh, ohne Wirkung auf die Sollstunden zu ziehen.
+  **`year` ist hier ein einfacher Query-Parameter**, kein `deepObject` wie
+  `filter[year]` bei `/v4/absences` – beide Endpunkte filtern nach Jahr, aber nicht auf
+  dieselbe Art.
 - `/v3/usersNonbusinessGroups` liefert die Zuordnung Person → Gruppe **mit
   Gültigkeitszeitraum** (`date_since`, `date_until`); es gibt mehr Einträge als Personen,
   eine Zuordnung hat also schon gewechselt. `users.nonbusinessgroups_id` kennt nur den
   heutigen Stand – für einen vergangenen Stichtag (Rückwärtstest, Spec 11.4) ist das der
-  falsche Wert.
+  falsche Wert. **Ungenutzt**, weil `/v2/usersNonbusinessDays` die Zuordnung bereits
+  auflöst.
 
 **Was die Doku nicht klärt: was `half_day` bewirkt.** Sie deklariert nur ein Boolean.
 Dass ein halber Feiertag die Sollstunden des Tages halbiert, bleibt damit die Annahme aus
 Spec 5.3 – belegt ist jetzt lediglich, dass es ein Schalter ist und keine Stundenzahl.
+`Feiertag.halber_tag` führt ihn deshalb ungedeutet mit.
 
 **Kundennamen nur über `/v3/customers`**: `/v4/customers`
 antwortet mit 404 `RouteNotFound`, `/v2/customers` mit 410 `deprecated`. Die Antwortform
@@ -546,22 +556,29 @@ laufenden Monats stumm dem Verbrauch zu, statt sie der Prognose anzurechnen.
 
 Laut Spec Abschnitt 11, Schritt 2: **Abwesenheiten und Feiertage auswerten** (5.3).
 
-**Abwesenheiten sind angebunden, aber nur der Abruf.** `ClockodoClient.absences(year)`
-liest `/v4/absences` mit `filter[year]`, `MitarbeiterRepository.laden_async(jahre=…)`
-holt sie je Jahr im Horizont gleichzeitig mit Personen und Sollzeiten und ordnet sie über
-`users_id` zu; `BestandRepository` bestimmt die Jahre aus Stichtag und `horizontende()`
-und reicht sie durch – bei einem Horizont über die Jahresgrenze automatisch zwei Abrufe.
-`Mitarbeiter.abwesenheiten` führt das Ergebnis als `Abwesenheit`-Tupel, roh mit
-Clockodos `type`- und `status`-Codes. **Offen bleibt die Deutung**, nicht der Zugriff:
-welche Status (`Approved` gegenüber `Enquired`, `Declined`, …) und welche Typen als
-Kapazitätsabzug zählen – `Home office` und `Work out of office` tragen laut Doku die
-geplanten Stunden und sind damit vermutlich keine Abwesenheit vom Arbeiten –, und wie
-daraus der Abschlag für ungeplante Abwesenheit geschätzt wird, ist noch zu entscheiden.
+**Beide sind angebunden, aber nur der Abruf – die Deutung fehlt noch.**
+`ClockodoClient.absences(year)` liest `/v4/absences` mit `filter[year]`,
+`ClockodoClient.users_nonbusiness_days(year)` liest `/v2/usersNonbusinessDays` mit dem
+einfachen Parameter `year` (kein `deepObject` wie bei `absences`, und anders als dort
+mit `paging`, deshalb über `get_paged`). `MitarbeiterRepository.laden_async(jahre=…)`
+holt beide je Jahr im Horizont gleichzeitig mit Personen und Sollzeiten und ordnet sie
+über `users_id` zu; `BestandRepository` bestimmt die Jahre aus Stichtag und
+`horizontende()` und reicht sie durch – bei einem Horizont über die Jahresgrenze
+automatisch je zwei Abrufe statt einem. `Mitarbeiter.abwesenheiten` und
+`Mitarbeiter.feiertage` führen die Ergebnisse als `Abwesenheit`- bzw. `Feiertag`-Tupel,
+roh mit Clockodos eigenen Codes.
 
-Als Nächstes die Feiertage: `/v2/usersNonbusinessDays?year=…` anbinden, das sie je
-Person fertig zugeordnet liefert – die Zuordnung über die Feiertagsgruppe von Hand
-erübrigt sich damit. Auch hier reicht der Horizont ggf. über eine Jahresgrenze, also
-zwei Abrufe. Erst wenn beides steht, lässt sich der Kapazitätsdeckel aus 5.3 bauen –
+**Offen bleibt die Deutung**, nicht der Zugriff:
+
+- Welche Status (`Approved` gegenüber `Enquired`, `Declined`, …) und welche Typen einer
+  `Abwesenheit` als Kapazitätsabzug zählen – `Home office` und `Work out of office`
+  tragen laut Doku die geplanten Stunden und sind damit vermutlich keine Abwesenheit vom
+  Arbeiten.
+- Wie `Feiertag.halber_tag` die Sollstunden mindert (halbiert oder auf 0 gesetzt).
+- Wie aus alldem der Abschlag für ungeplante Abwesenheit geschätzt wird – eine
+  Schätzgröße, die die Spec der Kalibrierung zuordnet und nicht beziffert.
+
+Erst wenn das entschieden ist, lässt sich der Kapazitätsdeckel aus 5.3 bauen –
 Sollstunden minus geplante Abwesenheit minus Feiertage minus Abschlag. Danach die
 Simulation (5.4) samt vollständiger Ausgabe (5.5), dann der Rückwärtstest über 12
 Stichtage – der braucht wegen des Limits von 10 `entrygroups`-Abrufen je Minute eine
