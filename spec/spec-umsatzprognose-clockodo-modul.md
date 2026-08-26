@@ -51,9 +51,10 @@ geprüft.
 | Anteil je Person am Projekt | dieselbe Abfrage, zusätzlich `grouping[]=users_id` | `sub_groups` mit `group`, `duration`, `revenue` |
 | Umsatz je Monat | `GET /v2/entrygroups`, `grouping[]=month` | `group` (`"JJJJMM"`), `revenue`, `duration` |
 | Kundenname | `GET /v3/customers` | `id`, `name` |
-| Personen | `GET /v3/users` | `id`, `name`, `active` |
+| Personen | `GET /v3/users` | `id`, `name`, `active`, `nonbusinessgroups_id` |
 | Sollarbeitszeit je Person | `GET /targethours` (unversioniert) | `users_id`, `type`, `date_since`, `date_until`, Stunden je Wochentag |
 | Geplante Abwesenheit | `GET /v4/absences?year=…` | Zeitraum, Art, Person |
+| Feiertage je Feiertagsgruppe | `GET /nonbusinessdays?year=…` (unversioniert) | `nonbusinessgroups_id`, `date`, `name`, `half_day` |
 
 Basis-URL ist `https://my.clockodo.com/api`. Authentifizierung über drei Pflicht-Header:
 `X-ClockodoApiUser` (E-Mail), `X-ClockodoApiKey` und
@@ -74,6 +75,19 @@ Gesamtlänge**.
   aufgetreten; träte er auf, wird er nicht gedeutet, sondern gemeldet.
 - **Abwesenheiten liegen auf `/v4/absences`.** Die Legacy-Pfade `/absences`,
   `/v2/absences` und `/v3/absences` antworten mit 410 `deprecated`.
+- **Feiertage liegen auf dem unversionierten `/nonbusinessdays?year=…`** (geprüft am
+  26.08.2026). `/v2`, `/v3` und `/v4` davon geben 404, `/holidays` ebenfalls; ohne
+  `year` kommt 400 `Missing data: year`, außerhalb von 2000–2037 ein 500 mit
+  Klartextmeldung. Envelope-Key ist `nonbusinessdays`, es gibt kein `paging`: ein
+  Abruf liefert alle 77 Einträge über die sechs Feiertagsgruppen dieser Anlage. Die
+  beweglichen Feste sind serverseitig gerechnet und nicht kopiert (Karfreitag
+  2025-04-18, 2026-04-03, 2027-03-26). `nonbusinessgroups_id` wirkt hier als echter
+  Filter (77 → 15 Einträge) – anders als bei `/v4/projects`, wo unbekannte Parameter
+  still ignoriert werden.
+- **Die Feiertagsgruppen selbst sind nicht abrufbar.** `/nonbusinessgroups` antwortet
+  mit 410 `deprecated`, `/v2` bis `/v5` mit 404. Es fehlt damit nur der Gruppenname;
+  die Zuordnung steht in `users.nonbusinessgroups_id`, und die Namen der Feiertage
+  liefert `/nonbusinessdays` mit. Alle 26 aktiven Personen haben eine Gruppe.
 - **`/v2/entries` wird nicht benutzt.** `count_items` steht bei 16.461 für zwölf Monate,
   `items_per_page` bei 2500 – sieben Abrufe je Jahr Historie, um dieselbe Summe zu
   bilden, die `/v2/entrygroups` schon gebildet hat. Die Doppelgruppierung nach Projekt
@@ -221,11 +235,31 @@ verfügbare Kapazität(Person, Monat) = Sollstunden(Person, Monat)
   Einträge.
 - **Geplante Abwesenheit** aus `/v4/absences?year=…`, in Stunden gegen dieselbe
   Sollarbeitszeit gerechnet.
+- **Feiertage** aus `/nonbusinessdays?year=…`, je Person über ihre
+  `nonbusinessgroups_id` aus `/v3/users`. Sie stehen weder in `/targethours` noch in
+  den Abwesenheiten und sind deshalb eigens abzuziehen: ein Feiertag mit
+  `half_day: 0` setzt die Sollstunden seines Wochentags auf 0, `half_day: 1`
+  halbiert sie. Fällt er auf einen Wochentag ohne Sollstunden, wirkt er von selbst
+  nicht – ein Sonderfall für Wochenenden ist nicht nötig.
 - **Abschlag für ungeplante Abwesenheit**: ein aus der Abwesenheitshistorie geschätzter
   Prozentsatz. Noch nicht geschätzt (11.2).
 
-Feiertage sind in `/targethours` nicht enthalten und in den Abwesenheiten
-voraussichtlich auch nicht; ob und wie Clockodo sie führt, ist ungeprüft (9.3).
+**Die Feiertagsgruppe ist Teil des Deckels, kein Detail.** Die sechs Gruppen dieser
+Anlage führen zwischen 11 und 15 Feiertage im Jahr, und die Unterschiede fallen in
+einzelne Monate: Fronleichnam, Allerheiligen, Reformationstag, Buß- und Bettag,
+Mariä Himmelfahrt sind je nach Gruppe gesetzt oder nicht. Ein pauschaler Abschlag
+über alle Personen würde diese Spreizung innerhalb eines Horizontmonats verwischen.
+Am 26.08.2026 verteilen sich die 26 aktiven Personen auf fünf Gruppen (15 / 6 / 3 /
+1 / 1).
+
+**Derselbe Kalender gilt für die Skalierung von Monat 1** (5.4). Der dort verlangte
+„Anteil der verbleibenden Arbeitstage am Monat" ist ohne Feiertage ein anderer als
+der Deckel, den er skaliert.
+
+Offen bleibt die Deutung von `half_day`: dass ein halber Feiertag die Sollstunden des
+Tages halbiert, passt zum Feldnamen und zu den betroffenen Tagen (Heiligabend und
+Silvester, in einer Gruppe gar nicht geführt), ist aber nicht an der Clockodo-Doku
+belegt. Es geht um zwei Tage im Dezember.
 
 ### 5.4 Simulationslogik
 
@@ -333,8 +367,6 @@ Zusammenführung ist nicht Teil dieser Spec.
 2. **Korrelation zwischen Projekten** (5.2). Die unabhängige Ziehung liefert eine zu
    enge Bandbreite. Ob das für eine 1–3-Monats-Prognose vertretbar ist, ist eine
    fachliche Entscheidung.
-3. **Feiertage** (5.3). Ungeprüft, ob und wo Clockodo sie führt. Ohne sie ist die
-   Sollzeit im Monat zu hoch angesetzt.
 
 ## 10. Stand der Umsetzung
 
@@ -344,8 +376,8 @@ Umgesetzt als Python-Paket `umsatzprognose` mit Notebook-Oberfläche in Google C
   als Hinweis ausgewiesen wird), der Aufteilungsschlüssel aus 5.4 Schritt 3, die
   Sollarbeitszeit aus 5.3 sowie die Umsatzhistorie der letzten zwölf Monate.
 - **Nicht gebaut:** die Simulation (5.4), die Schätzung der Abrufquote-Verteilung (5.2),
-  geplante Abwesenheiten und der Abschlag für ungeplante (5.3). An der Stelle der
-  Bandbreite steht die Begründung.
+  geplante Abwesenheiten, Feiertage und der Abschlag für ungeplante (5.3). An der
+  Stelle der Bandbreite steht die Begründung.
 
 ## 11. Nächste Schritte
 
@@ -354,8 +386,11 @@ Umgesetzt als Python-Paket `umsatzprognose` mit Notebook-Oberfläche in Google C
    rekonstruieren, empirische Verteilung bilden. Dieselbe Gruppierung liefert über den
    Horizont die bereits gebuchten Beträge für die Untergrenze aus 5.4 – ein Abruf, zwei
    Zwecke. Der Client bietet diese Kombination noch nicht an.
-2. **Abwesenheiten auswerten** (5.3): `/v4/absences` anbinden und aus der Historie den
-   Abschlag für ungeplante Abwesenheit schätzen.
+2. **Abwesenheiten und Feiertage auswerten** (5.3): `/v4/absences` anbinden und aus der
+   Historie den Abschlag für ungeplante Abwesenheit schätzen; `/nonbusinessdays` je
+   Feiertagsgruppe anbinden und die `nonbusinessgroups_id` der Person mitlesen, die
+   heute noch verworfen wird. Der Horizont reicht über eine Jahresgrenze, also zwei
+   Abrufe.
 3. **Simulation bauen** (5.4) und die Ausgabe aus 5.5 vollständig liefern.
 4. **Rückwärtstest über 12 Stichtage.** Er entscheidet auch, ob Referenzklassen nötig
    sind (Abschnitt 6).

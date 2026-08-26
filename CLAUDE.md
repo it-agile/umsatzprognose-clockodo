@@ -269,6 +269,7 @@ kein Versehen, sondern Stand der Clockodo-API:
 | Personen | `GET /v3/users` | `id`, `name`, `active` – **nicht** `default_target_hours` |
 | Sollarbeitszeit | `GET /targethours` (unversioniert) | `users_id`, `date_since`/`date_until`, Stunden je Wochentag |
 | Geplante Abwesenheit | `GET /v4/absences?year=…` | noch nicht ausgewertet (Spec 5.3) |
+| Feiertage | `GET /nonbusinessdays?year=…` (unversioniert) | `nonbusinessgroups_id`, `date`, `half_day` – noch nicht ausgewertet (Spec 5.3) |
 | Einzeleinträge | `GET /v2/entries` | **wird nicht benutzt**, siehe unten |
 
 `budget.hard` ist in dieser Installation `false` – Budgets sind also weiche Grenzen und
@@ -526,12 +527,20 @@ Prototyp an echten Antworten widerlegt – `hourly_rate`, `default_target_hours`
 Legacy-Absences. **Bei Feldfragen also nie v0.3 zitieren, sondern gegen eine echte
 Antwort prüfen.**
 
-Offen und bewusst zurückgestellt: Verantwortlichkeit für die monatliche Kalibrierung
-(9.5). Blockiert den produktiven Rollout, nicht den Prototyp. Ebenfalls offen laut 9.1
-bis 9.4: aktive Projekte ohne Budget, die Korrelationsannahme, die Behandlung von
-Feiertagen und Buchungen jenseits des **Horizonts** – die stehen im Restvolumen, obwohl
-ihr Umsatz erst danach anfällt (am 24.08.2026: 9.525 EUR in 11/2026, Projekt außerhalb
-des Scope).
+Offen und bewusst zurückgestellt: Verantwortlichkeit für die monatliche Kalibrierung.
+Blockiert den produktiven Rollout, nicht den Prototyp. Ebenfalls offen laut Spec 9:
+aktive Projekte ohne Budget und die Korrelationsannahme. Dazu Buchungen jenseits des
+**Horizonts** – die stehen im Restvolumen, obwohl ihr Umsatz erst danach anfällt (am
+24.08.2026: 9.525 EUR in 11/2026, Projekt außerhalb des Scope).
+
+**Die Feiertage sind seit dem 26.08.2026 geklärt** und damit kein offener Punkt mehr:
+das unversionierte `/nonbusinessdays?year=…` liefert sie je Feiertagsgruppe, die
+Zuordnung steht in `users.nonbusinessgroups_id`. Die Regel steht in Spec 5.3, gebaut
+ist sie noch nicht. Details am Endpunkt: `/v2` bis `/v4` geben 404, ohne `year` kommt
+400, das Jahr muss zwischen 2000 und 2037 liegen, Envelope-Key ist `nonbusinessdays`,
+kein Paging (77 Einträge über sechs Gruppen). Die Gruppen selbst sind nicht abrufbar:
+`/nonbusinessgroups` antwortet 410, `/v2` bis `/v5` 404 – es fehlt nur der
+Gruppenname, die Feiertagsnamen kommen mit den Tagen.
 
 ## Nächster geplanter Schritt
 
