@@ -18,7 +18,7 @@ from umsatzprognose.domaene.zahlen import euro, stunden
 
 PROJEKTSPALTEN = ["Kunde", "Projekt", "Beauftragt", "Verbraucht", "Offen", "Budget überschritten"]
 UMSATZSPALTEN = ["Monat", "Umsatz", "Stunden", "Status"]
-HINWEISSPALTEN = ["Hinweis", "Betroffen", "IDs"]
+HINWEISSPALTEN = ["Hinweis", "Betroffen", "Projekte"]
 
 
 def projekttabelle(projekte: Sequence[Projekt]) -> pd.DataFrame:
@@ -67,7 +67,7 @@ def hinweistabelle(hinweise: Sequence[Hinweis]) -> pd.DataFrame:
             {
                 "Hinweis": hinweis.text,
                 "Betroffen": hinweis.anzahl or "",
-                "IDs": ", ".join(str(i) for i in hinweis.betroffene[:8])
+                "Projekte": ", ".join(str(i) for i in hinweis.betroffene[:8])
                 + (" …" if hinweis.anzahl > 8 else ""),
             }
             for hinweis in hinweise

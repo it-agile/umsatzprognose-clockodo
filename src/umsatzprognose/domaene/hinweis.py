@@ -29,7 +29,7 @@ class Hinweis:
     """
 
     text: str
-    betroffene: tuple[int, ...] = ()
+    betroffene: tuple[str, ...] = ()
 
     @property
     def anzahl(self) -> int:
