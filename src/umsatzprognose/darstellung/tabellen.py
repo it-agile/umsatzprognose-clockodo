@@ -52,6 +52,11 @@ def umsatztabelle(historie: Umsatzhistorie, prognose: Prognose | None = None) ->
     Gebuchtem schon (Spec 5.4, ``Monatsumsatz = max(simuliert, gebucht)``), ein zweites
     Draufaddieren waere falsch. Prognostizierte Zeilen tragen ein ``*`` am Betrag statt
     einer zweiten Schriftart - die Tabelle bleibt eine gewoehnliche DataFrame.
+
+    Der Status folgt der Rechnungsstellung, nicht dem Kalender: abgeschlossene
+    Vergangenheitsmonate sind ``"abgerechnet"``, der laufende Monat ist
+    ``"nicht abgerechnet"`` - genau wie in :func:`~umsatzprognose.darstellung.diagramme.
+    umsatzverlauf`.
     """
     laufender = historie.laufender
     zeilen = [
@@ -59,9 +64,9 @@ def umsatztabelle(historie: Umsatzhistorie, prognose: Prognose | None = None) ->
             "Monat": monat.beschriftung,
             "Umsatz": euro(monat.umsatz),
             "Stunden": stunden(monat.stunden),
-            "Status": "läuft noch"
+            "Status": "nicht abgerechnet"
             if laufender and monat.schluessel == laufender.schluessel
-            else "abgeschlossen",
+            else "abgerechnet",
         }
         for monat in historie.monate
     ]

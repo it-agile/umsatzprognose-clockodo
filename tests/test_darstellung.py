@@ -12,7 +12,7 @@ from random import Random
 
 from umsatzprognose.darstellung import diagramme, tabellen
 from umsatzprognose.darstellung.dashboard import Dashboard
-from umsatzprognose.darstellung.gestaltung import PROGNOSE_DECKKRAFT, SERIE, SERIE_HELL
+from umsatzprognose.darstellung.gestaltung import PROGNOSE_DECKKRAFT, SERIE_HELL
 from umsatzprognose.domaene.bestand import Bestand
 from umsatzprognose.domaene.hinweis import Hinweis
 from umsatzprognose.domaene.kunde import Kunde
@@ -89,8 +89,8 @@ def test_umsatzverlauf_zeigt_legende_fuer_die_farben():
     fig = diagramme.umsatzverlauf(HISTORIE)
     assert fig.layout.showlegend is True
     legende = {spur.name for spur in fig.data if spur.showlegend}
-    # Ohne Prognose gibt es nur zwei Farben: Historie und der laufende Monat.
-    assert legende == {"Historie", "Läuft noch"}
+    # Ohne Prognose gibt es nur zwei Farben: abgerechnet und nicht abgerechnet.
+    assert legende == {"Abgerechnet", "Nicht abgerechnet"}
 
 
 def test_umsatzverlauf_nennt_den_grund_ohne_bandbreite():
@@ -148,17 +148,19 @@ def test_umsatzverlauf_haengt_horizont_mit_zwei_farbtoenen_an():
 
     gebucht_spur = next(s for s in fig.data if s.name == "Bereits gebucht")
     prognostiziert_spur = next(s for s in fig.data if s.name == "Prognostiziert")
-    # Farblich unterscheidbar: "gebucht" so satt wie die Historie, "prognostiziert"
-    # gedaempft - keine der beiden Spuren sieht wie die andere aus.
-    assert gebucht_spur.marker.color == SERIE
+    # "Bereits gebucht" ist ein kuenftiger, aber noch nicht abgerechneter Betrag und
+    # teilt sich deshalb die Farbe mit dem laufenden Monat (hell), nicht mit der
+    # abgerechneten Historie (satt) - unterscheidbar von "prognostiziert" einzig ueber
+    # die Deckkraft.
+    assert gebucht_spur.marker.color == SERIE_HELL
     assert prognostiziert_spur.marker.color == SERIE_HELL
     assert prognostiziert_spur.marker.opacity == PROGNOSE_DECKKRAFT
-    assert gebucht_spur.marker.color != prognostiziert_spur.marker.color
+    assert gebucht_spur.marker.opacity in (None, 1.0)
 
     # Die Legende benennt alle drei Farben, "Bereits gebucht" teilt sich ihre Farbe
-    # bewusst mit "Historie" und bekommt deshalb kein eigenes Feld.
+    # bewusst mit "Nicht abgerechnet" und bekommt deshalb kein eigenes Feld.
     legende = {spur.name for spur in fig.data if spur.showlegend}
-    assert legende == {"Historie", "Läuft noch", "Prognostiziert"}
+    assert legende == {"Abgerechnet", "Nicht abgerechnet", "Prognostiziert"}
 
 
 def test_dashboard_zeigt_horizont_im_umsatzverlauf():
@@ -187,8 +189,8 @@ def test_kennzahlen_zeigen_eine_kachel_je_eintrag():
 def test_umsatztabelle_kennzeichnet_den_laufenden_monat():
     tabelle = tabellen.umsatztabelle(HISTORIE)
     assert len(tabelle) == 13
-    assert tabelle.iloc[-1]["Status"] == "läuft noch"
-    assert tabelle.iloc[-2]["Status"] == "abgeschlossen"
+    assert tabelle.iloc[-1]["Status"] == "nicht abgerechnet"
+    assert tabelle.iloc[-2]["Status"] == "abgerechnet"
     assert tabelle.iloc[-2]["Umsatz"] == "300.000,00 EUR"
 
 
@@ -215,8 +217,8 @@ def test_umsatztabelle_ergaenzt_die_prognose_mit_stern():
     tabelle = tabellen.umsatztabelle(historie, prognose)
 
     # Zwei Historienmonate plus zwei Horizontmonate - der laufende Monat also doppelt:
-    # einmal "läuft noch" mit dem bisher Gebuchten, einmal "prognostiziert" mit der
-    # Voll-Monats-Schätzung, wie im Diagramm gestapelt.
+    # einmal "nicht abgerechnet" mit dem bisher Gebuchten, einmal "prognostiziert" mit
+    # der Voll-Monats-Schätzung, wie im Diagramm gestapelt.
     assert len(tabelle) == 4
     prognostizierte = tabelle[tabelle["Status"] == "prognostiziert"]
     assert len(prognostizierte) == 2

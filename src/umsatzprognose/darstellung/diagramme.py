@@ -10,10 +10,10 @@ jedem Balken. Der laufende Monat ist heller gezeichnet und beschriftet - eine he
 Stufe derselben Farbe, weil es dieselbe Groesse ist und keine zweite Kategorie.
 
 Die eine Ausnahme ist :func:`umsatzverlauf`: dort stehen bis zu drei Farbtoene
-nebeneinander (Historie, laufender Monat, Prognostiziert), und der Titel kann sie nicht
-mehr benennen. Die Legende dort besteht aus eigenen, unsichtbaren Spuren statt aus den
-echten Balken - die Historie-Spur traegt ihre Farbe als Array uneinheitlicher Werte, und
-ein Legendenfeld dazu waere irrefuehrend.
+nebeneinander (abgerechnet, nicht abgerechnet, prognostiziert), und der Titel kann sie
+nicht mehr benennen. Die Legende dort besteht aus eigenen, unsichtbaren Spuren statt aus
+den echten Balken - die Historie-Spur faerbt sich ueber ein Array uneinheitlicher Werte,
+und ein Legendenfeld direkt daraus waere irrefuehrend.
 """
 
 from __future__ import annotations
@@ -54,14 +54,17 @@ def umsatzverlauf(
     ist er hell gezeichnet und ausdruecklich beschriftet - und er geht in die
     Durchschnittslinie nicht ein.
 
-    Ist ``prognose`` gegeben und :attr:`~Prognose.vorhanden`, haengen sich die
-    Horizontmonate rechts an, in zwei Farbtoenen je Monat: **bereits gebucht** (so
-    sicher wie die Historie, deshalb dieselbe volle Farbe) und **prognostiziert** (der
-    Rest bis zum Median der Simulation, gedaempft - siehe
-    :data:`~umsatzprognose.darstellung.gestaltung.PROGNOSE_DECKKRAFT`). Ein duenner
-    Fehlerbalken je Monat zeigt, wie weit die 85-%- und 95-%-Niveaus darunter liegen
-    (Spec 5.5). Ohne ``prognose`` oder ohne Bandbreite bleibt das Bild bei der Historie;
-    die Begruendung steht dann als Hinweis rechts daneben.
+    Drei Farbtoene, nach Rechnungsstellung unterschieden statt nach Kalendermonat:
+    **abgerechnet** (satt, nur abgeschlossene Vergangenheitsmonate), **nicht
+    abgerechnet** (hell, deckend - der laufende Monat und, im Prognosehorizont, bereits
+    in Clockodo gebuchte Betraege kuenftiger Monate, die per Definition noch nicht
+    abgerechnet sein koennen) und **prognostiziert** (hell, gedaempft - der Rest bis zum
+    Median der Simulation, siehe
+    :data:`~umsatzprognose.darstellung.gestaltung.PROGNOSE_DECKKRAFT`). Sicherheit einer
+    Zahl zeigt sich also ueber die Deckkraft, nicht ueber eine dritte Farbfamilie. Ein
+    duenner Fehlerbalken je Monat zeigt, wie weit die 85-%- und 95-%-Niveaus darunter
+    liegen (Spec 5.5). Ohne ``prognose`` oder ohne Bandbreite bleibt das Bild bei der
+    Historie; die Begruendung steht dann als Hinweis rechts daneben.
 
     Der erste Horizontmonat ist derselbe Kalendermonat wie der laufende - beide teilen
     dieselbe Balkenbeschriftung und stapeln sich deshalb an derselben Stelle
@@ -94,7 +97,7 @@ def umsatzverlauf(
         },
         customdata=[[euro(m.umsatz), f"{m.stunden:,.0f}".replace(",", ".")] for m in monate],
         hovertemplate="<b>%{x}</b><br>%{customdata[0]}<br>%{customdata[1]} Stunden<extra></extra>",
-        showlegend=True,
+        showlegend=False,
         name="Historie",
     )
 
@@ -124,9 +127,10 @@ def umsatzverlauf(
             font={"color": TINTE_ZWEITRANGIG, "size": 12},
         )
 
-    _legendeintrag(fig, "Historie", SERIE)
-    if laufender:
-        _legendeintrag(fig, "Läuft noch", SERIE_HELL)
+    horizont_gebucht = prognose.gebucht() if prognose is not None and prognose.vorhanden else []
+    _legendeintrag(fig, "Abgerechnet", SERIE)
+    if laufender or any(horizont_gebucht):
+        _legendeintrag(fig, "Nicht abgerechnet", SERIE_HELL)
     if prognose is not None and prognose.vorhanden:
         _legendeintrag(fig, "Prognostiziert", SERIE_HELL, deckkraft=PROGNOSE_DECKKRAFT)
     # Waagerecht unterhalb der x-Achse statt rechts daneben: das braucht nur zusaetzliche
@@ -158,8 +162,8 @@ def _legendeintrag(fig: go.Figure, name: str, farbe: str, *, deckkraft: float = 
 
     Die echten Spuren tragen ``showlegend=False`` (die Historie-Spur faerbt ihre Balken
     ueber ein Array aus zwei Farben, "Bereits gebucht" teilt sich ihre Farbe absichtlich
-    mit der Historie) - ein Legendenfeld direkt daraus waere pro Farbe nicht sauber zu
-    gewinnen. ``x=[None]`` statt einer leeren Liste: manche Plotly-Renderer (etwa Colab)
+    mit dem laufenden Monat) - ein Legendenfeld direkt daraus waere pro Farbe nicht
+    sauber zu gewinnen. ``x=[None]`` statt einer leeren Liste: manche Plotly-Renderer (etwa Colab)
     lassen eine Spur ganz ohne Datenpunkt auch aus der Legende verschwinden, ein
     einzelner ``None``-Punkt zeichnet nichts, haelt die Spur aber sichtbar.
     """
@@ -191,6 +195,12 @@ def _prognosehorizont(
     ``base``/``y`` werden bewusst ohne ``barmode="stack"`` gesetzt (der laeuft bei
     mehreren Kategorien mit gleichem Namen nicht zuverlaessig zusammen) - stattdessen
     zeichnet jede Spur ihr Segment selbst von ``base`` bis ``base + y``.
+
+    "Bereits gebucht" faerbt sich hell wie der laufende Monat, nicht dunkel wie die
+    abgeschlossene Historie: ein fuer einen kuenftigen Monat schon in Clockodo erfasster
+    Betrag kann per Definition noch nicht abgerechnet sein, der Monat hat ja noch nicht
+    einmal begonnen. Beide teilen sich deshalb dieselbe Farbe und dasselbe Legendenfeld
+    ("Nicht abgerechnet") - unterschieden von der Prognose einzig ueber die Deckkraft.
     """
     horizont = prognose.horizontmonate()
     if not horizont:
@@ -208,7 +218,7 @@ def _prognosehorizont(
         fig.add_bar(
             x=beschriftungen[1:],
             y=gebucht[1:],
-            marker={"color": SERIE},
+            marker={"color": SERIE_HELL},
             customdata=[[euro(betrag)] for betrag in gebucht[1:]],
             hovertemplate="<b>%{x}</b><br>Bereits gebucht: %{customdata[0]}<extra></extra>",
             showlegend=False,
