@@ -93,8 +93,7 @@ class BestandRepository:
             stichtag: Tag, auf den sich die Prognose bezieht; ohne Angabe heute. Er
                 begrenzt auch den Verbrauch (Spec 5.1) - ein Bestand zu einem
                 vergangenen Stichtag rechnet damit nicht mit Buchungen, die es damals
-                noch nicht gab. Das ist die Voraussetzung fuer den Rueckwaertstest aus
-                Spec 11.4.
+                noch nicht gab.
             mit_anteilen: die Anteile je Person mitladen (Spec 5.4, Schritt 3).
             mit_verbrauchsverlauf: den monatlichen Verbrauch je Projekt mitladen. Er
                 traegt die Abrufquote-Verteilung (Spec 5.2) und die bereits gebuchten

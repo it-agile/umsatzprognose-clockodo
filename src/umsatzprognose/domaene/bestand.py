@@ -270,7 +270,7 @@ class Bestand:
         (:meth:`~umsatzprognose.domaene.verbrauchsverlauf.Verbrauchsverlauf.abrufquoten`);
         welche Monate dabei zaehlen, haengt am Stichtag des Bestands. Ein Bestand zu
         einem vergangenen Stichtag schaetzt damit die Verteilung, die damals zu schaetzen
-        gewesen waere - Voraussetzung fuer den Rueckwaertstest aus Spec 11.4.
+        gewesen waere.
         """
         return Abrufquotenverteilung.aus_quoten(
             quote
