@@ -9,10 +9,7 @@ from __future__ import annotations
 
 from datetime import date
 
-from umsatzprognose.domaene.kunde import Kunde
-from umsatzprognose.domaene.mitarbeiter import Mitarbeiter
-from umsatzprognose.domaene.projekt import Budget, Projekt
-from umsatzprognose.domaene.projektanteil import Projektanteil
+from umsatzprognose.domaene import Budget, Kunde, Mitarbeiter, Projekt, Projektanteil
 
 
 def projekt(**felder) -> Projekt:

@@ -41,15 +41,23 @@ Domaene am Stichtag, nicht der Abruf.
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping
-from datetime import date
-from typing import Any
+from typing import TYPE_CHECKING
 
-from umsatzprognose.clockodo.client import HISTORIE_VON, ClockodoClient, horizontende
-from umsatzprognose.clockodo.nebenlaeufig import synchron
-from umsatzprognose.clockodo.umsatz import monatsumsatz
-from umsatzprognose.domaene.projekt import Projekt
-from umsatzprognose.domaene.verbrauchsverlauf import Verbrauchsverlauf
+if TYPE_CHECKING:
+    from collections.abc import Iterable, Mapping
+    from typing import Any
+
+    from umsatzprognose.domaene import Projekt
+
+    from .config import ClockodoClient
+
+from datetime import date
+
+from umsatzprognose.domaene import Verbrauchsverlauf
+
+from .client import HISTORIE_VON, horizontende
+from .nebenlaeufig import synchron
+from .umsatz import monatsumsatz
 
 
 class VerbrauchsverlaufRepository:

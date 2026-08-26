@@ -42,13 +42,18 @@ Zwecke - so steht es in Spec 11.1.
 
 from __future__ import annotations
 
-from collections.abc import Iterable
-from dataclasses import dataclass
-from datetime import date
+from typing import TYPE_CHECKING
 
-from umsatzprognose.domaene.abrufquote import Abrufquote
-from umsatzprognose.domaene.projekt import Projekt
-from umsatzprognose.domaene.umsatzhistorie import Monatsumsatz
+if TYPE_CHECKING:
+    from collections.abc import Iterable
+    from datetime import date
+
+    from .projekt import Projekt
+
+from dataclasses import dataclass
+
+from .abrufquote import Abrufquote
+from .umsatzhistorie import Monatsumsatz
 
 
 def _ordnung(jahr: int, monat: int) -> int:

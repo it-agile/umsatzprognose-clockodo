@@ -30,17 +30,18 @@ from __future__ import annotations
 
 from datetime import date
 
-from umsatzprognose.clockodo.client import ClockodoClient, horizontende, verbrauch_bis
-from umsatzprognose.clockodo.config import ClockodoCredentials
-from umsatzprognose.clockodo.kunden import KundenRepository
-from umsatzprognose.clockodo.mitarbeiter import MitarbeiterRepository
-from umsatzprognose.clockodo.nebenlaeufig import gleichzeitig, synchron
-from umsatzprognose.clockodo.projekte import ProjektRepository
-from umsatzprognose.clockodo.projekte import rohdaten as projekt_rohdaten
-from umsatzprognose.clockodo.umsatz import UmsatzRepository
-from umsatzprognose.clockodo.verbrauchsverlauf import VerbrauchsverlaufRepository
-from umsatzprognose.clockodo.verbrauchsverlauf import rohdaten as monatsverbrauch_rohdaten
 from umsatzprognose.domaene.bestand import Bestand
+
+from .client import ClockodoClient, horizontende, verbrauch_bis
+from .config import ClockodoCredentials
+from .kunden import KundenRepository
+from .mitarbeiter import MitarbeiterRepository
+from .nebenlaeufig import gleichzeitig, synchron
+from .projekte import ProjektRepository
+from .projekte import rohdaten as projekt_rohdaten
+from .umsatz import UmsatzRepository
+from .verbrauchsverlauf import VerbrauchsverlaufRepository
+from .verbrauchsverlauf import rohdaten as monatsverbrauch_rohdaten
 
 
 class BestandRepository:

@@ -23,10 +23,23 @@ unverbindlich. Siehe
 
 **Entrygroups** - eine Gruppe sieht so aus (Felder gekuerzt, Werte erfunden)::
 
-    {"group": "101", "name": "Kunde / Projekt", "duration": 2160000,
-     "revenue": 60000.0, "hourly_rate": null, "grouped_by": "projects_id",
-     "sub_groups": [{"group": "301", "name": "Person", "duration": 1620000,
-                     "revenue": 45000.0, "grouped_by": "users_id"}]}
+    {
+        "group": "101",
+        "name": "Kunde / Projekt",
+        "duration": 2160000,
+        "revenue": 60000.0,
+        "hourly_rate": null,
+        "grouped_by": "projects_id",
+        "sub_groups": [
+            {
+                "group": "301",
+                "name": "Person",
+                "duration": 1620000,
+                "revenue": 45000.0,
+                "grouped_by": "users_id",
+            }
+        ],
+    }
 
 Drei Fallen darin, alle an den Gruppen dieser Installation belegt:
 
@@ -47,18 +60,21 @@ Drei Fallen darin, alle an den Gruppen dieser Installation belegt:
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from typing import Any
+
+    from .config import ClockodoClient
+
 from collections.abc import Mapping
 from datetime import date
-from typing import Any
 
-from umsatzprognose.clockodo.client import HISTORIE_VON, ClockodoClient
-from umsatzprognose.clockodo.nebenlaeufig import gleichzeitig, synchron
-from umsatzprognose.domaene.hinweis import Hinweis
-from umsatzprognose.domaene.kunde import Kunde
-from umsatzprognose.domaene.mitarbeiter import Mitarbeiter
-from umsatzprognose.domaene.projekt import Budget, Projekt
-from umsatzprognose.domaene.projektanteil import Projektanteil
+from umsatzprognose.domaene import Budget, Hinweis, Kunde, Mitarbeiter, Projekt, Projektanteil
 from umsatzprognose.domaene.zahlen import euro, stunden
+
+from .client import HISTORIE_VON
+from .nebenlaeufig import gleichzeitig, synchron
 
 SEKUNDEN_JE_STUNDE = 3600.0
 

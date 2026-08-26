@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import date
 
-from umsatzprognose.domaene.umsatzhistorie import Monatsumsatz, Umsatzhistorie
+from umsatzprognose.domaene import Monatsumsatz, Umsatzhistorie
 
 STICHTAG = date(2026, 8, 24)
 

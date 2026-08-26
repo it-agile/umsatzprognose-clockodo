@@ -20,10 +20,14 @@ zusaetzliche Abhaengigkeit, die in Colab nur an dieser einen Stelle gebraucht wu
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from collections.abc import Coroutine
+    from typing import Any
+
 import asyncio
-from collections.abc import Coroutine
 from concurrent.futures import ThreadPoolExecutor
-from typing import Any
 
 # Notbremse fuer einen Faecher unbekannter Breite - bei der Paginierung ist die
 # Seitenzahl erst nach der ersten Antwort bekannt. Die sechs Abrufe einer Prognose

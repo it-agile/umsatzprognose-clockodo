@@ -16,13 +16,17 @@ from random import Random
 
 import pytest
 
-from umsatzprognose.domaene.bestand import Bestand
-from umsatzprognose.domaene.kunde import Kunde
-from umsatzprognose.domaene.mitarbeiter import Mitarbeiter, Wochenarbeitszeit
-from umsatzprognose.domaene.projekt import Budget, Projekt
-from umsatzprognose.domaene.projektanteil import Projektanteil
-from umsatzprognose.domaene.umsatzhistorie import Monatsumsatz
-from umsatzprognose.domaene.verbrauchsverlauf import Verbrauchsverlauf
+from umsatzprognose.domaene import (
+    Bestand,
+    Budget,
+    Kunde,
+    Mitarbeiter,
+    Monatsumsatz,
+    Projekt,
+    Projektanteil,
+    Verbrauchsverlauf,
+    Wochenarbeitszeit,
+)
 
 KUNDE = Kunde(id=1, name="Musterkunde GmbH")
 
@@ -58,14 +62,14 @@ def historie(quote: float, id: int = 900) -> Verbrauchsverlauf:
 
 def test_ohne_projekte_im_scope_gibt_es_keine_prognose():
     b = Bestand(stichtag=STICHTAG, verbrauchsverlaeufe=(historie(0.5),))
-    prognose = b.simulieren(1)
+    prognose = b.simulieren(monate=1)
     assert not prognose.vorhanden
 
 
 def test_monat_muss_mindestens_eins_sein():
     b = Bestand(stichtag=STICHTAG, verbrauchsverlaeufe=(historie(0.5),))
     with pytest.raises(ValueError, match="Horizont"):
-        b.simulieren(0)
+        b.simulieren(monate=0)
 
 
 def test_einfacher_lauf_ohne_kapazitaetsdeckel():
@@ -88,7 +92,7 @@ def test_einfacher_lauf_ohne_kapazitaetsdeckel():
         verbrauchsverlaeufe=(historie(0.5),),
     )
 
-    prognose = b.simulieren(1, laeufe=5, zufall=Random(1))
+    prognose = b.simulieren(monate=1, laeufe=5, zufall=Random(1))
 
     assert prognose.vorhanden
     # Restvolumen 8000, Quote 0.5 -> gewuenscht 4000 Euro, bei 50 Euro/h sind das 80h,
@@ -131,7 +135,7 @@ def test_kapazitaetsdeckel_kuerzt_anteilig_ueber_alle_projekte_einer_person():
     # Wochenarbeitszeit im September hergibt.
     assert kapazitaet < 160.0
 
-    prognose = b.simulieren(1, laeufe=5, zufall=Random(2))
+    prognose = b.simulieren(monate=1, laeufe=5, zufall=Random(2))
 
     erwarteter_umsatz = kapazitaet * 50.0
     for werte in prognose.monatswerte().values():
@@ -155,7 +159,7 @@ def test_projekt_ohne_stundensatz_verbraucht_keine_kapazitaet():
         verbrauchsverlaeufe=(historie(0.5),),
     )
 
-    prognose = b.simulieren(1, laeufe=3, zufall=Random(3))
+    prognose = b.simulieren(monate=1, laeufe=3, zufall=Random(3))
 
     # Restvolumen 4000, Quote 0.5 -> 2000 Euro, direkt geliefert, keine Person beteiligt.
     for werte in prognose.monatswerte().values():
@@ -181,7 +185,7 @@ def test_gezogene_quote_wird_auf_restvolumen_gekappt_und_folgemonat_liefert_nich
         verbrauchsverlaeufe=(historie(3.0),),  # Quote > 1: weiche Budgets, Spec 5.2
     )
 
-    prognose = b.simulieren(2, laeufe=3, zufall=Random(4))
+    prognose = b.simulieren(monate=2, laeufe=3, zufall=Random(4))
 
     for werte in prognose.monatswerte().values():
         # Monat 1: min(4000, 3.0*4000) = 4000, das komplette Restvolumen.
@@ -211,7 +215,7 @@ def test_deadline_monat_zaehlt_noch_voll_folgemonat_nicht():
         verbrauchsverlaeufe=(historie(0.5),),
     )
 
-    prognose = b.simulieren(3, laeufe=3, zufall=Random(5))
+    prognose = b.simulieren(monate=3, laeufe=3, zufall=Random(5))
 
     werte = next(iter(prognose.monatswerte().values()))
     september, oktober, november = werte
@@ -245,7 +249,7 @@ def test_bereits_gebuchter_betrag_ist_die_untergrenze_in_kuenftigen_monaten():
         verbrauchsverlaeufe=(historie(0.1), verlauf_projekt),
     )
 
-    prognose = b.simulieren(2, laeufe=3, zufall=Random(6))
+    prognose = b.simulieren(monate=2, laeufe=3, zufall=Random(6))
 
     # September: min(100000, 0.1*100000) = 10000, unveraendert. Oktober: simulierter
     # Verbrauch waere nur 0.1*90000=9000 - der real gebuchte Betrag von 20000 ist die
@@ -281,7 +285,7 @@ def test_stichtagsmonat_zaehlt_keine_gebuchten_betraege_als_untergrenze():
         verbrauchsverlaeufe=(historie(0.1), verlauf_projekt),
     )
 
-    prognose = b.simulieren(1, laeufe=3, zufall=Random(7))
+    prognose = b.simulieren(monate=1, laeufe=3, zufall=Random(7))
 
     # Ohne den Ausschluss fuer Monat 0 wuerde hier 90000 statt 10000 stehen.
     for werte in prognose.monatswerte().values():

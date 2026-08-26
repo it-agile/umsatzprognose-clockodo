@@ -18,9 +18,12 @@ als eigene Objektsorte dazu.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
-from umsatzprognose.domaene.mitarbeiter import Mitarbeiter
+if TYPE_CHECKING:
+    from .mitarbeiter import Mitarbeiter
+
+from dataclasses import dataclass
 
 
 @dataclass(frozen=True)

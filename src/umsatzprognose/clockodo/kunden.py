@@ -16,11 +16,16 @@ weil dieselbe Grenze bei den Projekten schon knapp ist.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING
 
-from umsatzprognose.clockodo.client import ClockodoClient
-from umsatzprognose.clockodo.nebenlaeufig import synchron
-from umsatzprognose.domaene.kunde import Kunde
+if TYPE_CHECKING:
+    from typing import Any
+
+    from .config import ClockodoClient
+
+from umsatzprognose.domaene import Kunde
+
+from .nebenlaeufig import synchron
 
 
 class KundenRepository:

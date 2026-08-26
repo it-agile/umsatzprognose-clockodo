@@ -24,12 +24,18 @@ Monate ohne Buchungen tauchen in der Antwort nicht auf; aufgefuellt werden sie i
 
 from __future__ import annotations
 
-from datetime import date
-from typing import Any
+from typing import TYPE_CHECKING
 
-from umsatzprognose.clockodo.client import ClockodoClient, monatsende
-from umsatzprognose.clockodo.nebenlaeufig import synchron
-from umsatzprognose.domaene.umsatzhistorie import Monatsumsatz, Umsatzhistorie
+if TYPE_CHECKING:
+    from datetime import date
+    from typing import Any
+
+    from .config import ClockodoClient
+
+from umsatzprognose.domaene import Monatsumsatz, Umsatzhistorie
+
+from .client import monatsende
+from .nebenlaeufig import synchron
 
 SEKUNDEN_JE_STUNDE = 3600.0
 

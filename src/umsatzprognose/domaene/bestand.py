@@ -22,21 +22,26 @@ falsche Zahlen liefern. Der Lauf-Zustand gehoert neben die Objekte, nicht in sie
 
 from __future__ import annotations
 
-from collections.abc import Mapping
-from dataclasses import dataclass, field, replace
-from datetime import date
-from random import Random
+from typing import TYPE_CHECKING
 
-from umsatzprognose.domaene.abrufquote import Abrufquotenverteilung
-from umsatzprognose.domaene.hinweis import Hinweis
-from umsatzprognose.domaene.kunde import Kunde
-from umsatzprognose.domaene.mitarbeiter import Mitarbeiter
-from umsatzprognose.domaene.prognose import Prognose
-from umsatzprognose.domaene.projekt import Projekt
-from umsatzprognose.domaene.simulation import simulieren
-from umsatzprognose.domaene.umsatzhistorie import Umsatzhistorie
-from umsatzprognose.domaene.verbrauchsverlauf import Verbrauchsverlauf
-from umsatzprognose.domaene.zahlen import euro
+if TYPE_CHECKING:
+    from collections.abc import Mapping
+    from datetime import date
+    from random import Random
+
+    from .kunde import Kunde
+    from .mitarbeiter import Mitarbeiter
+    from .prognose import Prognose
+    from .projekt import Projekt
+    from .umsatzhistorie import Umsatzhistorie
+    from .verbrauchsverlauf import Verbrauchsverlauf
+
+from dataclasses import dataclass, field, replace
+
+from .abrufquote import Abrufquotenverteilung
+from .hinweis import Hinweis
+from .simulation import simulieren
+from .zahlen import euro
 
 
 @dataclass(frozen=True)
@@ -279,7 +284,7 @@ class Bestand:
         )
 
     def simulieren(
-        self, monate: int = 3, *, laeufe: int = 10000, zufall: Random | None = None
+        self, *, monate: int = 3, laeufe: int = 10000, zufall: Random | None = None
     ) -> Prognose:
         """Die Monte-Carlo-Simulation aus Spec 5.4.
 

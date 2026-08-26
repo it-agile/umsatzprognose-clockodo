@@ -4,12 +4,15 @@ from __future__ import annotations
 
 from datetime import date
 
-from umsatzprognose.domaene.bestand import Bestand
-from umsatzprognose.domaene.hinweis import Hinweis
-from umsatzprognose.domaene.kunde import Kunde
-from umsatzprognose.domaene.mitarbeiter import Mitarbeiter
-from umsatzprognose.domaene.projekt import Budget, Projekt
-from umsatzprognose.domaene.projektanteil import Projektanteil
+from umsatzprognose.domaene import (
+    Bestand,
+    Budget,
+    Hinweis,
+    Kunde,
+    Mitarbeiter,
+    Projekt,
+    Projektanteil,
+)
 
 STICHTAG = date(2026, 8, 24)
 ITA = Kunde(id=7, name="Musterkunde GmbH")

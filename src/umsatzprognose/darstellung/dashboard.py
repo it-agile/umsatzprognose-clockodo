@@ -11,14 +11,19 @@ Selbstverstaendlichkeit ist.
 
 from __future__ import annotations
 
-from datetime import date
+from typing import TYPE_CHECKING
 
-import pandas as pd
-import plotly.graph_objects as go
+if TYPE_CHECKING:
+    from datetime import date
 
-from umsatzprognose.clockodo.bestand import BestandRepository
-from umsatzprognose.darstellung import diagramme, tabellen
-from umsatzprognose.domaene.bestand import Bestand
+    import pandas as pd
+    import plotly.graph_objects as go
+
+    from umsatzprognose.domaene import Bestand, Prognose
+
+from umsatzprognose.clockodo import BestandRepository
+
+from . import diagramme, tabellen
 
 STANDARD_TOP = 15
 
@@ -28,6 +33,7 @@ class Dashboard:
 
     def __init__(self, bestand: Bestand) -> None:
         self.bestand = bestand
+        self.prognose: Prognose | None = None
 
     @classmethod
     def laden(
@@ -91,24 +97,20 @@ class Dashboard:
             ]
         )
 
-    def umsatzverlauf(self, monate: int = 3) -> go.Figure:
-        """Der Umsatz je Monat - Historie und, daran anschliessend, der Prognosehorizont.
+    def simuliere(self, *, monate: int = 3, laeufe: int = 10_000):
+        self.prognose = self.bestand.simulieren(monate=monate, laeufe=laeufe)
 
-        ``monate`` steuert nur die Laenge des angehaengten Horizonts (Spec 5.4: 1 bis
-        3); die Historie zeigt unveraendert die letzten zwoelf abgeschlossenen Monate.
-        """
-        return diagramme.umsatzverlauf(self._historie(), self.bestand.simulieren(monate))
+    def umsatzverlauf(self) -> go.Figure:
+        """Der Umsatz je Monat - Historie und, daran anschliessend, der Prognosehorizont."""
+        return diagramme.umsatzverlauf(self._historie(), self.prognose)
 
     def restvolumen_je_projekt(self, top: int = STANDARD_TOP) -> go.Figure:
         """Das offene Auftragsvolumen der groessten Projekte."""
         return diagramme.restvolumen_je_projekt(self.bestand.im_prognose_scope, top=top)
 
-    def umsatztabelle(self, monate: int = 3) -> pd.DataFrame:
-        """Dieselben Monate wie im Verlaufsdiagramm, zum Nachlesen - inklusive Prognose.
-
-        ``monate`` steuert wie bei :meth:`umsatzverlauf` nur die Laenge des Horizonts.
-        """
-        return tabellen.umsatztabelle(self._historie(), self.bestand.simulieren(monate))
+    def umsatztabelle(self) -> pd.DataFrame:
+        """Dieselben Monate wie im Verlaufsdiagramm, zum Nachlesen - inklusive Prognose."""
+        return tabellen.umsatztabelle(self._historie(), self.prognose)
 
     def projekttabelle(self, top: int | None = None) -> pd.DataFrame:
         """Die Projekte der Prognose, groesstes offenes Volumen zuerst."""

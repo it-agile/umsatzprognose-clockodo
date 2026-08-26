@@ -71,15 +71,21 @@ und verwirft genau diese Information, deshalb :class:`ClockodoError`.
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping, Sequence
+    from typing import Any
+
+    from .config import ClockodoCredentials
+
 from calendar import monthrange
-from collections.abc import Mapping, Sequence
 from datetime import date
-from typing import Any
 
 import httpx
 
-from umsatzprognose.clockodo.config import BASE_URL, ClockodoCredentials
-from umsatzprognose.clockodo.nebenlaeufig import gleichzeitig
+from .config import BASE_URL
+from .nebenlaeufig import gleichzeitig
 
 DEFAULT_TIMEOUT = 60.0
 

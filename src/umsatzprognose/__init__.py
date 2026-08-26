@@ -19,6 +19,7 @@ Abhaengigkeitsrichtung::
 Der uebliche Einstieg ist eine Zeile::
 
     from umsatzprognose import Dashboard
+
     dashboard = Dashboard.laden()
 """
 

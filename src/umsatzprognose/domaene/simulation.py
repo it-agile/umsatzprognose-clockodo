@@ -39,19 +39,21 @@ selbst schon ueber jeden Tag des Monats).
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
+
+    from .bestand import Bestand
+    from .projekt import Projekt
+
 from calendar import monthrange
 from collections import defaultdict
-from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import date
 from random import Random
-from typing import TYPE_CHECKING
 
-from umsatzprognose.domaene.prognose import KONFIDENZNIVEAUS, NochKeinePrognose, Prognose
-
-if TYPE_CHECKING:
-    from umsatzprognose.domaene.bestand import Bestand
-    from umsatzprognose.domaene.projekt import Projekt
+from .prognose import KONFIDENZNIVEAUS, NochKeinePrognose, Prognose
 
 Monat = tuple[int, int]  # (jahr, monat)
 

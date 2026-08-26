@@ -18,8 +18,7 @@ import httpx
 import pytest
 
 from conftest import CREDS, client_mit
-from umsatzprognose.clockodo.bestand import BestandRepository
-from umsatzprognose.clockodo.client import ClockodoClient, ClockodoError
+from umsatzprognose.clockodo import BestandRepository, ClockodoClient, ClockodoError
 from umsatzprognose.clockodo.nebenlaeufig import gleichzeitig, synchron
 
 # Grosszuegig: der Test misst keine Dauer, er soll nur nicht ewig haengen, wenn die

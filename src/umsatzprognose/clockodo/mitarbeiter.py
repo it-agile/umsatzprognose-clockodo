@@ -10,10 +10,22 @@ nutzt, und nicht, wie viel sie arbeitet. Wer es als Stundenzahl liest, bekommt 0
 Die Sollarbeitszeit steht im unversionierten Legacy-Endpunkt ``/targethours``, je
 Person und Gueltigkeitszeitraum::
 
-    {"id": 1, "users_id": 301, "type": "weekly",
-     "date_since": "2023-06-14", "date_until": null,
-     "monday": 7, "tuesday": 7, "wednesday": 7, "thursday": 7, "friday": 7,
-     "saturday": 0, "sunday": 0, "compensation_daily": 0, "compensation_monthly": 0}
+    {
+        "id": 1,
+        "users_id": 301,
+        "type": "weekly",
+        "date_since": "2023-06-14",
+        "date_until": null,
+        "monday": 7,
+        "tuesday": 7,
+        "wednesday": 7,
+        "thursday": 7,
+        "friday": 7,
+        "saturday": 0,
+        "sunday": 0,
+        "compensation_daily": 0,
+        "compensation_monthly": 0,
+    }
 
 Die Historie fuehrt zu jeder Person mehrere Zeilen; abgeschlossene tragen ein
 ``date_until``, offene nicht. In dieser Anlage hat jede aktive Person genau eine offene
@@ -32,15 +44,21 @@ diesem Schritt und bleibt fuer Aufrufer ohne Kapazitaetsbedarf ohne zusaetzliche
 
 from __future__ import annotations
 
-from collections import defaultdict
-from collections.abc import Sequence
-from datetime import date
-from typing import Any
+from typing import TYPE_CHECKING
 
-from umsatzprognose.clockodo.client import ClockodoClient
-from umsatzprognose.clockodo.nebenlaeufig import gleichzeitig, synchron
-from umsatzprognose.domaene.hinweis import Hinweis
-from umsatzprognose.domaene.mitarbeiter import Abwesenheit, Feiertag, Mitarbeiter, Wochenarbeitszeit
+if TYPE_CHECKING:
+    from collections.abc import Sequence
+    from typing import Any
+
+    from .config import ClockodoClient
+
+from collections import defaultdict
+from datetime import date
+
+from umsatzprognose.domaene import Hinweis, Mitarbeiter, Wochenarbeitszeit
+from umsatzprognose.domaene.mitarbeiter import Abwesenheit, Feiertag
+
+from .nebenlaeufig import gleichzeitig, synchron
 
 # Reihenfolge wie in Wochenarbeitszeit.stunden_je_wochentag: Montag zuerst.
 WOCHENTAG_FELDER = (

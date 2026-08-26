@@ -10,12 +10,15 @@ from __future__ import annotations
 from datetime import date
 
 from conftest import client_mit_routen
-from umsatzprognose.clockodo.bestand import BestandRepository
-from umsatzprognose.clockodo.kunden import KundenRepository
-from umsatzprognose.clockodo.mitarbeiter import MitarbeiterRepository
-from umsatzprognose.clockodo.projekte import ProjektRepository, budget, projekt_id
-from umsatzprognose.clockodo.umsatz import UmsatzRepository
-from umsatzprognose.clockodo.verbrauchsverlauf import VerbrauchsverlaufRepository
+from umsatzprognose.clockodo import (
+    BestandRepository,
+    KundenRepository,
+    MitarbeiterRepository,
+    ProjektRepository,
+    UmsatzRepository,
+    VerbrauchsverlaufRepository,
+)
+from umsatzprognose.clockodo.projekte import budget, projekt_id
 
 STICHTAG = date(2026, 8, 24)
 

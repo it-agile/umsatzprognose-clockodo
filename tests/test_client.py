@@ -18,14 +18,8 @@ import httpx
 import pytest
 
 from conftest import CREDS, client_mit
-from umsatzprognose.clockodo.client import (
-    ClockodoClient,
-    ClockodoError,
-    horizontende,
-    monatsende,
-    verbrauch_bis,
-)
-from umsatzprognose.clockodo.config import ClockodoCredentials
+from umsatzprognose.clockodo import ClockodoClient, ClockodoCredentials, ClockodoError
+from umsatzprognose.clockodo.client import horizontende, monatsende, verbrauch_bis
 from umsatzprognose.clockodo.nebenlaeufig import synchron
 
 

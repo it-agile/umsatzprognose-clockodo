@@ -16,12 +16,16 @@ Projekt liefert deshalb Regeln und Zustand, die Simulation sitzt am
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from datetime import date
+from typing import TYPE_CHECKING
 
-from umsatzprognose.domaene.kunde import Kunde
-from umsatzprognose.domaene.mitarbeiter import Mitarbeiter
-from umsatzprognose.domaene.projektanteil import Projektanteil
+if TYPE_CHECKING:
+    from datetime import date
+
+    from .kunde import Kunde
+    from .mitarbeiter import Mitarbeiter
+    from .projektanteil import Projektanteil
+
+from dataclasses import dataclass, field
 
 
 @dataclass(frozen=True)

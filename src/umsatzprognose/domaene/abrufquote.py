@@ -24,13 +24,18 @@ bekannt, seine Groesse nicht.
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable
+    from random import Random
+
+    from .projekt import Projekt
+
 from dataclasses import dataclass
 from functools import cached_property
-from random import Random
 
-from umsatzprognose.domaene.projekt import Projekt
-from umsatzprognose.domaene.umsatzhistorie import MONATSNAMEN
+from .umsatzhistorie import MONATSNAMEN
 
 
 @dataclass(frozen=True)

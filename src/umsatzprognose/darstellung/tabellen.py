@@ -7,14 +7,16 @@ will, nimmt die Fachobjekte, die hinter jeder Zeile stehen.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
+
+    from umsatzprognose.domaene import Hinweis, Prognose, Projekt, Umsatzhistorie
 
 import pandas as pd
 
-from umsatzprognose.domaene.hinweis import Hinweis
-from umsatzprognose.domaene.prognose import Prognose
-from umsatzprognose.domaene.projekt import Projekt
-from umsatzprognose.domaene.umsatzhistorie import MONATSNAMEN, Umsatzhistorie
+from umsatzprognose.domaene.umsatzhistorie import MONATSNAMEN
 from umsatzprognose.domaene.zahlen import euro
 
 PROJEKTSPALTEN = ["Kunde", "Projekt", "Beauftragt", "Verbraucht", "Offen", "Budget überschritten"]

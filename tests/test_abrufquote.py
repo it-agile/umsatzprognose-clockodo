@@ -13,10 +13,14 @@ from random import Random
 
 import pytest
 
-from umsatzprognose.domaene.abrufquote import Abrufquote, Abrufquotenverteilung
-from umsatzprognose.domaene.projekt import Budget, Projekt
-from umsatzprognose.domaene.umsatzhistorie import Monatsumsatz
-from umsatzprognose.domaene.verbrauchsverlauf import Verbrauchsverlauf
+from umsatzprognose.domaene import (
+    Abrufquote,
+    Abrufquotenverteilung,
+    Budget,
+    Monatsumsatz,
+    Projekt,
+    Verbrauchsverlauf,
+)
 
 STICHTAG = date(2026, 8, 24)
 

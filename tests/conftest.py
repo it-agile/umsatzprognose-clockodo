@@ -10,13 +10,15 @@ sie so, wie die API sie liefert.
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 import httpx
 import pytest
 
-from umsatzprognose.clockodo.client import ClockodoClient
-from umsatzprognose.clockodo.config import ClockodoCredentials
+from umsatzprognose.clockodo import ClockodoClient, ClockodoCredentials
 
 CREDS = ClockodoCredentials(
     api_user="user@example.com",

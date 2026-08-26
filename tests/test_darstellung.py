@@ -10,17 +10,21 @@ from __future__ import annotations
 from datetime import date
 from random import Random
 
-from umsatzprognose.darstellung import diagramme, tabellen
-from umsatzprognose.darstellung.dashboard import Dashboard
+from umsatzprognose.darstellung import Dashboard, diagramme, tabellen
 from umsatzprognose.darstellung.gestaltung import PROGNOSE_DECKKRAFT, SERIE_HELL
-from umsatzprognose.domaene.bestand import Bestand
-from umsatzprognose.domaene.hinweis import Hinweis
-from umsatzprognose.domaene.kunde import Kunde
-from umsatzprognose.domaene.mitarbeiter import Mitarbeiter, Wochenarbeitszeit
-from umsatzprognose.domaene.projekt import Budget, Projekt
-from umsatzprognose.domaene.projektanteil import Projektanteil
-from umsatzprognose.domaene.umsatzhistorie import Monatsumsatz, Umsatzhistorie
-from umsatzprognose.domaene.verbrauchsverlauf import Verbrauchsverlauf
+from umsatzprognose.domaene import (
+    Bestand,
+    Budget,
+    Hinweis,
+    Kunde,
+    Mitarbeiter,
+    Monatsumsatz,
+    Projekt,
+    Projektanteil,
+    Umsatzhistorie,
+    Verbrauchsverlauf,
+    Wochenarbeitszeit,
+)
 
 STICHTAG = date(2026, 8, 24)
 KUNDE = Kunde(id=7, name="Union Asset Management Holding AG")
@@ -138,7 +142,7 @@ def test_umsatzverlauf_haengt_horizont_mit_zwei_farbtoenen_an():
         umsatzhistorie=historie,
         verbrauchsverlaeufe=(_historie_fuer_abrufquote(0.2), verlauf_projekt),
     )
-    prognose = bestand.simulieren(2, laeufe=5, zufall=Random(1))
+    prognose = bestand.simulieren(monate=2, laeufe=5, zufall=Random(1))
     assert prognose.vorhanden
 
     fig = diagramme.umsatzverlauf(historie, prognose)
@@ -175,7 +179,8 @@ def test_dashboard_zeigt_horizont_im_umsatzverlauf():
         verbrauchsverlaeufe=(_historie_fuer_abrufquote(0.2),),
     )
     dashboard = Dashboard(bestand)
-    fig = dashboard.umsatzverlauf(1)
+    dashboard.simuliere(monate=1)
+    fig = dashboard.umsatzverlauf()
     # Kein Projekt im Scope - dieselbe Begruendung wie an der Domaene direkt.
     assert any("Abrufquote" in a.text for a in fig.layout.annotations)
 
@@ -212,7 +217,7 @@ def test_umsatztabelle_verschmilzt_laufenden_monat_mit_der_prognose():
         umsatzhistorie=historie,
         verbrauchsverlaeufe=(_historie_fuer_abrufquote(0.2),),
     )
-    prognose = bestand.simulieren(2, laeufe=5, zufall=Random(1))
+    prognose = bestand.simulieren(monate=2, laeufe=5, zufall=Random(1))
     assert prognose.vorhanden
 
     tabelle = tabellen.umsatztabelle(historie, prognose)

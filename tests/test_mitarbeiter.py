@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from datetime import date
 
-from umsatzprognose.domaene.mitarbeiter import Abwesenheit, Feiertag, Mitarbeiter, Wochenarbeitszeit
+from umsatzprognose.domaene import Mitarbeiter, Wochenarbeitszeit
+from umsatzprognose.domaene.mitarbeiter import Abwesenheit, Feiertag
 
 SIEBEN_STUNDEN = (7.0, 7.0, 7.0, 7.0, 7.0, 0.0, 0.0)
 ACHT_STUNDEN = (8.0, 8.0, 8.0, 8.0, 8.0, 0.0, 0.0)
