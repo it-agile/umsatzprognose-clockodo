@@ -1,9 +1,11 @@
 """Gemeinsame Bausteine fuer die Tests.
 
-Kein Test spricht mit der echten API. Die Antworten sind gekuerzte, aber echte
-Ausschnitte aus Antworten dieser Installation vom 24.08.2026 - inklusive der
-Eigenheiten, die dabei aufgefallen sind (Projekt-ID als String, ``group == 0``,
-``default_target_hours`` als Schalter). Wer sie erfindet, testet die eigene Annahme.
+Kein Test spricht mit der echten API. Die Antworten sind **nachgebaute** Ausschnitte:
+Struktur, Typen und Sonderfaelle sind die der echten Antworten (Projekt-ID als String,
+``group == 0``, ``default_target_hours`` als Schalter), IDs, Namen und Betraege sind
+frei erfunden. Aus der Installation gelesene Werte stehen in keiner Datei dieses
+Repositories. Wer die *Struktur* erfindet, testet die eigene Annahme - deshalb bleibt
+sie so, wie die API sie liefert.
 """
 
 from __future__ import annotations
@@ -64,9 +66,9 @@ def projekt_antwort() -> dict:
         "paging": {"current_page": 1, "count_pages": 1, "count_items": 3},
         "data": [
             {
-                "id": 1375839,
-                "customers_id": 1361511,
-                "name": "Kanban Coaching",
+                "id": 101,
+                "customers_id": 201,
+                "name": "Beispielprojekt",
                 "active": True,
                 "completed": False,
                 "budget": {
@@ -79,16 +81,16 @@ def projekt_antwort() -> dict:
                 },
             },
             {
-                "id": 1240593,
-                "customers_id": 1361511,
-                "name": "A-CSM",
+                "id": 102,
+                "customers_id": 201,
+                "name": "Schulungsprodukt",
                 "active": True,
                 "completed": False,
                 "budget": None,
             },
             {
-                "id": 999001,
-                "customers_id": 4035662,
+                "id": 103,
+                "customers_id": 202,
                 "name": "Altprojekt",
                 "active": False,
                 "completed": True,
@@ -103,8 +105,8 @@ def kunden_antwort() -> dict:
     return {
         "paging": {"current_page": 1, "count_pages": 1, "count_items": 2},
         "data": [
-            {"id": 1361511, "name": "it-agile GmbH"},
-            {"id": 4035662, "name": "Beispiel AG"},
+            {"id": 201, "name": "Musterkunde GmbH"},
+            {"id": 202, "name": "Beispiel AG"},
         ],
     }
 
@@ -115,9 +117,9 @@ def benutzer_antwort() -> dict:
     return {
         "paging": {"current_page": 1, "count_pages": 1, "count_items": 2},
         "data": [
-            {"id": 143323, "name": "Carmen Rudolph", "active": True,
+            {"id": 301, "name": "Beispielperson", "active": True,
              "default_target_hours": False},
-            {"id": 235532, "name": "Ehemalige Person", "active": False,
+            {"id": 302, "name": "Ehemalige Person", "active": False,
              "default_target_hours": True},
         ],
     }  # fmt: skip
@@ -130,7 +132,7 @@ def sollzeit_antwort() -> dict:
         "targethours": [
             {
                 "id": 1,
-                "users_id": 143323,
+                "users_id": 301,
                 "type": "weekly",
                 "date_since": "2020-01-01",
                 "date_until": "2023-06-13",
@@ -139,7 +141,7 @@ def sollzeit_antwort() -> dict:
             },
             {
                 "id": 2,
-                "users_id": 143323,
+                "users_id": 301,
                 "type": "weekly",
                 "date_since": "2023-06-14",
                 "date_until": None,
@@ -156,16 +158,16 @@ def entrygroup_antwort() -> dict:
     return {
         "groups": [
             {
-                "group": "1375839",
-                "name": "it-agile GmbH / Kanban Coaching",
-                "duration": 2306880,
-                "revenue": 86661.88,
+                "group": "101",
+                "name": "Musterkunde GmbH / Beispielprojekt",
+                "duration": 2160000,
+                "revenue": 60000.0,
                 "grouped_by": "projects_id",
                 "sub_groups": [
-                    {"group": "143323", "name": "Carmen Rudolph", "duration": 1730160,
-                     "revenue": 64996.41, "grouped_by": "users_id"},
-                    {"group": "700000", "name": "Ohne Stammdatensatz", "duration": 576720,
-                     "revenue": 21665.47, "grouped_by": "users_id"},
+                    {"group": "301", "name": "Beispielperson", "duration": 1620000,
+                     "revenue": 45000.0, "grouped_by": "users_id"},
+                    {"group": "399", "name": "Ohne Stammdatensatz", "duration": 540000,
+                     "revenue": 15000.0, "grouped_by": "users_id"},
                 ],
             },
             {
@@ -184,38 +186,39 @@ def entrygroup_antwort() -> dict:
 def projekt_monats_antwort() -> dict:
     """Verbrauch je Projekt mit Monats-Untergruppen - die Antwort aus Spec 11.1.
 
-    Traegt die Eigenheiten, die am 26.08.2026 an der echten Antwort aufgefallen sind:
+    Traegt die Eigenheiten, die an der echten Antwort aufgefallen sind:
 
     * Die Monate kommen **nach Dauer absteigend**, nicht chronologisch.
     * ``202606`` fehlt: ein Monat ohne Buchung steht nicht in der Antwort.
     * ``202609`` liegt **nach** dem Stichtag (24.08.2026) - Untergrenze der Bandbreite
       (Spec 5.4) und kein Verbrauch.
-    * Die Monatssummen gehen nur auf den Cent auf (92.661,88 gegen 92.661,87 an der
-      Gruppe) - Clockodo rundet jede Gruppe einzeln.
+    * Die Monatssummen gehen nur auf den Cent auf (hier 65.000,00 gegen 64.999,99 an
+      der Gruppe) - Clockodo rundet jede Gruppe einzeln.
     * ``group == 0`` kommt **zweimal** vor, je Kunde ohne Projekt einmal.
 
-    Die Historie bis zum Stichtag summiert sich auf die 86.661,88 EUR, die
-    :func:`entrygroup_antwort` als Verbrauch dieses Projekts fuehrt.
+    Die Monate bis zum Stichtag summieren sich auf denselben Verbrauch, den
+    :func:`entrygroup_antwort` fuer dieses Projekt fuehrt - so haengen beide Fixtures
+    zusammen.
     """
     return {
         "groups": [
             {
-                "group": "1375839",
-                "name": "it-agile GmbH / Kanban Coaching",
-                "duration": 2466880,
-                "revenue": 92661.87,
+                "group": "101",
+                "name": "Musterkunde GmbH / Beispielprojekt",
+                "duration": 2340000,
+                "revenue": 64999.99,
                 "grouped_by": "projects_id",
                 "sub_groups": [
-                    {"group": "202604", "name": "202604", "duration": 800000,
-                     "revenue": 30000.0, "grouped_by": "month"},
-                    {"group": "202605", "name": "202605", "duration": 700000,
-                     "revenue": 25000.0, "grouped_by": "month"},
-                    {"group": "202607", "name": "202607", "duration": 500000,
+                    {"group": "202604", "name": "202604", "duration": 720000,
                      "revenue": 20000.0, "grouped_by": "month"},
-                    {"group": "202608", "name": "202608", "duration": 306880,
-                     "revenue": 11661.88, "grouped_by": "month"},
-                    {"group": "202609", "name": "202609", "duration": 160000,
-                     "revenue": 6000.0, "grouped_by": "month"},
+                    {"group": "202605", "name": "202605", "duration": 648000,
+                     "revenue": 18000.0, "grouped_by": "month"},
+                    {"group": "202607", "name": "202607", "duration": 540000,
+                     "revenue": 15000.0, "grouped_by": "month"},
+                    {"group": "202608", "name": "202608", "duration": 252000,
+                     "revenue": 7000.0, "grouped_by": "month"},
+                    {"group": "202609", "name": "202609", "duration": 180000,
+                     "revenue": 5000.0, "grouped_by": "month"},
                 ],
             },
             {
@@ -249,9 +252,9 @@ def monats_antwort() -> dict:
     """Zwei Monate; der dazwischenliegende fehlt und muss aufgefuellt werden."""
     return {
         "groups": [
-            {"group": "202606", "name": "202606", "duration": 10962720, "revenue": 292188.83,
+            {"group": "202606", "name": "202606", "duration": 3600000, "revenue": 300000.0,
              "grouped_by": "month"},
-            {"group": "202608", "name": "202608", "duration": 4993920, "revenue": 53272.63,
+            {"group": "202608", "name": "202608", "duration": 1800000, "revenue": 150000.0,
              "grouped_by": "month"},
         ]
     }  # fmt: skip

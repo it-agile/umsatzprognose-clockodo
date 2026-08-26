@@ -41,8 +41,8 @@ def test_kunden_werden_nach_id_abgelegt(kunden_antwort):
     client, _ = client_mit_routen({"/v3/customers": kunden_antwort})
     kunden = KundenRepository(client).laden()
 
-    assert kunden[1361511].name == "it-agile GmbH"
-    assert str(kunden[4035662]) == "Beispiel AG"
+    assert kunden[201].name == "Musterkunde GmbH"
+    assert str(kunden[202]) == "Beispiel AG"
 
 
 def test_sollarbeitszeit_kommt_nicht_aus_default_target_hours(benutzer_antwort, sollzeit_antwort):
@@ -51,16 +51,16 @@ def test_sollarbeitszeit_kommt_nicht_aus_default_target_hours(benutzer_antwort, 
     client, _ = client_mit_routen({"/v3/users": benutzer_antwort, "/targethours": sollzeit_antwort})
     personen = MitarbeiterRepository(client).laden()
 
-    carmen = personen[143323]
-    assert carmen.aktiv
-    assert carmen.wochenstunden(STICHTAG) == 35.0
-    assert carmen.wochenstunden(date(2021, 1, 1)) == 40.0
-    assert personen[235532].wochenstunden(STICHTAG) is None
+    person = personen[301]
+    assert person.aktiv
+    assert person.wochenstunden(STICHTAG) == 35.0
+    assert person.wochenstunden(date(2021, 1, 1)) == 40.0
+    assert personen[302].wochenstunden(STICHTAG) is None
 
 
 def test_projekt_id_und_budgetformen(projekt_antwort):
     daten = projekt_antwort["data"]
-    assert projekt_id(daten[0]) == 1375839
+    assert projekt_id(daten[0]) == 101
     assert budget(daten[0]).auftragsvolumen == 160000.0
     # budget ist null - der Schluessel ist da, ein Betrag nicht.
     assert budget(daten[1]).auftragsvolumen is None
@@ -87,10 +87,10 @@ def test_projekte_bekommen_kunde_verbrauch_und_anteile(
 
     gefunden = {p.id: p for p in projekte}
     assert len(gefunden) == 3  # auch inaktive Projekte werden geladen
-    coaching = gefunden[1375839]
-    assert str(coaching.kunde) == "it-agile GmbH"
-    assert coaching.verbrauchtes_volumen == 86661.88
-    assert coaching.verbrauchte_stunden == 2306880 / 3600
+    coaching = gefunden[101]
+    assert str(coaching.kunde) == "Musterkunde GmbH"
+    assert coaching.verbrauchtes_volumen == 60000.0
+    assert coaching.verbrauchte_stunden == 2160000 / 3600
     assert len(coaching.anteile) == 2
 
 
@@ -109,8 +109,8 @@ def test_person_ohne_stammdatensatz_verliert_ihre_stunden_nicht(
     personen = MitarbeiterRepository(client).laden()
     projekte = ProjektRepository(client, {}, personen).laden()
 
-    coaching = next(p for p in projekte if p.id == 1375839)
-    unbekannt = next(a for a in coaching.anteile if a.mitarbeiter.id == 700000)
+    coaching = next(p for p in projekte if p.id == 101)
+    unbekannt = next(a for a in coaching.anteile if a.mitarbeiter.id == 399)
     assert unbekannt.mitarbeiter.name is None
     assert unbekannt.stunden > 0
     assert sum(a.stunden for a in coaching.anteile) == coaching.verbrauchte_stunden
@@ -146,9 +146,9 @@ def test_ohne_anteile_wird_der_verbrauch_trotzdem_gelesen(projekt_antwort, entry
     )
     projekte = ProjektRepository(client).laden(mit_anteilen=False)
 
-    coaching = next(p for p in projekte if p.id == 1375839)
+    coaching = next(p for p in projekte if p.id == 101)
     assert coaching.anteile == ()
-    assert coaching.verbrauchtes_volumen == 86661.88
+    assert coaching.verbrauchtes_volumen == 60000.0
 
 
 def test_monatsumsaetze_werden_gelesen_und_luecken_gefuellt(monats_antwort):
@@ -158,7 +158,7 @@ def test_monatsumsaetze_werden_gelesen_und_luecken_gefuellt(monats_antwort):
     assert len(historie.monate) == 13
     assert historie.monate[-1].schluessel == (2026, 8)
     assert next(m for m in historie.monate if m.schluessel == (2026, 7)).umsatz == 0.0
-    assert next(m for m in historie.monate if m.schluessel == (2026, 6)).umsatz == 292188.83
+    assert next(m for m in historie.monate if m.schluessel == (2026, 6)).umsatz == 300000.0
     # Das Fenster beginnt zwoelf Monate vor dem laufenden und endet am Monatsende.
     params = requests[0].url.params
     assert params["time_since"] == "2025-08-01T00:00:00Z"
@@ -176,7 +176,7 @@ def test_monatsverbrauch_wird_je_projekt_und_chronologisch_abgebildet(
 
     # Die beiden Gruppen mit group == 0 fallen heraus, uebrig bleibt das eine Projekt,
     # dessen Monate in der Antwort nach Dauer absteigend stehen.
-    assert [v.projekt.id for v in verlaeufe] == [1375839]
+    assert [v.projekt.id for v in verlaeufe] == [101]
     assert [m.schluessel for m in verlaeufe[0].monate] == [
         (2026, 4),
         (2026, 5),
@@ -185,8 +185,8 @@ def test_monatsverbrauch_wird_je_projekt_und_chronologisch_abgebildet(
         (2026, 9),
     ]
     # Die Monatssummen gehen nur auf den Cent auf - ein Vergleich auf Gleichheit mit der
-    # Gruppensumme (92.661,87) waere ein Fehlalarm.
-    assert round(verlaeufe[0].verbrauch, 2) == 92661.88
+    # Gruppensumme (64.999,99) waere ein Fehlalarm.
+    assert round(verlaeufe[0].verbrauch, 2) == 65000.0
     # Das Fenster reicht bis zum Ende des Horizonts, nicht bis zum Stichtag: derselbe
     # Abruf traegt die gebuchten Betraege im Horizont (Spec 11.1).
     assert requests[0].url.params["time_until"] == "2026-10-31T23:59:59Z"
@@ -232,13 +232,13 @@ def test_bestand_setzt_alles_zusammen(
     assert bestand.stichtag == STICHTAG
     assert len(bestand.projekte) == 3
     assert len(bestand.mitarbeiter) == 2
-    assert [p.id for p in bestand.im_prognose_scope] == [1375839]
-    assert bestand.restvolumen_prognosewirksam == 160000.0 - 86661.88
-    assert bestand.umsatzhistorie.summe() == 292188.83
+    assert [p.id for p in bestand.im_prognose_scope] == [101]
+    assert bestand.restvolumen_prognosewirksam == 160000.0 - 60000.0
+    assert bestand.umsatzhistorie.summe() == 300000.0
     # Sieben Abrufe: Kunden, Personen, Sollzeiten, Projekte, Verbrauch, Monatsumsatz,
     # Monatsverbrauch je Projekt.
     assert len(requests) == 7
     assert any("ohne Projekt" in h.text for h in bestand.hinweise())
     # Der siebte Abruf traegt die Verteilung aus Spec 5.2 bis in den Bestand.
-    assert [v.projekt.id for v in bestand.verbrauchsverlaeufe] == [1375839]
+    assert [v.projekt.id for v in bestand.verbrauchsverlaeufe] == [101]
     assert bestand.abrufquotenverteilung().anzahl == 4

@@ -7,11 +7,11 @@ Am 24.08.2026 geprueft, welche Version die Kunden liefert: ``/v4/customers`` ant
 mit 404 ``RouteNotFound``, ``/v2/customers`` mit 410 ``deprecated``, ``/v3/customers``
 mit 200 und derselben Form wie ``/v4/projects``::
 
-    {"paging": {…, "count_items": 324},
-     "data": [{"id": 1480229, "name": "//Seibert/Media GmbH", "number": null, …}]}
+    {"paging": {…, "count_items": …},
+     "data": [{"id": …, "name": …, "number": null, …}]}
 
-324 Kunden passen auf eine Seite von 1000; der Abruf laeuft trotzdem ueber alle Seiten,
-weil dieselbe Grenze bei den Projekten (895 von 1000) schon knapp ist.
+Die Kunden passen auf eine Seite von 1000; der Abruf laeuft trotzdem ueber alle Seiten,
+weil dieselbe Grenze bei den Projekten schon knapp ist.
 """
 
 from __future__ import annotations

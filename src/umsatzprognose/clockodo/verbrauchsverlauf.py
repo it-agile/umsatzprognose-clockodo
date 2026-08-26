@@ -2,35 +2,33 @@
 :class:`~umsatzprognose.domaene.verbrauchsverlauf.Verbrauchsverlauf`.
 
 Der Abruf, den Spec 11.1 fuer die Abrufquote-Verteilung verlangt. Am 26.08.2026 gegen
-die Installation geprueft::
+die Installation geprueft; die Form, mit erfundenen Werten::
 
     GET /v2/entrygroups?time_since=…&time_until=…&grouping[]=projects_id&grouping[]=month
-    → {"groups": [{"group": "1231087", "name": "it-agile GmbH / Moneypenny",
-                   "duration": 4360500, "revenue": 0,
+    → {"groups": [{"group": "101", "name": "Kunde / Projekt",
+                   "duration": 2340000, "revenue": 65000.0,
                    "sub_groups": [{"group": "202606", "name": "202606",
-                                   "duration": 1755900, "revenue": 0,
-                                   "restrictions": {"projects_id": "1231087"},
+                                   "duration": 720000, "revenue": 20000.0,
+                                   "restrictions": {"projects_id": "101"},
                                    "grouped_by": "month"}]}]}
 
-870 Gruppen mit zusammen 5.467 Projekt-Monaten, 01/2021 bis 11/2026, rund 23 Sekunden.
 Was dabei aufgefallen ist:
 
-* **Die Monate kommen nach Dauer absteigend**, nicht chronologisch - bei allen 667
-  Gruppen mit mehr als einem Monat, ohne Ausnahme. Die Rueckrechnung des Restvolumens
-  aus Spec 5.2 lebt von der Reihenfolge, sortiert wird deshalb beim Bauen des Verlaufs.
+* **Die Monate kommen nach Dauer absteigend**, nicht chronologisch - bei jeder Gruppe
+  mit mehr als einem Monat, ohne Ausnahme. Die Rueckrechnung des Restvolumens aus
+  Spec 5.2 lebt von der Reihenfolge, sortiert wird deshalb beim Bauen des Verlaufs.
   Bei der Personengruppierung fiel das nie auf, weil Personen keine Reihenfolge haben.
 * **Der Monat kommt als String** ``"JJJJMM"``, wie bei der einfachen Monatsgruppierung.
   Gelesen wird er darum mit derselben Funktion (:func:`.umsatz.monatsumsatz`).
-* **Die Monatssummen gehen nur auf den Cent auf.** Bei 31 Projekten weicht die Summe der
-  Monate von der Projektsumme ab, um hoechstens 0,06 EUR und in der Gesamtsumme um
-  0,63 EUR auf 30,6 Mio. - Clockodo rundet jede Gruppe einzeln. Die Zeitsummen stimmen
-  exakt. Ein Vergleich auf Gleichheit waere hier also ein Fehlalarm.
-* **Die Projektsummen sind mit der einfachen Gruppierung identisch**, ueber alle 870
+* **Die Monatssummen gehen nur auf den Cent auf.** Bei einer Reihe von Projekten weicht
+  die Summe der Monate von der Projektsumme um Cent-Betraege ab - Clockodo rundet jede
+  Gruppe einzeln. Die Zeitsummen stimmen exakt. Ein Vergleich auf Gleichheit waere hier
+  also ein Fehlalarm.
+* **Die Projektsummen sind mit der einfachen Gruppierung identisch**, ueber alle
   Gruppen ohne Abweichung - dieselbe Zusicherung wie bei der Personengruppierung.
-* **``group == 0`` kommt mehrfach vor** - zweimal in dieser Anlage, je Kunde ohne
-  Projekt einmal, und das ist der einzige mehrfach vergebene Schluessel (869
-  verschiedene auf 870 Gruppen). Buchungen ohne Projekt gehoeren keinem Budget an und
-  damit keiner Abrufquote; gemeldet werden sie bereits von
+* **``group == 0`` kommt mehrfach vor** - je Kunde ohne Projekt einmal, und das ist der
+  einzige mehrfach vergebene Schluessel. Buchungen ohne Projekt gehoeren keinem Budget
+  an und damit keiner Abrufquote; gemeldet werden sie bereits von
   :class:`~umsatzprognose.clockodo.projekte.ProjektRepository`. Zusammengefasst wird
   trotzdem je Projekt-ID: bei einem echten Projekt waere ein doppelter Schluessel sonst
   ein zweiter Verlauf und damit dieselben Monate zweimal in der Verteilung.

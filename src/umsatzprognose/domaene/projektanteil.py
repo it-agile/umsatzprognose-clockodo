@@ -7,7 +7,7 @@ Gesamtstunden des Projekts, unveraendert in die Zukunft fortgeschrieben.
 
 **Bewusst aggregiert, nicht als Einzelbuchung.** Die Spec nennt fuer diesen Zweck
 ``/v2/entries`` mit ``users_id`` je Eintrag. Das waeren allein fuer die letzten zwoelf
-Monate 16.461 Eintraege ueber sieben Seiten (geprueft am 24.08.2026), aus denen genau
+Monate mehrere Seiten Einzeleintraege (geprueft am 24.08.2026), aus denen genau
 die Summe zu bilden waere, die die API bereits bildet: ``/v2/entrygroups`` mit
 ``grouping[]=projects_id&grouping[]=users_id`` liefert je Projekt eine Untergruppe je
 Person mit ``duration`` und ``revenue``. Der Begriff Zeitbuchung bleibt damit im Modell,

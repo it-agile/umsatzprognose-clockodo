@@ -3,25 +3,23 @@
 
 **Hier weicht die Umsetzung bewusst von der Spec ab.** Abschnitt 4 nennt
 ``default_target_hours`` aus ``/v3/users`` als Sollarbeitszeit. Das Feld ist ein
-Boolean-Schalter - am 24.08.2026 an allen 59 Personen geprueft: 56 mal ``false``,
-3 mal ``true``, ohne Zusammenhang zu ``active``. Es sagt aus, ob die Person die
-Standard-Sollzeit der Anlage nutzt, und nicht, wie viel sie arbeitet. Wer es als
-Stundenzahl liest, bekommt 0 oder 1.
+Boolean-Schalter - am 24.08.2026 an allen Personen der Installation geprueft, ohne
+Zusammenhang zu ``active``. Es sagt aus, ob die Person die Standard-Sollzeit der Anlage
+nutzt, und nicht, wie viel sie arbeitet. Wer es als Stundenzahl liest, bekommt 0 oder 1.
 
 Die Sollarbeitszeit steht im unversionierten Legacy-Endpunkt ``/targethours``, je
 Person und Gueltigkeitszeitraum::
 
-    {"id": 336993, "users_id": 143323, "type": "weekly",
+    {"id": 1, "users_id": 301, "type": "weekly",
      "date_since": "2023-06-14", "date_until": null,
      "monday": 7, "tuesday": 7, "wednesday": 7, "thursday": 7, "friday": 7,
      "saturday": 0, "sunday": 0, "compensation_daily": 0, "compensation_monthly": 0}
 
-186 Eintraege, alle mit ``type: "weekly"``; 160 davon sind mit ``date_until``
-abgeschlossen, die 26 offenen entsprechen genau den 26 aktiven Personen - je eine.
-Die Wochenstunden liegen zwischen 20 und 35. Ein anderer ``type`` als ``weekly`` ist
-nie aufgetreten und wird deshalb nicht gedeutet, sondern uebersprungen und gemeldet -
-raten waere hier besonders teuer, weil eine falsche Sollzeit den Kapazitaetsdeckel
-(Spec 5.3) still verschiebt.
+Die Historie fuehrt zu jeder Person mehrere Zeilen; abgeschlossene tragen ein
+``date_until``, offene nicht. In dieser Anlage hat jede aktive Person genau eine offene
+Zeile. Ein anderer ``type`` als ``weekly`` ist nie aufgetreten und wird deshalb nicht
+gedeutet, sondern uebersprungen und gemeldet - raten waere hier besonders teuer, weil
+eine falsche Sollzeit den Kapazitaetsdeckel (Spec 5.3) still verschiebt.
 """
 
 from __future__ import annotations

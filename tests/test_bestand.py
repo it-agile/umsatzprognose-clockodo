@@ -12,7 +12,7 @@ from umsatzprognose.domaene.projekt import Budget, Projekt
 from umsatzprognose.domaene.projektanteil import Projektanteil
 
 STICHTAG = date(2026, 8, 24)
-ITA = Kunde(id=7, name="it-agile GmbH")
+ITA = Kunde(id=7, name="Musterkunde GmbH")
 ANNA = Mitarbeiter(id=1, name="Anna")
 BERT = Mitarbeiter(id=2, name="Bert")
 
@@ -44,7 +44,7 @@ UEBERZOGEN = Projekt(
     verbrauchtes_volumen=12000.0,
     verbrauchte_stunden=60.0,
 )
-OHNE_BUDGET = Projekt(id=4, name="A-CSM", aktiv=True)
+OHNE_BUDGET = Projekt(id=4, name="Schulungsprodukt", aktiv=True)
 INAKTIV = Projekt(id=5, name="Alt", aktiv=False, budget=Budget(betrag=99999.0))  # fmt: skip
 
 

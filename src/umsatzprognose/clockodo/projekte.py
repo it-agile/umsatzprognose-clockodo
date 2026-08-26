@@ -4,38 +4,38 @@
 Hier laufen zwei Antworten zusammen: das Auftragsvolumen aus ``/v4/projects`` und der
 Verbrauch samt Personenanteilen aus ``/v2/entrygroups``.
 
-**Projekte** (verifiziert am 24.08.2026 an 895 Projekten)::
+**Projekte** (Form am 24.08.2026 an der Installation verifiziert)::
 
-    {"paging": {…, "count_items": 895},
+    {"paging": {…, "count_items": …},
      "data": [{"id": …, "customers_id": …, "name": …, "active": …, "budget": …}]}
 
 Der Envelope-Key ist ``data`` (nicht ``projects``), die Projekt-ID heisst ``id``.
-``budget`` ist immer als Schluessel vorhanden, bei 236 Projekten aber ``null``; ist es
-gesetzt, entscheiden ``monetary``, ``interval`` und ``from_subprojects`` darueber, ob
-``amount`` ein Euro-Gesamtbudget ist - die Deutung steht bei
+``budget`` ist immer als Schluessel vorhanden, oft aber ``null``; ist es gesetzt,
+entscheiden ``monetary``, ``interval`` und ``from_subprojects`` darueber, ob ``amount``
+ein Euro-Gesamtbudget ist - die Deutung steht bei
 :class:`~umsatzprognose.domaene.projekt.Budget`.
 
-**Entrygroups** - eine Gruppe sieht so aus (Felder gekuerzt)::
+**Entrygroups** - eine Gruppe sieht so aus (Felder gekuerzt, Werte erfunden)::
 
-    {"group": "1375839", "name": "Kunde / Projekt", "duration": 27314640,
-     "revenue": 1132440.7, "hourly_rate": null, "grouped_by": "projects_id",
-     "sub_groups": [{"group": "143323", "name": "Carmen Rudolph", "duration": 4111200,
-                     "revenue": 0, "grouped_by": "users_id"}]}
+    {"group": "101", "name": "Kunde / Projekt", "duration": 2160000,
+     "revenue": 60000.0, "hourly_rate": null, "grouped_by": "projects_id",
+     "sub_groups": [{"group": "301", "name": "Person", "duration": 1620000,
+                     "revenue": 45000.0, "grouped_by": "users_id"}]}
 
-Drei Fallen darin, alle an den 870 Gruppen dieser Installation belegt:
+Drei Fallen darin, alle an den Gruppen dieser Installation belegt:
 
-* **Die Projekt-ID kommt als String** (``"1375839"``), nicht als Zahl. Bei den
-  Untergruppen ist es genauso.
+* **Die Projekt-ID kommt als String**, nicht als Zahl. Bei den Untergruppen ist es
+  genauso.
 * **``group == 0``** (dort als Zahl) steht fuer Buchungen auf einen Kunden ohne
   Projekt. Ohne Filter entstuende daraus ein Phantom-Projekt 0; der Umsatz wird
   stattdessen als Hinweis gemeldet, damit er nicht unbemerkt verschwindet.
-* **``hourly_rate`` ist als effektiver Stundensatz unbrauchbar** - gesetzt nur bei 92
-  von 870 Gruppen und dort meist 0. Der Satz wird aus ``revenue`` und ``duration``
-  (**Sekunden**) abgeleitet, siehe
+* **``hourly_rate`` ist als effektiver Stundensatz unbrauchbar** - gesetzt nur bei einer
+  Minderheit der Gruppen und dort meist 0. Der Satz wird aus ``revenue`` und
+  ``duration`` (**Sekunden**) abgeleitet, siehe
   :attr:`~umsatzprognose.domaene.projekt.Projekt.effektiver_stundensatz`.
 
 ``revenue`` deckt die ganze Historie ab, sobald die untere Zeitgrenze weit genug liegt:
-``time_since=2010-01-01`` liefert dieselben 870 Gruppen und dieselbe Umsatzsumme wie
+``time_since=2010-01-01`` liefert dieselben Gruppen und dieselbe Umsatzsumme wie
 ``2020-01-01``.
 """
 

@@ -28,18 +28,18 @@ class Budget:
     """Das vereinbarte Volumen eines Projekts.
 
     Spec Abschnitt 4 nennt ``budget.amount`` als Auftragsvolumen. Ob dort wirklich ein
-    Euro-Gesamtbudget steht, entscheiden drei weitere Felder - am 24.08.2026 an den 895
+    Euro-Gesamtbudget steht, entscheiden drei weitere Felder - am 24.08.2026 an allen
     Projekten der Installation geprueft:
 
-    * ``monetaer`` false: der Betrag ist eine **Stundenzahl** (8 Projekte, alle inaktiv,
-      mit Werten wie 6, 12, 48). Als Euro gelesen waere das ein stiller Faktor-Fehler.
+    * ``monetaer`` false: der Betrag ist eine **Stundenzahl**. Der Fall kommt vor, nur
+      bei inaktiven Projekten. Als Euro gelesen waere das ein stiller Faktor-Fehler.
     * ``intervall`` gesetzt: Budget je Intervall statt Gesamtbudget - die Formel aus
       5.1 gilt dann nicht. Laut ``spec/clocodo-api.yaml`` ist das ein **Integer-Enum**
       (0 wochenweise, 1 monatlich, 2 quartalsweise, 3 jaehrlich) und kein String.
       **Die 0 ist ein gueltiger Wert und falsy** - ``if budget.intervall`` wuerde ein
       Wochenbudget still als Gesamtbudget lesen, deshalb prueft :attr:`sonderfall` auf
-      ``is not None``. In dieser Installation ist ``interval`` bei allen 659 Projekten
-      mit Budget ``null``, die Falle ist also latent.
+      ``is not None``. In dieser Installation ist ``interval`` bei jedem Projekt mit
+      Budget ``null``, die Falle ist also latent.
     * ``aus_teilprojekten``: das Budget stammt aus Teilprojekten.
 
     Bei den aktiven Projekten trat keiner der drei Faelle auf, keiner ist also an
@@ -157,8 +157,8 @@ class Projekt:
         ``abgeschlossen``, und sein Budget ist als Euro-Gesamtbudget lesbar.
 
         ``abgeschlossen`` schliesst aus, obwohl ``aktiv`` zugleich gesetzt ist. Die
-        Kombination kommt vor - zwei Projekte am 24.08.2026, eines mit 12.424 EUR rohem
-        Restvolumen -, und sie ist kein Widerspruch, den man aufloesen muesste: Spec 7
+        Kombination kommt in der Installation vor, auch mit offenem Restvolumen, und sie
+        ist kein Widerspruch, den man aufloesen muesste: Spec 7
         haelt ``completed`` fuer ein zuverlaessiges Endesignal, waehrend ``active`` auch
         ein nicht nachgezogener Schalter sein kann. Das offene Restvolumen eines beendeten
         Projekts wird nicht mehr abgerufen; es prognostisch mitzunehmen hiesse, Umsatz zu
@@ -173,14 +173,14 @@ class Projekt:
 
         Aus ``Verbrauch / Stunden`` abgeleitet und nicht aus dem Feld ``hourly_rate``:
         das ist genau dann gesetzt, wenn ein Projekt einen einheitlichen Satz und keine
-        Pauschalleistungen hat - bei 92 von 870 Gruppen, dort meist 0. Auch wo beides
-        vorliegt, weicht der abgeleitete Satz vom nominalen ab, weil nicht jede erfasste
-        Stunde abgerechnet wird.
+        Pauschalleistungen hat - nur bei einer Minderheit der Gruppen, dort meist 0.
+        Auch wo beides vorliegt, weicht der abgeleitete Satz vom nominalen ab, weil nicht
+        jede erfasste Stunde abgerechnet wird.
 
         Pauschalleistungen **mit** gebuchter Zeit sind darin normalisiert enthalten;
         genau so legt Spec 5.1 es seit v0.6 fest, ohne den Umweg ueber ``/v2/entries``.
-        Offen bleibt der Fall Umsatz **ohne** jede erfasste Zeit: acht Gruppen liefern
-        hier ``None``. Sie gehen laut 5.1 mit ihrem Restvolumen in die Simulation ein,
+        Offen bleibt der Fall Umsatz **ohne** jede erfasste Zeit: solche Gruppen
+        liefern hier ``None``. Sie gehen laut 5.1 mit ihrem Restvolumen in die Simulation ein,
         verbrauchen aber keine Kapazitaet - eine benannte Naeherung, die ueber einen
         Hinweis sichtbar bleibt.
         """

@@ -160,9 +160,9 @@ def test_client_nimmt_eine_abweichende_basis_url():
 def test_verbrauchsfenster_endet_am_stichtag_nicht_am_monatsende():
     """Spec 5.1: Verbrauch ist streng Vergangenheit.
 
-    Was spaeter datiert ist, liegt im Horizont und wird dort angerechnet (5.4). Am
-    24.08.2026 waren das 13.440 EUR in zwei Projekten - reichte das Fenster bis zum
-    Monatsende, verschwaenden die Augustanteile davon lautlos aus der Prognose.
+    Was spaeter datiert ist, liegt im Horizont und wird dort angerechnet (5.4). Der
+    Fall tritt in der Installation regelmaessig auf - reichte das Fenster bis zum
+    Monatsende, verschwaenden diese Betraege lautlos aus der Prognose.
     """
     assert verbrauch_bis(date(2026, 8, 24)) == "2026-08-24T23:59:59Z"
     assert monatsende(date(2026, 8, 24)) == "2026-08-31T23:59:59Z"

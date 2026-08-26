@@ -6,8 +6,8 @@ die Kapazitaet mit, an der die Prognose gedeckelt wird (5.3).
 
 **Die Spec liegt bei der Sollarbeitszeit falsch.** Abschnitt 4 nennt
 ``default_target_hours`` aus ``/v3/users``. Das Feld ist ein Boolean-Schalter, keine
-Stundenzahl - am 24.08.2026 an der Installation geprueft: 56 mal ``false``, 3 mal
-``true``, auch bei aktiven Personen. Die tatsaechliche Sollarbeitszeit steht im
+Stundenzahl - am 24.08.2026 an der Installation geprueft, mit beiden Werten auch bei
+aktiven Personen. Die tatsaechliche Sollarbeitszeit steht im
 unversionierten Legacy-Endpunkt ``/targethours``, je Person mit Gueltigkeitszeitraum und
 Stunden je Wochentag. Details in :mod:`umsatzprognose.clockodo.mitarbeiter`.
 
@@ -67,9 +67,10 @@ class Mitarbeiter:
         """Die am Stichtag gueltige Vereinbarung, ``None`` wenn keine vorliegt.
 
         Bei mehreren gueltigen Eintraegen gewinnt der zuletzt begonnene. In dieser
-        Installation trat der Fall nicht auf - jede der 26 aktiven Personen hat genau
-        eine laufende Vereinbarung -, aber die Historie fuehrt 186 Eintraege, und ein
-        ueberlappender Zeitraum darf nicht von der Reihenfolge der Antwort abhaengen.
+        Installation trat der Fall nicht auf - jede aktive Person hat genau eine
+        laufende Vereinbarung -, aber die Historie fuehrt zu jeder Person mehrere
+        Eintraege, und ein ueberlappender Zeitraum darf nicht von der Reihenfolge der
+        Antwort abhaengen.
         """
         gueltige = [a for a in self.arbeitszeiten if a.gilt_am(stichtag)]
         return max(gueltige, key=lambda a: a.gueltig_ab) if gueltige else None

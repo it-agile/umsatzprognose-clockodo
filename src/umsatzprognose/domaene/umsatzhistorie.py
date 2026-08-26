@@ -7,8 +7,8 @@ Kunde und nicht in ihnen.
 
 Zwei Festlegungen, die sich aus den Daten ergeben und nicht aus der Spec:
 
-**Der laufende Monat wird getrennt gefuehrt.** Am Stichtag ist er unvollstaendig - am
-24.08.2026 standen 52.235 EUR gegen einen Monatsschnitt von rund 300.000 EUR. In einer
+**Der laufende Monat wird getrennt gefuehrt.** Am Stichtag ist er unvollstaendig und
+liegt deutlich unter dem Monatsschnitt der abgeschlossenen Monate. In einer
 Kennzahl "Umsatz der letzten zwoelf Monate" wuerde er das Ergebnis verfaelschen, im
 Diagramm ist er als abgesetzter Balken dagegen aussagekraeftig. :meth:`abgeschlossene`
 liefert deshalb nur vollstaendige Monate, :attr:`laufender` den angebrochenen.

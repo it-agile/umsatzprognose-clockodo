@@ -20,7 +20,7 @@ def test_fenster_umfasst_zwoelf_abgeschlossene_monate_plus_den_laufenden():
 def test_fehlende_monate_werden_mit_null_aufgefuellt():
     # Monate ohne Buchungen fehlen in der Antwort. Eine Luecke im Diagramm saehe aus
     # wie ein fehlender Monat, nicht wie ein Monat ohne Umsatz.
-    historie = Umsatzhistorie.zum_stichtag([Monatsumsatz(2026, 6, 292188.83)], STICHTAG)
+    historie = Umsatzhistorie.zum_stichtag([Monatsumsatz(2026, 6, 300000.0)], STICHTAG)
     juli = next(m for m in historie.monate if m.schluessel == (2026, 7))
     assert juli.umsatz == 0.0
     assert len(historie.monate) == 13
@@ -30,7 +30,7 @@ def test_laufender_monat_zaehlt_nicht_in_summe_und_durchschnitt():
     # Am Stichtag ist der laufende Monat unvollstaendig; im Durchschnitt wuerde er
     # das Ergebnis nach unten ziehen.
     historie = Umsatzhistorie.zum_stichtag(
-        [Monatsumsatz(2026, 7, 300000.0), Monatsumsatz(2026, 8, 53272.63)], STICHTAG
+        [Monatsumsatz(2026, 7, 300000.0), Monatsumsatz(2026, 8, 150000.0)], STICHTAG
     )
     assert historie.laufender.schluessel == (2026, 8)
     assert historie.summe() == 300000.0

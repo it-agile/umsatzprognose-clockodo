@@ -18,10 +18,11 @@ Die Version je Endpunkt ist keine freie Wahl, sondern ausprobiert:
 ===========================  ==========================================================
 
 **Paginierung** gibt es bei ``/v4/projects``, ``/v3/customers`` und ``/v3/users``:
-``items_per_page`` setzt die Seitengroesse, ``page`` waehlt die Seite - mit
-``items_per_page=3`` antwortet die API mit ``count_pages: 299``, und ``page=2`` liefert
-``current_page: 2`` samt anderer IDs. Bei 895 Projekten und einer Standardseite von 1000
-ist die Grenze nah, deshalb laeuft :meth:`ClockodoClient.projects` ueber alle Seiten.
+``items_per_page`` setzt die Seitengroesse, ``page`` waehlt die Seite - mit einer
+kleinen Seitengroesse antwortet die API mit entsprechend vielen ``count_pages``, und
+``page=2`` liefert ``current_page: 2`` samt anderer IDs. Die Projektzahl liegt nah an
+der Standardseite von 1000, deshalb laeuft :meth:`ClockodoClient.projects` ueber alle
+Seiten.
 
 **Alle Methoden sind Coroutinen**, weil die Abrufe einer Prognose voneinander unabhaengig
 sind und sich ihre Wartezeiten sonst addieren (siehe
@@ -30,8 +31,8 @@ legt :func:`~umsatzprognose.clockodo.nebenlaeufig.synchron` darum - genau das tu
 ``laden``-Methoden der Repositories.
 
 **Unbekannte Query-Parameter werden dort still ignoriert, nicht abgelehnt** (``count=3``
-und ``limit=3`` antworten mit 200 und den vollen 895 Projekten). Ein 200 belegt einen
-Parameternamen also nicht; dafuer muss das ``paging``-Objekt geprueft werden.
+und ``limit=3`` antworten mit 200 und der vollen, ungekuerzten Liste). Ein 200 belegt
+einen Parameternamen also nicht; dafuer muss das ``paging``-Objekt geprueft werden.
 
 ``/v2/entrygroups`` ist umgekehrt streng - ein falscher Parameter fuehrt zu 400. Die
 akzeptierte Form, jeder Punkt an einer 400er-Antwort belegt:
@@ -52,12 +53,12 @@ akzeptierte Form, jeder Punkt an einer 400er-Antwort belegt:
   ``grouping[]=projects_id&grouping[]=month`` die Monate. Die aeussere Ebene ist die
   zuerst genannte.
 * **Die Untergruppen kommen nach Dauer absteigend, nicht chronologisch.** Bei der
-  Monatsgruppierung gilt das fuer alle 667 Projekte mit mehr als einem Monat, ohne eine
+  Monatsgruppierung gilt das fuer jedes Projekt mit mehr als einem Monat, ohne eine
   Ausnahme (geprueft am 26.08.2026). Wer die Reihenfolge uebernimmt, rechnet eine
   Rueckrechnung ueber die Historie falsch, ohne dass etwas abbricht.
 
-Die Antwort hat **kein** ``paging`` - alle Gruppen kommen in einem Rutsch (870 Gruppen
-mit Personen-Untergruppen sind rund 1,9 MB und brauchen etwa 20 Sekunden).
+Die Antwort hat **kein** ``paging`` - alle Gruppen kommen in einem Rutsch (mit
+Personen-Untergruppen rund 1,9 MB und etwa 20 Sekunden).
 
 **Fehler werden am Koerper diagnostiziert, nicht am Status.** Clockodo begruendet einen
 400 in der Form ``{"error": {"message": …, "fields": [...]}}`` und benennt dort den
@@ -82,7 +83,7 @@ DEFAULT_TIMEOUT = 60.0
 # Untere Grenze des Verbrauchsfensters. ``revenue_kumuliert`` aus Spec 5.1 ist der
 # Gesamtverbrauch eines Projekts, nicht der eines Monats - die Grenze muss deshalb vor
 # dem aeltesten Eintrag liegen. 2020 schneidet nichts ab: mit
-# ``time_since=2010-01-01`` kommen dieselben 870 Gruppen und dieselbe Umsatzsumme.
+# ``time_since=2010-01-01`` kommen dieselben Gruppen und dieselbe Umsatzsumme.
 HISTORIE_VON = "2020-01-01T00:00:00Z"
 
 GRUPPIERUNG_PROJEKT = "projects_id"
@@ -96,8 +97,8 @@ def verbrauch_bis(stichtag: date | None = None) -> str:
     Der Stichtag und **nicht** das Monatsende: Verbrauch ist streng Vergangenheit. Was
     spaeter datiert ist, liegt im Prognosehorizont und wird laut Spec 5.4 dort
     angerechnet, statt vorab vom Restvolumen abgezogen zu werden - sonst waere der
-    Umsatz weder in der Historie noch in der Bandbreite zu finden. Am 24.08.2026 waren
-    das 13.440 EUR in zwei Projekten.
+    Umsatz weder in der Historie noch in der Bandbreite zu finden. Der Fall tritt in
+    dieser Installation regelmaessig auf und ist kein Randfall.
 
     Nicht zu verwechseln mit :func:`monatsende`, das die Umsatzhistorie zieht: dort ist
     der laufende Kalendermonat der Balken, hier der Schnitt zwischen Ist und Prognose.
@@ -186,8 +187,8 @@ class ClockodoClient:
 
         Die erste Seite muss allein kommen - erst ihr ``paging`` nennt ``count_pages``.
         Danach steht die Seitenzahl fest, und die restlichen Seiten werden gleichzeitig
-        geholt statt eine nach der anderen. Bei 895 Projekten auf einer Seite von 1000
-        aendert das heute nichts; es wirkt an dem Tag, an dem die Grenze faellt.
+        geholt statt eine nach der anderen. Solange alles auf eine Seite passt, aendert
+        das nichts; es wirkt an dem Tag, an dem die Grenze faellt.
 
         Returns:
             Die zusammengefuegte ``data``-Liste in Seitenreihenfolge und das
@@ -218,13 +219,13 @@ class ClockodoClient:
         return await self.get_paged("/v3/customers")
 
     async def users(self) -> tuple[list[dict[str, Any]], dict[str, Any]]:
-        """Alle Personen aus ``/v3/users``, ueber alle Seiten (59 in dieser Anlage)."""
+        """Alle Personen aus ``/v3/users``, ueber alle Seiten."""
         return await self.get_paged("/v3/users")
 
     async def targethours(self) -> list[dict[str, Any]]:
         """Sollarbeitszeiten aus dem unversionierten ``/targethours``.
 
-        Envelope-Key ist ``targethours``, es gibt kein ``paging`` (186 Eintraege). Die
+        Envelope-Key ist ``targethours``, es gibt kein ``paging``. Die
         Version ist keine freie Wahl: ``/v2/targethours`` und ``/v3/targethours``
         antworten mit 404 ``RouteNotFound``.
         """
@@ -268,9 +269,9 @@ class ClockodoClient:
         """Verbrauch je Projekt, darunter die Anteile je Person.
 
         Ein Abruf statt zweier: die Projektsummen dieser Antwort sind mit denen der
-        einfachen Gruppierung identisch (am 24.08.2026 ueber alle 870 Gruppen
-        verglichen, keine Abweichung), und die Untergruppen summieren sich exakt auf
-        sie. Damit sind Verbrauch und Aufteilungsschluessel garantiert konsistent.
+        einfachen Gruppierung identisch (am 24.08.2026 ueber alle Gruppen verglichen,
+        keine Abweichung), und die Untergruppen summieren sich exakt auf sie. Damit sind
+        Verbrauch und Aufteilungsschluessel garantiert konsistent.
         """
         return await self.entrygroups(
             [GRUPPIERUNG_PROJEKT, GRUPPIERUNG_PERSON],
@@ -283,12 +284,10 @@ class ClockodoClient:
     ) -> list[dict[str, Any]]:
         """Verbrauch je Projekt, darunter die Monate - die Kombination aus Spec 11.1.
 
-        Am 26.08.2026 gegen die Installation geprueft: 870 Gruppen mit zusammen 5.467
-        Projekt-Monaten von 01/2021 bis 11/2026, rund 23 Sekunden. Die Projektsummen
-        stimmen mit denen der einfachen Gruppierung exakt ueberein; die Monatssummen
-        weichen bei 31 Projekten um **Cent** davon ab (groesste Abweichung 0,06 EUR, in
-        der Gesamtsumme 0,63 EUR auf 30,6 Mio.) - Clockodo rundet jede Gruppe einzeln.
-        Die Zeitsummen stimmen ueberall exakt.
+        Am 26.08.2026 gegen die Installation geprueft, rund 23 Sekunden. Die
+        Projektsummen stimmen mit denen der einfachen Gruppierung exakt ueberein; die
+        Monatssummen weichen bei einigen Projekten um **Cent** davon ab - Clockodo
+        rundet jede Gruppe einzeln. Die Zeitsummen stimmen ueberall exakt.
 
         Zwei Fallen, beide belegt: ``group`` der Untergruppe ist der Monat als String
         ``"JJJJMM"``, und die Untergruppen sind **nach Dauer absteigend** sortiert und

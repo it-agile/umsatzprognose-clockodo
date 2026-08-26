@@ -120,6 +120,6 @@ def test_ohne_erfasste_stunden_gibt_es_keinen_aufteilungsschluessel():
 
 
 def test_bezeichnung_nennt_kunde_und_projekt():
-    p = projekt(name="Kanban Coaching", kunde=Kunde(id=7, name="it-agile GmbH"))
-    assert p.bezeichnung == "it-agile GmbH / Kanban Coaching"
+    p = projekt(name="Beispielprojekt", kunde=Kunde(id=7, name="Musterkunde GmbH"))
+    assert p.bezeichnung == "Musterkunde GmbH / Beispielprojekt"
     assert projekt(id=42).bezeichnung == "Projekt 42"

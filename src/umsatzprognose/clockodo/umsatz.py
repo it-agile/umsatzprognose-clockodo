@@ -1,11 +1,11 @@
 """Abbildung der Monatsgruppierung von ``/v2/entrygroups`` auf
 :class:`~umsatzprognose.domaene.umsatzhistorie.Umsatzhistorie`.
 
-Am 24.08.2026 an der Installation verifiziert::
+Am 24.08.2026 an der Installation verifiziert; die Form, mit erfundenen Werten::
 
     GET /v2/entrygroups?time_since=…&time_until=…&grouping[]=month
-    → {"groups": [{"group": "202509", "name": "202509", "duration": 13318080,
-                   "revenue": 377920.75, "grouped_by": "month"}]}
+    → {"groups": [{"group": "202509", "name": "202509", "duration": 3600000,
+                   "revenue": 300000.0, "grouped_by": "month"}]}
 
 Drei Dinge, die dabei aufgefallen sind:
 

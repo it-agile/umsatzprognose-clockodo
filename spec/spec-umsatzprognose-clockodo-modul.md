@@ -71,17 +71,17 @@ Basis-URL ist `https://my.clockodo.com/api`. Authentifizierung über drei Pflich
 Gesamtlänge**.
 
 - **`entrygroups.hourly_rate` ist als effektiver Stundensatz unbrauchbar.** Es ist nur
-  gesetzt, wenn `hourly_rate_is_equal_and_has_no_lumpsums` `true` ist – bei 92 von 870
-  Gruppen, und dort meist `0`. Für die übrigen 778 ist es `null`. Auch wo beides
+  gesetzt, wenn `hourly_rate_is_equal_and_has_no_lumpsums` `true` ist – nur bei einer
+  Minderheit der Gruppen, und dort meist `0`. Sonst ist es `null`. Auch wo beides
   vorliegt, weicht `revenue / (duration/3600)` davon ab, weil nicht jede erfasste
   Stunde abgerechnet wird. Der effektive Satz wird deshalb abgeleitet.
-- **`users.default_target_hours` ist ein Boolean-Schalter, keine Stundenzahl.** 56 mal
-  `false`, 3 mal `true` über alle 59 Personen, ohne Zusammenhang zu `active`. Wer es als
+- **`users.default_target_hours` ist ein Boolean-Schalter, keine Stundenzahl.** Beide
+  Werte kommen über alle Personen vor, ohne Zusammenhang zu `active`. Wer es als
   Stunden liest, bekommt 0 oder 1 und einen still falschen Kapazitätsdeckel. Die echten
   Werte stehen im unversionierten `/targethours` (`/v2` und `/v3` davon geben 404):
-  186 Einträge, alle mit `type: "weekly"`, davon 26 offene – genau die 26 aktiven
-  Personen, je einer, mit 20 bis 35 Wochenstunden. Ein anderer `type` ist nie
-  aufgetreten; träte er auf, wird er nicht gedeutet, sondern gemeldet.
+  je Person mehrere Einträge, alle mit `type: "weekly"`, davon je aktiver Person genau
+  einer offen. Ein anderer `type` ist nie aufgetreten; träte er auf, wird er nicht
+  gedeutet, sondern gemeldet.
 - **Abwesenheiten liegen auf `/v4/absences`.** Die Legacy-Pfade `/absences`,
   `/v2/absences` und `/v3/absences` antworten mit 410 `deprecated`.
 - **Feiertage gibt es in zwei Generationen**, und beide funktionieren. Die frühere
@@ -98,29 +98,29 @@ Gesamtlänge**.
   | Halber Tag | `half_day: 0` / `1` | `half_day: false` / `true` |
   | `year` | Pflicht (400 ohne) | optional |
 
-  Beide ohne `paging`; die unversionierte Fassung liefert alle 77 Einträge über die sechs
-  Gruppen dieser Anlage. Die beweglichen Feste sind serverseitig gerechnet und nicht
-  kopiert (Karfreitag 2025-04-18, 2026-04-03, 2027-03-26). Der Gruppenfilter wirkt in
-  beiden Fassungen als echter Filter (77 → 15 Einträge) – anders als bei `/v4/projects`,
-  wo unbekannte Parameter still ignoriert werden.
+  Beide ohne `paging`; die unversionierte Fassung liefert alle Einträge über alle
+  Feiertagsgruppen der Anlage auf einmal. Die beweglichen Feste sind serverseitig
+  gerechnet und nicht kopiert (Karfreitag 2025-04-18, 2026-04-03, 2027-03-26). Der
+  Gruppenfilter wirkt in beiden Fassungen als echter Filter – anders als bei
+  `/v4/projects`, wo unbekannte Parameter still ignoriert werden.
 - **Die Feiertagsgruppen sind abrufbar**: `/v2/nonbusinessGroups` liefert je Gruppe `id`,
-  `name` und `company_default` – in dieser Anlage sechs Gruppen mit sprechenden Namen
-  („it-agile BRB, HH, HB, NI, SH", „BY mit Mariä Himmelfahrt").
+  `name` und `company_default`. Die Namen benennen die Bundesländer-Kombination der
+  Gruppe und sind damit zur Beschriftung brauchbar.
 - **Zwei Endpunkte sind für 5.3 die kürzere Strecke**, beide mit Paginierung (50 je
   Seite): `/v2/usersNonbusinessDays?year=…` liefert die Feiertage **je Person** fertig
   zugeordnet (`{"users_id": …, "days": [...]}`), `/v3/usersNonbusinessGroups` die
-  Zuordnung Person → Gruppe **mit Gültigkeitszeitraum** (`date_since`, `date_until`; 60
-  Einträge auf 59 Personen, eine Zuordnung hat also schon gewechselt).
+  Zuordnung Person → Gruppe **mit Gültigkeitszeitraum** (`date_since`, `date_until`; es
+  gibt mehr Einträge als Personen, eine Zuordnung hat also schon gewechselt).
   `users.nonbusinessgroups_id` kennt nur den heutigen Stand und ist für einen vergangenen
   Stichtag der falsche Wert.
 - **Was die Doku zu `half_day` nicht sagt: was es bewirkt.** Sie deklariert ein Boolean,
   nicht seine Wirkung auf die Sollstunden. Die Deutung in 5.3 bleibt damit eine Annahme;
   belegt ist nur, dass es ein Schalter ist und keine Stundenzahl.
-- **`/v2/entries` wird nicht benutzt.** `count_items` steht bei 16.461 für zwölf Monate,
-  `items_per_page` bei 2500 – sieben Abrufe je Jahr Historie, um dieselbe Summe zu
-  bilden, die `/v2/entrygroups` schon gebildet hat. Die Doppelgruppierung nach Projekt
-  und Person liefert die Aufteilung fertig aggregiert; ihre Projektsummen sind mit denen
-  der einfachen Gruppierung über alle 870 Gruppen identisch. Der einzige Grund, der bisher
+- **`/v2/entries` wird nicht benutzt.** Bei `items_per_page` von 2500 sind schon zwölf
+  Monate mehrere Seiten Einzeleinträge, um dieselbe Summe zu bilden, die
+  `/v2/entrygroups` schon gebildet hat. Die Doppelgruppierung nach Projekt und Person
+  liefert die Aufteilung fertig aggregiert; ihre Projektsummen sind mit denen der
+  einfachen Gruppierung über alle Gruppen identisch. Der einzige Grund, der bisher
   für den Endpunkt sprach – `type` zur Trennung von Pauschalleistungen –, ist mit dem
   Gruppierungswert **`is_lumpsum`** entfallen.
 - **`grouping` kennt mehr Werte als benutzt**: neben `projects_id`, `users_id`,
@@ -153,18 +153,18 @@ Weiter zu beachten, ebenfalls verifiziert:
   `budget.hard` hier überall `false` ist, bleibt er 1 – bei einem harten Budget müsste er
   in Umsatz und Stundensatz eingerechnet werden.
 - **`start_date`, `deadline` und `automatic_completion` sind bisher unbenutzt** (geprüft
-  am 26.08.2026). `automatic_completion` ist bei 121 von 122 aktiven Projekten `true`,
-  eine `deadline` haben aber nur 3 – eine davon der 30.09.2026 und damit **innerhalb des
+  am 26.08.2026). `automatic_completion` ist bei fast allen aktiven Projekten `true`,
+  eine `deadline` haben nur wenige – mindestens eine davon liegt **innerhalb des
   heutigen Horizonts**: dieses Projekt wird zum Monatsende automatisch abgeschlossen und
-  trägt ab Oktober nichts mehr bei. Für 5.4 ist das relevant und nicht modelliert.
-  `start_date` ist nur bei 6 von 122 gesetzt und taugt damit nicht dazu, den Beginn des
-  Beobachtungsfensters aus 5.2 zu bestimmen.
+  trägt danach nichts mehr bei. Für 5.4 ist das relevant und nicht modelliert.
+  `start_date` ist nur bei einer Handvoll Projekte gesetzt und taugt damit nicht dazu,
+  den Beginn des Beobachtungsfensters aus 5.2 zu bestimmen.
 - **`budget.interval` ist ein Integer-Enum** (0 wochenweise, 1 monatlich, 2 quartalsweise,
   3 jährlich), kein String. Die 0 ist gültig und falsy – eine Prüfung auf den
   Wahrheitswert würde ein Wochenbudget still als Gesamtbudget lesen. In dieser
-  Installation ist `interval` bei allen 659 Projekten mit Budget `null`.
+  Installation ist `interval` bei jedem Projekt mit Budget `null`.
 - **Historientiefe:** `revenue` deckt die ganze Historie ab, sobald die untere
-  Zeitgrenze weit genug liegt – `time_since=2010-01-01` liefert dieselben 870 Gruppen
+  Zeitgrenze weit genug liegt – `time_since=2010-01-01` liefert dieselben Gruppen
   und dieselbe Summe wie `2020-01-01`. Die Antwort hat kein `paging`.
 
 ## 5. Modell
@@ -241,21 +241,21 @@ braucht.
   gesamte Historie. Pauschalleistungen mit gebuchter Zeit sind darin normalisiert
   enthalten, ohne eigenen Modellzweig.
 - **Diese Normalisierung ist am 26.08.2026 gemessen worden** (`grouping[]=is_lumpsum`):
-  17,9 der 30,6 Mio. EUR Gesamtumsatz sind Pauschalen, und Pauschaleinträge tragen
-  **grundsätzlich keine Dauer** – 0,0 Stunden über alle. Im Prognose-Scope sind es 22,8 %
-  des Verbrauchs, verteilt auf 33 der 42 Projekte, viele davon zu 100 %. Die Annahme hält
+  Pauschalen machen einen erheblichen Teil des Gesamtumsatzes aus, und Pauschaleinträge
+  tragen **grundsätzlich keine Dauer** – null Stunden über alle. Auch im Prognose-Scope
+  betreffen sie die Mehrzahl der Projekte, viele davon vollständig. Die Annahme hält
   trotzdem: die Arbeit hinter einer Pauschale wird als Zeit **ohne** Umsatz gebucht, und
-  die abgeleiteten Sätze im Scope bleiben plausibel (53,57 bis 368,14 EUR je Stunde,
-  Median 168,34; kein Wert über 600). Wäre die Arbeit gar nicht erfasst, müssten hier
-  Sätze in Tausenderhöhe stehen.
-- **Umsatz ohne jede erfasste Zeit** (6 Gruppen; `duration == 0`) liefert keinen Satz.
-  Solche Projekte gehen mit ihrem Restvolumen in die Simulation ein, verbrauchen aber
+  die abgeleiteten Sätze im Scope bleiben in einer plausiblen Größenordnung für
+  Beratungsleistung, ohne Ausreißer nach oben. Wäre die Arbeit gar nicht erfasst,
+  müssten hier Sätze in Tausenderhöhe stehen.
+- **Umsatz ohne jede erfasste Zeit** (`duration == 0`) liefert keinen Satz. Solche
+  Projekte gehen mit ihrem Restvolumen in die Simulation ein, verbrauchen aber
   **keine Kapazität**
-- **Ein Stundensatz von genau 0 ist derselbe Fall wie kein Satz.** Zwei Projekte im Scope
-  haben gebuchte Zeit (36,5 h und 1,5 h) und noch keinen Umsatz; ihr abgeleiteter Satz ist
-  `0.0`. In Schritt 3 von 5.4 wäre das eine Division durch Null, sie dürfen also keinen
-  Stundenbedarf erzeugen. Der Hinweis aus 5.5 nennt bisher nur die drei Projekte ohne
-  erfasste Zeit, nicht diese zwei.
+- **Ein Stundensatz von genau 0 ist derselbe Fall wie kein Satz.** Es gibt Projekte im
+  Scope mit gebuchter Zeit und noch keinem Umsatz; ihr abgeleiteter Satz ist `0.0`. In
+  Schritt 3 von 5.4 wäre das eine Division durch Null, sie dürfen also keinen
+  Stundenbedarf erzeugen. Der Hinweis aus 5.5 nennt bisher nur die Projekte ohne
+  erfasste Zeit, nicht diesen Fall.
 
 ### 5.2 Abrufquote-Verteilung
 
@@ -322,18 +322,18 @@ verfügbare Kapazität(Person, Monat) = Sollstunden(Person, Monat)
   nötig.
 - **Sollstunden können fehlen.** `users.default_target_hours` heißt laut Doku „Uses the
   company's default target hours": wer den Schalter trägt, hat keine eigene Zeile in
-  `/targethours`. Heute geht die Rechnung auf (26 offene Zeilen für 26 aktive Personen),
-  aber der Fall ist vorgesehen und braucht dann eine Quelle für den Firmenstandard.
+  `/targethours`. Heute geht die Rechnung auf – je aktiver Person genau eine offene
+  Zeile –, aber der Fall ist vorgesehen und braucht dann eine Quelle für den
+  Firmenstandard.
 - **Abschlag für ungeplante Abwesenheit**: ein aus der Abwesenheitshistorie geschätzter
   Prozentsatz. Noch nicht geschätzt (11.2).
 
-**Die Feiertagsgruppe ist Teil des Deckels, kein Detail.** Die sechs Gruppen dieser
-Anlage führen zwischen 11 und 15 Feiertage im Jahr, und die Unterschiede fallen in
-einzelne Monate: Fronleichnam, Allerheiligen, Reformationstag, Buß- und Bettag,
-Mariä Himmelfahrt sind je nach Gruppe gesetzt oder nicht. Ein pauschaler Abschlag
-über alle Personen würde diese Spreizung innerhalb eines Horizontmonats verwischen.
-Am 26.08.2026 verteilen sich die 26 aktiven Personen auf fünf Gruppen (15 / 6 / 3 /
-1 / 1).
+**Die Feiertagsgruppe ist Teil des Deckels, kein Detail.** Die Gruppen dieser Anlage
+führen unterschiedlich viele Feiertage im Jahr, und die Unterschiede fallen in einzelne
+Monate: Fronleichnam, Allerheiligen, Reformationstag, Buß- und Bettag, Mariä Himmelfahrt
+sind je nach Gruppe gesetzt oder nicht. Ein pauschaler Abschlag über alle Personen würde
+diese Spreizung innerhalb eines Horizontmonats verwischen. Die aktiven Personen
+verteilen sich sehr ungleich auf die Gruppen, mit einer klar dominierenden.
 
 **Derselbe Kalender gilt für die Skalierung von Monat 1** (5.4). Der dort verlangte
 „Anteil der verbleibenden Arbeitstage am Monat" ist ohne Feiertage ein anderer als
@@ -446,7 +446,7 @@ Zusammenführung ist nicht Teil dieser Spec.
 
 **Fachlich offen:**
 
-1. **Aktive Projekte ohne Budget** (78 von 122). Die Deutung als Katalogpositionen ohne
+1. **Aktive Projekte ohne Budget** – die Mehrzahl der aktiven Projekte. Die Deutung als Katalogpositionen ohne
    beauftragtes Volumen stützt sich auf die Projekt- und Kundennamen. Zu prüfen, ob
    darunter echte Bestandsprojekte mit bloß fehlendem Budget sind.
 2. **Korrelation zwischen Projekten** (5.2). Die unabhängige Ziehung liefert eine zu
@@ -464,15 +464,18 @@ Umgesetzt als Python-Paket `umsatzprognose` mit Notebook-Oberfläche in Google C
   Abschlag für ungeplante Abwesenheit (5.3). An der Stelle der Bandbreite steht die
   Begründung.
 
-Die Abrufquote-Verteilung ist am 26.08.2026 aus **2.640 Projekt-Monaten** geschätzt:
-Median 0,117, Mittelwert 0,396, **32 % der Monate ohne jeden Abruf**, 3,1 % über 1,
-Maximum 175,7. Der Maximalwert ist keine Fehlmessung, sondern genau die in 5.2 benannte
-Einschränkung – ein Projekt-Monat mit wenigen hundert Euro rekonstruiertem Restvolumen
-und einer großen Buchung. Für die Simulation ist er unschädlich, weil Schritt 2 auf das
-verbleibende Restvolumen begrenzt: eine Quote von 175 heißt dort „alles Offene abrufen".
-276 der 2.640 Beobachtungen stammen aus Projekten, die heute im Prognose-Scope sind; die
-übrigen aus der Historie beendeter Projekte. Das ist die Folge der portfolioweiten
-Schätzung und keine Verzerrung, die sich beheben ließe, ohne Referenzklassen einzuführen.
+Die Abrufquote-Verteilung ist am 26.08.2026 geschätzt. Ihre Kennzahlen stehen bewusst
+nicht hier: sie stammen aus der Installation, bewegen sich mit jeder Zeitbuchung und
+gehören in die Notebook-Ausgabe, nicht in eine versionierte Datei. Ihre Form ist stark
+rechtsschief – ein niedriger Median, ein deutlich höherer Mittelwert, ein erheblicher
+Anteil Monate ganz ohne Abruf und einzelne Quoten weit über 1. Diese Ausreißer sind
+keine Fehlmessung, sondern genau die in 5.2 benannte Einschränkung: ein Projekt-Monat
+mit kleinem rekonstruiertem Restvolumen und einer großen Buchung. Für die Simulation
+sind sie unschädlich, weil Schritt 2 auf das verbleibende Restvolumen begrenzt – eine
+sehr hohe Quote heißt dort „alles Offene abrufen". Nur ein kleiner Teil der
+Beobachtungen stammt aus Projekten, die heute im Prognose-Scope sind; die übrigen aus
+der Historie beendeter Projekte. Das ist die Folge der portfolioweiten Schätzung und
+keine Verzerrung, die sich beheben ließe, ohne Referenzklassen einzuführen.
 
 ## 11. Nächste Schritte
 

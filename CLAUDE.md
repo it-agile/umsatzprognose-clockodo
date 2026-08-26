@@ -105,8 +105,8 @@ Ein Test auf die Zahlen allein würde die Umstellung nicht bemerken – sequenzi
 dasselbe heraus, nur langsamer.
 
 **Zeitbuchungen werden nicht einzeln geladen.** Die Spec nennt dafür `/v2/entries` mit
-`users_id` je Eintrag – das wären allein für zwölf Monate 16.461 Einträge über sieben
-Seiten. `/v2/entrygroups` mit `grouping[]=projects_id&grouping[]=users_id` liefert
+`users_id` je Eintrag – das wären allein für zwölf Monate mehrere Seiten
+Einzeleinträge. `/v2/entrygroups` mit `grouping[]=projects_id&grouping[]=users_id` liefert
 dieselbe Aufteilung fertig aggregiert, in einem Abruf. Der Begriff bleibt als
 `Projektanteil` im Modell.
 
@@ -132,10 +132,11 @@ außer der Simulation – inklusive Aufteilungsschlüssel je Person (5.4 Schritt
 Sollarbeitszeit (Teil von 5.3).
 
 Die Verteilung liegt an `Bestand.abrufquotenverteilung()` und stammt aus den
-`Verbrauchsverlauf`-Objekten. Am 26.08.2026 gegen die Installation: **2.640
-Projekt-Monate**, Median 0,117, Mittelwert 0,396, **32 % ohne Abruf**, 3,1 % über 1,
-Maximum 175,7. Die Zahlen bewegen sich mit jeder Zeitbuchung und taugen als
-Größenordnung, nicht als Regressionswert.
+`Verbrauchsverlauf`-Objekten. Ihre Kennzahlen stehen hier bewusst nicht: sie stammen aus
+der Installation, bewegen sich mit jeder Zeitbuchung und gehören in die Notebook-Ausgabe,
+nicht in eine versionierte Datei. Ihre Form ist stark rechtsschief – niedriger Median,
+deutlich höherer Mittelwert, ein erheblicher Anteil Monate ohne jeden Abruf und einzelne
+Quoten weit über 1.
 
 Zwei Punkte dazu, die man wissen muss:
 
@@ -146,17 +147,35 @@ Zwei Punkte dazu, die man wissen muss:
   Buchung. Lücken darin zählen als Quote 0, der angebrochene Stichtagsmonat zählt nie
   mit. Ruhige Monate **vor** der ersten Buchung fehlen der Verteilung; ihre Quoten liegen
   damit eher zu hoch.
-- **Quoten über 1 sind echt und bleiben stehen.** Das Maximum von 175,7 (ein Projekt-Monat
-  mit 400 EUR offenem Restvolumen und einer großen Buchung) ist genau der Fall, den 5.2
+- **Quoten über 1 sind echt und bleiben stehen.** Sie entstehen, wo einem kleinen
+  rekonstruierten Restvolumen eine große Buchung gegenübersteht – genau der Fall, den 5.2
   benennt: das Budget ist nur in seinem heutigen Stand bekannt. In der Simulation ist der
   Schaden begrenzt, weil Schritt 2 auf das verbleibende Restvolumen kappt – eine Quote von
-  175 heißt dort „ruf alles ab, was offen ist".
+  weit über 1 heißt dort „ruf alles ab, was offen ist".
 
 Es fehlen: die Monte-Carlo-Simulation (5.4) und die verfügbare Kapazität (5.3, es fehlen
 Abwesenheiten, Feiertage und der Abschlag für ungeplante Abwesenheit).
 `Bestand.simulieren()` liefert deshalb `NochKeinePrognose` mit Begründung, und das
 Dashboard zeigt an der Stelle der Bandbreite genau diese Begründung an – eine erfundene
 Kurve wäre der schlechtere Platzhalter.
+
+## Keine gelesenen Werte im Repository
+
+**Werte, die aus der Clockodo-API gelesen wurden, gehören in keine Datei dieses
+Repositories** – weder in Code, Tests, Spec, diese Datei noch in Notizen. Gemeint sind
+Umsätze, Stundensätze, Budgets, Anzahlen von Projekten, Personen oder Gruppen, IDs sowie
+Kunden-, Projekt- und Personennamen. Das Repository ist öffentlich, die Werte sind echte
+Geschäfts- und Personendaten, und sie veralten mit jeder Zeitbuchung – als Zahl in einer
+versionierten Datei werden sie zum Regressionswert, der nie gestimmt hat.
+
+Erlaubt und erwünscht bleibt die Beschreibung des **Verhaltens**: Envelope, Feldnamen,
+Typen, Sonderfälle, Statuscodes, Grenzen der API, Reihenfolge und Rundung der Antwort.
+Wo eine Größenordnung nötig ist, steht sie qualitativ („eine Minderheit der Gruppen",
+„nah an der Seitengröße von 1000"). Testfixtures bilden die **Struktur** der echten
+Antwort nach, mit frei erfundenen IDs, Namen und Beträgen.
+
+Die gemessenen Zahlen gehören in die Notebook-Ausgabe: dort entstehen sie bei jedem Lauf
+neu und sind aktuell. Notebooks werden deshalb **ohne Zellausgaben** committet.
 
 ## Was das Modul fachlich tut
 
@@ -273,7 +292,7 @@ ist:
 - `EntryGroupV2.group` ist als `string` deklariert, kommt aber bei `group == 0` und bei
   `grouping[]=year` als **Zahl**. Deshalb bleibt `str()` vor dem Zerlegen.
 - `EntryGroupV2.revenue` ist als `integer/int64` deklariert und ist in Wahrheit ein
-  **Float** (86.661,88). Deshalb bleibt `float()`.
+  **Float**. Deshalb bleibt `float()`.
 - `EntryGroupV2.duration` nennt keine Einheit; **Sekunden** steht nur an den Feldern von
   `/v2/entries` („Duration in seconds").
 
@@ -283,20 +302,21 @@ Schreibweisenfehler, siehe unten bei den Feiertagen.
 `/v4/projects` liefert
 
 ```
-{"paging": {"items_per_page": 1000, "current_page": 1, "count_pages": 1, "count_items": 895},
+{"paging": {"items_per_page": 1000, "current_page": 1, "count_pages": 1, "count_items": …},
  "data": [{"id": …, "customers_id": …, "name": …, "number": …, "active": …, …}]}
 ```
 
 Also: Envelope-Key ist `data` (nicht `projects`), die Projekt-ID heißt `id`, und es gibt
-ein `paging`-Objekt. `items_per_page` ist 1000 bei aktuell 895 Projekten – die Grenze ist
-nah, deshalb läuft `ClockodoClient.get_paged` über alle Seiten statt nur über die erste.
+ein `paging`-Objekt. `items_per_page` ist 1000, und die Projektzahl liegt nah daran –
+deshalb läuft `ClockodoClient.get_paged` über alle Seiten statt nur über die erste.
 
 Die Paginierung ist inzwischen ausgeführt und nicht mehr geraten: `items_per_page` setzt
-die Seitengröße (laut Doku bis 5000), `page` wählt die Seite. Mit `items_per_page=3` antwortet die API mit
-`count_pages: 299`, und `page=2` liefert `current_page: 2` samt anderer IDs.
+die Seitengröße (laut Doku bis 5000), `page` wählt die Seite. Mit `items_per_page=3`
+antwortet die API mit entsprechend vielen `count_pages`, und `page=2` liefert
+`current_page: 2` samt anderer IDs.
 
 **Unbekannte Query-Parameter werden still ignoriert, nicht abgelehnt.** `count=3` und
-`limit=3` antworten mit 200 und den vollen 895 Projekten. Ein 200 belegt einen
+`limit=3` antworten mit 200 und der vollen, ungekürzten Liste. Ein 200 belegt einen
 Parameternamen also nicht – dafür muss das `paging`-Objekt der Antwort geprüft werden.
 Bei `/v2/entrygroups` ist es umgekehrt: dort führt ein falscher Parameter zu 400.
 
@@ -330,23 +350,23 @@ lesen, statt Parametervarianten zu raten.
 Eine Entrygroup sieht so aus (Felder gekürzt):
 
 ```
-{"group": "1375839", "name": …, "number": …, "duration": 27314640, "revenue": 1132440.7,
+{"group": "101", "name": …, "number": …, "duration": 2160000, "revenue": 60000.0,
  "hourly_rate": null, "hourly_rate_is_equal_and_has_no_lumpsums": false,
  "budget_used": false, "grouped_by": "projects_id", "restrictions": {"customers_id": …}}
 ```
 
 Fallen:
 
-- **Die Projekt-ID kommt als String** (`"1375839"`), nicht als Zahl.
+- **Die Projekt-ID kommt als String** (hier `"101"`), nicht als Zahl.
 - **`group == 0`** (dort als Zahl) steht für Buchungen auf einen Kunden ohne Projekt.
   Ohne Filter entsteht daraus ein Phantom-Projekt 0.
 - **`hourly_rate` ist als effektiver Stundensatz unbrauchbar.** Es ist genau dann
-  gesetzt, wenn `hourly_rate_is_equal_and_has_no_lumpsums` `true` ist – bei 92 von 870
-  Gruppen, und dort meist `0`. Für die 778 Gruppen mit gemischten Sätzen oder
+  gesetzt, wenn `hourly_rate_is_equal_and_has_no_lumpsums` `true` ist – nur bei einer
+  Minderheit der Gruppen, und dort meist `0`. Für Gruppen mit gemischten Sätzen oder
   Pauschalleistungen ist es `null`. Der effektive Satz muss aus `revenue` und `duration`
   (**Sekunden**) abgeleitet werden. Auch dort, wo beide vorliegen, weicht
   `revenue / (duration/3600)` vom nominalen `hourly_rate` ab – nicht abgerechnete Zeit.
-  8 Gruppen haben Umsatz bei `duration == 0`, das sind reine Pauschalleistungen.
+  Einige Gruppen haben Umsatz bei `duration == 0`, das sind reine Pauschalleistungen.
 
 ### Gruppierungen von `/v2/entrygroups`
 
@@ -363,29 +383,29 @@ eigener Rechnerei:
   `users_id` als String), `name`, `duration` und `revenue`. Das ist der historische
   Aufteilungsschlüssel aus Spec 5.4 Schritt 3, fertig aggregiert.
 - Die Projektsummen dieser Antwort sind mit denen der einfachen Gruppierung
-  **identisch** (über alle 870 Gruppen verglichen, keine Abweichung), und die
+  **identisch** (über alle Gruppen verglichen, keine Abweichung), und die
   Untergruppen summieren sich exakt auf sie. Deshalb genügt ein Abruf für Verbrauch und
   Aufteilungsschlüssel – rund 1,9 MB und etwa 20 Sekunden gegen 800 KB und 10 Sekunden
   bei der einfachen Gruppierung.
 - Die Monatsgruppierung enthält **alle** Buchungen, auch die auf einen Kunden ohne
   Projekt. Genau das ist im Dashboard gewollt: gefragt ist der Gesamtumsatz.
 - `grouping[]=projects_id&grouping[]=month` liefert je Projekt die Monate als
-  `sub_groups` – die Kombination aus Spec 11.1, am 26.08.2026 verifiziert: 870 Gruppen mit
-  zusammen 5.467 Projekt-Monaten von 01/2021 bis 11/2026, rund 23 Sekunden. **Die äußere
+  `sub_groups` – die Kombination aus Spec 11.1, am 26.08.2026 verifiziert, rund
+  23 Sekunden. **Die äußere
   Ebene ist die zuerst genannte.** Drei Fallen darin:
   - **Die Untergruppen kommen nach `duration` absteigend, nie chronologisch** – bei allen
-    667 Gruppen mit mehr als einem Monat. Die Rückrechnung des Restvolumens aus 5.2 lebt
+    Gruppen mit mehr als einem Monat. Die Rückrechnung des Restvolumens aus 5.2 lebt
     von der Reihenfolge; wer sie übernimmt, rechnet still falsch. Bei der
     Personengruppierung fiel das nie auf, weil Personen keine Reihenfolge haben. **Die
     Doku sagt zur Reihenfolge nichts** – sie ist damit auch nicht zugesagt, und selbst die
     beobachtete Sortierung wäre kein Verlass. `Verbrauchsverlauf.fuer()` sortiert deshalb.
-  - **Die Monatssummen gehen nur auf den Cent auf.** Bei 31 Projekten weicht die Summe
-    der Monate von der Projektsumme ab, höchstens um 0,06 EUR und in der Gesamtsumme um
-    0,63 EUR auf 30,6 Mio. – Clockodo rundet jede Gruppe einzeln. Die Zeitsummen stimmen
+  - **Die Monatssummen gehen nur auf den Cent auf.** Bei einer Reihe von Projekten
+    weicht die Summe der Monate von der Projektsumme um Cent-Beträge ab – Clockodo
+    rundet jede Gruppe einzeln. Die Zeitsummen stimmen
     exakt, und die Projektsummen sind mit der einfachen Gruppierung identisch. Ein
     Vergleich auf Gleichheit wäre also ein Fehlalarm.
   - **`group == 0` kommt mehrfach vor** – zweimal, je Kunde ohne Projekt einmal, und das
-    ist der einzige doppelt vergebene Schlüssel (869 verschiedene auf 870 Gruppen).
+    ist der einzige doppelt vergebene Schlüssel.
     `VerbrauchsverlaufRepository.abbilden()` faltet deshalb je Projekt-ID zusammen,
     statt zuzuweisen.
 
@@ -402,14 +422,14 @@ eigener Rechnerei:
 - Laut Doku sind **`time_since` und `time_until` beide Pflicht**, nicht nur `time_since`.
 
 **Pauschalleistungen, gemessen statt vermutet** (26.08.2026, `grouping[]=is_lumpsum`):
-17,9 der 30,6 Mio. EUR Gesamtumsatz sind Pauschalen, und sie tragen **0,0 Stunden** –
-Pauschaleinträge haben grundsätzlich keine Dauer. Im Prognose-Scope sind es 22,8 % des
-Verbrauchs, verteilt auf 33 der 42 Projekte, viele davon zu 100 %. Die Annahme aus Spec
+Pauschalen machen einen erheblichen Teil des Gesamtumsatzes aus und tragen **null
+Stunden** – Pauschaleinträge haben grundsätzlich keine Dauer. Auch im Prognose-Scope
+betreffen sie die Mehrzahl der Projekte, viele davon vollständig. Die Annahme aus Spec
 5.1, dass Pauschalen mit gebuchter Zeit im abgeleiteten Stundensatz normalisiert sind,
 hält damit stand: die Arbeit hinter der Pauschale wird als Zeit ohne Umsatz gebucht, und
-die abgeleiteten Sätze im Scope bleiben plausibel (53,57 bis 368,14 EUR je Stunde, Median
-168,34, kein Ausreißer über 600). Die Ausnahme sind die Projekte mit Umsatz **ohne jede**
-Zeit – sechs in der Historie, drei im Scope; die weist ein Hinweis aus.
+die abgeleiteten Sätze im Scope bleiben in einer plausiblen Größenordnung für
+Beratungsleistung, ohne Ausreißer nach oben. Die Ausnahme sind die Projekte mit Umsatz
+**ohne jede** Zeit; die weist ein Hinweis aus.
 
 **`/v2/entries` wird trotzdem nicht benutzt.** Der einzige genannte Grund – `type` zur
 Trennung von Pauschalleistungen – ist mit `grouping[]=is_lumpsum` erledigt.
@@ -418,7 +438,7 @@ Trennung von Pauschalleistungen – ist mit `grouping[]=is_lumpsum` erledigt.
 Die Werte stehen im **unversionierten** `/targethours` (`/v2` und `/v3` geben 404):
 
 ```
-{"targethours": [{"id": 336993, "users_id": 143323, "type": "weekly",
+{"targethours": [{"id": 1, "users_id": 301, "type": "weekly",
                   "date_since": "2023-06-14", "date_until": null,
                   "monday": 7, …, "sunday": 0}]}
 ```
@@ -427,13 +447,13 @@ Die Doku ergänzt vier Dinge dazu:
 
 - **`type` kennt genau zwei Werte**, `weekly` und `monthly`, mit je eigenem Schema. Eine
   monatliche Zeile führt `monthly_target` statt der Wochentage – die Wochentagsfelder
-  fehlen dort. In dieser Anlage sind alle 186 Zeilen `weekly`; tritt `monthly` auf, ist
+  fehlen dort. In dieser Anlage sind alle Zeilen `weekly`; tritt `monthly` auf, ist
   es kein unbekannter Fall mehr, sondern ein zu bauender.
 - **Die Stunden sind `number`, nicht `integer`** – halbe Stunden (8.5) sind vorgesehen.
 - **`users.default_target_hours` heißt „Uses the company's default target hours".** Der
   Schalter ist damit nicht nur kein Stundenwert, er hat eine Folge: wer ihn gesetzt hat,
   hat **keine eigene Zeile** in `/targethours`, und `Mitarbeiter.wochenstunden()` liefert
-  `None`. Heute geht das auf – 26 offene Zeilen für 26 aktive Personen –, aber es ist eine
+  `None`. Heute geht das auf – je aktiver Person genau eine offene Zeile –, aber es ist eine
   stille Lücke, sobald jemand auf den Firmenstandard umgestellt wird.
 - `/targethours` nimmt einen `users_id`-Filter (Array, Zahl oder CSV), bisher unbenutzt.
 
@@ -447,9 +467,8 @@ Notizen sagten, `/v2` bis `/v4` von `/nonbusinessdays` gäben 404 und die Feiert
 seien überhaupt nicht abrufbar. Beides stimmt nicht – geprüft am 26.08.2026:
 
 - `/v2/nonbusinessDays` **mit großem D** antwortet 200. `/v2/nonbusinessdays` gibt 404.
-- `/v2/nonbusinessGroups` **mit großem G** antwortet 200 und liefert die Gruppennamen
-  („it-agile BRB, HH, HB, NI, SH", „it-agile NRW, RP", „BY mit Mariä Himmelfahrt", …),
-  je Gruppe `id`, `name`, `company_default`. `/nonbusinessgroups` gibt 410 `deprecated` –
+- `/v2/nonbusinessGroups` **mit großem G** antwortet 200 und liefert je Gruppe `id`,
+  `name` (die Bundesländer-Kombination) und `company_default`. `/nonbusinessgroups` gibt 410 `deprecated` –
   daraus war der falsche Schluss entstanden.
 
 Die beiden Generationen liefern **dieselben Feiertage in verschiedenen Feldern**, und wer
@@ -471,8 +490,8 @@ Für 5.3 sind zwei weitere Endpunkte die kürzere Strecke, beide mit Paginierung
   zugeordnet, `{"users_id": …, "days": [...]}` – die eigene Zuordnung über die
   Feiertagsgruppe erspart sich damit.
 - `/v3/usersNonbusinessGroups` liefert die Zuordnung Person → Gruppe **mit
-  Gültigkeitszeitraum** (`date_since`, `date_until`); 60 Einträge auf 59 Personen, eine
-  Zuordnung hat also schon gewechselt. `users.nonbusinessgroups_id` kennt nur den
+  Gültigkeitszeitraum** (`date_since`, `date_until`); es gibt mehr Einträge als Personen,
+  eine Zuordnung hat also schon gewechselt. `users.nonbusinessgroups_id` kennt nur den
   heutigen Stand – für einen vergangenen Stichtag (Rückwärtstest, Spec 11.4) ist das der
   falsche Wert.
 
@@ -509,8 +528,8 @@ Funktionen:
   Abruf trägt die Historie für 5.2 und die gebuchten Beträge im Horizont für 5.4.
 
 Wer zwei davon zusammenlegt, bricht eines von beidem. Bis zum 24.08.2026 lag die
-Verbrauchsgrenze am Monatsende: das schlug 600 EUR aus dem Restaugust stumm dem Verbrauch
-zu, statt sie der Prognose anzurechnen.
+Verbrauchsgrenze am Monatsende: das schlug die nach dem Stichtag datierten Buchungen des
+laufenden Monats stumm dem Verbrauch zu, statt sie der Prognose anzurechnen.
 
 **Funktionen und nicht Konstanten**.
 
@@ -526,7 +545,7 @@ Stichtage – der braucht wegen des Limits von 10 `entrygroups`-Abrufen je Minut
 Drosselung oder wiederverwendete Antworten.
 
 Zwei Dinge, die vor der Simulation zu klären sind und aus der Doku-Gegenprobe stammen:
-ein Stundensatz von genau 0 (zwei Projekte im Scope) darf in 5.4 Schritt 3 keinen
+ein Stundensatz von genau 0 (er kommt im Scope vor) darf in 5.4 Schritt 3 keinen
 Stundenbedarf erzeugen, sonst ist es eine Division durch Null; und ein Projekt mit
-`deadline` im Horizont und `automatic_completion` fällt mitten im Horizont aus dem Scope
-(eines zum 30.09.2026).
+`deadline` im Horizont und `automatic_completion` fällt mitten im Horizont aus dem
+Scope – mindestens eines ist heute betroffen.

@@ -25,9 +25,9 @@ HISTORIE = Umsatzhistorie.zum_stichtag(
     STICHTAG,
 )
 PROJEKTE = (
-    Projekt(id=1, name="Trainings 2026 Agilität erleben 4600000422", kunde=KUNDE, aktiv=True,
+    Projekt(id=1, name="Beispielprojekt Eins", kunde=KUNDE, aktiv=True,
             budget=Budget(betrag=50000.0), verbrauchtes_volumen=16000.0, verbrauchte_stunden=100.0),
-    Projekt(id=2, name="Trainings 2026 Scrum/Kanban 4600000438", kunde=KUNDE, aktiv=True,
+    Projekt(id=2, name="Beispielprojekt Zwei", kunde=KUNDE, aktiv=True,
             budget=Budget(betrag=20000.0), verbrauchtes_volumen=7000.0, verbrauchte_stunden=50.0),
 )  # fmt: skip
 BESTAND = Bestand(stichtag=STICHTAG, projekte=PROJEKTE, umsatzhistorie=HISTORIE)
@@ -83,7 +83,7 @@ def test_umsatztabelle_kennzeichnet_den_laufenden_monat():
 
 
 def test_projekttabelle_zeigt_leere_zellen_statt_erfundener_nullen():
-    ohne_budget = Projekt(id=3, name="A-CSM", aktiv=True)
+    ohne_budget = Projekt(id=3, name="Schulungsprodukt", aktiv=True)
     tabelle = tabellen.projekttabelle([ohne_budget])
     assert tabelle.iloc[0]["Beauftragt"] == ""
     assert tabelle.iloc[0]["Offen"] == ""

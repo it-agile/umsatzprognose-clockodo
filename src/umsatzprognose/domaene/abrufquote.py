@@ -73,7 +73,7 @@ class Abrufquote:
 
     @property
     def beschriftung(self) -> str:
-        """Etwa ``it-agile GmbH / Kanban Coaching, Jun 2026``."""
+        """Etwa ``Kunde / Projekt, Jun 2026``."""
         return f"{self.projekt.bezeichnung}, {MONATSNAMEN[self.monat - 1]} {self.jahr}"
 
 
@@ -119,8 +119,8 @@ class Abrufquotenverteilung:
     # cached_property schreibt in ``__dict__`` und umgeht damit ``__setattr__`` - das
     # funktioniert auch an einer frozen dataclass. Gerechnet wird die Sortierung
     # deshalb einmal und nicht bei jeder Ziehung: die Simulation zieht laut 5.4 je Lauf,
-    # Projekt und Monat, das sind bei 10.000 Laeufen ueber 42 Projekte und 3 Monate mehr
-    # als eine Million Ziehungen.
+    # Projekt und Monat, das sind bei 10.000 Laeufen ueber alle Projekte des Scope und
+    # drei Monate weit mehr als eine Million Ziehungen.
     @cached_property
     def _werte(self) -> tuple[float, ...]:
         return tuple(sorted(quote.wert for quote in self.quoten))

@@ -78,7 +78,7 @@ class Verbrauchsverlauf:
         """Sortiert die Monate und fasst doppelte Schluessel zusammen.
 
         Sortiert, weil die API die Monate **nach Dauer absteigend** liefert und nicht
-        chronologisch - bei allen 667 Projekten dieser Anlage mit mehr als einem Monat -
+        chronologisch - bei jedem Projekt dieser Anlage mit mehr als einem Monat -
         und die Rueckrechnung des Restvolumens genau von der Reihenfolge lebt.
         Zusammengefasst, weil ein doppelter Monat sonst still einen Verbrauch verwerfen
         wuerde.
@@ -182,8 +182,9 @@ class Verbrauchsverlauf:
             return ()
 
         # Einmal durch das Fenster mit laufender Summe, statt je Monat neu zu summieren:
-        # ueber 5.400 Projekt-Monate hinweg ist der Unterschied zwischen linear und
-        # quadratisch spuerbar, und die Verteilung wird bei jeder Ansicht neu gebildet.
+        # ueber einige tausend Projekt-Monate hinweg ist der Unterschied zwischen
+        # linear und quadratisch spuerbar, und die Verteilung wird bei jeder Ansicht
+        # neu gebildet.
         gebucht = {monat.schluessel: monat.umsatz for monat in self.monate}
         verbraucht = self.verbrauch_vor(*fenster[0])
         quoten: list[Abrufquote] = []
