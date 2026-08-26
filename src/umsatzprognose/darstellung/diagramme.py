@@ -4,10 +4,16 @@ Jede Funktion nimmt Fachobjekte und gibt eine plotly-Figur zurueck - keine Rechn
 keine Abrufe. Was dargestellt wird, entscheidet die Domaene; hier steht nur, wie.
 
 Gestaltungsentscheidungen, die sich wiederholen: eine Groesse je Diagramm und deshalb
-keine Legende (der Titel benennt sie), Beschriftungen direkt am Balken statt einer
+meist keine Legende (der Titel benennt sie), Beschriftungen direkt am Balken statt einer
 zusaetzlichen Achse, wo es die Menge zulaesst, und Zahlen im Hinweisfenster statt an
 jedem Balken. Der laufende Monat ist heller gezeichnet und beschriftet - eine hellere
 Stufe derselben Farbe, weil es dieselbe Groesse ist und keine zweite Kategorie.
+
+Die eine Ausnahme ist :func:`umsatzverlauf`: dort stehen bis zu drei Farbtoene
+nebeneinander (Historie, laufender Monat, Prognostiziert), und der Titel kann sie nicht
+mehr benennen. Die Legende dort besteht aus eigenen, unsichtbaren Spuren statt aus den
+echten Balken - die Historie-Spur traegt ihre Farbe als Array uneinheitlicher Werte, und
+ein Legendenfeld dazu waere irrefuehrend.
 """
 
 from __future__ import annotations
@@ -118,11 +124,43 @@ def umsatzverlauf(
             font={"color": TINTE_ZWEITRANGIG, "size": 12},
         )
 
+    _legendeintrag(fig, "Historie", SERIE)
+    if laufender:
+        _legendeintrag(fig, "Läuft noch", SERIE_HELL)
+    if prognose is not None and prognose.vorhanden:
+        _legendeintrag(fig, "Prognostiziert", SERIE_HELL, deckkraft=PROGNOSE_DECKKRAFT)
+    fig.update_layout(
+        showlegend=True,
+        legend={
+            "orientation": "v",
+            "yanchor": "middle",
+            "y": 0.5,
+            "xanchor": "left",
+            "x": 1.02,
+            "font": {"size": 12, "color": TINTE_ZWEITRANGIG},
+            "bgcolor": "rgba(0,0,0,0)",
+        },
+        margin={"r": 130},
+    )
+
     achsen(fig)
     fig.update_layout(bargap=0.45, barcornerradius=4, barmode="overlay")
     fig.update_yaxes(tickformat=",.0f", ticksuffix=" €", rangemode="tozero")
     fig.update_xaxes(tickangle=0)
     return fig
+
+
+def _legendeintrag(fig: go.Figure, name: str, farbe: str, *, deckkraft: float = 1.0) -> None:
+    """Eine unsichtbare Spur einzig fuer den Legendeneintrag.
+
+    Die echten Spuren tragen ``showlegend=False`` (die Historie-Spur faerbt ihre Balken
+    ueber ein Array aus zwei Farben, "Bereits gebucht" teilt sich ihre Farbe absichtlich
+    mit der Historie) - ein Legendenfeld direkt daraus waere pro Farbe nicht sauber zu
+    gewinnen. Diese Spur zeichnet nichts (leere ``x``/``y``), nur ihr Legendenfeld.
+    """
+    fig.add_bar(
+        x=[], y=[], marker={"color": farbe, "opacity": deckkraft}, name=name, showlegend=True
+    )
 
 
 def _monatsbeschriftung(jahr: int, monat: int) -> str:

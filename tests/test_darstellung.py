@@ -78,9 +78,19 @@ def test_balkenlaenge_bleibt_im_bild():
     assert fig.layout.xaxis.range[1] > max(fig.data[0].x)
 
 
-def test_umsatzverlauf_ohne_prognose_bleibt_wie_zuvor():
+def test_umsatzverlauf_ohne_prognose_zeigt_nur_die_historie_balken():
     fig = diagramme.umsatzverlauf(HISTORIE)
-    assert len(fig.data) == 1
+    balkenspuren = [spur for spur in fig.data if len(spur.x or ()) > 0]
+    assert len(balkenspuren) == 1
+    assert len(balkenspuren[0].x) == 13
+
+
+def test_umsatzverlauf_zeigt_legende_fuer_die_farben():
+    fig = diagramme.umsatzverlauf(HISTORIE)
+    assert fig.layout.showlegend is True
+    legende = {spur.name for spur in fig.data if spur.showlegend}
+    # Ohne Prognose gibt es nur zwei Farben: Historie und der laufende Monat.
+    assert legende == {"Historie", "Läuft noch"}
 
 
 def test_umsatzverlauf_nennt_den_grund_ohne_bandbreite():
@@ -145,6 +155,11 @@ def test_umsatzverlauf_haengt_horizont_mit_zwei_farbtoenen_an():
     assert prognostiziert_spur.marker.opacity == PROGNOSE_DECKKRAFT
     assert gebucht_spur.marker.color != prognostiziert_spur.marker.color
 
+    # Die Legende benennt alle drei Farben, "Bereits gebucht" teilt sich ihre Farbe
+    # bewusst mit "Historie" und bekommt deshalb kein eigenes Feld.
+    legende = {spur.name for spur in fig.data if spur.showlegend}
+    assert legende == {"Historie", "Läuft noch", "Prognostiziert"}
+
 
 def test_dashboard_zeigt_horizont_im_umsatzverlauf():
     stichtag = date(2026, 9, 1)
@@ -175,6 +190,45 @@ def test_umsatztabelle_kennzeichnet_den_laufenden_monat():
     assert tabelle.iloc[-1]["Status"] == "läuft noch"
     assert tabelle.iloc[-2]["Status"] == "abgeschlossen"
     assert tabelle.iloc[-2]["Umsatz"] == "300.000,00 EUR"
+
+
+def test_umsatztabelle_ergaenzt_die_prognose_mit_stern():
+    stichtag = date(2026, 9, 1)
+    historie = Umsatzhistorie.zum_stichtag(
+        [Monatsumsatz(2026, 8, 100000.0, 800.0), Monatsumsatz(2026, 9, 20000.0, 150.0)],
+        stichtag,
+        abgeschlossene=1,
+    )
+    projekt = Projekt(
+        id=1, name="Projekt", kunde=KUNDE, aktiv=True,
+        budget=Budget(betrag=220000.0), verbrauchtes_volumen=20000.0, verbrauchte_stunden=200.0,
+    )  # fmt: skip
+    bestand = Bestand(
+        stichtag=stichtag,
+        projekte=(projekt,),
+        umsatzhistorie=historie,
+        verbrauchsverlaeufe=(_historie_fuer_abrufquote(0.2),),
+    )
+    prognose = bestand.simulieren(2, laeufe=5, zufall=Random(1))
+    assert prognose.vorhanden
+
+    tabelle = tabellen.umsatztabelle(historie, prognose)
+
+    # Zwei Historienmonate plus zwei Horizontmonate - der laufende Monat also doppelt:
+    # einmal "läuft noch" mit dem bisher Gebuchten, einmal "prognostiziert" mit der
+    # Voll-Monats-Schätzung, wie im Diagramm gestapelt.
+    assert len(tabelle) == 4
+    prognostizierte = tabelle[tabelle["Status"] == "prognostiziert"]
+    assert len(prognostizierte) == 2
+    assert all(wert.endswith(" *") for wert in prognostizierte["Umsatz"])
+    assert list(prognostizierte["Monat"]) == ["Sep 2026", "Okt 2026"]
+    assert all(wert == "" for wert in prognostizierte["Stunden"])
+
+
+def test_umsatztabelle_ohne_prognose_bleibt_wie_zuvor():
+    tabelle = tabellen.umsatztabelle(HISTORIE, BESTAND.simulieren())
+    assert len(tabelle) == 13
+    assert (tabelle["Status"] == "prognostiziert").sum() == 0
 
 
 def test_projekttabelle_zeigt_leere_zellen_statt_erfundener_nullen():

@@ -103,9 +103,12 @@ class Dashboard:
         """Das offene Auftragsvolumen der groessten Projekte."""
         return diagramme.restvolumen_je_projekt(self.bestand.im_prognose_scope, top=top)
 
-    def umsatztabelle(self) -> pd.DataFrame:
-        """Dieselben Monate wie im Verlaufsdiagramm, zum Nachlesen."""
-        return tabellen.umsatztabelle(self._historie())
+    def umsatztabelle(self, monate: int = 3) -> pd.DataFrame:
+        """Dieselben Monate wie im Verlaufsdiagramm, zum Nachlesen - inklusive Prognose.
+
+        ``monate`` steuert wie bei :meth:`umsatzverlauf` nur die Laenge des Horizonts.
+        """
+        return tabellen.umsatztabelle(self._historie(), self.bestand.simulieren(monate))
 
     def projekttabelle(self, top: int | None = None) -> pd.DataFrame:
         """Die Projekte der Prognose, groesstes offenes Volumen zuerst."""

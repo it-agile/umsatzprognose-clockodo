@@ -12,8 +12,9 @@ from collections.abc import Sequence
 import pandas as pd
 
 from umsatzprognose.domaene.hinweis import Hinweis
+from umsatzprognose.domaene.prognose import Prognose
 from umsatzprognose.domaene.projekt import Projekt
-from umsatzprognose.domaene.umsatzhistorie import Umsatzhistorie
+from umsatzprognose.domaene.umsatzhistorie import MONATSNAMEN, Umsatzhistorie
 from umsatzprognose.domaene.zahlen import euro, stunden
 
 PROJEKTSPALTEN = ["Kunde", "Projekt", "Beauftragt", "Verbraucht", "Offen", "Budget überschritten"]
@@ -41,23 +42,46 @@ def projekttabelle(projekte: Sequence[Projekt]) -> pd.DataFrame:
     )
 
 
-def umsatztabelle(historie: Umsatzhistorie) -> pd.DataFrame:
-    """Ein Monat je Zeile, juengster zuletzt - dieselbe Reihenfolge wie im Diagramm."""
+def umsatztabelle(historie: Umsatzhistorie, prognose: Prognose | None = None) -> pd.DataFrame:
+    """Ein Monat je Zeile, juengster zuletzt, und daran anschliessend der Prognosehorizont.
+
+    Dieselben Monate und derselbe Median wie im Diagramm (:func:`~umsatzprognose.
+    darstellung.diagramme.umsatzverlauf`): fuer den laufenden Monat die Summe aus dem
+    schon gebuchten Betrag (``historie.laufender``) und dem Median dieses Monats, fuer
+    die folgenden Monate der Median allein - der enthaelt die Untergrenze aus bereits
+    Gebuchtem schon (Spec 5.4, ``Monatsumsatz = max(simuliert, gebucht)``), ein zweites
+    Draufaddieren waere falsch. Prognostizierte Zeilen tragen ein ``*`` am Betrag statt
+    einer zweiten Schriftart - die Tabelle bleibt eine gewoehnliche DataFrame.
+    """
     laufender = historie.laufender
-    return pd.DataFrame(
-        [
+    zeilen = [
+        {
+            "Monat": monat.beschriftung,
+            "Umsatz": euro(monat.umsatz),
+            "Stunden": stunden(monat.stunden),
+            "Status": "läuft noch"
+            if laufender and monat.schluessel == laufender.schluessel
+            else "abgeschlossen",
+        }
+        for monat in historie.monate
+    ]
+
+    if prognose is not None and prognose.vorhanden:
+        horizont = prognose.horizontmonate()
+        median = prognose.monatswerte()[0.50]
+        basis0 = laufender.umsatz if laufender else 0.0
+        gesamt = [basis0 + median[0], *median[1:]]
+        zeilen.extend(
             {
-                "Monat": monat.beschriftung,
-                "Umsatz": euro(monat.umsatz),
-                "Stunden": stunden(monat.stunden),
-                "Status": "läuft noch"
-                if laufender and monat.schluessel == laufender.schluessel
-                else "abgeschlossen",
+                "Monat": f"{MONATSNAMEN[monat - 1]} {jahr}",
+                "Umsatz": f"{euro(betrag)} *",
+                "Stunden": "",
+                "Status": "prognostiziert",
             }
-            for monat in historie.monate
-        ],
-        columns=UMSATZSPALTEN,
-    )
+            for (jahr, monat), betrag in zip(horizont, gesamt, strict=True)
+        )
+
+    return pd.DataFrame(zeilen, columns=UMSATZSPALTEN)
 
 
 def hinweistabelle(hinweise: Sequence[Hinweis]) -> pd.DataFrame:
