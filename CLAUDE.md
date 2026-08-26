@@ -160,7 +160,7 @@ Seit dem 26.08.2026 liefert `MonteCarloPrognose` (über die `Prognose`-ABC) auch
 (`horizontmonate()`) – die Ausgabe aus Spec 5.5 ist damit vollständig, bis auf den
 Verbrauch vor dem Stichtag im laufenden Monat, der nicht separat berechnet werden muss:
 er steht schon als `Umsatzhistorie.laufender` bereit und wird im Diagramm direkt darauf
-gestapelt (siehe unten). Der Rückwärtstest über 12 Stichtage (Spec 11.4) steht noch aus.
+gestapelt (siehe unten).
 
 **Bugfix beim Bauen des Diagramms gefunden und behoben (26.08.2026):** `Verbrauchsverlauf.
 gebucht()` kennt im Stichtagsmonat keine Tagesgrenze (die Monatsgruppierung liefert den
@@ -321,9 +321,8 @@ gekappt, für die Simulation).
 **`/api/entrygroups` ist auf 10 GET je Minute begrenzt** – ein endpunkteigenes Limit
 zusätzlich zum globalen (900/min, 20.000/Tag), bei Überschreitung 429. Das ist die engste
 Stelle des ganzen Moduls: ein Ladevorgang verbraucht **drei** davon (Verbrauch je Person,
-Umsatz je Monat, Verbrauch je Projektmonat). Der Rückwärtstest über 12 Stichtage aus Spec
-11.4 wären 36 Abrufe und läuft damit ohne Drosselung in den 429. Der Client behandelt 429
-heute nicht eigens; er wirft `ClockodoError` wie bei jedem Fehlerstatus.
+Umsatz je Monat, Verbrauch je Projektmonat). Der Client behandelt 429 heute nicht eigens;
+er wirft `ClockodoError` wie bei jedem Fehlerstatus.
 
 Basis-URL ist `https://my.clockodo.com/api`. Authentifizierung über drei Header, alle
 drei sind Pflicht: `X-ClockodoApiUser` (E-Mail des Benutzers), `X-ClockodoApiKey` und
@@ -575,9 +574,8 @@ Für 5.3 sind zwei weitere Endpunkte die kürzere Strecke, beide mit Paginierung
 - `/v3/usersNonbusinessGroups` liefert die Zuordnung Person → Gruppe **mit
   Gültigkeitszeitraum** (`date_since`, `date_until`); es gibt mehr Einträge als Personen,
   eine Zuordnung hat also schon gewechselt. `users.nonbusinessgroups_id` kennt nur den
-  heutigen Stand – für einen vergangenen Stichtag (Rückwärtstest, Spec 11.4) ist das der
-  falsche Wert. **Ungenutzt**, weil `/v2/usersNonbusinessDays` die Zuordnung bereits
-  auflöst.
+  heutigen Stand – für einen vergangenen Stichtag ist das der falsche Wert.
+  **Ungenutzt**, weil `/v2/usersNonbusinessDays` die Zuordnung bereits auflöst.
 
 **Was die Doku nicht klärt: was `half_day` bewirkt.** Sie deklariert nur ein Boolean,
 keine Wirkung. Spec 5.3 nennt eine Halbierung der Sollstunden als Annahme; **entschieden
@@ -607,7 +605,7 @@ Funktionen:
 - `verbrauch_bis(stichtag)` – **der Stichtag selbst**, Grenze des Verbrauchs (Spec 5.1).
   Verbrauch ist streng Vergangenheit. `BestandRepository.laden()` bindet sie an den
   Stichtag des Bestands, nicht an heute; erst damit ist ein Bestand zu einem vergangenen
-  Stichtag konsistent – Voraussetzung für den Rückwärtstest (Spec 11.4).
+  Stichtag konsistent.
 - `monatsende(tag)` – der letzte Tag des Kalendermonats, Fenster der **Umsatzhistorie**.
   Dort ist der laufende Monat ein Balken, und eine später im Monat datierte Buchung
   gehört hinein.
@@ -622,11 +620,10 @@ laufenden Monats stumm dem Verbrauch zu, statt sie der Prognose anzurechnen.
 
 **Funktionen und nicht Konstanten**.
 
-## Nächster geplanter Schritt
+## Kapazität (5.3), Simulation (5.4) und Ausgabe (5.5)
 
 **Spec 5.3 (Abwesenheiten, Feiertage, verfügbare Kapazität), 5.4 (Monte-Carlo-Simulation)
-und 5.5 (Ausgabe) sind vollständig umgesetzt und entschieden.** Es fehlt nur noch der
-Rückwärtstest – Details dazu am Ende dieses Abschnitts.
+und 5.5 (Ausgabe) sind vollständig umgesetzt und entschieden.**
 
 Zugriff: `ClockodoClient.absences(year)` liest `/v4/absences` mit `filter[year]`,
 `ClockodoClient.users_nonbusiness_days(year)` liest `/v2/usersNonbusinessDays` mit dem
@@ -696,6 +693,3 @@ Diagramm statt in zwei getrennten – der frühere `Dashboard.prognose()`/
 farblich unterscheidbar (satt vs. gedämpft über `gestaltung.PROGNOSE_DECKKRAFT`, keine
 zweite Farbfamilie), dazu ein Fehlerbalken für die 85-%/95-%-Niveaus. Details und die
 Begründung der Farbwahl im Docstring von `diagramme.umsatzverlauf()`.
-
-Als Nächstes der **Rückwärtstest über 12 Stichtage** – der braucht wegen des Limits von
-10 `entrygroups`-Abrufen je Minute eine Drosselung oder wiederverwendete Antworten.

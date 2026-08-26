@@ -51,8 +51,7 @@ als String (kommt bei `group == 0` und `grouping[]=year` als Zahl) und
 
 **`/api/entrygroups` ist auf 10 GET je Minute begrenzt**, ein endpunkteigenes Limit
 zusätzlich zum globalen (900/min, 20.000/Tag); darüber antwortet die API mit 429. Ein
-Ladevorgang verbraucht drei davon. Der Rückwärtstest aus 11.4 über 12 Stichtage wären 36
-Abrufe und braucht damit eine Drosselung.
+Ladevorgang verbraucht drei davon.
 | Zweck | Endpunkt | Relevante Felder |
 |---|---|---|
 | Auftragsvolumen | `GET /v4/projects` | `budget` (`amount`, `hard`, `monetary`, `interval`, `from_subprojects`), `active`, `completed`, `customers_id`, `name` |
@@ -222,8 +221,7 @@ sinken, ohne dass etwas abbricht. Dasselbe gilt für einen Wert, der beim Import
 berechnet wird.
 
 Weil das Fenster am Stichtag endet, ist ein Bestand zu einem **vergangenen** Stichtag
-konsistent rechenbar: er kennt nur Buchungen, die es damals gab. Das ist die
-Voraussetzung für den Rückwärtstest aus 11.4.
+konsistent rechenbar: er kennt nur Buchungen, die es damals gab.
 
 **Budgetüberschreitungen.** `budget.hard` ist in dieser Installation `false`, wo es
 zählt: Budgets sind weiche Grenzen, der Verbrauch kann sie übersteigen. Eine
@@ -434,10 +432,6 @@ Monatlich zu prüfen:
   Budgets in der Praxis als Grenze wirken.
 - **Der Abschlag für ungeplante Abwesenheit** (5.3).
 
-`active`, `completed` und `completed_at` aus `/v4/projects` markieren rückwirkend
-zuverlässig, wann ein Projekt real endete, und sind damit die Grundlage jedes
-Rückwärtstests.
-
 Bei Abweichungen zwischen Prognose und Ist gilt: **zuerst die Kalibrierung prüfen, nicht
 die Simulationslogik umbauen.**
 
@@ -467,7 +461,6 @@ Umgesetzt als Python-Paket `umsatzprognose` mit Notebook-Oberfläche in Google C
   der laut Entscheidung vom 26.08.2026 im MVP ignoriert statt geschätzt wird), die
   Monte-Carlo-Simulation aus **5.4** und die Ausgabe aus **5.5**, dazu die Umsatzhistorie
   der letzten zwölf Monate. Historie und Prognosehorizont stehen als ein Diagramm.
-- **Nicht gebaut:** der Rückwärtstest über 12 Stichtage (Abschnitt 11).
 
 Die Abrufquote-Verteilung ist am 26.08.2026 geschätzt. Ihre Kennzahlen stehen bewusst
 nicht hier: sie stammen aus der Installation, bewegen sich mit jeder Zeitbuchung und
@@ -505,8 +498,3 @@ keine Verzerrung, die sich beheben ließe, ohne Referenzklassen einzuführen.
    `Umsatzhistorie.laufender` bereit. `diagramme.umsatzverlauf()` zeigt seitdem Historie
    und Prognosehorizont in einem Diagramm, bereits gebuchter und prognostizierter Umsatz
    farblich unterscheidbar.
-4. **Rückwärtstest über 12 Stichtage.** Er entscheidet auch, ob Referenzklassen nötig
-   sind (Abschnitt 6). Zu beachten: ein Ladevorgang verbraucht drei der 10 zulässigen
-   `entrygroups`-Abrufe je Minute – 12 Stichtage brauchen also eine Drosselung oder eine
-   Wiederverwendung der Antworten über die Stichtage hinweg. Letzteres ist möglich, weil
-   sich zwischen zwei Stichtagen nur die Zeitgrenzen ändern, nicht die Gruppierung.
