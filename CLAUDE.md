@@ -6,14 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Abhängigkeits- und Python-Verwaltung läuft ausschließlich über **uv**; die Version ist
 in `.python-version` auf 3.13 gepinnt. Kein `pip install` im Projekt-venv, kein manuell
-angelegtes venv.
-
-Die 3.13 ist kein Zufall: **Colab läuft auf Python 3.13** (verifiziert am 24.08.2026 an
-einem Traceback aus einer echten Colab-Sitzung). Ein früherer Pin auf 3.12 mit
-`requires-python = ">=3.12,<3.13"` ließ die Installation in Colab fehlschlagen. Deshalb
-ist `requires-python` auf `>=3.13` gesetzt, ohne Obergrenze – ein Colab-Upgrade darf die
-Installation nicht brechen. Wer die Version anfasst, prüft sie gegen Colab, nicht gegen
-lokale Bequemlichkeit.
+angelegtes venv. Colab läuft auf Python 3.13
 
 ```bash
 uv sync --extra notebook       # Umgebung herstellen
@@ -26,7 +19,7 @@ uv run jupyter lab             # Notebooks lokal
 
 ## Aufbau und wo was hingehört
 
-Das Paket bildet den **Gegenstand** ab, nicht den Rechenweg: Kunde, Projekt,
+Das Paket bildet ab: Kunde, Projekt,
 Mitarbeiter, Projektanteil, Umsatzhistorie. Drei Schichten mit genau einer erlaubten
 Abhängigkeitsrichtung:
 
@@ -53,14 +46,11 @@ darstellung  ──►  domaene  ◄──  clockodo
 - `tests/` – pytest. Die Antwortausschnitte in `conftest.py` sind gekürzte, aber echte
   Antworten samt ihrer Fallen.
 - `notebooks/` – zwei Notebooks mit verschiedenen Zielgruppen, siehe unten.
-- `spec/spec-umsatzprognose-clockodo-modul.md` – die Spezifikation, eine Datei ohne
-  Versionsnummer im Namen. Die Fassung ist der Git-Tag (`git describe`); frühere
-  Fassungen stehen nur in der Historie.
+- `spec/spec-umsatzprognose-clockodo-modul.md` – die Spezifikation.
 
-**Die Domäne kennt kein JSON und keinen HTTP-Client.** Das ist die tragende Regel: das
-teuer erarbeitete Wissen über Clockodos Eigenheiten steht in `clockodo/`, je Endpunkt
-dort, wo seine Abbildung liegt. Sickert es in die Fachobjekte, ist beides nicht mehr
-getrennt prüfbar.
+**Die Domäne kennt kein JSON und keinen HTTP-Client.** Das ist die tragende Regel: 
+das Wissen über Clockodos Eigenheiten steht in `clockodo/`, je Endpunkt
+dort, wo seine Abbildung liegt.
 
 **Die Simulation gehört an den `Bestand`, nicht an das `Projekt`.** Der
 Kapazitätsdeckel aus 5.4 Schritt 4 wirkt je Person über *alle* ihre Projekte, und ein
@@ -90,51 +80,9 @@ Installationszelle – das lokale venv steht dort nicht zur Verfügung.
   `Dashboard`, Fachsprache, keine Endpunkte, keine IDs, keine technischen Marker.
 - `notebooks/02_technik_restvolumen.ipynb` – für die Entwicklung. Prüfsummen,
   Aufteilungsschlüssel, Sollarbeitszeiten und die offenen fachlichen Fragen
-  (`ENTSCHEIDEN`-Abschnitte). Ersetzt das frühere `01_restvolumen.ipynb`.
+  (`ENTSCHEIDEN`-Abschnitte).
 
 Rechenlogik gehört ins Paket, nicht ins Notebook.
-
-Diese Zelle installiert mit **`--force-reinstall`**, und das ist kein Ritual: die
-Versionsnummer bleibt über Commits hinweg 0.1.0, weshalb `pip install git+…@main` einen
-bereits installierten Stand stehen lässt – ohne Fehlermeldung, aber auch ohne Wirkung.
-`--upgrade` hilft nicht. Am 24.08.2026 in frischen venvs nachgestellt: nach `@5b672de`
-und anschließendem `@main` fehlten die neuen Module weiterhin, in Colab endete das in
-`ModuleNotFoundError: No module named 'umsatzprognose.api'`. Wirksam sind
-`--force-reinstall`, `uninstall` + `install` oder ein **Versionssprung** – letzterer ist
-ebenfalls belegt, taugt aber nicht als Verlass, weil ein vergessener Sprung lautlos
-scheitert und Colab dann alte Rechenlogik ausführt.
-
-Der Reinstall läuft mit **`--no-deps`**, und davor ein gewöhnliches `pip install` für
-die Abhängigkeiten. Ohne `--no-deps` zieht `--force-reinstall` pandas und numpy neu und
-bricht Colabs Pins (`google-colab` verlangt `pandas==2.2.3`, `numba` `numpy<2.3`; am
-24.08.2026 real gesehen mit pandas 3.0.5 und numpy 2.5.2). Aus demselben Grund steht
-**numpy nicht in den Abhängigkeiten**, obwohl die Simulation es später braucht: ein
-unbenutzter Pin, der in Colab eine Aktualisierung erzwingt, ist reiner Schaden. **plotly
-ist mit `>=5` ohne Obergrenze eingetragen** – Colab bringt es mit, die Anforderung ist
-damit erfüllt und der erste `pip install` lässt die vorhandene Version stehen.
-
-Ein Runtime-Neustart allein genügt nicht, ist nach einem Push aber zusätzlich nötig:
-Python liefert für bereits geladene Module das Objekt aus `sys.modules`, auch wenn die
-Datei auf der Platte ersetzt wurde. Das erzeugt einen gemischten Zustand – neue Module
-werden frisch geladen, alte bleiben alt – und endet als `ImportError: cannot import
-name …` auf eine Funktion, die in der installierten Datei durchaus steht.
-
-**Die Installationszelle erneuert das Paket, nie das Notebook.** Die `.ipynb` liegt in
-der Colab-Sitzung (oder als Kopie in Drive); `pip install git+…@main` fasst sie nicht
-an, ein Runtime-Neustart auch nicht. Nach einer Notebook-Änderung im Repository muss
-das Notebook selbst neu geladen werden: *File → Open notebook → GitHub*. Der Fehler ist
-tückisch, weil nichts abbricht – neues Paket plus alte Zelle läuft durch und liefert
-still ein altes Ergebnis. Am 24.08.2026 genau so aufgetreten: die Tabelle hatte die
-neuen Spalten `kunde` und `projekt`, aber die alte Zelle übergab keine Bezeichnungen,
-also standen dort durchgehend `None`. Deshalb endet die Installationszelle mit einem
-Print, der ihren Stand nennt – fehlt diese Ausgabe, ist nicht das Paket alt, sondern
-das Notebook.
-
-**Die Paket-API wurde beim Umbau gebrochen.** Die früheren Module `api.py`, `config.py`,
-`auftragsvolumen.py`, `verbrauchtes_volumen.py`, `restvolumen.py`, `stammdaten.py` und
-`tabellen.py` gibt es nicht mehr; ihre Funktionen sind Methoden der Fachobjekte
-geworden. Ein altes Notebook gegen den neuen Stand scheitert mit `ImportError` – das
-ist hier der freundliche Fall, weil er auffällt.
 
 ## Stand der Implementierung
 
@@ -142,28 +90,12 @@ Umgesetzt ist Schritt 1 aus Spec Abschnitt 10: Restvolumen je Projekt (5.1), daz
 vollständige Domänenmodell außer der Simulation – inklusive Aufteilungsschlüssel je
 Person (5.4 Schritt 3) und Sollarbeitszeit (Teil von 5.3).
 
-Beide Notebooks laufen am 24.08.2026 gegen die echte Installation durch: 895 Projekte,
-davon 122 aktiv und **42 im Prognose-Scope**, 59 Personen (26 aktiv, zusammen 801
-Wochenstunden), **721.126 EUR** prognosewirksames Restvolumen bei 2.318.333 EUR
-Auftragsvolumen, Umsatz der zwölf abgeschlossenen Monate 09/2025–08/2026 rund
-**3,48 Mio. EUR**. Die Zahlen bewegen sich mit jeder Zeitbuchung – sie taugen als
-Größenordnung, nicht als Regressionswert. Und sie hängen an zwei Regeln: der
-`completed`-Regel (Spec 5.0) und dem Verbrauchsfenster am Stichtag (5.1). Wer ältere
-Zahlen vergleicht, vergleicht andere Regeln. Ein vollständiger Ladevorgang dauert rund
-15 Sekunden.
-
 Es fehlen: die Monte-Carlo-Simulation (5.4), die **Schätzung** der
 Abrufquote-Verteilung (5.2 legt ihre Form fest, die Zahlen fehlen) und die verfügbare
 Kapazität (5.3, es fehlen Abwesenheiten und der Abschlag für ungeplante Abwesenheit).
 `Bestand.simulieren()` liefert deshalb `NochKeinePrognose` mit Begründung, und das
 Dashboard zeigt an der Stelle der Bandbreite genau diese Begründung an – eine erfundene
 Kurve wäre der schlechtere Platzhalter.
-
-Referenzklassen sind seit v0.6 **zurückgestellt** und blockieren nichts mehr; die
-Verteilung wird portfolioweit geschätzt. Die Normalisierung von Pauschalleistungen ist
-ebenfalls entschieden: Pauschalen mit gebuchter Zeit stecken im abgeleiteten
-Stundensatz, die acht Gruppen mit Umsatz ohne Zeit gehen ohne Kapazitätsbedarf ein und
-werden als Hinweis ausgewiesen.
 
 ## Was das Modul fachlich tut
 
@@ -186,7 +118,7 @@ Die Simulation rechnet **in Euro als Leitgröße** und nutzt **Stunden** nur als
 Zwischenschritt für den Kapazitätsdeckel. Diese Richtung ist zentral – wer sie umdreht,
 baut ein anderes Modell. Stunden und nicht Personentage, weil `/targethours` Stunden je
 Wochentag liefert (20–35 h/Woche, meist 7 h/Tag) und keine Taglänge hinterlegt ist; eine
-angenommene würde den Deckel still verschieben (Spec 5.3 seit v0.6).
+angenommene würde den Deckel still verschieben (Spec 5.3).
 
 Der Horizont **beginnt mit dem laufenden Monat**, genauer: am Stichtag. Monat 1 ist nur
 der Rest des Monats, deshalb werden gezogene Abrufquote und Kapazität mit dem Anteil der
@@ -227,7 +159,7 @@ ungeplante Abwesenheit.
 ## Clockodo-API: gemischte Versionen
 
 Die benötigten Daten liegen über vier verschiedene API-Generationen verteilt; das ist
-kein Versehen, sondern Stand der Clockodo-API:
+Stand der Clockodo-API:
 
 | Zweck | Endpunkt | Felder |
 |---|---|---|
@@ -246,7 +178,7 @@ kein Versehen, sondern Stand der Clockodo-API:
 sind kein technisches Limit: der Verbrauch kann sie übersteigen, das rohe Restvolumen
 wird dann negativ. Das ist ein Kalibrierungssignal und kein Fehler.
 
-Für die Prognose gilt trotzdem eine harte Grenze (Spec 5.1, seit v0.5): **eine
+Für die Prognose gilt trotzdem eine harte Grenze (Spec 5.1): **eine
 Überschreitung kann nur historisch entstehen, die Prognose überschreitet das Budget
 nicht.** Projekte mit historisch überschrittenem Budget tragen 0 zur Prognose bei.
 Deshalb führt `Projekt` beide Größen getrennt – `restvolumen_roh`
@@ -261,7 +193,7 @@ Gesamtlänge**. `clockodo.config.ClockodoCredentials` kapselt das und prüft die
 `docs.clockodo.com` wird als JavaScript-Anwendung ausgeliefert und war nicht auslesbar;
 die Response-Strukturen stammen daher aus echten Läufen, nicht aus der Doku.
 
-**Verifiziert am 24.08.2026 an einer echten Antwort** – `/v4/projects` liefert
+`/v4/projects` liefert
 
 ```
 {"paging": {"items_per_page": 1000, "current_page": 1, "count_pages": 1, "count_items": 895},
@@ -281,7 +213,7 @@ die Seitengröße, `page` wählt die Seite. Mit `items_per_page=3` antwortet die
 Parameternamen also nicht – dafür muss das `paging`-Objekt der Antwort geprüft werden.
 Bei `/v2/entrygroups` ist es umgekehrt: dort führt ein falscher Parameter zu 400.
 
-**Ebenfalls verifiziert am 24.08.2026** – `/v2/entrygroups` verlangt genau diese Form:
+`/v2/entrygroups` verlangt genau diese Form:
 
 ```
 GET /v2/entrygroups?time_since=2020-01-01T00:00:00Z&time_until=2026-08-31T23:59:59Z&grouping[]=projects_id
@@ -301,7 +233,7 @@ Vier Punkte, jeder an einer 400er-Antwort belegt:
 - Zeitgrenzen brauchen die volle ISO-Form mit Uhrzeit; ein reines Datum gibt
   `{"error":{"message":"Wrong format","fields":["time_since"]}}`.
 
-**Fehler immer am Körper diagnostizieren, nicht am Status.** Clockodo begründet 400er in
+**Fehler immer im Body diagnostizieren, nicht am Status.** Clockodo begründet 400er in
 der Form `{"error": {"message": …, "fields": [...]}}` und benennt dort den beanstandeten
 Parameter. `httpx.Response.raise_for_status()` zeigt nur Status und URL und verwirft
 genau diese Information – deshalb wirft `get()` im Notebook einen eigenen
@@ -316,7 +248,7 @@ Eine Entrygroup sieht so aus (Felder gekürzt):
  "budget_used": false, "grouped_by": "projects_id", "restrictions": {"customers_id": …}}
 ```
 
-Drei Fallen darin, alle an den 870 Gruppen dieser Installation belegt:
+Fallen:
 
 - **Die Projekt-ID kommt als String** (`"1375839"`), nicht als Zahl.
 - **`group == 0`** (dort als Zahl) steht für Buchungen auf einen Kunden ohne Projekt.
@@ -329,7 +261,7 @@ Drei Fallen darin, alle an den 870 Gruppen dieser Installation belegt:
   `revenue / (duration/3600)` vom nominalen `hourly_rate` ab – nicht abgerechnete Zeit.
   8 Gruppen haben Umsatz bei `duration == 0`, das sind reine Pauschalleistungen.
 
-### Gruppierungen von `/v2/entrygroups` (verifiziert am 24.08.2026)
+### Gruppierungen von `/v2/entrygroups`
 
 `/v2/entrygroups` kann mehr als nach Projekt gruppieren, und das ersetzt eine Menge
 eigener Rechnerei:
@@ -351,21 +283,12 @@ eigener Rechnerei:
 - Die Monatsgruppierung enthält **alle** Buchungen, auch die auf einen Kunden ohne
   Projekt. Genau das ist im Dashboard gewollt: gefragt ist der Gesamtumsatz.
 
-**`/v2/entries` wird bewusst nicht benutzt.** Der Endpunkt antwortet mit
-`{"paging": …, "filter": …, "entries": [...]}`; `count_items` steht bei **16.461** für
-die letzten zwölf Monate, `items_per_page` bei 2500 – sieben Abrufe je Jahr Historie,
-um daraus dieselbe Summe zu bilden, die der Server schon gebildet hat. Erst wenn eine
+**`/v2/entries` wird bewusst nicht benutzt.** Erst wenn eine
 Auswertung wirklich den einzelnen Eintrag braucht (etwa `type` zur Trennung von
 Pauschalleistungen), lohnt er sich.
 
-### Sollarbeitszeit: die Spec liegt falsch (verifiziert am 24.08.2026)
-
-Spec Abschnitt 4 nennt `default_target_hours` aus `/v3/users` als Sollarbeitszeit.
-**Das Feld ist ein Boolean-Schalter**, keine Stundenzahl: 56 mal `false`, 3 mal `true`
-über alle 59 Personen, ohne Zusammenhang zu `active`. Wer es als Stunden liest, bekommt
-0 oder 1 und einen still falschen Kapazitätsdeckel.
-
-Die echten Werte stehen im **unversionierten** `/targethours` (`/v2` und `/v3` geben 404):
+### Sollarbeitszeit
+Die Werte stehen im **unversionierten** `/targethours` (`/v2` und `/v3` geben 404):
 
 ```
 {"targethours": [{"id": 336993, "users_id": 143323, "type": "weekly",
@@ -373,28 +296,21 @@ Die echten Werte stehen im **unversionierten** `/targethours` (`/v2` und `/v3` g
                   "monday": 7, …, "sunday": 0}]}
 ```
 
-186 Einträge, alle mit `type: "weekly"`; 160 sind mit `date_until` abgeschlossen, die 26
-offenen entsprechen genau den 26 aktiven Personen – je einer, mit 20 bis 35
-Wochenstunden. Ein anderer `type` ist nie aufgetreten und wird deshalb nicht gedeutet,
-sondern übersprungen und gemeldet.
-
 Für die geplanten Abwesenheiten (5.3) ist `/v4/absences?year=…` der richtige Endpunkt:
 `/absences`, `/v2/absences` und `/v3/absences` antworten mit 410 `deprecated`.
 
-**Kundennamen nur über `/v3/customers`** (geprüft am 24.08.2026): `/v4/customers`
+**Kundennamen nur über `/v3/customers`**: `/v4/customers`
 antwortet mit 404 `RouteNotFound`, `/v2/customers` mit 410 `deprecated`. Die Antwortform
-gleicht `/v4/projects` – `{"paging": {...}, "data": [{"id": …, "name": …, …}]}`, bei 324
-Kunden auf einer Seite. `/v4/projects` selbst führt nur `customers_id`, keinen
-Kundennamen. Alle 895 Projekte tragen einen `name` und eine auflösbare `customers_id`;
+gleicht `/v4/projects` – `{"paging": {...}, "data": [{"id": …, "name": …, …}]}`. `/v4/projects` selbst führt nur `customers_id`, keinen
+Kundennamen. Alle Projekte tragen einen `name` und eine auflösbare `customers_id`;
 `clockodo/projekte.py` lässt eine Lücke trotzdem als `None` durch, statt einen Abruf mit
 einem `KeyError` zu beenden – eine fehlende Beschriftung darf keine Zahl kosten. Für
 Personen gilt dasselbe: eine `users_id` ohne Stammdatensatz bekommt ein
 Platzhalterobjekt, ihre Stunden gehen nicht verloren.
 
 `revenue` deckt die ganze Historie ab, sobald die untere Zeitgrenze weit genug liegt:
-`time_since=2010-01-01` liefert dieselben 870 Gruppen und dieselbe Umsatzsumme wie
-`2020-01-01`. Die Antwort hat **kein `paging`** – alle Gruppen kommen in einem Rutsch
-(870 Gruppen ≈ 800 KB).
+`time_since=2010-01-01` liefert dieselben Gruppen und dieselbe Umsatzsumme wie
+`2020-01-01`. Die Antwort hat **kein `paging`** – alle Gruppen kommen in einem Rutsch.
 
 **Zwei obere Zeitgrenzen, und sie sind nicht dieselbe.** Beide in `client.py`, beide
 Funktionen:
@@ -411,111 +327,11 @@ Wer beide zusammenlegt, bricht eines von beidem. Bis zum 24.08.2026 lag die
 Verbrauchsgrenze am Monatsende: das schlug 600 EUR aus dem Restaugust stumm dem Verbrauch
 zu, statt sie der Prognose anzurechnen.
 
-**Funktionen und nicht Konstanten**, und das ist der Punkt: ein Modulwert würde beim
-Import einmal berechnet und einfrieren, und ein Colab-Notebook bleibt tagelang offen.
-Aus demselben Grund steht der Wert **nicht** als Default-Parameter – Python wertet
-Defaults ebenfalls nur beim Import aus. Die Aufrufer nehmen `None`, `entrygroups()` löst
-spät auf. Ganz früher stand dort ein festes `2026-12-31`, das ab dem 01.01.2027 lautlos
-alles abgeschnitten hätte.
-
-**Nach dem Stichtag datierte Buchungen gibt es wirklich**: am 24.08.2026 13.440 EUR in
-zwei Projekten (09, 10 und 11/2026), alle mit `duration == 0`, also reine
-Pauschalleistungen. Sie sind kein Verbrauch, sondern Teil des Horizonts, und laut Spec 5.4
-die **Untergrenze** der Bandbreite ihres Monats – sonst könnte das 95-%-Niveau unter dem
-liegen, was schon feststeht. Im Horizont 25.08.–31.10. sind das 4.515 EUR, 0,63 % des
-Restvolumens.
-
-`budget` in `/v4/projects` ist immer als Schlüssel vorhanden, aber bei 236 von 895
-Projekten `null`. Ist es gesetzt, hat es mehr Felder als die Spec nennt:
-
-```
-{"monetary": true, "hard": false, "from_subprojects": false, "interval": null,
- "amount": 11300, "subprojects_budget_total": 0}
-```
-
-Drei davon entscheiden, ob `amount` überhaupt ein Euro-Gesamtbudget ist – `monetary`
-(bei `false` steht dort eine **Stundenzahl**: 8 Projekte, alle inaktiv, mit Werten wie
-6, 12, 48), `interval` (Budget je Intervall statt Gesamtbudget) und `from_subprojects`
-(Summe in `subprojects_budget_total`). Bei den aktiven Projekten trat keiner der drei
-Fälle auf, keiner ist also durchgerechnet. `Budget.verwertbar` ist deshalb bei ihnen
-`false`, und `Budget.sonderfall` nennt den Grund, der als Hinweis bis ins Dashboard
-durchschlägt: eine sichtbare Untererfassung ist besser als eine still falsche Euro-Zahl. Von den 3 Projekten mit `hard: true` ist
-ebenfalls keines aktiv.
-
-**Offene fachliche Abgrenzungen** (Zahlen vom 24.08.2026):
-
-- Von 895 Projekten sind **122 aktiv**. Der Prognose-Scope (Spec 5.0,
-  `Projekt.im_prognose_scope`) verlangt drei Dinge: aktiv, **nicht** `completed`, und ein
-  als Euro-Gesamtbudget lesbares Budget.
-- **78 dieser 122 aktiven Projekte haben kein Budget** und fallen damit aus der Prognose;
-  mit der `completed`-Regel bleiben **42** mit zusammen 2.318.333 EUR Budget und
-  721.126 EUR prognosewirksamem Restvolumen. Die Namen der 78 sind überwiegend Schulungs- und Ausbildungsprodukte
-  (`A-CSM`, `A-CSPO`, `ACC`) beim Kunden **„Öffentliche Schulung“** – der Kundenname ist
-  seit der Beschriftung sichtbar und stützt die Deutung als Katalogposition ohne
-  beauftragtes Volumen. Das rechnet die Spec dem Kurzfristgeschäft zu und schließt es aus dem MVP aus. Ob darunter
-  echte Bestandsprojekte mit fehlendem Budget stecken, ist ein Pflegethema.
-- **Zwei aktive Projekte tragen `completed: true`**, eines mit 12.424 EUR offenem Budget.
-  Sie fallen aus dem Scope – `completed` schlägt `active`, weil Spec 7 es für ein
-  zuverlässiges Endesignal hält, während `active` ein nicht nachgezogener Schalter sein
-  kann. Ein Hinweis weist sie aus, statt sie still verschwinden zu lassen. Die Zahl 44
-  oben ist **vor** dieser Regel gemessen.
-- `revenue_factor` ist bei allen aktiven Projekten 1, `test_data` überall `false`, und
-  kein aktives Projekt hat Teilprojekte. Diese drei Felder brauchen also keine
-  Sonderbehandlung, solange das so bleibt.
-
-## Kalibrierung als Teil des Modells
-
-Drei Größen sind geschätzt und veralten: die Abrufquote-Verteilung, der historische
-Aufteilungsschlüssel je Person und der Abschlag für ungeplante Abwesenheit. Wechselt die
-Teambesetzung eines Projekts spürbar, wird der Schlüssel falsch. Die Spec ordnet das
-ausdrücklich der monatlichen Kalibrierung zu und **nicht** einer Modelländerung – bei
-Abweichungen also zuerst die Kalibrierung prüfen, nicht die Simulationslogik umbauen.
-
-Zwei Einschränkungen der Schätzung stehen in 5.2 und sind nicht wegzudefinieren: das
-Budget ist nur in seinem **heutigen** Stand bekannt, weshalb rückwärts rekonstruierte
-Restvolumina bei nachträglich erhöhten Budgets zu niedrige Quoten liefern; und die
-unabhängige Ziehung je Projekt ignoriert Korrelation und liefert damit eine **zu enge**
-Bandbreite. Die Richtung beider Fehler ist bekannt, ihre Größe nicht.
-
-## Die Spec-Historie: nur die Datei im Arbeitsverzeichnis zitieren
-
-Es gibt genau **eine** Spec-Datei, `spec/spec-umsatzprognose-clockodo-modul.md`, und sie
-ist immer die maßgebliche. Versioniert wird über Git-Tags, nicht über Dateinamen – eine
-Nummer im Namen wäre eine zweite Wahrheit neben der Historie. `git tag -l` nennt die
-Fassungen, `git log --follow` auf die Datei zeigt die Änderungen.
-
-Frühere Fassungen liegen deshalb **nicht** im Verzeichnis, sondern in der Historie: v0.3
-in Commit `7e35123`, v0.5 in `8a6ec11`. Beide sind an mehreren Stellen widerlegt und
-taugen nicht als Beleg. v0.4 und v0.5 waren Delta-Dokumente, die tragende Abschnitte nur
-als „unverändert zu v0.3“ führten; genau daran ist die Spec ohne v0.3 unlesbar geworden.
-**Ein Delta-Dokument ist hier nicht mehr zulässig** – Änderungen gehen in die eine
-Datei, der Tag markiert die Fassung.
-
-Wichtig zu wissen, warum: v0.3 bezog seine Feldangaben aus
-`docs.clockodo.com/openapi.yaml`, also aus der Dokumentation. Genau drei davon hat der
-Prototyp an echten Antworten widerlegt – `hourly_rate`, `default_target_hours` und die
-Legacy-Absences. **Bei Feldfragen also nie v0.3 zitieren, sondern gegen eine echte
-Antwort prüfen.**
-
-Offen und bewusst zurückgestellt: Verantwortlichkeit für die monatliche Kalibrierung.
-Blockiert den produktiven Rollout, nicht den Prototyp. Ebenfalls offen laut Spec 9:
-aktive Projekte ohne Budget und die Korrelationsannahme. Dazu Buchungen jenseits des
-**Horizonts** – die stehen im Restvolumen, obwohl ihr Umsatz erst danach anfällt (am
-24.08.2026: 9.525 EUR in 11/2026, Projekt außerhalb des Scope).
-
-**Die Feiertage sind seit dem 26.08.2026 geklärt** und damit kein offener Punkt mehr:
-das unversionierte `/nonbusinessdays?year=…` liefert sie je Feiertagsgruppe, die
-Zuordnung steht in `users.nonbusinessgroups_id`. Die Regel steht in Spec 5.3, gebaut
-ist sie noch nicht. Details am Endpunkt: `/v2` bis `/v4` geben 404, ohne `year` kommt
-400, das Jahr muss zwischen 2000 und 2037 liegen, Envelope-Key ist `nonbusinessdays`,
-kein Paging (77 Einträge über sechs Gruppen). Die Gruppen selbst sind nicht abrufbar:
-`/nonbusinessgroups` antwortet 410, `/v2` bis `/v5` 404 – es fehlt nur der
-Gruppenname, die Feiertagsnamen kommen mit den Tagen.
+**Funktionen und nicht Konstanten**.
 
 ## Nächster geplanter Schritt
 
-Laut Spec Abschnitt 11: die Abrufquote-Verteilung schätzen. Die Form steht seit v0.6
-fest – empirische Verteilung über Projekt-Monate, Quote = Verbrauch im Monat geteilt
+Laut Spec Abschnitt 11: die Abrufquote-Verteilung schätzen. empirische Verteilung über Projekt-Monate, Quote = Verbrauch im Monat geteilt
 durch Restvolumen zu Monatsbeginn, aus `/v2/entrygroups` mit
 `grouping[]=projects_id&grouping[]=month`. Das ist eine Gruppierungskombination, die der
 Client noch nicht anbietet. Danach Abwesenheiten (`/v4/absences`), dann die Simulation,
