@@ -102,7 +102,7 @@ class Bestand:
                 Hinweis(
                     "Aktive Projekte ohne bezifferbares Auftragsvolumen - sie gehen "
                     "nicht in die Prognose ein",
-                    tuple(p.id for p in ohne_budget),
+                    tuple(p.name if p.name else str(p.id) for p in ohne_budget),
                 )
             )
 
@@ -111,7 +111,7 @@ class Bestand:
             gefunden.append(
                 Hinweis(
                     "Aktive Projekte mit überschrittenem Budget - sie tragen 0 zur Prognose bei",
-                    tuple(p.id for p in ueberschritten),
+                    tuple(p.name if p.name else str(p.id) for p in ueberschritten),
                 )
             )
 
@@ -121,7 +121,7 @@ class Bestand:
                 Hinweis(
                     "Projekte, die als abgeschlossen markiert und trotzdem aktiv sind - "
                     "sie gehen nicht in die Prognose ein",
-                    tuple(p.id for p in beendet),
+                    tuple(p.name if p.name else str(p.id) for p in beendet),
                 )
             )
 
@@ -131,7 +131,7 @@ class Bestand:
                 Hinweis(
                     "Projekte im Prognose-Scope ohne erfasste Zeit - für sie lässt sich "
                     "kein Stundensatz ableiten",
-                    tuple(p.id for p in ohne_satz),
+                    tuple(p.name if p.name else str(p.id) for p in ohne_satz),
                 )
             )
 
@@ -141,7 +141,7 @@ class Bestand:
                 Hinweis(
                     "Projekte im Prognose-Scope, auf die im Betrachtungszeitraum "
                     "niemand gebucht hat",
-                    tuple(p.id for p in ohne_beteiligte),
+                    tuple(p.name if p.name else str(p.id) for p in ohne_beteiligte),
                 )
             )
 
