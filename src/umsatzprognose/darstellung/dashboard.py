@@ -112,6 +112,18 @@ class Dashboard:
         projekte = self.bestand.im_prognose_scope
         return tabellen.projekttabelle(projekte[:top] if top else projekte)
 
+    def stundensatz_uebersteuern(self, werte: dict[str, float]) -> None:
+        """Für benannte Projekte von Hand einen Stundensatz hinterlegen.
+
+        Für Projekte, deren Stundensatz laut Hinweisen 0 ist - gebuchte Zeit ohne
+        Umsatz -, lässt sich hier eine plausible Zahl nachtragen, statt dass die
+        spätere Umrechnung von Euro in Stunden dort durch null teilt. ``werte``
+        verwendet denselben Projektnamen wie in der Hinweistabelle, zum Beispiel
+        ``{"Website-Relaunch": 95.0}``. Wirkt auf alle danach aufgerufenen Ansichten
+        dieses Dashboards.
+        """
+        self.bestand = self.bestand.mit_stundensatz_uebersteuerungen(werte)
+
     def hinweise(self) -> pd.DataFrame:
         """Was zu den Zahlen zu wissen ist - Datenlage und offene fachliche Fragen."""
         return tabellen.hinweistabelle(self.bestand.hinweise())

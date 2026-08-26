@@ -22,7 +22,8 @@ falsche Zahlen liefern. Der Lauf-Zustand gehoert neben die Objekte, nicht in sie
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from collections.abc import Mapping
+from dataclasses import dataclass, field, replace
 from datetime import date
 
 from umsatzprognose.domaene.abrufquote import Abrufquotenverteilung
@@ -96,6 +97,29 @@ class Bestand:
             p for p in self.projekte if any(a.mitarbeiter.id == mitarbeiter.id for a in p.anteile)
         )
 
+    def mit_stundensatz_uebersteuerungen(self, werte: Mapping[str, float]) -> Bestand:
+        """Neuer Bestand mit von Hand hinterlegten Stundensätzen für benannte Projekte.
+
+        Fachobjekte bleiben unveränderlich - diese Methode ersetzt deshalb keinen
+        Zustand, sondern liefert einen neuen :class:`Bestand` mit den betroffenen
+        Projekten ausgetauscht. ``werte`` schlüsselt über denselben Bezeichner wie die
+        Hinweistabelle: den Projektnamen, oder die ID als Text, wenn das Projekt
+        keinen Namen hat. Gedacht für Projekte mit Stundensatz 0 (siehe
+        :attr:`~umsatzprognose.domaene.projekt.Projekt.effektiver_stundensatz`); wer in
+        ``werte`` nicht genannt ist, bleibt unverändert.
+        """
+
+        def schluessel(p: Projekt) -> str:
+            return p.name if p.name else str(p.id)
+
+        aktualisiert = tuple(
+            replace(p, stundensatz_uebersteuerung=werte[schluessel(p)])
+            if schluessel(p) in werte
+            else p
+            for p in self.projekte
+        )
+        return replace(self, projekte=aktualisiert)
+
     def hinweise(self) -> tuple[Hinweis, ...]:
         """Alle Befunde: die aus der Abbildung und die fachlichen aus dem Bestand."""
         return self.abbildungshinweise + self._fachliche_hinweise()
@@ -139,6 +163,18 @@ class Bestand:
                     "Projekte im Prognose-Scope ohne erfasste Zeit - für sie lässt sich "
                     "kein Stundensatz ableiten",
                     tuple(p.name if p.name else str(p.id) for p in ohne_satz),
+                )
+            )
+
+        stundensatz_null = [p for p in self.im_prognose_scope if p.effektiver_stundensatz == 0.0]
+        if stundensatz_null:
+            gefunden.append(
+                Hinweis(
+                    "Projekte im Prognose-Scope mit Stundensatz 0 - gebuchte Zeit ohne "
+                    "Umsatz; ohne Korrektur würde Spec 5.4 Schritt 3 dort durch null "
+                    "teilen. Mit Dashboard.stundensatz_uebersteuern() lässt sich für "
+                    "diese Projekte von Hand ein Stundensatz hinterlegen",
+                    tuple(p.name if p.name else str(p.id) for p in stundensatz_null),
                 )
             )
 

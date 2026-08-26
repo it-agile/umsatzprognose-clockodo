@@ -102,6 +102,20 @@ def test_pauschalleistung_ohne_zeit_hat_keinen_stundensatz():
     assert pauschal.effektiver_stundensatz is None
 
 
+def test_gebuchte_zeit_ohne_umsatz_ergibt_stundensatz_null():
+    # Anders als der Pauschalfall: hier ist verbrauchte_stunden > 0, nur der Umsatz
+    # ist 0. Das waere in Spec 5.4 Schritt 3 eine Division durch null.
+    ohne_umsatz = projekt(verbrauchtes_volumen=0.0, verbrauchte_stunden=40.0)
+    assert ohne_umsatz.effektiver_stundensatz == 0.0
+
+
+def test_stundensatz_uebersteuerung_hat_vorrang_vor_dem_abgeleiteten_wert():
+    ohne_umsatz = projekt(
+        verbrauchtes_volumen=0.0, verbrauchte_stunden=40.0, stundensatz_uebersteuerung=95.0
+    )
+    assert ohne_umsatz.effektiver_stundensatz == 95.0
+
+
 def test_anteile_je_person_summieren_sich_zu_eins():
     anna, bert = Mitarbeiter(id=1, name="Anna"), Mitarbeiter(id=2, name="Bert")
     p = projekt(

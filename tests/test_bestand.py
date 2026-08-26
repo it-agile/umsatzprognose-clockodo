@@ -100,6 +100,41 @@ def test_projekte_ohne_zeit_und_ohne_beteiligte_werden_gemeldet():
     assert any("niemand gebucht" in t for t in texte)
 
 
+def test_stundensatz_null_wird_gemeldet():
+    ohne_umsatz = Projekt(
+        id=6,
+        name="Interne Zeit",
+        aktiv=True,
+        budget=Budget(betrag=1000.0),
+        verbrauchtes_volumen=0.0,
+        verbrauchte_stunden=40.0,
+    )
+    texte = {h.text: h.betroffene for h in bestand(ohne_umsatz).hinweise()}
+    stundensatz_hinweis = next(t for t in texte if "Stundensatz 0" in t)
+    assert texte[stundensatz_hinweis] == ("Interne Zeit",)
+
+
+def test_stundensatz_uebersteuerung_nimmt_den_hinweis_zurueck():
+    ohne_umsatz = Projekt(
+        id=6,
+        name="Interne Zeit",
+        aktiv=True,
+        budget=Budget(betrag=1000.0),
+        verbrauchtes_volumen=0.0,
+        verbrauchte_stunden=40.0,
+    )
+    korrigiert = bestand(ohne_umsatz).mit_stundensatz_uebersteuerungen({"Interne Zeit": 95.0})
+    assert not any("Stundensatz 0" in h.text for h in korrigiert.hinweise())
+    projekt = next(p for p in korrigiert.projekte if p.id == 6)
+    assert projekt.effektiver_stundensatz == 95.0
+
+
+def test_stundensatz_uebersteuerung_laesst_unbenannte_projekte_unveraendert():
+    b = bestand(GROSS, KLEIN)
+    korrigiert = b.mit_stundensatz_uebersteuerungen({"Nicht vorhanden": 50.0})
+    assert korrigiert.projekte == b.projekte
+
+
 def test_abbildungshinweise_stehen_vor_den_fachlichen():
     aus_der_abbildung = Hinweis("Auf einen Kunden ohne Projekt gebucht")
     b = bestand(OHNE_BUDGET, abbildungshinweise=(aus_der_abbildung,))

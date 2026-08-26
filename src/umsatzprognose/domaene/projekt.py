@@ -104,6 +104,7 @@ class Projekt:
     verbrauchtes_volumen: float = 0.0
     verbrauchte_stunden: float = 0.0
     anteile: tuple[Projektanteil, ...] = field(default_factory=tuple)
+    stundensatz_uebersteuerung: float | None = None
 
     def __str__(self) -> str:
         return self.bezeichnung
@@ -183,7 +184,15 @@ class Projekt:
         liefern hier ``None``. Sie gehen laut 5.1 mit ihrem Restvolumen in die Simulation ein,
         verbrauchen aber keine Kapazitaet - eine benannte Naeherung, die ueber einen
         Hinweis sichtbar bleibt.
+
+        Ein dritter Fall liefert genau ``0.0`` statt ``None``: gebuchte Zeit ohne
+        Umsatz. Das kommt im Prognose-Scope vor und waere in Spec 5.4 Schritt 3 (Euro
+        in Stunden umrechnen) eine Division durch null. :attr:`stundensatz_uebersteuerung`
+        ist fuer genau diesen Fall gedacht - gesetzt, hat die Korrektur Vorrang vor dem
+        abgeleiteten Wert.
         """
+        if self.stundensatz_uebersteuerung is not None:
+            return self.stundensatz_uebersteuerung
         if not self.verbrauchte_stunden:
             return None
         return self.verbrauchtes_volumen / self.verbrauchte_stunden
