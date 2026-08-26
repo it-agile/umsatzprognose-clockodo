@@ -6,6 +6,7 @@ readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
     "httpx>=0.28",
+    "pandas-stubs~=3.0.5",
     # Kein numpy: es wird noch nirgends benutzt und der Pin wuerde in Colab eine
     # Aktualisierung erzwingen (numba dort verlangt numpy < 2.3). Kommt mit der
     # Monte-Carlo-Simulation (Spec 5.4) wieder herein.
