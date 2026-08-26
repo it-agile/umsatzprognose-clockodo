@@ -48,7 +48,13 @@ akzeptierte Form, jeder Punkt an einer 400er-Antwort belegt:
 * Zeitgrenzen brauchen die volle ISO-Form mit Uhrzeit; ein reines Datum gibt
   ``{"error":{"message":"Wrong format","fields":["time_since"]}}``.
 * **Mehrfachgruppierung** ist erlaubt: mit ``grouping[]=projects_id&grouping[]=users_id``
-  haengen die Personen als ``sub_groups`` unter dem Projekt.
+  haengen die Personen als ``sub_groups`` unter dem Projekt, mit
+  ``grouping[]=projects_id&grouping[]=month`` die Monate. Die aeussere Ebene ist die
+  zuerst genannte.
+* **Die Untergruppen kommen nach Dauer absteigend, nicht chronologisch.** Bei der
+  Monatsgruppierung gilt das fuer alle 667 Projekte mit mehr als einem Monat, ohne eine
+  Ausnahme (geprueft am 26.08.2026). Wer die Reihenfolge uebernimmt, rechnet eine
+  Rueckrechnung ueber die Historie falsch, ohne dass etwas abbricht.
 
 Die Antwort hat **kein** ``paging`` - alle Gruppen kommen in einem Rutsch (870 Gruppen
 mit Personen-Untergruppen sind rund 1,9 MB und brauchen etwa 20 Sekunden).
@@ -109,6 +115,22 @@ def monatsende(tag: date | None = None) -> str:
     tag = tag or date.today()
     letzter = monthrange(tag.year, tag.month)[1]
     return f"{tag.year:04d}-{tag.month:02d}-{letzter:02d}T23:59:59Z"
+
+
+def horizontende(stichtag: date, monate: int = 3) -> str:
+    """Letzter Tag des letzten Horizontmonats - die obere Grenze des Prognosefensters.
+
+    Die dritte obere Zeitgrenze neben :func:`verbrauch_bis` und :func:`monatsende`, und
+    wieder eine andere: der Horizont **beginnt mit dem laufenden Monat** (Spec 5.4), bei
+    drei Monaten endet er also zwei Monate nach dem Stichtagsmonat. Gebraucht wird die
+    Grenze fuer die Monatsgruppierung je Projekt, die laut Spec 11.1 zwei Zwecke bedient:
+    die Historie fuer die Abrufquote-Verteilung (5.2) und die bereits gebuchten Betraege
+    im Horizont als Untergrenze der Bandbreite (5.4).
+    """
+    if monate < 1:
+        raise ValueError(f"Ein Horizont umfasst mindestens einen Monat, nicht {monate}")
+    ordnung = stichtag.year * 12 + (stichtag.month - 1) + (monate - 1)
+    return monatsende(date(ordnung // 12, ordnung % 12 + 1, 1))
 
 
 class ClockodoError(RuntimeError):
@@ -252,6 +274,29 @@ class ClockodoClient:
         """
         return await self.entrygroups(
             [GRUPPIERUNG_PROJEKT, GRUPPIERUNG_PERSON],
+            time_since=time_since,
+            time_until=time_until,
+        )
+
+    async def entrygroups_je_projekt_und_monat(
+        self, *, time_since: str = HISTORIE_VON, time_until: str | None = None
+    ) -> list[dict[str, Any]]:
+        """Verbrauch je Projekt, darunter die Monate - die Kombination aus Spec 11.1.
+
+        Am 26.08.2026 gegen die Installation geprueft: 870 Gruppen mit zusammen 5.467
+        Projekt-Monaten von 01/2021 bis 11/2026, rund 23 Sekunden. Die Projektsummen
+        stimmen mit denen der einfachen Gruppierung exakt ueberein; die Monatssummen
+        weichen bei 31 Projekten um **Cent** davon ab (groesste Abweichung 0,06 EUR, in
+        der Gesamtsumme 0,63 EUR auf 30,6 Mio.) - Clockodo rundet jede Gruppe einzeln.
+        Die Zeitsummen stimmen ueberall exakt.
+
+        Zwei Fallen, beide belegt: ``group`` der Untergruppe ist der Monat als String
+        ``"JJJJMM"``, und die Untergruppen sind **nach Dauer absteigend** sortiert und
+        nicht chronologisch - siehe
+        :meth:`~umsatzprognose.domaene.verbrauchsverlauf.Verbrauchsverlauf.fuer`.
+        """
+        return await self.entrygroups(
+            [GRUPPIERUNG_PROJEKT, GRUPPIERUNG_MONAT],
             time_since=time_since,
             time_until=time_until,
         )

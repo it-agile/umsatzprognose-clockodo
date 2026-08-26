@@ -181,6 +181,70 @@ def entrygroup_antwort() -> dict:
 
 
 @pytest.fixture
+def projekt_monats_antwort() -> dict:
+    """Verbrauch je Projekt mit Monats-Untergruppen - die Antwort aus Spec 11.1.
+
+    Traegt die Eigenheiten, die am 26.08.2026 an der echten Antwort aufgefallen sind:
+
+    * Die Monate kommen **nach Dauer absteigend**, nicht chronologisch.
+    * ``202606`` fehlt: ein Monat ohne Buchung steht nicht in der Antwort.
+    * ``202609`` liegt **nach** dem Stichtag (24.08.2026) - Untergrenze der Bandbreite
+      (Spec 5.4) und kein Verbrauch.
+    * Die Monatssummen gehen nur auf den Cent auf (92.661,88 gegen 92.661,87 an der
+      Gruppe) - Clockodo rundet jede Gruppe einzeln.
+    * ``group == 0`` kommt **zweimal** vor, je Kunde ohne Projekt einmal.
+
+    Die Historie bis zum Stichtag summiert sich auf die 86.661,88 EUR, die
+    :func:`entrygroup_antwort` als Verbrauch dieses Projekts fuehrt.
+    """
+    return {
+        "groups": [
+            {
+                "group": "1375839",
+                "name": "it-agile GmbH / Kanban Coaching",
+                "duration": 2466880,
+                "revenue": 92661.87,
+                "grouped_by": "projects_id",
+                "sub_groups": [
+                    {"group": "202604", "name": "202604", "duration": 800000,
+                     "revenue": 30000.0, "grouped_by": "month"},
+                    {"group": "202605", "name": "202605", "duration": 700000,
+                     "revenue": 25000.0, "grouped_by": "month"},
+                    {"group": "202607", "name": "202607", "duration": 500000,
+                     "revenue": 20000.0, "grouped_by": "month"},
+                    {"group": "202608", "name": "202608", "duration": 306880,
+                     "revenue": 11661.88, "grouped_by": "month"},
+                    {"group": "202609", "name": "202609", "duration": 160000,
+                     "revenue": 6000.0, "grouped_by": "month"},
+                ],
+            },
+            {
+                "group": 0,
+                "name": "Ohne Projekt",
+                "duration": 14400,
+                "revenue": 0,
+                "grouped_by": "projects_id",
+                "sub_groups": [
+                    {"group": "202605", "name": "202605", "duration": 14400,
+                     "revenue": 0, "grouped_by": "month"},
+                ],
+            },
+            {
+                "group": 0,
+                "name": "Zweiter Kunde ohne Projekt",
+                "duration": 7200,
+                "revenue": 0,
+                "grouped_by": "projects_id",
+                "sub_groups": [
+                    {"group": "202607", "name": "202607", "duration": 7200,
+                     "revenue": 0, "grouped_by": "month"},
+                ],
+            },
+        ]
+    }  # fmt: skip
+
+
+@pytest.fixture
 def monats_antwort() -> dict:
     """Zwei Monate; der dazwischenliegende fehlt und muss aufgefuellt werden."""
     return {

@@ -25,8 +25,8 @@ from umsatzprognose.clockodo.nebenlaeufig import gleichzeitig, synchron
 # Abrufe wieder nacheinander laufen.
 TIMEOUT = 5.0
 
-ERWARTETE_ABRUFE = 6
-"""Kunden, Personen, Sollzeiten, Projekte, Verbrauch, Umsatzhistorie."""
+ERWARTETE_ABRUFE = 7
+"""Kunden, Personen, Sollzeiten, Projekte, Verbrauch, Umsatzhistorie, Monatsverbrauch."""
 
 
 def treffpunkt_fuer(anzahl: int):
@@ -47,8 +47,9 @@ def test_alle_abrufe_eines_bestands_laufen_gleichzeitig(
     sollzeit_antwort,
     entrygroup_antwort,
     monats_antwort,
+    projekt_monats_antwort,
 ):
-    """Sechs Endpunkte, sechs offene Requests - keiner wartet auf einen anderen."""
+    """Sieben Endpunkte, sieben offene Requests - keiner wartet auf einen anderen."""
     warten = treffpunkt_fuer(ERWARTETE_ABRUFE)
     antworten = {
         "/v4/projects": projekt_antwort,
@@ -56,12 +57,18 @@ def test_alle_abrufe_eines_bestands_laufen_gleichzeitig(
         "/v3/users": benutzer_antwort,
         "/targethours": sollzeit_antwort,
     }
+    # Drei der sieben Requests gehen an /v2/entrygroups und unterscheiden sich nur in
+    # der Gruppierung - Verbrauch je Person, Umsatz je Monat, Verbrauch je Projektmonat.
+    nach_gruppierung = {
+        ("projects_id", "users_id"): entrygroup_antwort,
+        ("month",): monats_antwort,
+        ("projects_id", "month"): projekt_monats_antwort,
+    }
 
     def handler(request: httpx.Request):
         pfad = request.url.path.removeprefix("/api")
         if pfad == "/v2/entrygroups":
-            gruppierung = request.url.params.get_list("grouping[]")
-            koerper = monats_antwort if gruppierung == ["month"] else entrygroup_antwort
+            koerper = nach_gruppierung[tuple(request.url.params.get_list("grouping[]"))]
         else:
             koerper = antworten[pfad]
         return warten(request, koerper)

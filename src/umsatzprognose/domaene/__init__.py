@@ -7,6 +7,7 @@ Trennung ist die Voraussetzung dafuer, dass die Fachlogik ohne Netz und ohne pan
 pruefbar bleibt - und dass Clockodos Eigenarten nicht in die Fachbegriffe sickern.
 """
 
+from umsatzprognose.domaene.abrufquote import Abrufquote, Abrufquotenverteilung
 from umsatzprognose.domaene.bestand import Bestand
 from umsatzprognose.domaene.hinweis import Hinweis
 from umsatzprognose.domaene.kunde import Kunde
@@ -15,10 +16,13 @@ from umsatzprognose.domaene.prognose import KONFIDENZNIVEAUS, NochKeinePrognose,
 from umsatzprognose.domaene.projekt import OHNE_BUDGET, Budget, Projekt
 from umsatzprognose.domaene.projektanteil import Projektanteil
 from umsatzprognose.domaene.umsatzhistorie import Monatsumsatz, Umsatzhistorie
+from umsatzprognose.domaene.verbrauchsverlauf import Verbrauchsverlauf
 
 __all__ = [
     "KONFIDENZNIVEAUS",
     "OHNE_BUDGET",
+    "Abrufquote",
+    "Abrufquotenverteilung",
     "Bestand",
     "Budget",
     "Hinweis",
@@ -30,5 +34,6 @@ __all__ = [
     "Projekt",
     "Projektanteil",
     "Umsatzhistorie",
+    "Verbrauchsverlauf",
     "Wochenarbeitszeit",
 ]

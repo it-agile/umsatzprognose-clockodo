@@ -25,12 +25,15 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import date
 
+from umsatzprognose.domaene.abrufquote import Abrufquotenverteilung
 from umsatzprognose.domaene.hinweis import Hinweis
 from umsatzprognose.domaene.kunde import Kunde
 from umsatzprognose.domaene.mitarbeiter import Mitarbeiter
 from umsatzprognose.domaene.prognose import NochKeinePrognose, Prognose
 from umsatzprognose.domaene.projekt import Projekt
 from umsatzprognose.domaene.umsatzhistorie import Umsatzhistorie
+from umsatzprognose.domaene.verbrauchsverlauf import Verbrauchsverlauf
+from umsatzprognose.domaene.zahlen import euro
 
 
 @dataclass(frozen=True)
@@ -38,6 +41,9 @@ class Bestand:
     """Alle Projekte, Personen und Umsaetze zu einem Stichtag.
 
     Attributes:
+        verbrauchsverlaeufe: je Projekt der monatliche Verbrauch - die Beobachtungen,
+            aus denen die Abrufquote-Verteilung entsteht (Spec 5.2). Leer, wenn sie
+            nicht mitgeladen wurden.
         abbildungshinweise: Befunde aus dem Lesen der Clockodo-Antworten. Die
             fachlichen Befunde kommen in :meth:`hinweise` dazu.
     """
@@ -46,6 +52,7 @@ class Bestand:
     projekte: tuple[Projekt, ...] = ()
     mitarbeiter: tuple[Mitarbeiter, ...] = ()
     umsatzhistorie: Umsatzhistorie | None = None
+    verbrauchsverlaeufe: tuple[Verbrauchsverlauf, ...] = field(default_factory=tuple)
     abbildungshinweise: tuple[Hinweis, ...] = field(default_factory=tuple)
 
     @property
@@ -145,12 +152,92 @@ class Bestand:
                 )
             )
 
+        gefunden.extend(self._hinweise_zur_abrufquote())
         return tuple(gefunden)
+
+    def _hinweise_zur_abrufquote(self) -> tuple[Hinweis, ...]:
+        """Was zur geschaetzten Verteilung und zu den Buchungen im Horizont zu sagen ist."""
+        if not self.verbrauchsverlaeufe:
+            return ()
+
+        gefunden: list[Hinweis] = []
+        verteilung = self.abrufquotenverteilung()
+        if not verteilung.vorhanden:
+            gefunden.append(
+                Hinweis(
+                    "Die Abrufquote-Verteilung konnte nicht geschätzt werden - kein "
+                    "Projekt-Monat mit offenem Restvolumen zu Monatsbeginn"
+                )
+            )
+        else:
+            gefunden.append(
+                Hinweis(
+                    f"Die Abrufquote-Verteilung ist aus {verteilung.anzahl} Projekt-Monaten "
+                    f"geschätzt (Median {verteilung.median:.2f}, "
+                    f"{verteilung.anteil_ohne_abruf:.0%} davon ohne Abruf). Das Budget ist "
+                    "nur in seinem heutigen Stand bekannt - nachträglich erhöhte Budgets "
+                    "lassen ältere Quoten zu niedrig ausfallen"
+                )
+            )
+
+        # Buchungen in Monaten nach dem Stichtagsmonat sind laut Spec 5.4 die Untergrenze
+        # der Bandbreite und kein Verbrauch - sie sind vom Restvolumen nicht abgezogen.
+        kuenftig = {
+            verlauf.projekt: summe
+            for verlauf in self.verbrauchsverlaeufe
+            if (
+                summe := sum(
+                    monat.umsatz
+                    for monat in verlauf.monate
+                    if monat.schluessel > (self.stichtag.year, self.stichtag.month)
+                )
+            )
+        }
+        if kuenftig:
+            gefunden.append(
+                Hinweis(
+                    "Nach dem Stichtagsmonat datierte Buchungen über "
+                    f"{euro(sum(kuenftig.values()))} - sie sind Untergrenze der Bandbreite "
+                    "(Spec 5.4) und nicht Verbrauch",
+                    tuple(projekt.bezeichnung for projekt in kuenftig),
+                )
+            )
+        return tuple(gefunden)
+
+    def abrufquotenverteilung(self) -> Abrufquotenverteilung:
+        """Die empirische Verteilung der Abrufquote (Spec 5.2).
+
+        **Portfolioweit gebildet und nicht je Projekt** - so legt es 5.2 fest, und
+        deshalb steht sie hier und nicht am Projekt: ein einzelnes Projekt hat zu wenige
+        Monate fuer eine eigene Verteilung, Referenzklassen sind zurueckgestellt.
+
+        Die Beobachtungen liefert jeder Verlauf zu seinem eigenen Projekt
+        (:meth:`~umsatzprognose.domaene.verbrauchsverlauf.Verbrauchsverlauf.abrufquoten`);
+        welche Monate dabei zaehlen, haengt am Stichtag des Bestands. Ein Bestand zu
+        einem vergangenen Stichtag schaetzt damit die Verteilung, die damals zu schaetzen
+        gewesen waere - Voraussetzung fuer den Rueckwaertstest aus Spec 11.4.
+        """
+        return Abrufquotenverteilung.aus_quoten(
+            quote
+            for verlauf in self.verbrauchsverlaeufe
+            for quote in verlauf.abrufquoten(self.stichtag)
+        )
 
     def simulieren(self, monate: int = 3) -> Prognose:
         """Die Monte-Carlo-Simulation aus Spec 5.4 - noch nicht gebaut.
 
+        Die Begruendung nennt, was jetzt noch fehlt, und nicht mehr, was einmal fehlte:
+        die Abrufquote-Verteilung ist geschaetzt, sobald die Verlaeufe geladen sind.
+
         Args:
             monate: Laenge des Prognosehorizonts; die Spec sieht 1 bis 3 vor.
         """
-        return NochKeinePrognose()
+        verteilung = self.abrufquotenverteilung()
+        if not verteilung.vorhanden:
+            return NochKeinePrognose()
+        return NochKeinePrognose(
+            "Die Simulation nach Spec 5.4 ist noch nicht gebaut. Die Abrufquote-Verteilung "
+            f"(5.2) ist geschätzt - {verteilung.anzahl} Projekt-Monate, Median "
+            f"{verteilung.median:.2f} -, es fehlt die verfügbare Kapazität (5.3: geplante "
+            "Abwesenheiten, Feiertage und der Abschlag für ungeplante Abwesenheit)."
+        )

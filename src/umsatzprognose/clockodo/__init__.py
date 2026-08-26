@@ -24,6 +24,7 @@ from umsatzprognose.clockodo.mitarbeiter import MitarbeiterRepository
 from umsatzprognose.clockodo.nebenlaeufig import gleichzeitig, synchron
 from umsatzprognose.clockodo.projekte import ProjektRepository
 from umsatzprognose.clockodo.umsatz import UmsatzRepository
+from umsatzprognose.clockodo.verbrauchsverlauf import VerbrauchsverlaufRepository
 
 __all__ = [
     "BestandRepository",
@@ -35,6 +36,7 @@ __all__ = [
     "MitarbeiterRepository",
     "ProjektRepository",
     "UmsatzRepository",
+    "VerbrauchsverlaufRepository",
     "gleichzeitig",
     "in_colab",
     "synchron",

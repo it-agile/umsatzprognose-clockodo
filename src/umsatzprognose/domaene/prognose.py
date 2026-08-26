@@ -1,12 +1,14 @@
 """Prognose - die Ausgabe der Simulation, und die Naht, an der sie andockt.
 
-Die Monte-Carlo-Simulation aus Spec 5.4 ist **nicht gebaut**. Seit Spec v0.6 ist das
-keine Definitionsluecke mehr, sondern offene Arbeit: 5.2 legt die Abrufquote-Verteilung
-als empirische Verteilung ueber Projekt-Monate fest, geschaetzt ist sie aber noch nicht,
-und die verfuegbare Kapazitaet aus 5.3 fehlt ohne die Abwesenheiten. Referenzklassen
-sind in v0.6 ausdruecklich zurueckgestellt (Abschnitt 6) und blockieren nichts mehr.
-Eine Bandbreite auszuweisen, die niemand kalibriert hat, waere trotzdem der schlechtere
-Platzhalter.
+Die Monte-Carlo-Simulation aus Spec 5.4 ist **nicht gebaut**, aber das ist keine
+Definitionsluecke, sondern offene Arbeit. Die Abrufquote-Verteilung aus 5.2 ist
+inzwischen geschaetzt (:class:`~umsatzprognose.domaene.abrufquote.Abrufquotenverteilung`);
+es fehlt die verfuegbare Kapazitaet aus 5.3 - geplante Abwesenheiten, Feiertage und der
+Abschlag fuer ungeplante Abwesenheit. Referenzklassen sind zurueckgestellt (Abschnitt 6)
+und blockieren nichts. Eine Bandbreite auszuweisen, die niemand kalibriert hat, waere
+trotzdem der schlechtere Platzhalter - deshalb nennt
+:meth:`umsatzprognose.domaene.bestand.Bestand.simulieren` weiter den Grund und keine
+Zahl.
 
 Statt die Luecke zu verschweigen, hat sie hier eine Form: :class:`NochKeinePrognose`
 sagt aus, dass es keine gibt, und warum. Das Dashboard zeigt das an der Stelle an, an

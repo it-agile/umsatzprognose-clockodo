@@ -202,6 +202,18 @@ Die Abrufquote wird als **empirische Verteilung** aus der eigenen Historie gesch
 - **Datenquelle** ist `/v2/entrygroups` mit `grouping[]=projects_id&grouping[]=month`.
 - **Einbezogen** werden Projekt-Monate mit einem Restvolumen > 0 zu Monatsbeginn; sonst
   ist die Quote undefiniert.
+- **Welche Monate zum Beobachtungsfenster gehören** (entschieden am 26.08.2026, weil die
+  API Monate ohne Buchung gar nicht liefert und die Frage damit nicht offen bleiben
+  kann): je Projekt von seinem **ersten Monat mit Buchung** bis zum **Vormonat des
+  Stichtags**, wenn das Projekt im Prognose-Scope ist (5.0) – sonst bis zu seinem
+  **letzten Monat mit Buchung**. Lücken innerhalb dieses Fensters zählen als Quote 0: ein
+  laufendes Projekt, das einen Monat nichts abruft, ist eine Beobachtung und kein
+  fehlender Datensatz. Der Stichtagsmonat selbst bleibt außen vor, weil er angebrochen
+  ist (5.4) und seine Quote damit systematisch zu niedrig wäre. Ein beendetes Projekt
+  bekommt keine Nullen für die Zeit nach seinem Ende angerechnet.
+  Die Richtung des verbleibenden Fehlers ist benennbar: ruhige Monate **vor** der ersten
+  Buchung fehlen der Verteilung, ihre Quoten liegen damit eher zu hoch. Das Anlagedatum
+  eines Projekts wird nicht mitgelesen; ohne es ist der Beginn der Laufzeit unbekannt.
 - Beobachtete Quoten **über 1 werden nicht gekappt** – bei weichen Budgets kommen sie
   vor. Schritt 2 der Simulation begrenzt ohnehin auf das verbleibende Restvolumen.
 - **Ziehung** je Lauf, Projekt und Monat unabhängig mit Zurücklegen aus den beobachteten
@@ -373,19 +385,31 @@ Zusammenführung ist nicht Teil dieser Spec.
 Umgesetzt als Python-Paket `umsatzprognose` mit Notebook-Oberfläche in Google Colab:
 
 - **Vollständig:** Abschnitte 4, 5.0, 5.1 (ohne die Näherung für Umsatz ohne Zeit, die
-  als Hinweis ausgewiesen wird), der Aufteilungsschlüssel aus 5.4 Schritt 3, die
+  als Hinweis ausgewiesen wird), **5.2**, der Aufteilungsschlüssel aus 5.4 Schritt 3, die
   Sollarbeitszeit aus 5.3 sowie die Umsatzhistorie der letzten zwölf Monate.
-- **Nicht gebaut:** die Simulation (5.4), die Schätzung der Abrufquote-Verteilung (5.2),
-  geplante Abwesenheiten, Feiertage und der Abschlag für ungeplante (5.3). An der
-  Stelle der Bandbreite steht die Begründung.
+- **Nicht gebaut:** die Simulation (5.4) sowie geplante Abwesenheiten, Feiertage und der
+  Abschlag für ungeplante Abwesenheit (5.3). An der Stelle der Bandbreite steht die
+  Begründung.
+
+Die Abrufquote-Verteilung ist am 26.08.2026 aus **2.640 Projekt-Monaten** geschätzt:
+Median 0,117, Mittelwert 0,396, **32 % der Monate ohne jeden Abruf**, 3,1 % über 1,
+Maximum 175,7. Der Maximalwert ist keine Fehlmessung, sondern genau die in 5.2 benannte
+Einschränkung – ein Projekt-Monat mit wenigen hundert Euro rekonstruiertem Restvolumen
+und einer großen Buchung. Für die Simulation ist er unschädlich, weil Schritt 2 auf das
+verbleibende Restvolumen begrenzt: eine Quote von 175 heißt dort „alles Offene abrufen".
+276 der 2.640 Beobachtungen stammen aus Projekten, die heute im Prognose-Scope sind; die
+übrigen aus der Historie beendeter Projekte. Das ist die Folge der portfolioweiten
+Schätzung und keine Verzerrung, die sich beheben ließe, ohne Referenzklassen einzuführen.
 
 ## 11. Nächste Schritte
 
-1. **Abrufquote-Verteilung schätzen** (5.2): `/v2/entrygroups` mit
-   `grouping[]=projects_id&grouping[]=month`, Restvolumen je Monatsbeginn rückwärts
-   rekonstruieren, empirische Verteilung bilden. Dieselbe Gruppierung liefert über den
-   Horizont die bereits gebuchten Beträge für die Untergrenze aus 5.4 – ein Abruf, zwei
-   Zwecke. Der Client bietet diese Kombination noch nicht an.
+1. ~~**Abrufquote-Verteilung schätzen** (5.2)~~ – gebaut am 26.08.2026. Der Abruf mit
+   `grouping[]=projects_id&grouping[]=month` liefert wie vorgesehen beide Zwecke: die
+   Historie für die Verteilung und die bereits gebuchten Beträge im Horizont für die
+   Untergrenze aus 5.4. Drei Eigenheiten der Antwort waren dabei nicht vorhergesehen: die
+   Monate kommen **nach Dauer absteigend** und nie chronologisch, die Monatssummen gehen
+   nur auf den Cent auf (Clockodo rundet jede Gruppe einzeln), und `group == 0` kommt
+   mehrfach vor – je Kunde ohne Projekt einmal.
 2. **Abwesenheiten und Feiertage auswerten** (5.3): `/v4/absences` anbinden und aus der
    Historie den Abschlag für ungeplante Abwesenheit schätzen; `/nonbusinessdays` je
    Feiertagsgruppe anbinden und die `nonbusinessgroups_id` der Person mitlesen, die

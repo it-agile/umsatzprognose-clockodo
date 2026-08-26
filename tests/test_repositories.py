@@ -15,6 +15,7 @@ from umsatzprognose.clockodo.kunden import KundenRepository
 from umsatzprognose.clockodo.mitarbeiter import MitarbeiterRepository
 from umsatzprognose.clockodo.projekte import ProjektRepository, budget, projekt_id
 from umsatzprognose.clockodo.umsatz import UmsatzRepository
+from umsatzprognose.clockodo.verbrauchsverlauf import VerbrauchsverlaufRepository
 
 STICHTAG = date(2026, 8, 24)
 
@@ -164,6 +165,41 @@ def test_monatsumsaetze_werden_gelesen_und_luecken_gefuellt(monats_antwort):
     assert params["time_until"] == "2026-08-31T23:59:59Z"
 
 
+def test_monatsverbrauch_wird_je_projekt_und_chronologisch_abgebildet(
+    projekt_antwort, projekt_monats_antwort
+):
+    client, requests = client_mit_routen({"/v2/entrygroups": projekt_monats_antwort})
+    projekte = ProjektRepository(client).abbilden(projekt_antwort["data"], [])
+    verlaeufe = VerbrauchsverlaufRepository(client).laden(
+        projekte, stichtag=STICHTAG, horizont_monate=3
+    )
+
+    # Die beiden Gruppen mit group == 0 fallen heraus, uebrig bleibt das eine Projekt,
+    # dessen Monate in der Antwort nach Dauer absteigend stehen.
+    assert [v.projekt.id for v in verlaeufe] == [1375839]
+    assert [m.schluessel for m in verlaeufe[0].monate] == [
+        (2026, 4),
+        (2026, 5),
+        (2026, 7),
+        (2026, 8),
+        (2026, 9),
+    ]
+    # Die Monatssummen gehen nur auf den Cent auf - ein Vergleich auf Gleichheit mit der
+    # Gruppensumme (92.661,87) waere ein Fehlalarm.
+    assert round(verlaeufe[0].verbrauch, 2) == 92661.88
+    # Das Fenster reicht bis zum Ende des Horizonts, nicht bis zum Stichtag: derselbe
+    # Abruf traegt die gebuchten Betraege im Horizont (Spec 11.1).
+    assert requests[0].url.params["time_until"] == "2026-10-31T23:59:59Z"
+
+
+def test_monatsverbrauch_ohne_projekt_in_den_stammdaten_wird_ausgelassen(projekt_monats_antwort):
+    # Ein Verlauf ohne Projekt haette kein Budget und damit kein Restvolumen. Gemeldet
+    # wird der Fall bereits vom ProjektRepository.
+    client, _ = client_mit_routen({"/v2/entrygroups": projekt_monats_antwort})
+
+    assert VerbrauchsverlaufRepository(client).laden([], stichtag=STICHTAG) == ()
+
+
 def test_bestand_setzt_alles_zusammen(
     projekt_antwort,
     kunden_antwort,
@@ -171,11 +207,16 @@ def test_bestand_setzt_alles_zusammen(
     sollzeit_antwort,
     entrygroup_antwort,
     monats_antwort,
+    projekt_monats_antwort,
 ):
     def entrygroups(request):
-        # Derselbe Pfad, zwei voellig verschiedene Antworten - je nach Gruppierung.
-        gruppierung = request.url.params.get_list("grouping[]")
-        return monats_antwort if gruppierung == ["month"] else entrygroup_antwort
+        # Derselbe Pfad, drei voellig verschiedene Antworten - je nach Gruppierung.
+        gruppierung = tuple(request.url.params.get_list("grouping[]"))
+        return {
+            ("projects_id", "users_id"): entrygroup_antwort,
+            ("month",): monats_antwort,
+            ("projects_id", "month"): projekt_monats_antwort,
+        }[gruppierung]
 
     client, requests = client_mit_routen(
         {
@@ -194,6 +235,10 @@ def test_bestand_setzt_alles_zusammen(
     assert [p.id for p in bestand.im_prognose_scope] == [1375839]
     assert bestand.restvolumen_prognosewirksam == 160000.0 - 86661.88
     assert bestand.umsatzhistorie.summe() == 292188.83
-    # Sechs Abrufe: Kunden, Personen, Sollzeiten, Projekte, Verbrauch, Monatsumsatz.
-    assert len(requests) == 6
+    # Sieben Abrufe: Kunden, Personen, Sollzeiten, Projekte, Verbrauch, Monatsumsatz,
+    # Monatsverbrauch je Projekt.
+    assert len(requests) == 7
     assert any("ohne Projekt" in h.text for h in bestand.hinweise())
+    # Der siebte Abruf traegt die Verteilung aus Spec 5.2 bis in den Bestand.
+    assert [v.projekt.id for v in bestand.verbrauchsverlaeufe] == [1375839]
+    assert bestand.abrufquotenverteilung().anzahl == 4

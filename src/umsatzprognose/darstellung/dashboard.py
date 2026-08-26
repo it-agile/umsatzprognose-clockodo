@@ -35,18 +35,22 @@ class Dashboard:
         *,
         stichtag: date | None = None,
         mit_anteilen: bool = True,
+        mit_verbrauchsverlauf: bool = True,
         abgeschlossene_monate: int = 12,
+        horizont_monate: int = 3,
     ) -> Dashboard:
         """Daten aus Clockodo holen und das Dashboard bereitstellen.
 
         Die Zugangsdaten kommen aus der Colab-Secrets-Verwaltung oder aus einer lokalen
-        ``.env``, je nachdem, wo das Notebook laeuft. Die sechs Abrufe laufen
+        ``.env``, je nachdem, wo das Notebook laeuft. Die sieben Abrufe laufen
         gleichzeitig; gegen die echte Installation bestimmt der langsamste die Dauer.
         """
         bestand = BestandRepository.mit_automatischen_zugangsdaten().laden(
             stichtag=stichtag,
             mit_anteilen=mit_anteilen,
+            mit_verbrauchsverlauf=mit_verbrauchsverlauf,
             abgeschlossene_monate=abgeschlossene_monate,
+            horizont_monate=horizont_monate,
         )
         return cls(bestand)
 
@@ -56,13 +60,17 @@ class Dashboard:
         *,
         stichtag: date | None = None,
         mit_anteilen: bool = True,
+        mit_verbrauchsverlauf: bool = True,
         abgeschlossene_monate: int = 12,
+        horizont_monate: int = 3,
     ) -> Dashboard:
         """Derselbe Ladevorgang fuer Aufrufer, die schon in einem Event-Loop stehen."""
         bestand = await BestandRepository.mit_automatischen_zugangsdaten().laden_async(
             stichtag=stichtag,
             mit_anteilen=mit_anteilen,
+            mit_verbrauchsverlauf=mit_verbrauchsverlauf,
             abgeschlossene_monate=abgeschlossene_monate,
+            horizont_monate=horizont_monate,
         )
         return cls(bestand)
 

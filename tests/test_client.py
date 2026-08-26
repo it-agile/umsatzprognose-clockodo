@@ -21,6 +21,7 @@ from conftest import CREDS, client_mit
 from umsatzprognose.clockodo.client import (
     ClockodoClient,
     ClockodoError,
+    horizontende,
     monatsende,
     verbrauch_bis,
 )
@@ -92,6 +93,31 @@ def test_monatsgruppierung_heisst_month_im_singular():
     )
 
     assert requests[0].url.params.get_list("grouping[]") == ["month"]
+
+
+def test_doppelgruppierung_nach_projekt_und_monat():
+    # Die Kombination aus Spec 11.1, am 26.08.2026 an der Installation geprueft: die
+    # zuerst genannte Gruppierung ist die aeussere Ebene.
+    client, requests = client_mit(lambda _: httpx.Response(200, json={"groups": []}))
+    synchron(client.entrygroups_je_projekt_und_monat(time_until="2026-10-31T23:59:59Z"))
+
+    params = requests[0].url.params
+    assert params.get_list("grouping[]") == ["projects_id", "month"]
+    assert params["time_until"] == "2026-10-31T23:59:59Z"
+
+
+def test_horizontende_ist_die_dritte_obere_zeitgrenze():
+    """Spec 5.4: der Horizont beginnt mit dem laufenden Monat.
+
+    Drei Monate ab dem 24.08.2026 enden damit am 31.10.2026 - nicht am 24.11. und nicht
+    am 30.11. Verbrauchsgrenze und Historienfenster liegen beide woanders.
+    """
+    assert horizontende(date(2026, 8, 24), 3) == "2026-10-31T23:59:59Z"
+    assert horizontende(date(2026, 8, 24), 1) == "2026-08-31T23:59:59Z"
+    # Ueber die Jahresgrenze hinweg.
+    assert horizontende(date(2026, 12, 3), 3) == "2027-02-28T23:59:59Z"
+    with pytest.raises(ValueError, match="mindestens einen Monat"):
+        horizontende(date(2026, 8, 24), 0)
 
 
 def test_sollarbeitszeit_kommt_vom_unversionierten_endpunkt():

@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Abhängigkeits- und Python-Verwaltung läuft ausschließlich über **uv**; die Version ist
 in `.python-version` auf 3.13 gepinnt. Kein `pip install` im Projekt-venv, kein manuell
-angelegtes venv. Colab läuft auf Python 3.13
+angelegtes venv. Colab läuft auf Python 3.13.
 
 ```bash
 uv sync --extra notebook       # Umgebung herstellen
@@ -32,15 +32,18 @@ darstellung  ──►  domaene  ◄──  clockodo
   roh und prognosewirksam nach Spec 5.1, effektiver Stundensatz, Prognose-Scope),
   `kunde.py`, `mitarbeiter.py` (`Mitarbeiter`, `Wochenarbeitszeit`), `projektanteil.py`
   (der Aufteilungsschlüssel aus 5.4 Schritt 3), `umsatzhistorie.py` (`Monatsumsatz`,
-  `Umsatzhistorie`), `bestand.py` (das Aggregat), `prognose.py` (ABC plus
+  `Umsatzhistorie`), `verbrauchsverlauf.py` (`Verbrauchsverlauf` – der Monatsverbrauch je
+  Projekt, die Rückrechnung des Restvolumens und das Beobachtungsfenster aus 5.2),
+  `abrufquote.py` (`Abrufquote`, `Abrufquotenverteilung` – die empirische Verteilung nach
+  5.2 samt Ziehung mit Zurücklegen), `bestand.py` (das Aggregat), `prognose.py` (ABC plus
   `NochKeinePrognose`), `hinweis.py`, `zahlen.py` (deutsche Zahlformate ohne `locale`).
 - `src/umsatzprognose/clockodo/` – **alles, was Clockodo weiß, weiß nur dieses Paket.**
   `config.py` (Zugangsdaten mit den benannten Konstruktoren `automatisch`,
   `aus_umgebung`, `aus_colab_secrets`), `client.py` (`ClockodoClient`: HTTP,
   Paginierung, die verifizierte Parameterform je Endpunkt, `ClockodoError` mit
   Antwortkörper), `nebenlaeufig.py` (`synchron`, `gleichzeitig` – siehe unten), dazu je
-  Endpunkt ein Repository: `kunden.py`, `mitarbeiter.py`, `projekte.py`, `umsatz.py`
-  und `bestand.py` (`BestandRepository`, der eine Einstieg).
+  Endpunkt ein Repository: `kunden.py`, `mitarbeiter.py`, `projekte.py`, `umsatz.py`,
+  `verbrauchsverlauf.py` und `bestand.py` (`BestandRepository`, der eine Einstieg).
 - `src/umsatzprognose/darstellung/` – der einzige Ort mit plotly (`diagramme.py`,
   `gestaltung.py`) und pandas (`tabellen.py`), dazu `dashboard.py` mit der Fassade
   `Dashboard`, die die Notebooks benutzen.
@@ -49,7 +52,7 @@ darstellung  ──►  domaene  ◄──  clockodo
 - `notebooks/` – zwei Notebooks mit verschiedenen Zielgruppen, siehe unten.
 - `spec/spec-umsatzprognose-clockodo-modul.md` – die Spezifikation.
 
-**Die Domäne kennt kein JSON und keinen HTTP-Client.** Das ist die tragende Regel: 
+**Die Domäne kennt kein JSON und keinen HTTP-Client.** Das ist die tragende Regel:
 das Wissen über Clockodos Eigenheiten steht in `clockodo/`, je Endpunkt
 dort, wo seine Abbildung liegt.
 
@@ -65,14 +68,21 @@ Restvolumen-Verläufe gleichzeitig; ein `projekt.restvolumen -= verbrauch` im
 Simulationsschritt würde die Stammdaten zum Lauf-Zustand machen und beim zweiten Lauf
 falsche Zahlen liefern. Der Lauf-Zustand gehört neben die Objekte.
 
-**Die Abrufe laufen gleichzeitig, die Abbildung nacheinander.** Die sechs Antworten
-einer Prognose – Kunden, Personen, Sollzeiten, Projekte, Verbrauch, Umsatzhistorie –
-hängen nicht voneinander ab; aufeinander angewiesen ist erst das Zusammensetzen, weil
-die Projekte Kunde und Person als Objekt tragen. Deshalb sind die Methoden von
-`ClockodoClient` **Coroutinen**, `BestandRepository.laden_async()` fächert sie mit
+**Die Abrufe laufen gleichzeitig, die Abbildung nacheinander.** Die sieben Antworten
+einer Prognose – Kunden, Personen, Sollzeiten, Projekte, Verbrauch, Umsatzhistorie und
+der Monatsverbrauch je Projekt – hängen nicht voneinander ab; aufeinander angewiesen ist
+erst das Zusammensetzen, weil die Projekte Kunde und Person als Objekt tragen und die
+Verbrauchsverläufe das fertige Projekt samt Budget brauchen. Deshalb sind die Methoden
+von `ClockodoClient` **Coroutinen**, `BestandRepository.laden_async()` fächert sie mit
 `gleichzeitig()` auf, und erst danach bildet `ProjektRepository.abbilden()` ab. Abruf
 und Abbildung sind in den Repositories dafür getrennt (`laden_async` / `abbilden`,
 bei den Projekten zusätzlich die freie Funktion `projekte.rohdaten`).
+
+Zwei der sieben Abrufe sind dieselbe Doppelgruppierung von `/v2/entrygroups` – einmal
+nach Person, einmal nach Monat, je rund 20 Sekunden. Nebeneinander kosten sie zusammen
+kaum mehr als einer: ein vollständiger Ladevorgang dauerte am 26.08.2026 18 Sekunden.
+Wer den Monatsverbrauch nicht braucht, schaltet ihn mit `mit_verbrauchsverlauf=False` ab
+– dann gibt es allerdings keine geschätzte Abrufquote-Verteilung.
 
 Die öffentlichen Einstiege bleiben gewöhnliche Funktionen: `Dashboard.laden()` und
 `BestandRepository.laden()` legen `synchron()` um die Coroutine. **Das ist mehr als ein
@@ -116,13 +126,34 @@ Rechenlogik gehört ins Paket, nicht ins Notebook.
 
 ## Stand der Implementierung
 
-Umgesetzt ist Schritt 1 aus Spec Abschnitt 10: Restvolumen je Projekt (5.1), dazu das
-vollständige Domänenmodell außer der Simulation – inklusive Aufteilungsschlüssel je
-Person (5.4 Schritt 3) und Sollarbeitszeit (Teil von 5.3).
+Umgesetzt sind die Schritte 1 und 2 aus Spec Abschnitt 11: Restvolumen je Projekt (5.1)
+und die **geschätzte Abrufquote-Verteilung** (5.2), dazu das vollständige Domänenmodell
+außer der Simulation – inklusive Aufteilungsschlüssel je Person (5.4 Schritt 3) und
+Sollarbeitszeit (Teil von 5.3).
 
-Es fehlen: die Monte-Carlo-Simulation (5.4), die **Schätzung** der
-Abrufquote-Verteilung (5.2 legt ihre Form fest, die Zahlen fehlen) und die verfügbare
-Kapazität (5.3, es fehlen Abwesenheiten und der Abschlag für ungeplante Abwesenheit).
+Die Verteilung liegt an `Bestand.abrufquotenverteilung()` und stammt aus den
+`Verbrauchsverlauf`-Objekten. Am 26.08.2026 gegen die Installation: **2.640
+Projekt-Monate**, Median 0,117, Mittelwert 0,396, **32 % ohne Abruf**, 3,1 % über 1,
+Maximum 175,7. Die Zahlen bewegen sich mit jeder Zeitbuchung und taugen als
+Größenordnung, nicht als Regressionswert.
+
+Zwei Punkte dazu, die man wissen muss:
+
+- **Das Beobachtungsfenster ist eine Entscheidung, keine Vorgabe.** Spec 5.2 nennt nur
+  „Restvolumen > 0 zu Monatsbeginn"; welche Monate überhaupt dazugehören, legt
+  `Verbrauchsverlauf.beobachtungsmonate()` fest: von der ersten Buchung bis zum Vormonat
+  des Stichtags, wenn das Projekt heute im Prognose-Scope ist – sonst bis zur letzten
+  Buchung. Lücken darin zählen als Quote 0, der angebrochene Stichtagsmonat zählt nie
+  mit. Ruhige Monate **vor** der ersten Buchung fehlen der Verteilung; ihre Quoten liegen
+  damit eher zu hoch.
+- **Quoten über 1 sind echt und bleiben stehen.** Das Maximum von 175,7 (ein Projekt-Monat
+  mit 400 EUR offenem Restvolumen und einer großen Buchung) ist genau der Fall, den 5.2
+  benennt: das Budget ist nur in seinem heutigen Stand bekannt. In der Simulation ist der
+  Schaden begrenzt, weil Schritt 2 auf das verbleibende Restvolumen kappt – eine Quote von
+  175 heißt dort „ruf alles ab, was offen ist".
+
+Es fehlen: die Monte-Carlo-Simulation (5.4) und die verfügbare Kapazität (5.3, es fehlen
+Abwesenheiten, Feiertage und der Abschlag für ungeplante Abwesenheit).
 `Bestand.simulieren()` liefert deshalb `NochKeinePrognose` mit Begründung, und das
 Dashboard zeigt an der Stelle der Bandbreite genau diese Begründung an – eine erfundene
 Kurve wäre der schlechtere Platzhalter.
@@ -197,6 +228,7 @@ Stand der Clockodo-API:
 | Verbrauch, effektiver Satz | `GET /v2/entrygroups`, `grouping[]=projects_id` | `revenue`, `duration` (nicht `hourly_rate`, siehe unten) |
 | Anteil je Person | `GET /v2/entrygroups`, zusätzlich `grouping[]=users_id` | `sub_groups` mit `duration`, `revenue` |
 | Umsatz je Monat | `GET /v2/entrygroups`, `grouping[]=month` | `group` (`"JJJJMM"`), `revenue`, `duration` |
+| Abrufquote, gebuchter Horizont | `GET /v2/entrygroups`, `grouping[]=projects_id&grouping[]=month` | `sub_groups` mit `group` (`"JJJJMM"`), `revenue` |
 | Kundenname (Beschriftung) | `GET /v3/customers` | `id`, `name` |
 | Personen | `GET /v3/users` | `id`, `name`, `active` – **nicht** `default_target_hours` |
 | Sollarbeitszeit | `GET /targethours` (unversioniert) | `users_id`, `date_since`/`date_until`, Stunden je Wochentag |
@@ -312,6 +344,23 @@ eigener Rechnerei:
   bei der einfachen Gruppierung.
 - Die Monatsgruppierung enthält **alle** Buchungen, auch die auf einen Kunden ohne
   Projekt. Genau das ist im Dashboard gewollt: gefragt ist der Gesamtumsatz.
+- `grouping[]=projects_id&grouping[]=month` liefert je Projekt die Monate als
+  `sub_groups` – die Kombination aus Spec 11.1, am 26.08.2026 verifiziert: 870 Gruppen mit
+  zusammen 5.467 Projekt-Monaten von 01/2021 bis 11/2026, rund 23 Sekunden. **Die äußere
+  Ebene ist die zuerst genannte.** Drei Fallen darin:
+  - **Die Untergruppen kommen nach `duration` absteigend, nie chronologisch** – bei allen
+    667 Gruppen mit mehr als einem Monat. Die Rückrechnung des Restvolumens aus 5.2 lebt
+    von der Reihenfolge; wer sie übernimmt, rechnet still falsch. Bei der
+    Personengruppierung fiel das nie auf, weil Personen keine Reihenfolge haben.
+  - **Die Monatssummen gehen nur auf den Cent auf.** Bei 31 Projekten weicht die Summe
+    der Monate von der Projektsumme ab, höchstens um 0,06 EUR und in der Gesamtsumme um
+    0,63 EUR auf 30,6 Mio. – Clockodo rundet jede Gruppe einzeln. Die Zeitsummen stimmen
+    exakt, und die Projektsummen sind mit der einfachen Gruppierung identisch. Ein
+    Vergleich auf Gleichheit wäre also ein Fehlalarm.
+  - **`group == 0` kommt mehrfach vor** – zweimal, je Kunde ohne Projekt einmal, und das
+    ist der einzige doppelt vergebene Schlüssel (869 verschiedene auf 870 Gruppen).
+    `VerbrauchsverlaufRepository.abbilden()` faltet deshalb je Projekt-ID zusammen,
+    statt zuzuweisen.
 
 **`/v2/entries` wird bewusst nicht benutzt.** Erst wenn eine
 Auswertung wirklich den einzelnen Eintrag braucht (etwa `type` zur Trennung von
@@ -342,7 +391,7 @@ Platzhalterobjekt, ihre Stunden gehen nicht verloren.
 `time_since=2010-01-01` liefert dieselben Gruppen und dieselbe Umsatzsumme wie
 `2020-01-01`. Die Antwort hat **kein `paging`** – alle Gruppen kommen in einem Rutsch.
 
-**Zwei obere Zeitgrenzen, und sie sind nicht dieselbe.** Beide in `client.py`, beide
+**Drei obere Zeitgrenzen, und keine ist die andere.** Alle in `client.py`, alle
 Funktionen:
 
 - `verbrauch_bis(stichtag)` – **der Stichtag selbst**, Grenze des Verbrauchs (Spec 5.1).
@@ -352,8 +401,12 @@ Funktionen:
 - `monatsende(tag)` – der letzte Tag des Kalendermonats, Fenster der **Umsatzhistorie**.
   Dort ist der laufende Monat ein Balken, und eine später im Monat datierte Buchung
   gehört hinein.
+- `horizontende(stichtag, monate)` – der letzte Tag des letzten **Horizontmonats**.
+  Weil der Horizont mit dem laufenden Monat beginnt (5.4), enden drei Monate ab dem
+  26.08.2026 am 31.10.2026. Diese Grenze zieht den Monatsverbrauch je Projekt: derselbe
+  Abruf trägt die Historie für 5.2 und die gebuchten Beträge im Horizont für 5.4.
 
-Wer beide zusammenlegt, bricht eines von beidem. Bis zum 24.08.2026 lag die
+Wer zwei davon zusammenlegt, bricht eines von beidem. Bis zum 24.08.2026 lag die
 Verbrauchsgrenze am Monatsende: das schlug 600 EUR aus dem Restaugust stumm dem Verbrauch
 zu, statt sie der Prognose anzurechnen.
 
@@ -361,8 +414,9 @@ zu, statt sie der Prognose anzurechnen.
 
 ## Nächster geplanter Schritt
 
-Laut Spec Abschnitt 11: die Abrufquote-Verteilung schätzen. empirische Verteilung über Projekt-Monate, Quote = Verbrauch im Monat geteilt
-durch Restvolumen zu Monatsbeginn, aus `/v2/entrygroups` mit
-`grouping[]=projects_id&grouping[]=month`. Das ist eine Gruppierungskombination, die der
-Client noch nicht anbietet. Danach Abwesenheiten (`/v4/absences`), dann die Simulation,
-dann der Rückwärtstest über 12 Stichtage.
+Laut Spec Abschnitt 11, Schritt 2: **Abwesenheiten und Feiertage auswerten** (5.3).
+`/v4/absences?year=…` anbinden und daraus den Abschlag für ungeplante Abwesenheit
+schätzen; `/nonbusinessdays?year=…` je Feiertagsgruppe anbinden und die
+`nonbusinessgroups_id` der Person mitlesen, die heute noch verworfen wird. Der Horizont
+reicht über eine Jahresgrenze, also zwei Abrufe je Endpunkt. Danach die Simulation (5.4)
+samt vollständiger Ausgabe (5.5), dann der Rückwärtstest über 12 Stichtage.
