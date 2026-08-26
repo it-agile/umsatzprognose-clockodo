@@ -4,6 +4,10 @@ Gegen einen ``httpx.MockTransport``, nicht gegen die echte Installation - geprue
 wird, ob Paginierung, Parameterform und Fehlerbehandlung dem entsprechen, was am
 24.08.2026 gegen die Installation verifiziert wurde (siehe Modul-Docstring von
 ``umsatzprognose.clockodo.client``).
+
+Die Methoden des Clients sind Coroutinen; hier steht deshalb ``synchron`` darum - wie
+in den ``laden``-Methoden der Repositories. Das erspart eine Testabhaengigkeit auf
+``pytest-asyncio`` und prueft die Bruecke gleich mit.
 """
 
 from __future__ import annotations
@@ -21,9 +25,12 @@ from umsatzprognose.clockodo.client import (
     verbrauch_bis,
 )
 from umsatzprognose.clockodo.config import ClockodoCredentials
+from umsatzprognose.clockodo.nebenlaeufig import synchron
 
 
 def test_alle_seiten_werden_eingesammelt():
+    """Seite 1 zuerst - erst ihr ``paging`` nennt ``count_pages``; der Rest gleichzeitig."""
+
     def handler(request):
         seite = int(dict(request.url.params)["page"])
         return httpx.Response(
@@ -35,16 +42,19 @@ def test_alle_seiten_werden_eingesammelt():
         )
 
     client, requests = client_mit(handler)
-    projekte, paging = client.projects()
+    projekte, paging = synchron(client.projects())
 
     assert [p["id"] for p in projekte] == [1, 2, 3]
     assert paging["current_page"] == 3
-    assert [dict(r.url.params)["page"] for r in requests] == ["1", "2", "3"]
+    # Die erste Seite muss allein kommen, die uebrigen duerfen in beliebiger
+    # Reihenfolge eintreffen - eingesammelt werden sie in Seitenreihenfolge.
+    assert dict(requests[0].url.params)["page"] == "1"
+    assert sorted(dict(r.url.params)["page"] for r in requests) == ["1", "2", "3"]
 
 
 def test_ohne_paging_bleibt_es_bei_einer_seite():
     client, requests = client_mit(lambda _: httpx.Response(200, json={"data": [{"id": 7}]}))
-    projekte, paging = client.projects()
+    projekte, paging = synchron(client.projects())
 
     assert [p["id"] for p in projekte] == [7]
     assert paging == {}
@@ -53,7 +63,7 @@ def test_ohne_paging_bleibt_es_bei_einer_seite():
 
 def test_alle_drei_pflichtheader_gehen_mit():
     client, requests = client_mit(lambda _: httpx.Response(200, json={"data": []}))
-    client.projects()
+    synchron(client.projects())
 
     header = requests[0].headers
     assert header["X-ClockodoApiUser"] == CREDS.api_user
@@ -65,7 +75,7 @@ def test_entrygroups_verlangen_arrayform_und_volle_zeitangabe():
     # grouping=… ohne Klammern antwortet mit "Array expected.", ein reines Datum mit
     # "Wrong format" - beides an 400ern belegt.
     client, requests = client_mit(lambda _: httpx.Response(200, json={"groups": []}))
-    client.entrygroups_je_projekt_und_person()
+    synchron(client.entrygroups_je_projekt_und_person())
 
     params = requests[0].url.params
     assert params.get_list("grouping[]") == ["projects_id", "users_id"]
@@ -75,8 +85,10 @@ def test_entrygroups_verlangen_arrayform_und_volle_zeitangabe():
 
 def test_monatsgruppierung_heisst_month_im_singular():
     client, requests = client_mit(lambda _: httpx.Response(200, json={"groups": []}))
-    client.entrygroups_je_monat(
-        time_since="2025-09-01T00:00:00Z", time_until="2026-08-31T23:59:59Z"
+    synchron(
+        client.entrygroups_je_monat(
+            time_since="2025-09-01T00:00:00Z", time_until="2026-08-31T23:59:59Z"
+        )
     )
 
     assert requests[0].url.params.get_list("grouping[]") == ["month"]
@@ -84,7 +96,7 @@ def test_monatsgruppierung_heisst_month_im_singular():
 
 def test_sollarbeitszeit_kommt_vom_unversionierten_endpunkt():
     client, requests = client_mit(lambda _: httpx.Response(200, json={"targethours": []}))
-    client.targethours()
+    synchron(client.targethours())
 
     # Die Basis-URL endet auf /api, der Endpunkt haengt ohne Versionsteil daran.
     assert requests[0].url.path == "/api/targethours"
@@ -97,7 +109,7 @@ def test_fehler_traegt_den_antwortkoerper():
     client, _ = client_mit(lambda _: httpx.Response(400, json=koerper))
 
     with pytest.raises(ClockodoError) as fehler:
-        client.entrygroups(["projects"])
+        synchron(client.entrygroups(["projects"]))
 
     assert "400" in str(fehler.value)
     assert "Unknown group option" in str(fehler.value)
@@ -150,5 +162,5 @@ def test_obere_zeitgrenze_wird_je_aufruf_bestimmt():
     festgelegt, schnitte sie nach einem Tageswechsel stumm ab.
     """
     client, requests = client_mit(lambda _: httpx.Response(200, json={"groups": []}))
-    client.entrygroups(["projects_id"])
+    synchron(client.entrygroups(["projects_id"]))
     assert dict(requests[0].url.params)["time_until"] == verbrauch_bis()

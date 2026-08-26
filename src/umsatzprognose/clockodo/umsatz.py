@@ -28,6 +28,7 @@ from datetime import date
 from typing import Any
 
 from umsatzprognose.clockodo.client import ClockodoClient, monatsende
+from umsatzprognose.clockodo.nebenlaeufig import synchron
 from umsatzprognose.domaene.umsatzhistorie import Monatsumsatz, Umsatzhistorie
 
 SEKUNDEN_JE_STUNDE = 3600.0
@@ -40,6 +41,10 @@ class UmsatzRepository:
         self._client = client
 
     def laden(self, stichtag: date, *, abgeschlossene: int = 12) -> Umsatzhistorie:
+        """Der Abruf, synchron - fuer den Aufruf ausserhalb eines Event-Loops."""
+        return synchron(self.laden_async(stichtag, abgeschlossene=abgeschlossene))
+
+    async def laden_async(self, stichtag: date, *, abgeschlossene: int = 12) -> Umsatzhistorie:
         """Die letzten ``abgeschlossene`` vollen Monate plus den laufenden.
 
         Das Fenster endet am letzten Tag des laufenden Monats und nicht am Stichtag:
@@ -47,7 +52,7 @@ class UmsatzRepository:
         Balken. Dass dieser Monat unvollstaendig ist, bleibt davon unberuehrt - die
         Historie fuehrt ihn getrennt.
         """
-        monate = self._client.entrygroups_je_monat(
+        monate = await self._client.entrygroups_je_monat(
             time_since=_monatsanfang(stichtag, minus=abgeschlossene),
             time_until=monatsende(stichtag),
         )

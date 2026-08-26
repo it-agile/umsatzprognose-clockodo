@@ -1,14 +1,18 @@
 """Der eine Einstieg, der aus Clockodo einen fertigen Bestand macht.
 
-Fuenf Abrufe in fester Reihenfolge, weil sie aufeinander aufbauen: Kunden und Personen
-zuerst, weil die Projekte sie als Beschriftung und fuer die Anteile brauchen; die
-Projekte selbst mit Verbrauch und Anteilen; zuletzt die Umsatzhistorie. Wer die Reihen-
-folge aendert, muss die Uebergaben mitziehen.
+**Sechs Abrufe, alle gleichzeitig.** Sie bauen nicht aufeinander auf - Kunden, Personen,
+Sollzeiten, Projekte, Verbrauch und Umsatzhistorie sind sechs unabhaengige Antworten.
+Aufeinander angewiesen ist erst das *Zusammensetzen*: die Projekte brauchen Kunden und
+Personen als Beschriftung und fuer die Anteile. Deshalb ist der Abruf hier gefaechert
+und die Abbildung danach der Reihe nach.
 
-Rund 30 Sekunden gegen die echte Installation, der groesste Teil davon der Abruf der
-Entrygroups mit Personen-Untergruppen (1,9 MB). Fuer eine manuell ausgeloeste Prognose
-ist das vertretbar; wer nur die Zahlen des Dashboards braucht, kann die Anteile ueber
-``mit_anteilen=False`` weglassen und spart die Haelfte.
+Nacheinander abgerufen addierten sich die Wartezeiten auf rund 30 Sekunden gegen die
+echte Installation; gleichzeitig zaehlt im Wesentlichen der langsamste Abruf - die
+Entrygroups mit Personen-Untergruppen (1,9 MB, etwa 20 Sekunden). Die Wartezeit ist
+hier fast alles: gerechnet wird beim Abbilden wenig, gewartet wird auf das Netz.
+
+Wer den Bestand in eigenem async-Code laedt, ruft :meth:`BestandRepository.laden_async`
+auf; :meth:`BestandRepository.laden` ist derselbe Vorgang fuer Notebook und Skript.
 """
 
 from __future__ import annotations
@@ -19,7 +23,9 @@ from umsatzprognose.clockodo.client import ClockodoClient, verbrauch_bis
 from umsatzprognose.clockodo.config import ClockodoCredentials
 from umsatzprognose.clockodo.kunden import KundenRepository
 from umsatzprognose.clockodo.mitarbeiter import MitarbeiterRepository
+from umsatzprognose.clockodo.nebenlaeufig import gleichzeitig, synchron
 from umsatzprognose.clockodo.projekte import ProjektRepository
+from umsatzprognose.clockodo.projekte import rohdaten as projekt_rohdaten
 from umsatzprognose.clockodo.umsatz import UmsatzRepository
 from umsatzprognose.domaene.bestand import Bestand
 
@@ -42,6 +48,26 @@ class BestandRepository:
         mit_anteilen: bool = True,
         abgeschlossene_monate: int = 12,
     ) -> Bestand:
+        """Der Ladevorgang, synchron - der Einstieg fuer Notebook und Skript.
+
+        Auch in Colab und Jupyter, wo bereits ein Event-Loop laeuft; darum kuemmert
+        sich :func:`~umsatzprognose.clockodo.nebenlaeufig.synchron`.
+        """
+        return synchron(
+            self.laden_async(
+                stichtag=stichtag,
+                mit_anteilen=mit_anteilen,
+                abgeschlossene_monate=abgeschlossene_monate,
+            )
+        )
+
+    async def laden_async(
+        self,
+        *,
+        stichtag: date | None = None,
+        mit_anteilen: bool = True,
+        abgeschlossene_monate: int = 12,
+    ) -> Bestand:
         """Den vollstaendigen Bestand zum Stichtag.
 
         Args:
@@ -54,19 +80,24 @@ class BestandRepository:
             abgeschlossene_monate: Laenge der Umsatzhistorie vor dem laufenden Monat.
         """
         stichtag = stichtag or date.today()
-
-        kunden = KundenRepository(self._client).laden()
         personen = MitarbeiterRepository(self._client)
-        mitarbeiter = personen.laden()
 
+        # Vier Faecher, sechs Requests - Personen und Projekte bringen je zwei mit.
+        # Der Stichtag wird hier festgelegt und nicht in den Abrufen aufgeloest: sonst
+        # koennten die gleichzeitigen Abrufe ueber einen Tageswechsel hinweg
+        # verschiedene Fenster erwischen.
+        kunden, mitarbeiter, rohe_projekte, umsatzhistorie = await gleichzeitig(
+            KundenRepository(self._client).laden_async(),
+            personen.laden_async(),
+            projekt_rohdaten(self._client, time_until=verbrauch_bis(stichtag)),
+            UmsatzRepository(self._client).laden_async(
+                stichtag, abgeschlossene=abgeschlossene_monate
+            ),
+        )
+
+        # Erst hier treffen sie sich: die Projekte tragen Kunde und Person als Objekt.
         projekte = ProjektRepository(self._client, kunden, mitarbeiter)
-        geladene_projekte = projekte.laden(
-            mit_anteilen=mit_anteilen, time_until=verbrauch_bis(stichtag)
-        )
-
-        umsatzhistorie = UmsatzRepository(self._client).laden(
-            stichtag, abgeschlossene=abgeschlossene_monate
-        )
+        geladene_projekte = projekte.abbilden(*rohe_projekte, mit_anteilen=mit_anteilen)
 
         return Bestand(
             stichtag=stichtag,
