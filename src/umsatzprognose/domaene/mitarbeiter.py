@@ -25,26 +25,39 @@ Objekt erhalten, geht aber nicht mehr in die Rechnung ein.
 nur Urlaub und Krankheit.** ``Abwesenheit.gilt_als_abwesend`` prueft das. Alle anderen
 Typen - Sonderurlaub, Ueberstundenabbau, Fortbildung, Mutterschutz, Home office, Work
 out of office, Quarantaene, Wehr-/Ersatzdienst - zaehlen nach dieser Entscheidung
-**nicht**, auch dort, wo das fachlich diskutabel ist (etwa Quarantaene). Noch offen:
-welcher ``status`` dazukommen muss - ob z. B. eine erst beantragte (``Enquired``)
-Abwesenheit schon zaehlt, oder erst eine genehmigte (siehe ``Abwesenheit.genehmigt``).
+**nicht**, auch dort, wo das fachlich diskutabel ist (etwa Quarantaene).
 
-Noch nicht hier: die **verfuegbare** Kapazitaet aus 5.3, also Sollarbeitszeit minus
-Feiertage minus geplante Abwesenheit minus Abschlag fuer ungeplante Abwesenheit. Der
-Abschlag ist zudem eine Schaetzgroesse, die die Spec der Kalibrierung zuordnet und nicht
-beziffert.
+**Der ``status`` ist ebenfalls entschieden (26.08.2026): eine Abwesenheit zaehlt schon
+ab "beantragt", nicht erst ab "genehmigt".** ``Enquired`` und ``Approved`` zaehlen also
+beide, ``Declined``, ``ApprovalCancelled`` und ``Cancelled`` nicht - das sind keine reale
+Abwesenheit (mehr). ``Abwesenheit.zaehlt_als_kapazitaetsabzug`` kombiniert diese
+Status-Regel mit ``gilt_als_abwesend``.
+
+**Der Abschlag fuer ungeplante Abwesenheit wird im MVP ignoriert (Entscheidung
+26.08.2026)** - keine Schaetzung, kein Abzug. Damit ist die **verfuegbare** Kapazitaet
+aus 5.3 vollstaendig berechenbar: :meth:`Mitarbeiter.verfuegbare_kapazitaet` zieht
+Feiertage und zaehlende Abwesenheit von den Sollstunden eines Monats ab, taggenau und
+ohne einen Tag doppelt abzuziehen, wenn sich beide ueberschneiden (etwa Urlaub ueber
+Weihnachten, der auch die Feiertage einschliesst).
 """
 
 from __future__ import annotations
 
+from calendar import monthrange
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, timedelta
 
 WOCHENTAGE = ("montag", "dienstag", "mittwoch", "donnerstag", "freitag", "samstag", "sonntag")
 
 # AbsenceStatus.Approved laut clocodo-api.yaml (0 Enquired, 1 Approved, 2 Declined,
 # 3 ApprovalCancelled, 4 Cancelled).
 STATUS_GENEHMIGT = 1
+
+# AbsenceStatus-Codes, die als geplante Abwesenheit zaehlen: Enquired (beantragt) und
+# Approved (genehmigt). Entscheidung 26.08.2026 - der Status zaehlt schon ab
+# "beantragt", nicht erst ab "genehmigt"; Declined, ApprovalCancelled und Cancelled
+# sind keine reale Abwesenheit (mehr).
+STATUS_GEPLANT = frozenset({0, STATUS_GENEHMIGT})
 
 # AbsenceType.OverTimeReduction - der einzige Typ, der als Stundenabwesenheit
 # (``count_hours``) statt als Tagesabwesenheit (``count_days``) gefuehrt wird.
@@ -95,11 +108,21 @@ class Abwesenheit:
         """Ob ``typ`` als Abwesenheit vom Arbeiten zaehlt (Entscheidung 26.08.2026).
 
         Nur Urlaub und Krankheit - siehe Modul-Docstring fuer die Begruendung und die
-        Liste der ausgeschlossenen Typen. Sagt nichts ueber ``status``: ob z. B. eine
-        erst beantragte Abwesenheit schon zaehlen soll, ist separat zu klaeren
-        (:attr:`genehmigt`).
+        Liste der ausgeschlossenen Typen. Sagt nichts ueber ``status`` - siehe
+        :attr:`zaehlt_als_kapazitaetsabzug`.
         """
         return self.typ in TYPEN_ABWESEND
+
+    @property
+    def zaehlt_als_kapazitaetsabzug(self) -> bool:
+        """Ob diese Abwesenheit den Kapazitaetsdeckel mindert (Spec 5.3).
+
+        Kombiniert Typ (:attr:`gilt_als_abwesend`) und Status (:data:`STATUS_GEPLANT` -
+        zaehlt schon ab "beantragt", nicht erst ab "genehmigt"; Entscheidung
+        26.08.2026, siehe Modul-Docstring). Eine abgelehnte, zurueckgezogene oder
+        stornierte Abwesenheit zaehlt nicht, auch wenn ihr Typ passt.
+        """
+        return self.gilt_als_abwesend and self.status in STATUS_GEPLANT
 
 
 @dataclass(frozen=True)
@@ -200,3 +223,44 @@ class Mitarbeiter:
                 continue
             abzug += arbeitszeit.stunden_je_wochentag[feiertag.datum.weekday()]
         return abzug
+
+    def verfuegbare_kapazitaet(self, jahr: int, monat: int) -> float:
+        """Verfuegbare Kapazitaet in diesem Monat (Spec 5.3).
+
+        ``Sollstunden - Feiertage - geplante Abwesenheit`` - der Abschlag fuer
+        ungeplante Abwesenheit fehlt hier bewusst, er wird im MVP ignoriert
+        (Entscheidung 26.08.2026, siehe Modul-Docstring).
+
+        Gerechnet wird **taggenau**, nicht als drei separate Summen: jeder Kalendertag
+        des Monats zaehlt hoechstens einmal als belegt, auch wenn ein Feiertag und eine
+        zaehlende Abwesenheit (:attr:`Abwesenheit.zaehlt_als_kapazitaetsabzug`) sich
+        ueberschneiden - etwa Urlaub ueber Weihnachten, der die Feiertage einschliesst.
+        Drei getrennte Abzuege wuerden einen solchen Tag doppelt abziehen. Ein
+        Abwesenheitszeitraum wird an den Monatsgrenzen gekappt, ein Tag ohne
+        hinterlegte Wochenarbeitszeit traegt 0 bei.
+        """
+        erster_tag = date(jahr, monat, 1)
+        letzter_tag = date(jahr, monat, monthrange(jahr, monat)[1])
+
+        belegte_tage = {
+            f.datum for f in self.feiertage if f.datum.year == jahr and f.datum.month == monat
+        }
+        for abwesenheit in self.abwesenheiten:
+            if not abwesenheit.zaehlt_als_kapazitaetsabzug:
+                continue
+            start = max(abwesenheit.beginnt, erster_tag)
+            ende = min(abwesenheit.endet, letzter_tag)
+            tag = start
+            while tag <= ende:
+                belegte_tage.add(tag)
+                tag += timedelta(days=1)
+
+        stunden = 0.0
+        tag = erster_tag
+        while tag <= letzter_tag:
+            if tag not in belegte_tage:
+                arbeitszeit = self.wochenarbeitszeit(tag)
+                if arbeitszeit is not None:
+                    stunden += arbeitszeit.stunden_je_wochentag[tag.weekday()]
+            tag += timedelta(days=1)
+        return stunden

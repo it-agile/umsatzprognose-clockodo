@@ -128,8 +128,10 @@ Rechenlogik gehört ins Paket, nicht ins Notebook.
 
 Umgesetzt sind die Schritte 1 und 2 aus Spec Abschnitt 11: Restvolumen je Projekt (5.1)
 und die **geschätzte Abrufquote-Verteilung** (5.2), dazu das vollständige Domänenmodell
-außer der Simulation – inklusive Aufteilungsschlüssel je Person (5.4 Schritt 3) und
-Sollarbeitszeit (Teil von 5.3).
+außer der Simulation selbst – inklusive Aufteilungsschlüssel je Person (5.4 Schritt 3)
+und der **verfügbaren Kapazität** (5.3, `Mitarbeiter.verfuegbare_kapazitaet(jahr, monat)`:
+Sollstunden minus Feiertage minus geplante Abwesenheit, taggenau gerechnet – der Abschlag
+für ungeplante Abwesenheit wird im MVP ignoriert, Entscheidung 26.08.2026).
 
 Die Verteilung liegt an `Bestand.abrufquotenverteilung()` und stammt aus den
 `Verbrauchsverlauf`-Objekten. Ihre Kennzahlen stehen hier bewusst nicht: sie stammen aus
@@ -153,11 +155,11 @@ Zwei Punkte dazu, die man wissen muss:
   Schaden begrenzt, weil Schritt 2 auf das verbleibende Restvolumen kappt – eine Quote von
   weit über 1 heißt dort „ruf alles ab, was offen ist".
 
-Es fehlen: die Monte-Carlo-Simulation (5.4) und die verfügbare Kapazität (5.3, es fehlen
-Abwesenheiten, Feiertage und der Abschlag für ungeplante Abwesenheit).
-`Bestand.simulieren()` liefert deshalb `NochKeinePrognose` mit Begründung, und das
-Dashboard zeigt an der Stelle der Bandbreite genau diese Begründung an – eine erfundene
-Kurve wäre der schlechtere Platzhalter.
+Es fehlt: die Monte-Carlo-Simulation (5.4) selbst, die Abrufquote-Verteilung (5.2) und
+verfügbare Kapazität (5.3) gegen die Restvolumen und den Aufteilungsschlüssel führt.
+`Bestand.simulieren()` liefert deshalb weiterhin `NochKeinePrognose` mit Begründung, und
+das Dashboard zeigt an der Stelle der Bandbreite genau diese Begründung an – eine
+erfundene Kurve wäre der schlechtere Platzhalter.
 
 ## Keine gelesenen Werte im Repository
 
@@ -251,7 +253,7 @@ Stand der Clockodo-API:
 | Kundenname (Beschriftung) | `GET /v3/customers` | `id`, `name` |
 | Personen | `GET /v3/users` | `id`, `name`, `active` – **nicht** `default_target_hours` |
 | Sollarbeitszeit | `GET /targethours` (unversioniert) | `users_id`, `date_since`/`date_until`, Stunden je Wochentag |
-| Geplante Abwesenheit | `GET /v4/absences`, `filter[year]` (kein `year` direkt) | geladen in `Mitarbeiter.abwesenheiten`, roh – Deutung von Typ/Status noch offen (Spec 5.3) |
+| Geplante Abwesenheit | `GET /v4/absences`, `filter[year]` (kein `year` direkt) | geladen in `Mitarbeiter.abwesenheiten`; Typ/Status gedeutet über `Abwesenheit.zaehlt_als_kapazitaetsabzug` (Spec 5.3) |
 | Feiertage | `GET /v2/nonbusinessDays` | `nonbusiness_group_id`, `evaluated_date`, `half_day` (bool) – ungenutzt, siehe unten |
 | Feiertage je Person | `GET /v2/usersNonbusinessDays`, `year` | `users_id`, `days[]` – geladen in `Mitarbeiter.feiertage`, roh (Spec 5.3) |
 | Feiertagsgruppe je Person | `GET /v3/usersNonbusinessGroups` | `users_id`, `nonbusiness_groups_id`, `date_since`/`date_until` – ungenutzt, siehe unten |
@@ -476,9 +478,14 @@ eigene wie die des Kindes). Alle anderen Typen zählen ausdrücklich **nicht**, 
 wo das fachlich diskutabel ist – etwa `Quarantine` (13, „work not possible“) oder
 `MaternityProtection` (7). `Home office` (8) und `Work out of office` (9) fielen ohnehin
 schon vorher heraus: sie tragen laut Doku die geplanten Stunden („planned hours get
-applied“), sind also keine Abwesenheit vom Arbeiten. **Offen bleibt der `status`** – ob
-z. B. eine erst beantragte (`Enquired`) Abwesenheit schon zählt oder erst eine
-genehmigte (`Abwesenheit.genehmigt`, Status `Approved`).
+applied“), sind also keine Abwesenheit vom Arbeiten.
+
+**Der `status` ist ebenfalls entschieden (26.08.2026): eine Abwesenheit zählt schon ab
+„beantragt", nicht erst ab „genehmigt".** `Enquired` und `Approved` (`STATUS_GEPLANT`)
+zählen beide, `Declined`, `ApprovalCancelled` und `Cancelled` nicht – das sind keine
+reale Abwesenheit (mehr). `Abwesenheit.zaehlt_als_kapazitaetsabzug` kombiniert Typ und
+Status; `Abwesenheit.genehmigt` (nur `Approved`) bleibt separat verfügbar, geht aber
+nicht mehr in den Kapazitätsdeckel ein.
 
 ### Feiertage: zwei Generationen, und die Schreibweise entscheidet
 
@@ -569,44 +576,44 @@ laufenden Monats stumm dem Verbrauch zu, statt sie der Prognose anzurechnen.
 
 ## Nächster geplanter Schritt
 
-Laut Spec Abschnitt 11, Schritt 2: **Abwesenheiten und Feiertage auswerten** (5.3).
+**Spec 5.3 (Abwesenheiten, Feiertage, verfügbare Kapazität) ist vollständig umgesetzt
+und entschieden**, alle Daten samt Deutung – nur noch die Monte-Carlo-Simulation (5.4)
+selbst fehlt.
 
-**Beide sind angebunden, aber nur der Abruf – die Deutung fehlt noch.**
-`ClockodoClient.absences(year)` liest `/v4/absences` mit `filter[year]`,
+Zugriff: `ClockodoClient.absences(year)` liest `/v4/absences` mit `filter[year]`,
 `ClockodoClient.users_nonbusiness_days(year)` liest `/v2/usersNonbusinessDays` mit dem
 einfachen Parameter `year` (kein `deepObject` wie bei `absences`, und anders als dort
 mit `paging`, deshalb über `get_paged`). `MitarbeiterRepository.laden_async(jahre=…)`
-holt beide je Jahr im Horizont gleichzeitig mit Personen und Sollzeiten und ordnet sie
-über `users_id` zu; `BestandRepository` bestimmt die Jahre aus Stichtag und
-`horizontende()` und reicht sie durch – bei einem Horizont über die Jahresgrenze
-automatisch je zwei Abrufe statt einem. `Mitarbeiter.abwesenheiten` und
-`Mitarbeiter.feiertage` führen die Ergebnisse als `Abwesenheit`- bzw. `Feiertag`-Tupel,
-roh mit Clockodos eigenen Codes.
+holt beide je Jahr im Horizont gleichzeitig mit Personen und Sollzeiten; `Mitarbeiter.
+abwesenheiten` und `Mitarbeiter.feiertage` führen sie als `Abwesenheit`- bzw.
+`Feiertag`-Tupel.
 
-**Die Feiertage sind inzwischen gedeutet.** Entscheidung 26.08.2026: ein Feiertag setzt
-die Sollstunden seines Wochentags auf 0, ob ganz oder halb – an einem halben Feiertag
-nehmen die Kollegen den Rest in aller Regel als Urlaub, eine Halbierung würde ihn doppelt
-erfassen. `Mitarbeiter.feiertagsstunden(jahr, monat)` liefert den Abzug; `halber_tag`
-bleibt als Rohwert erhalten, geht aber nicht mehr ein. Details unter „Feiertage: zwei
+Drei Entscheidungen, alle 26.08.2026, machen daraus die verfügbare Kapazität:
+
+- **Feiertage**: ein Feiertag setzt die Sollstunden seines Wochentags auf 0, ob ganz
+  oder halb – an einem halben Feiertag nehmen die Kollegen den Rest in aller Regel als
+  Urlaub, eine Halbierung würde ihn doppelt erfassen. `Feiertag.halber_tag` bleibt als
+  Rohwert erhalten, geht aber nicht mehr ein.
+- **Abwesenheits-Typ**: nur Urlaub (`TYP_URLAUB`, 1) und Krankheit (`TYPEN_KRANKHEIT`,
+  alle fünf Sick*-Codes) zählen als Abwesenheit vom Arbeiten – `Abwesenheit.
+  gilt_als_abwesend` prüft das. Alles andere zählt ausdrücklich nicht, auch nicht
+  `Quarantine` oder `MaternityProtection`, obwohl das fachlich diskutabel ist.
+- **Abwesenheits-Status**: zählt schon ab „beantragt" (`Enquired`), nicht erst ab
+  „genehmigt" (`Approved`) – `Declined`, `ApprovalCancelled` und `Cancelled` zählen
+  nicht. `Abwesenheit.zaehlt_als_kapazitaetsabzug` kombiniert Typ und Status.
+- **Abschlag für ungeplante Abwesenheit**: wird im MVP ignoriert, keine Schätzung.
+
+`Mitarbeiter.verfuegbare_kapazitaet(jahr, monat)` zieht daraus die verfügbare Kapazität:
+Sollstunden minus Feiertage minus geplante Abwesenheit, **taggenau** gerechnet, damit ein
+Tag, an dem sich Feiertag und Abwesenheit überschneiden (z. B. Urlaub über Weihnachten),
+nicht doppelt abgezogen wird. Details unter „Geplante Abwesenheiten" und „Feiertage: zwei
 Generationen" oben.
 
-**Welcher Abwesenheits-`typ` zählt, ist inzwischen auch gedeutet.** Entscheidung
-26.08.2026: nur Urlaub (`TYP_URLAUB`, 1) und Krankheit (`TYPEN_KRANKHEIT`, alle fünf
-Sick*-Codes) – `Abwesenheit.gilt_als_abwesend` prüft das. Alles andere zählt
-ausdrücklich nicht, auch nicht `Quarantine` oder `MaternityProtection`, obwohl das
-fachlich diskutabel ist. Details unter „Geplante Abwesenheiten“ oben.
-
-**Offen bleibt nur noch:**
-
-- Der `status` einer `Abwesenheit` – ob z. B. eine erst beantragte (`Enquired`) schon
-  zählt oder erst eine genehmigte (`Approved`, `Abwesenheit.genehmigt`).
-- Wie aus alldem der Abschlag für ungeplante Abwesenheit geschätzt wird – eine
-  Schätzgröße, die die Spec der Kalibrierung zuordnet und nicht beziffert.
-
-Erst wenn das entschieden ist, lässt sich der Kapazitätsdeckel aus 5.3 vollständig bauen –
-Sollstunden minus Feiertage (steht) minus geplante Abwesenheit (Typ steht, Status offen)
-minus Abschlag (offen). Danach die Simulation (5.4) samt vollständiger Ausgabe (5.5),
-dann der Rückwärtstest über 12 Stichtage – der braucht wegen des Limits von 10
+Als Nächstes die **Simulation (5.4)** selbst: 10.000 Läufe, je Monat und Projekt eine
+Abrufquote aus der Verteilung (5.2) ziehen, in Stunden umrechnen, auf Personen aufteilen
+(`Projekt.anteil_je_mitarbeiter()`), gegen `Mitarbeiter.verfuegbare_kapazitaet()`
+projektübergreifend deckeln, zurück in Euro. Dazu die vollständige Ausgabe (5.5), dann
+der Rückwärtstest über 12 Stichtage – der braucht wegen des Limits von 10
 `entrygroups`-Abrufen je Minute eine Drosselung oder wiederverwendete Antworten.
 
 Zwei Dinge aus der Doku-Gegenprobe sind inzwischen entschieden, aber noch nicht in eine

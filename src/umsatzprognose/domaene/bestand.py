@@ -291,6 +291,8 @@ class Bestand:
         return NochKeinePrognose(
             "Die Simulation nach Spec 5.4 ist noch nicht gebaut. Die Abrufquote-Verteilung "
             f"(5.2) ist geschätzt - {verteilung.anzahl} Projekt-Monate, Median "
-            f"{verteilung.median:.2f} -, es fehlt die verfügbare Kapazität (5.3: geplante "
-            "Abwesenheiten, Feiertage und der Abschlag für ungeplante Abwesenheit)."
+            f"{verteilung.median:.2f} -, und die verfügbare Kapazität (5.3) ist über "
+            "Mitarbeiter.verfuegbare_kapazitaet() berechenbar (Sollstunden minus Feiertage "
+            "minus geplante Abwesenheit; der Abschlag für ungeplante Abwesenheit wird im "
+            "MVP ignoriert). Es fehlt die Simulation selbst, die beides zusammenführt."
         )

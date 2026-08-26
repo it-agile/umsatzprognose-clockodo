@@ -133,6 +133,123 @@ def test_feiertage_ausserhalb_des_monats_zaehlen_nicht():
     assert person.feiertagsstunden(2026, 11) == 0.0
 
 
+def _urlaub_mit_status(status: int) -> Abwesenheit:
+    return Abwesenheit(
+        mitarbeiter_id=1, beginnt=date(2026, 9, 1), endet=date(2026, 9, 1), typ=1, status=status
+    )
+
+
+def test_zaehlt_als_kapazitaetsabzug_beachtet_typ_und_status():
+    # Entscheidung 26.08.2026: der Status zaehlt schon ab "beantragt" (Enquired), nicht
+    # erst ab "genehmigt" (Approved) - Declined/ApprovalCancelled/Cancelled nicht mehr.
+    assert _urlaub_mit_status(0).zaehlt_als_kapazitaetsabzug  # Enquired
+    assert _urlaub_mit_status(1).zaehlt_als_kapazitaetsabzug  # Approved
+    assert not _urlaub_mit_status(2).zaehlt_als_kapazitaetsabzug  # Declined
+    assert not _urlaub_mit_status(3).zaehlt_als_kapazitaetsabzug  # ApprovalCancelled
+    assert not _urlaub_mit_status(4).zaehlt_als_kapazitaetsabzug  # Cancelled
+
+    # Passender Status, aber ein Typ, der nicht als Abwesenheit zaehlt (Home office).
+    home_office = Abwesenheit(
+        mitarbeiter_id=1, beginnt=date(2026, 9, 1), endet=date(2026, 9, 1), typ=8, status=1
+    )
+    assert not home_office.zaehlt_als_kapazitaetsabzug
+
+
+def test_verfuegbare_kapazitaet_ohne_feiertage_und_abwesenheit():
+    # Oktober 2026: 22 Wochentage Montag-Freitag a 7 Stunden.
+    person = Mitarbeiter(id=1, arbeitszeiten=(Wochenarbeitszeit(SIEBEN_STUNDEN, date(2020, 1, 1)),))
+    assert person.verfuegbare_kapazitaet(2026, 10) == 22 * 7.0
+
+
+def test_verfuegbare_kapazitaet_zieht_feiertage_ab():
+    person = Mitarbeiter(
+        id=1,
+        arbeitszeiten=(Wochenarbeitszeit(SIEBEN_STUNDEN, date(2020, 1, 1)),),
+        feiertage=(Feiertag(datum=date(2026, 10, 1), halber_tag=False),),  # Donnerstag
+    )
+    assert person.verfuegbare_kapazitaet(2026, 10) == 22 * 7.0 - 7.0
+
+
+def test_verfuegbare_kapazitaet_zieht_geplante_abwesenheit_ab():
+    person = Mitarbeiter(
+        id=1,
+        arbeitszeiten=(Wochenarbeitszeit(SIEBEN_STUNDEN, date(2020, 1, 1)),),
+        abwesenheiten=(
+            # Mo 05.10. bis Fr 09.10., fuenf Wochentage, genehmigter Urlaub.
+            Abwesenheit(
+                mitarbeiter_id=1,
+                beginnt=date(2026, 10, 5),
+                endet=date(2026, 10, 9),
+                typ=1,
+                status=1,
+            ),
+        ),
+    )
+    assert person.verfuegbare_kapazitaet(2026, 10) == 22 * 7.0 - 5 * 7.0
+
+
+def test_verfuegbare_kapazitaet_ignoriert_nicht_zaehlende_abwesenheit():
+    person = Mitarbeiter(
+        id=1,
+        arbeitszeiten=(Wochenarbeitszeit(SIEBEN_STUNDEN, date(2020, 1, 1)),),
+        abwesenheiten=(
+            # Abgelehnter Urlaub - zaehlt nicht, siehe zaehlt_als_kapazitaetsabzug.
+            Abwesenheit(
+                mitarbeiter_id=1,
+                beginnt=date(2026, 10, 5),
+                endet=date(2026, 10, 9),
+                typ=1,
+                status=2,
+            ),
+        ),
+    )
+    assert person.verfuegbare_kapazitaet(2026, 10) == 22 * 7.0
+
+
+def test_verfuegbare_kapazitaet_zaehlt_einen_ueberschneidenden_tag_nur_einmal():
+    # Urlaub ueber Weihnachten (21.-31.12.), der den Feiertag am 25.12. einschliesst -
+    # ein realistischer Fall, kein Sonderfall. Drei getrennte Abzuege (Sollstunden minus
+    # Feiertage minus Abwesenheit) wuerden den 25.12. doppelt abziehen; taggenau gerechnet
+    # zaehlt er nur einmal.
+    person = Mitarbeiter(
+        id=1,
+        arbeitszeiten=(Wochenarbeitszeit(SIEBEN_STUNDEN, date(2020, 1, 1)),),
+        feiertage=(Feiertag(datum=date(2026, 12, 25), halber_tag=False, name="1. Weihnachtstag"),),
+        abwesenheiten=(
+            Abwesenheit(
+                mitarbeiter_id=1,
+                beginnt=date(2026, 12, 21),
+                endet=date(2026, 12, 31),
+                typ=1,
+                status=1,
+            ),
+        ),
+    )
+    # Dezember 2026: 23 Wochentage a 7h = 161h, davon 9 Wochentage (21.-31.12., inkl.
+    # Feiertag am 25.) durch den Urlaub belegt = 63h Abzug, nicht 63h + 7h.
+    assert person.verfuegbare_kapazitaet(2026, 12) == 23 * 7.0 - 9 * 7.0
+
+
+def test_verfuegbare_kapazitaet_kappt_abwesenheit_an_monatsgrenzen():
+    # Abwesenheit reicht vom 28.11. bis 03.12. - fuer Dezember zaehlen nur die drei Tage
+    # ab dem 1., die zwei Novembertage nicht.
+    person = Mitarbeiter(
+        id=1,
+        arbeitszeiten=(Wochenarbeitszeit(SIEBEN_STUNDEN, date(2020, 1, 1)),),
+        abwesenheiten=(
+            Abwesenheit(
+                mitarbeiter_id=1,
+                beginnt=date(2026, 11, 28),
+                endet=date(2026, 12, 3),
+                typ=1,
+                status=1,
+            ),
+        ),
+    )
+    # 01.-03.12.2026 sind Dienstag bis Donnerstag, drei Wochentage.
+    assert person.verfuegbare_kapazitaet(2026, 12) == 23 * 7.0 - 3 * 7.0
+
+
 def test_feiertagsstunden_nutzt_die_am_feiertag_gueltige_sollzeit():
     # Ein Wechsel mitten im Monat: der Feiertag am 1. zaehlt noch mit der alten
     # Sollzeit, der am 15. schon mit der neuen - je Feiertag einzeln nachgeschlagen,
