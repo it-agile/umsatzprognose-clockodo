@@ -222,7 +222,7 @@ def test_deadline_monat_zaehlt_noch_voll_folgemonat_nicht():
     assert november == pytest.approx(0.0)
 
 
-def test_bereits_gebuchter_betrag_ist_die_untergrenze():
+def test_bereits_gebuchter_betrag_ist_die_untergrenze_in_kuenftigen_monaten():
     anna = mitarbeiter(1, "Anna")
     projekt = Projekt(
         id=1,
@@ -233,8 +233,46 @@ def test_bereits_gebuchter_betrag_ist_die_untergrenze():
         verbrauchte_stunden=10.0,  # Satz 50.0
         anteile=(Projektanteil(anna, stunden=10.0),),
     )
+    # Die Buchung liegt im zweiten Horizontmonat (Oktober), nicht im Stichtagsmonat -
+    # nur dort gilt sie als Untergrenze, siehe der naechste Test.
     verlauf_projekt = Verbrauchsverlauf.fuer(
-        projekt, [Monatsumsatz(jahr=2026, monat=9, umsatz=20000.0, stunden=400.0)]
+        projekt, [Monatsumsatz(jahr=2026, monat=10, umsatz=20000.0, stunden=400.0)]
+    )
+    b = Bestand(
+        stichtag=STICHTAG,  # 2026-09-01
+        projekte=(projekt,),
+        mitarbeiter=(anna,),
+        verbrauchsverlaeufe=(historie(0.1), verlauf_projekt),
+    )
+
+    prognose = b.simulieren(2, laeufe=3, zufall=Random(6))
+
+    # September: min(100000, 0.1*100000) = 10000, unveraendert. Oktober: simulierter
+    # Verbrauch waere nur 0.1*90000=9000 - der real gebuchte Betrag von 20000 ist die
+    # Untergrenze und ueberschreibt ihn (Spec 5.4).
+    for werte in prognose.monatswerte().values():
+        assert werte == [pytest.approx(10000.0), pytest.approx(20000.0)]
+    assert prognose.gebucht() == [pytest.approx(0.0), pytest.approx(20000.0)]
+
+
+def test_stichtagsmonat_zaehlt_keine_gebuchten_betraege_als_untergrenze():
+    """Verlauf.gebucht() kennt im Stichtagsmonat keine Tagesgrenze und mischt Buchungen
+    vor und nach dem Stichtag - als Untergrenze gezaehlt, wuerde der schon vom
+    Restvolumen abgezogene Teil vor dem Stichtag ein zweites Mal auftauchen."""
+    anna = mitarbeiter(1, "Anna")
+    projekt = Projekt(
+        id=1,
+        name="Mit Buchung im Stichtagsmonat",
+        aktiv=True,
+        budget=Budget(betrag=100500.0),
+        verbrauchtes_volumen=500.0,  # Restvolumen 100000
+        verbrauchte_stunden=10.0,  # Satz 50.0
+        anteile=(Projektanteil(anna, stunden=10.0),),
+    )
+    # Eine grosse Buchung im Stichtagsmonat selbst - realistisch, weil die Antwort
+    # keine Tagesgrenze kennt und Buchungen vor dem Stichtag mitzaehlt.
+    verlauf_projekt = Verbrauchsverlauf.fuer(
+        projekt, [Monatsumsatz(jahr=2026, monat=9, umsatz=90000.0, stunden=1800.0)]
     )
     b = Bestand(
         stichtag=STICHTAG,
@@ -243,9 +281,9 @@ def test_bereits_gebuchter_betrag_ist_die_untergrenze():
         verbrauchsverlaeufe=(historie(0.1), verlauf_projekt),
     )
 
-    prognose = b.simulieren(1, laeufe=3, zufall=Random(6))
+    prognose = b.simulieren(1, laeufe=3, zufall=Random(7))
 
-    # Simulierter Verbrauch waere nur 0.1*100000=10000 - der real gebuchte Betrag von
-    # 20000 ist die Untergrenze und ueberschreibt ihn (Spec 5.4).
+    # Ohne den Ausschluss fuer Monat 0 wuerde hier 90000 statt 10000 stehen.
     for werte in prognose.monatswerte().values():
-        assert werte == [pytest.approx(20000.0)]
+        assert werte == [pytest.approx(10000.0)]
+    assert prognose.gebucht() == [pytest.approx(0.0)]

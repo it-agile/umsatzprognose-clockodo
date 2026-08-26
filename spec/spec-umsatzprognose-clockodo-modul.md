@@ -464,13 +464,10 @@ Umgesetzt als Python-Paket `umsatzprognose` mit Notebook-Oberfläche in Google C
 
 - **Vollständig:** Abschnitte 4, 5.0, 5.1 (ohne die Näherung für Umsatz ohne Zeit, die
   als Hinweis ausgewiesen wird), 5.2, 5.3 (ohne den Abschlag für ungeplante Abwesenheit,
-  der laut Entscheidung vom 26.08.2026 im MVP ignoriert statt geschätzt wird) und die
-  Monte-Carlo-Simulation aus **5.4**, dazu die Umsatzhistorie der letzten zwölf Monate.
-- **Nicht vollständig:** die Ausgabe aus 5.5 – Konfidenzniveaus je Monat und Summe sowie
-  der Anteil kapazitätslimitierter Läufe liegen vor, der separat auszuweisende bereits
-  gebuchte Betrag je Horizontmonat und der Verbrauch vor dem Stichtag im laufenden Monat
-  noch nicht. An der Stelle der Bandbreite steht weiterhin eine Begründung, aber nur noch
-  dort, wo tatsächlich Daten fehlen (kein Projekt im Scope, keine Abrufquote-Verteilung).
+  der laut Entscheidung vom 26.08.2026 im MVP ignoriert statt geschätzt wird), die
+  Monte-Carlo-Simulation aus **5.4** und die Ausgabe aus **5.5**, dazu die Umsatzhistorie
+  der letzten zwölf Monate. Historie und Prognosehorizont stehen als ein Diagramm.
+- **Nicht gebaut:** der Rückwärtstest über 12 Stichtage (Abschnitt 11).
 
 Die Abrufquote-Verteilung ist am 26.08.2026 geschätzt. Ihre Kennzahlen stehen bewusst
 nicht hier: sie stammen aus der Installation, bewegen sich mit jeder Zeitbuchung und
@@ -498,10 +495,16 @@ keine Verzerrung, die sich beheben ließe, ohne Referenzklassen einzuführen.
    `/v4/absences` und `/v2/usersNonbusinessDays?year=…` angebunden. Der Abschlag für
    ungeplante Abwesenheit wird dagegen nicht geschätzt, sondern laut Entscheidung vom
    selben Tag im MVP ignoriert – keine Schätzung, kein Abzug.
-3. ~~**Simulation bauen** (5.4)~~ – gebaut am 26.08.2026,
-   `umsatzprognose.domaene.simulation.simulieren()`. Die Ausgabe aus 5.5 ist noch nicht
-   vollständig: es fehlen der separat auszuweisende bereits gebuchte Betrag je
-   Horizontmonat und der Verbrauch vor dem Stichtag im laufenden Monat.
+3. ~~**Simulation bauen** (5.4) und die Ausgabe aus **5.5**~~ – gebaut am 26.08.2026,
+   `umsatzprognose.domaene.simulation.simulieren()`. `Prognose.gebucht()` liefert dabei
+   den bereits gebuchten Betrag je Horizontmonat; für den Stichtagsmonat bewusst immer 0
+   – die zugrundeliegende Monatsgruppierung kennt keine Tagesgrenze und würde sonst den
+   schon vom Restvolumen abgezogenen Verbrauch vor dem Stichtag ein zweites Mal zählen
+   (ein beim Bauen des Diagramms gefundener und behobener Fehler). Der Verbrauch vor dem
+   Stichtag im laufenden Monat brauchte keine eigene Berechnung: er steht schon als
+   `Umsatzhistorie.laufender` bereit. `diagramme.umsatzverlauf()` zeigt seitdem Historie
+   und Prognosehorizont in einem Diagramm, bereits gebuchter und prognostizierter Umsatz
+   farblich unterscheidbar.
 4. **Rückwärtstest über 12 Stichtage.** Er entscheidet auch, ob Referenzklassen nötig
    sind (Abschnitt 6). Zu beachten: ein Ladevorgang verbraucht drei der 10 zulässigen
    `entrygroups`-Abrufe je Minute – 12 Stichtage brauchen also eine Drosselung oder eine

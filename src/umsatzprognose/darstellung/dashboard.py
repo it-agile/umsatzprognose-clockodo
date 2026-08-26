@@ -91,17 +91,17 @@ class Dashboard:
             ]
         )
 
-    def umsatzverlauf(self) -> go.Figure:
-        """Der Umsatz je Monat - alle Buchungen, auch die ohne Projektbezug."""
-        return diagramme.umsatzverlauf(self._historie())
+    def umsatzverlauf(self, monate: int = 3) -> go.Figure:
+        """Der Umsatz je Monat - Historie und, daran anschliessend, der Prognosehorizont.
+
+        ``monate`` steuert nur die Laenge des angehaengten Horizonts (Spec 5.4: 1 bis
+        3); die Historie zeigt unveraendert die letzten zwoelf abgeschlossenen Monate.
+        """
+        return diagramme.umsatzverlauf(self._historie(), self.bestand.simulieren(monate))
 
     def restvolumen_je_projekt(self, top: int = STANDARD_TOP) -> go.Figure:
         """Das offene Auftragsvolumen der groessten Projekte."""
         return diagramme.restvolumen_je_projekt(self.bestand.im_prognose_scope, top=top)
-
-    def prognose(self, monate: int = 3) -> go.Figure:
-        """Die Bandbreite der naechsten Monate aus der Monte-Carlo-Simulation (Spec 5.4)."""
-        return diagramme.prognose(self.bestand.simulieren(monate))
 
     def umsatztabelle(self) -> pd.DataFrame:
         """Dieselben Monate wie im Verlaufsdiagramm, zum Nachlesen."""

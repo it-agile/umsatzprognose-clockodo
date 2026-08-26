@@ -17,7 +17,7 @@ from collections.abc import Sequence
 import plotly.graph_objects as go
 
 from umsatzprognose.darstellung.gestaltung import (
-    ACHSE,
+    PROGNOSE_DECKKRAFT,
     SERIE,
     SERIE_HELL,
     TINTE,
@@ -28,7 +28,7 @@ from umsatzprognose.darstellung.gestaltung import (
 )
 from umsatzprognose.domaene.prognose import Prognose
 from umsatzprognose.domaene.projekt import Projekt
-from umsatzprognose.domaene.umsatzhistorie import Umsatzhistorie
+from umsatzprognose.domaene.umsatzhistorie import MONATSNAMEN, Monatsumsatz, Umsatzhistorie
 from umsatzprognose.domaene.zahlen import euro, tausend_euro
 
 # Getrennte Laengen fuer Kunde und Projekt: der Kundenname ist oft der laengere Teil,
@@ -38,24 +38,45 @@ MAXIMALE_KUNDENLAENGE = 22
 MAXIMALE_PROJEKTLAENGE = 38
 
 
-def umsatzverlauf(historie: Umsatzhistorie, *, hoehe: int = 420) -> go.Figure:
-    """Monatsumsatz als Balken, mit Durchschnittslinie und abgesetztem laufendem Monat.
+def umsatzverlauf(
+    historie: Umsatzhistorie, prognose: Prognose | None = None, *, hoehe: int = 420
+) -> go.Figure:
+    """Monatsumsatz als Balken: Historie, und daran anschliessend der Prognosehorizont.
 
     Der laufende Monat steht bewusst im Bild, obwohl er unvollstaendig ist: er zeigt,
     wie weit der Monat gediehen ist. Damit er nicht als Einbruch missverstanden wird,
     ist er hell gezeichnet und ausdruecklich beschriftet - und er geht in die
     Durchschnittslinie nicht ein.
+
+    Ist ``prognose`` gegeben und :attr:`~Prognose.vorhanden`, haengen sich die
+    Horizontmonate rechts an, in zwei Farbtoenen je Monat: **bereits gebucht** (so
+    sicher wie die Historie, deshalb dieselbe volle Farbe) und **prognostiziert** (der
+    Rest bis zum Median der Simulation, gedaempft - siehe
+    :data:`~umsatzprognose.darstellung.gestaltung.PROGNOSE_DECKKRAFT`). Ein duenner
+    Fehlerbalken je Monat zeigt, wie weit die 85-%- und 95-%-Niveaus darunter liegen
+    (Spec 5.5). Ohne ``prognose`` oder ohne Bandbreite bleibt das Bild bei der Historie;
+    die Begruendung steht dann als Hinweis rechts daneben.
+
+    Der erste Horizontmonat ist derselbe Kalendermonat wie der laufende - beide teilen
+    dieselbe Balkenbeschriftung und stapeln sich deshalb an derselben Stelle
+    uebereinander, ohne dass ``historie`` und ``prognose`` dafuer denselben Stichtag
+    tragen muessten explizit geprueft zu werden; in der Praxis stammen beide ohnehin aus
+    demselben :class:`~umsatzprognose.domaene.bestand.Bestand`.
     """
     monate = historie.monate
     laufender = historie.laufender
     durchschnitt = historie.durchschnitt()
 
-    fig = figur(
-        "Umsatz je Monat",
-        untertitel=f"Durchschnitt der {len(historie.abgeschlossene())} abgeschlossenen "
-        f"Monate: {euro(durchschnitt, nachkommastellen=0)}",
-        hoehe=hoehe,
+    untertitel = (
+        f"Durchschnitt der {len(historie.abgeschlossene())} abgeschlossenen "
+        f"Monate: {euro(durchschnitt, nachkommastellen=0)}"
     )
+    if prognose is not None and prognose.vorhanden:
+        anteil = prognose.kapazitaet_limitierend_anteil()
+        if anteil > 0:
+            untertitel += f". Kapazität war in {anteil:.0%} der Läufe der limitierende Faktor"
+
+    fig = figur("Umsatz je Monat", untertitel=untertitel, hoehe=hoehe)
     fig.add_bar(
         x=[m.beschriftung for m in monate],
         y=[m.umsatz for m in monate],
@@ -68,7 +89,15 @@ def umsatzverlauf(historie: Umsatzhistorie, *, hoehe: int = 420) -> go.Figure:
         customdata=[[euro(m.umsatz), f"{m.stunden:,.0f}".replace(",", ".")] for m in monate],
         hovertemplate="<b>%{x}</b><br>%{customdata[0]}<br>%{customdata[1]} Stunden<extra></extra>",
         showlegend=False,
+        name="Historie",
     )
+
+    if prognose is not None:
+        if prognose.vorhanden:
+            _prognosehorizont(fig, prognose, verbrauch_laufender_monat=laufender)
+        else:
+            _keine_prognose_hinweis(fig, prognose)
+
     fig.add_hline(
         y=durchschnitt,
         line={"color": TINTE_GEDAEMPFT, "width": 1, "dash": "dash"},
@@ -90,10 +119,102 @@ def umsatzverlauf(historie: Umsatzhistorie, *, hoehe: int = 420) -> go.Figure:
         )
 
     achsen(fig)
-    fig.update_layout(bargap=0.45, barcornerradius=4)
+    fig.update_layout(bargap=0.45, barcornerradius=4, barmode="overlay")
     fig.update_yaxes(tickformat=",.0f", ticksuffix=" €", rangemode="tozero")
     fig.update_xaxes(tickangle=0)
     return fig
+
+
+def _monatsbeschriftung(jahr: int, monat: int) -> str:
+    """Dieselbe Form wie :attr:`Monatsumsatz.beschriftung` - Voraussetzung fuers Stapeln."""
+    return f"{MONATSNAMEN[monat - 1]} {jahr}"
+
+
+def _prognosehorizont(
+    fig: go.Figure, prognose: Prognose, *, verbrauch_laufender_monat: Monatsumsatz | None
+) -> None:
+    """Haengt die Horizontmonate als zweigeteilte Balken an eine bestehende Figur an.
+
+    Der erste Horizontmonat ist der laufende Monat: dessen "bereits gebucht"-Anteil
+    steht schon als Balken in der Historie (``verbrauch_laufender_monat``), hier kommt
+    nur noch das Prognostizierte obendrauf. Fuer die folgenden Monate liefert
+    :meth:`Prognose.gebucht` den gesicherten Anteil, und
+    ``base``/``y`` werden bewusst ohne ``barmode="stack"`` gesetzt (der laeuft bei
+    mehreren Kategorien mit gleichem Namen nicht zuverlaessig zusammen) - stattdessen
+    zeichnet jede Spur ihr Segment selbst von ``base`` bis ``base + y``.
+    """
+    horizont = prognose.horizontmonate()
+    if not horizont:
+        return
+    beschriftungen = [_monatsbeschriftung(jahr, monat) for jahr, monat in horizont]
+    monatswerte = prognose.monatswerte()
+    gebucht = prognose.gebucht()
+    median, p85, p95 = monatswerte[0.50], monatswerte[0.85], monatswerte[0.95]
+
+    basis0 = verbrauch_laufender_monat.umsatz if verbrauch_laufender_monat else 0.0
+    sockel = [basis0, *gebucht[1:]]
+    prognostiziert = [median[0]] + [m - g for m, g in zip(median[1:], gebucht[1:], strict=True)]
+
+    if any(gebucht[1:]):
+        fig.add_bar(
+            x=beschriftungen[1:],
+            y=gebucht[1:],
+            marker={"color": SERIE},
+            customdata=[[euro(betrag)] for betrag in gebucht[1:]],
+            hovertemplate="<b>%{x}</b><br>Bereits gebucht: %{customdata[0]}<extra></extra>",
+            showlegend=False,
+            name="Bereits gebucht",
+        )
+
+    fig.add_bar(
+        x=beschriftungen,
+        y=prognostiziert,
+        base=sockel,
+        marker={"color": SERIE_HELL, "opacity": PROGNOSE_DECKKRAFT},
+        customdata=list(zip([euro(m) for m in median], [euro(p) for p in p85], strict=True)),
+        hovertemplate=(
+            "<b>%{x}</b><br>Erwartet (Median): %{customdata[0]}<br>"
+            "85%-Niveau: %{customdata[1]}<extra></extra>"
+        ),
+        showlegend=False,
+        name="Prognostiziert",
+    )
+
+    gesamt_median = [s + p for s, p in zip(sockel, prognostiziert, strict=True)]
+    fig.add_trace(
+        go.Scatter(
+            x=beschriftungen,
+            y=gesamt_median,
+            mode="markers",
+            marker={"size": 0, "color": "rgba(0,0,0,0)"},
+            error_y={
+                "type": "data",
+                "symmetric": False,
+                "array": [0.0] * len(beschriftungen),
+                "arrayminus": [m - p for m, p in zip(median, p95, strict=True)],
+                "color": TINTE_GEDAEMPFT,
+                "thickness": 1.5,
+                "width": 5,
+            },
+            hoverinfo="skip",
+            showlegend=False,
+        )
+    )
+
+
+def _keine_prognose_hinweis(fig: go.Figure, prognose: Prognose) -> None:
+    fig.add_annotation(
+        text=_umgebrochen(prognose.begruendung, breite=46),
+        showarrow=False,
+        x=0.99,
+        y=0.9,
+        xref="paper",
+        yref="paper",
+        xanchor="right",
+        yanchor="top",
+        align="right",
+        font={"color": TINTE_ZWEITRANGIG, "size": 11},
+    )
 
 
 def restvolumen_je_projekt(
@@ -148,42 +269,6 @@ def restvolumen_je_projekt(
         ticktext=[_achsenbeschriftung(p) for p in reversed(gezeigt)],
         tickfont={"color": TINTE, "size": 12},
         automargin=True,
-    )
-    return fig
-
-
-def prognose(prognose: Prognose, *, hoehe: int = 260) -> go.Figure:
-    """Die Flaeche, auf der spaeter die Bandbreite steht.
-
-    Solange es keine Prognose gibt, sagt das Diagramm genau das - mit Begruendung.
-    Eine leere Flaeche waere ein Fehler, eine erfundene Kurve ein groesserer.
-    """
-    fig = figur("Prognose der nächsten Monate", hoehe=hoehe)
-    fig.add_annotation(
-        text=_umgebrochen(prognose.begruendung),
-        showarrow=False,
-        x=0.5,
-        y=0.5,
-        xref="paper",
-        yref="paper",
-        font={"color": TINTE_ZWEITRANGIG, "size": 13},
-        align="center",
-    )
-    fig.update_xaxes(visible=False)
-    fig.update_yaxes(visible=False)
-    fig.update_layout(
-        shapes=[
-            {
-                "type": "rect",
-                "xref": "paper",
-                "yref": "paper",
-                "x0": 0,
-                "x1": 1,
-                "y0": 0,
-                "y1": 1,
-                "line": {"color": ACHSE, "width": 1, "dash": "dot"},
-            }
-        ]
     )
     return fig
 

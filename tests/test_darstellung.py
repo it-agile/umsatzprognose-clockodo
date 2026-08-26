@@ -8,14 +8,19 @@ und dass gleichnamige Projekte nicht zu einem Balken verschmelzen.
 from __future__ import annotations
 
 from datetime import date
+from random import Random
 
 from umsatzprognose.darstellung import diagramme, tabellen
 from umsatzprognose.darstellung.dashboard import Dashboard
+from umsatzprognose.darstellung.gestaltung import PROGNOSE_DECKKRAFT, SERIE, SERIE_HELL
 from umsatzprognose.domaene.bestand import Bestand
 from umsatzprognose.domaene.hinweis import Hinweis
 from umsatzprognose.domaene.kunde import Kunde
+from umsatzprognose.domaene.mitarbeiter import Mitarbeiter, Wochenarbeitszeit
 from umsatzprognose.domaene.projekt import Budget, Projekt
+from umsatzprognose.domaene.projektanteil import Projektanteil
 from umsatzprognose.domaene.umsatzhistorie import Monatsumsatz, Umsatzhistorie
+from umsatzprognose.domaene.verbrauchsverlauf import Verbrauchsverlauf
 
 STICHTAG = date(2026, 8, 24)
 KUNDE = Kunde(id=7, name="Union Asset Management Holding AG")
@@ -31,6 +36,18 @@ PROJEKTE = (
             budget=Budget(betrag=20000.0), verbrauchtes_volumen=7000.0, verbrauchte_stunden=50.0),
 )  # fmt: skip
 BESTAND = Bestand(stichtag=STICHTAG, projekte=PROJEKTE, umsatzhistorie=HISTORIE)
+
+
+def _historie_fuer_abrufquote(quote: float) -> Verbrauchsverlauf:
+    """Ein einzelner Beobachtungsmonat, der die Abrufquote-Verteilung auf ``quote`` setzt.
+
+    Dasselbe Muster wie in ``tests/test_simulation.py``: das Projekt liegt ausserhalb
+    des Prognose-Scope und traegt selbst keinen Umsatz bei, nur die eine Beobachtung.
+    """
+    projekt = Projekt(id=900, name="Historie", aktiv=False, budget=Budget(betrag=1000.0))
+    return Verbrauchsverlauf.fuer(
+        projekt, [Monatsumsatz(jahr=2026, monat=6, umsatz=quote * 1000.0, stunden=1.0)]
+    )
 
 
 def test_umsatzverlauf_zeigt_alle_monate_und_hebt_den_laufenden_hervor():
@@ -61,10 +78,89 @@ def test_balkenlaenge_bleibt_im_bild():
     assert fig.layout.xaxis.range[1] > max(fig.data[0].x)
 
 
-def test_prognoseflaeche_nennt_den_grund():
-    fig = diagramme.prognose(BESTAND.simulieren())
-    text = fig.layout.annotations[0].text
-    assert "Abrufquote" in text
+def test_umsatzverlauf_ohne_prognose_bleibt_wie_zuvor():
+    fig = diagramme.umsatzverlauf(HISTORIE)
+    assert len(fig.data) == 1
+
+
+def test_umsatzverlauf_nennt_den_grund_ohne_bandbreite():
+    fig = diagramme.umsatzverlauf(HISTORIE, BESTAND.simulieren())
+    assert any("Abrufquote" in a.text for a in fig.layout.annotations)
+
+
+def test_umsatzverlauf_haengt_horizont_mit_zwei_farbtoenen_an():
+    stichtag = date(2026, 9, 1)
+    historie = Umsatzhistorie.zum_stichtag(
+        [Monatsumsatz(2026, 8, 100000.0, 800.0), Monatsumsatz(2026, 9, 20000.0, 150.0)],
+        stichtag,
+        abgeschlossene=1,
+    )
+    anna = Mitarbeiter(
+        id=1,
+        name="Anna",
+        aktiv=True,
+        arbeitszeiten=(
+            Wochenarbeitszeit(
+                stunden_je_wochentag=(999.0, 999.0, 999.0, 999.0, 999.0, 0.0, 0.0),
+                gueltig_ab=date(2020, 1, 1),
+            ),
+        ),
+    )
+    projekt = Projekt(
+        id=1,
+        name="Projekt",
+        kunde=KUNDE,
+        aktiv=True,
+        budget=Budget(betrag=220000.0),
+        verbrauchtes_volumen=20000.0,
+        verbrauchte_stunden=200.0,
+        anteile=(Projektanteil(anna, stunden=200.0),),
+    )
+    # Eine Buchung im zweiten Horizontmonat, damit auch die "Bereits gebucht"-Spur
+    # etwas zu zeichnen hat.
+    verlauf_projekt = Verbrauchsverlauf.fuer(
+        projekt, [Monatsumsatz(jahr=2026, monat=10, umsatz=5000.0, stunden=50.0)]
+    )
+    bestand = Bestand(
+        stichtag=stichtag,
+        projekte=(projekt,),
+        mitarbeiter=(anna,),
+        umsatzhistorie=historie,
+        verbrauchsverlaeufe=(_historie_fuer_abrufquote(0.2), verlauf_projekt),
+    )
+    prognose = bestand.simulieren(2, laeufe=5, zufall=Random(1))
+    assert prognose.vorhanden
+
+    fig = diagramme.umsatzverlauf(historie, prognose)
+    namen = [spur.name for spur in fig.data]
+    assert "Bereits gebucht" in namen
+    assert "Prognostiziert" in namen
+
+    gebucht_spur = next(s for s in fig.data if s.name == "Bereits gebucht")
+    prognostiziert_spur = next(s for s in fig.data if s.name == "Prognostiziert")
+    # Farblich unterscheidbar: "gebucht" so satt wie die Historie, "prognostiziert"
+    # gedaempft - keine der beiden Spuren sieht wie die andere aus.
+    assert gebucht_spur.marker.color == SERIE
+    assert prognostiziert_spur.marker.color == SERIE_HELL
+    assert prognostiziert_spur.marker.opacity == PROGNOSE_DECKKRAFT
+    assert gebucht_spur.marker.color != prognostiziert_spur.marker.color
+
+
+def test_dashboard_zeigt_horizont_im_umsatzverlauf():
+    stichtag = date(2026, 9, 1)
+    historie = Umsatzhistorie.zum_stichtag(
+        [Monatsumsatz(2026, 9, 20000.0, 150.0)], stichtag, abgeschlossene=0
+    )
+    bestand = Bestand(
+        stichtag=stichtag,
+        projekte=(),
+        umsatzhistorie=historie,
+        verbrauchsverlaeufe=(_historie_fuer_abrufquote(0.2),),
+    )
+    dashboard = Dashboard(bestand)
+    fig = dashboard.umsatzverlauf(1)
+    # Kein Projekt im Scope - dieselbe Begruendung wie an der Domaene direkt.
+    assert any("Abrufquote" in a.text for a in fig.layout.annotations)
 
 
 def test_kennzahlen_zeigen_eine_kachel_je_eintrag():
@@ -110,6 +206,5 @@ def test_dashboard_liefert_alle_ansichten_zum_selben_stand():
     assert dashboard.stichtag == STICHTAG
     assert dashboard.umsatzverlauf().data
     assert dashboard.restvolumen_je_projekt(top=1).data[0].x == (34000.0,)
-    assert dashboard.prognose().layout.annotations
     assert len(dashboard.projekttabelle()) == 2
     assert len(dashboard.umsatztabelle()) == 13

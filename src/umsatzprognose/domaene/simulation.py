@@ -107,10 +107,11 @@ class MonteCarloPrognose(Prognose):
     nicht aufgehoben, sie waeren als Speicherlast ohne Gegenwert.
     """
 
-    horizontmonate: tuple[Monat, ...]
+    _horizontmonate: tuple[Monat, ...]
     laeufe: int
     _monatswerte: Mapping[float, tuple[float, ...]]
     _summe: Mapping[float, float]
+    _gebucht: tuple[float, ...]
     _kapazitaet_limitierend_anteil: float
 
     @property
@@ -121,11 +122,17 @@ class MonteCarloPrognose(Prognose):
     def begruendung(self) -> str:
         return (
             f"Monte-Carlo-Simulation ueber {self.laeufe} Laeufe, "
-            f"Horizont {len(self.horizontmonate)} Monat(e)."
+            f"Horizont {len(self._horizontmonate)} Monat(e)."
         )
+
+    def horizontmonate(self) -> tuple[Monat, ...]:
+        return self._horizontmonate
 
     def monatswerte(self) -> dict[float, list[float]]:
         return {niveau: list(werte) for niveau, werte in self._monatswerte.items()}
+
+    def gebucht(self) -> list[float]:
+        return list(self._gebucht)
 
     def summe(self) -> dict[float, float]:
         return dict(self._summe)
@@ -192,7 +199,15 @@ def simulieren(
         verlauf = verlaeufe_je_projekt.get(p.id)
         if verlauf is None:
             continue
-        for monat in horizont:
+        # Monat 0 ist der Stichtagsmonat: verlauf.gebucht() kommt aus einer
+        # Monatsgruppierung ohne Tagesgrenze und liefert deshalb den ganzen Monat, vor
+        # und nach dem Stichtag zusammen. Der Teil vor dem Stichtag ist schon als
+        # Verbrauch (5.1) vom Restvolumen abgezogen ("es taucht hier nicht wieder auf",
+        # Spec 5.4) - als Untergrenze fuer Monat 0 gezaehlt, wuerde er ein zweites Mal
+        # auftauchen. Fuer Monat 0 gibt es deshalb keine Untergrenze aus gebuchten
+        # Betraegen; was dort schon feststeht, zeigt die Historie
+        # (``Umsatzhistorie.laufender``) getrennt.
+        for monat in horizont[1:]:
             betrag = verlauf.gebucht(*monat)
             if betrag:
                 gebucht[(p.id, monat)] = betrag
@@ -284,11 +299,15 @@ def simulieren(
     }
     sortierte_laufsummen = sorted(laufsummen)
     summe = {niveau: _quantil(sortierte_laufsummen, 1.0 - niveau) for niveau in KONFIDENZNIVEAUS}
+    gebucht_je_monat = tuple(
+        sum(gebucht.get((p.id, monat), 0.0) for p in scope) for monat in horizont
+    )
 
     return MonteCarloPrognose(
-        horizontmonate=horizont,
+        _horizontmonate=horizont,
         laeufe=laeufe,
         _monatswerte=monatswerte,
         _summe=summe,
+        _gebucht=gebucht_je_monat,
         _kapazitaet_limitierend_anteil=kapazitaet_limitierte_laeufe / laeufe,
     )

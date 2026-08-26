@@ -155,14 +155,31 @@ Kapazitäten hängen nur an Stichtag und Horizontmonat, nicht am Lauf, und werde
 einmal vor der Lauf-Schleife berechnet statt bei jedem der 10.000 Läufe neu –
 `verfuegbare_kapazitaet()` iteriert selbst schon über jeden Tag des Monats.
 
-Noch nicht in die Simulation verdrahtet ist die **vollständige Ausgabe aus Spec 5.5**:
-`MonteCarloPrognose` liefert die vier über die `Prognose`-ABC geforderten Größen
-(Konfidenzniveaus je Monat und Summe, Anteil kapazitätslimitierter Läufe), aber noch
-nicht den separat auszuweisenden bereits gebuchten Betrag je Horizontmonat oder den
-Verbrauch vor dem Stichtag im laufenden Monat – beides reine Ausgabegrößen, die
-`Verbrauchsverlauf.gebucht()` bzw. `verbrauch_vor()` bereits liefern können, aber noch
-nicht an `MonteCarloPrognose` oder die Diagramme angebunden sind. Der Rückwärtstest über
-12 Stichtage (Spec 11.4) steht ebenfalls noch aus.
+Seit dem 26.08.2026 liefert `MonteCarloPrognose` (über die `Prognose`-ABC) auch den
+**bereits gebuchten Betrag je Horizontmonat** (`gebucht()`) und die Horizontmonate selbst
+(`horizontmonate()`) – die Ausgabe aus Spec 5.5 ist damit vollständig, bis auf den
+Verbrauch vor dem Stichtag im laufenden Monat, der nicht separat berechnet werden muss:
+er steht schon als `Umsatzhistorie.laufender` bereit und wird im Diagramm direkt darauf
+gestapelt (siehe unten). Der Rückwärtstest über 12 Stichtage (Spec 11.4) steht noch aus.
+
+**Bugfix beim Bauen des Diagramms gefunden und behoben (26.08.2026):** `Verbrauchsverlauf.
+gebucht()` kennt im Stichtagsmonat keine Tagesgrenze (die Monatsgruppierung liefert den
+ganzen Monat, vor und nach dem Stichtag zusammen) und hätte als Untergrenze für Monat 0
+den schon vom Restvolumen abgezogenen Verbrauch vor dem Stichtag ein zweites Mal gezählt
+– Spec 5.4 sagt ausdrücklich, dass genau das nicht passieren darf ("es taucht hier nicht
+wieder auf"). `simulieren()` schließt Monat 0 deshalb von der Untergrenze aus
+`gebucht[]` aus; `Prognose.gebucht()` liefert für Monat 0 immer 0. Details und ein
+Regressionstest dazu in `simulation.py` und `tests/test_simulation.py`.
+
+`diagramme.umsatzverlauf()` zeigt seitdem Historie und Prognosehorizont in **einem**
+Diagramm (`Dashboard.umsatzverlauf(monate=3)`): bereits gebuchter Umsatz je Horizontmonat
+in derselben satten Farbe wie die Historie, prognostizierter Umsatz obendrauf gedämpft
+(`gestaltung.PROGNOSE_DECKKRAFT`) – Sicherheit einer Zahl drückt sich über die Deckkraft
+aus, keine zweite Farbfamilie. Ein dünner Fehlerbalken zeigt die 85-%/95-%-Niveaus
+unterhalb des Medians. Der bisherige eigene `Dashboard.prognose()`/`diagramme.prognose()`
+ist entfallen, ebenso die zugehörige Notebook-Zelle „Prognose der nächsten Monate" – die
+Bandbreite steht jetzt direkt im „Umsatz je Monat"-Diagramm, mitsamt der Begründung, wenn
+keine Bandbreite vorliegt.
 
 Die Verteilung liegt an `Bestand.abrufquotenverteilung()` und stammt aus den
 `Verbrauchsverlauf`-Objekten. Ihre Kennzahlen stehen hier bewusst nicht: sie stammen aus
@@ -607,9 +624,9 @@ laufenden Monats stumm dem Verbrauch zu, statt sie der Prognose anzurechnen.
 
 ## Nächster geplanter Schritt
 
-**Spec 5.3 (Abwesenheiten, Feiertage, verfügbare Kapazität) und 5.4 (Monte-Carlo-
-Simulation) sind vollständig umgesetzt und entschieden.** Es fehlen noch zwei Teile der
-Ausgabe aus Spec 5.5 und der Rückwärtstest – Details dazu am Ende dieses Abschnitts.
+**Spec 5.3 (Abwesenheiten, Feiertage, verfügbare Kapazität), 5.4 (Monte-Carlo-Simulation)
+und 5.5 (Ausgabe) sind vollständig umgesetzt und entschieden.** Es fehlt nur noch der
+Rückwärtstest – Details dazu am Ende dieses Abschnitts.
 
 Zugriff: `ClockodoClient.absences(year)` liest `/v4/absences` mit `filter[year]`,
 `ClockodoClient.users_nonbusiness_days(year)` liest `/v2/usersNonbusinessDays` mit dem
@@ -666,9 +683,19 @@ Zwei Punkte aus der Doku-Gegenprobe, die jetzt in der Simulation verdrahtet sind
   `_traegt_noch_bei()`). Eine `deadline` ohne `automatic_completion` bleibt unverbindlich
   und ohne Wirkung.
 
-Offen sind noch zwei Teile der **Ausgabe aus Spec 5.5**: der separat auszuweisende
-bereits gebuchte Betrag je Horizontmonat und der Verbrauch vor dem Stichtag im laufenden
-Monat. Beide Werte liefern `Verbrauchsverlauf.gebucht()` bzw. `verbrauch_vor()` bereits;
-es fehlt die Anbindung an `MonteCarloPrognose` und an `diagramme.prognose()`. Danach der
-**Rückwärtstest über 12 Stichtage** – der braucht wegen des Limits von 10
-`entrygroups`-Abrufen je Minute eine Drosselung oder wiederverwendete Antworten.
+Die **Ausgabe aus Spec 5.5** ist seit dem 26.08.2026 vollständig: `Prognose` trägt neben
+den Konfidenzniveaus und dem Anteil kapazitätslimitierter Läufe jetzt auch
+`horizontmonate()` und `gebucht()` (bereits gebuchter Betrag je Horizontmonat, 0 im
+Stichtagsmonat – siehe den Bugfix unter „Stand der Implementierung" oben). Der Verbrauch
+vor dem Stichtag im laufenden Monat brauchte keine eigene Berechnung: er steht schon als
+`Umsatzhistorie.laufender` bereit.
+
+`diagramme.umsatzverlauf()` zeigt seitdem Historie und Prognosehorizont in einem
+Diagramm statt in zwei getrennten – der frühere `Dashboard.prognose()`/
+`diagramme.prognose()` ist entfallen. Bereits gebuchter und prognostizierter Umsatz sind
+farblich unterscheidbar (satt vs. gedämpft über `gestaltung.PROGNOSE_DECKKRAFT`, keine
+zweite Farbfamilie), dazu ein Fehlerbalken für die 85-%/95-%-Niveaus. Details und die
+Begründung der Farbwahl im Docstring von `diagramme.umsatzverlauf()`.
+
+Als Nächstes der **Rückwärtstest über 12 Stichtage** – der braucht wegen des Limits von
+10 `entrygroups`-Abrufen je Minute eine Drosselung oder wiederverwendete Antworten.

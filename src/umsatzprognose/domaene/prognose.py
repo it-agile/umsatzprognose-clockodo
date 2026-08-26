@@ -33,8 +33,22 @@ class Prognose(ABC):
         """Eine Zeile fuer die Darstellung - was die Prognose sagt oder warum nicht."""
 
     @abstractmethod
+    def horizontmonate(self) -> tuple[tuple[int, int], ...]:
+        """Die Monate des Horizonts (Jahr, Monat), in der Reihenfolge von :meth:`monatswerte`
+        und :meth:`gebucht`."""
+
+    @abstractmethod
     def monatswerte(self) -> dict[float, list[float]]:
         """Je Konfidenzniveau ein Umsatzwert pro Monat des Horizonts (Spec 5.5)."""
+
+    @abstractmethod
+    def gebucht(self) -> list[float]:
+        """Bereits gebuchter Betrag je Horizontmonat (Spec 5.5) - die Untergrenze aus 5.4.
+
+        Fuer den Stichtagsmonat immer 0: dort laesst sich der Anteil vor dem Stichtag
+        nicht von dem danach trennen (Monatsgruppierung ohne Tagesgrenze), und was vor
+        dem Stichtag schon feststand, zeigt die Historie getrennt.
+        """
 
     @abstractmethod
     def summe(self) -> dict[float, float]:
@@ -67,8 +81,14 @@ class NochKeinePrognose(Prognose):
     def begruendung(self) -> str:
         return self.fehlt
 
+    def horizontmonate(self) -> tuple[tuple[int, int], ...]:
+        return ()
+
     def monatswerte(self) -> dict[float, list[float]]:
         return {}
+
+    def gebucht(self) -> list[float]:
+        return []
 
     def summe(self) -> dict[float, float]:
         return {}

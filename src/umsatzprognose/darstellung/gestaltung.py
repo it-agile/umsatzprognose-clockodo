@@ -32,6 +32,11 @@ TINTE_GEDAEMPFT = "#898781"
 GITTER = "#e1e0d9"
 ACHSE = "#c3c2b7"
 
+# Fuer den prognostizierten (noch nicht realen) Teil eines Balkens: dieselbe Farbfamilie,
+# aber gedaempft - Sicherheit einer Zahl druecken wir ueber die Deckkraft aus, nicht ueber
+# eine zweite Farbe (siehe Moduldocstring).
+PROGNOSE_DECKKRAFT = 0.4
+
 SCHRIFT = 'system-ui, -apple-system, "Segoe UI", sans-serif'
 
 
