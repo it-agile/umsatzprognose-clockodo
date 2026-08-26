@@ -43,7 +43,16 @@ wird im Prognosezeitraum tatsächlich abgerufen?**
 ## 4. Datenmodell aus Clockodo
 
 **Zur Herkunft dieser Tabelle.** Alle Angaben unten sind gegen die Installation
-geprüft.
+geprüft. Seit dem 26.08.2026 liegt zusätzlich die OpenAPI-Beschreibung im Repository
+(`spec/clocodo-api.yaml`, Fassung 2026-08-24). Beide Quellen widersprechen sich an
+einigen Stellen; dann gilt die echte Antwort. Die Doku deklariert `EntryGroupV2.group`
+als String (kommt bei `group == 0` und `grouping[]=year` als Zahl) und
+`EntryGroupV2.revenue` als Integer (ist ein Float).
+
+**`/api/entrygroups` ist auf 10 GET je Minute begrenzt**, ein endpunkteigenes Limit
+zusätzlich zum globalen (900/min, 20.000/Tag); darüber antwortet die API mit 429. Ein
+Ladevorgang verbraucht drei davon. Der Rückwärtstest aus 11.4 über 12 Stichtage wären 36
+Abrufe und braucht damit eine Drosselung.
 | Zweck | Endpunkt | Relevante Felder |
 |---|---|---|
 | Auftragsvolumen | `GET /v4/projects` | `budget` (`amount`, `hard`, `monetary`, `interval`, `from_subprojects`), `active`, `completed`, `customers_id`, `name` |
@@ -75,25 +84,52 @@ Gesamtlänge**.
   aufgetreten; träte er auf, wird er nicht gedeutet, sondern gemeldet.
 - **Abwesenheiten liegen auf `/v4/absences`.** Die Legacy-Pfade `/absences`,
   `/v2/absences` und `/v3/absences` antworten mit 410 `deprecated`.
-- **Feiertage liegen auf dem unversionierten `/nonbusinessdays?year=…`** (geprüft am
-  26.08.2026). `/v2`, `/v3` und `/v4` davon geben 404, `/holidays` ebenfalls; ohne
-  `year` kommt 400 `Missing data: year`, außerhalb von 2000–2037 ein 500 mit
-  Klartextmeldung. Envelope-Key ist `nonbusinessdays`, es gibt kein `paging`: ein
-  Abruf liefert alle 77 Einträge über die sechs Feiertagsgruppen dieser Anlage. Die
-  beweglichen Feste sind serverseitig gerechnet und nicht kopiert (Karfreitag
-  2025-04-18, 2026-04-03, 2027-03-26). `nonbusinessgroups_id` wirkt hier als echter
-  Filter (77 → 15 Einträge) – anders als bei `/v4/projects`, wo unbekannte Parameter
-  still ignoriert werden.
-- **Die Feiertagsgruppen selbst sind nicht abrufbar.** `/nonbusinessgroups` antwortet
-  mit 410 `deprecated`, `/v2` bis `/v5` mit 404. Es fehlt damit nur der Gruppenname;
-  die Zuordnung steht in `users.nonbusinessgroups_id`, und die Namen der Feiertage
-  liefert `/nonbusinessdays` mit. Alle 26 aktiven Personen haben eine Gruppe.
+- **Feiertage gibt es in zwei Generationen**, und beide funktionieren. Die frühere
+  Notiz, `/v2` bis `/v4` gäben 404 und die Feiertagsgruppen seien nicht abrufbar, war ein
+  **Schreibweisenfehler**: `/v2/nonbusinessDays` und `/v2/nonbusinessGroups` antworten mit
+  200, die kleingeschriebenen Varianten mit 404 bzw. 410 (korrigiert am 26.08.2026).
+  Dieselben Feiertage, verschiedene Felder – wer sie verwechselt, liest `null`:
+
+  | | `/nonbusinessdays` (unversioniert) | `/v2/nonbusinessDays` |
+  |---|---|---|
+  | Envelope | `nonbusinessdays` | `data` |
+  | Gruppe | `nonbusinessgroups_id` | `nonbusiness_group_id` |
+  | Datum | `date` | `evaluated_date` |
+  | Halber Tag | `half_day: 0` / `1` | `half_day: false` / `true` |
+  | `year` | Pflicht (400 ohne) | optional |
+
+  Beide ohne `paging`; die unversionierte Fassung liefert alle 77 Einträge über die sechs
+  Gruppen dieser Anlage. Die beweglichen Feste sind serverseitig gerechnet und nicht
+  kopiert (Karfreitag 2025-04-18, 2026-04-03, 2027-03-26). Der Gruppenfilter wirkt in
+  beiden Fassungen als echter Filter (77 → 15 Einträge) – anders als bei `/v4/projects`,
+  wo unbekannte Parameter still ignoriert werden.
+- **Die Feiertagsgruppen sind abrufbar**: `/v2/nonbusinessGroups` liefert je Gruppe `id`,
+  `name` und `company_default` – in dieser Anlage sechs Gruppen mit sprechenden Namen
+  („it-agile BRB, HH, HB, NI, SH", „BY mit Mariä Himmelfahrt").
+- **Zwei Endpunkte sind für 5.3 die kürzere Strecke**, beide mit Paginierung (50 je
+  Seite): `/v2/usersNonbusinessDays?year=…` liefert die Feiertage **je Person** fertig
+  zugeordnet (`{"users_id": …, "days": [...]}`), `/v3/usersNonbusinessGroups` die
+  Zuordnung Person → Gruppe **mit Gültigkeitszeitraum** (`date_since`, `date_until`; 60
+  Einträge auf 59 Personen, eine Zuordnung hat also schon gewechselt).
+  `users.nonbusinessgroups_id` kennt nur den heutigen Stand und ist für einen vergangenen
+  Stichtag der falsche Wert.
+- **Was die Doku zu `half_day` nicht sagt: was es bewirkt.** Sie deklariert ein Boolean,
+  nicht seine Wirkung auf die Sollstunden. Die Deutung in 5.3 bleibt damit eine Annahme;
+  belegt ist nur, dass es ein Schalter ist und keine Stundenzahl.
 - **`/v2/entries` wird nicht benutzt.** `count_items` steht bei 16.461 für zwölf Monate,
   `items_per_page` bei 2500 – sieben Abrufe je Jahr Historie, um dieselbe Summe zu
   bilden, die `/v2/entrygroups` schon gebildet hat. Die Doppelgruppierung nach Projekt
   und Person liefert die Aufteilung fertig aggregiert; ihre Projektsummen sind mit denen
-  der einfachen Gruppierung über alle 870 Gruppen identisch. Erst wenn eine Auswertung
-  wirklich den einzelnen Eintrag braucht, lohnt der Endpunkt.
+  der einfachen Gruppierung über alle 870 Gruppen identisch. Der einzige Grund, der bisher
+  für den Endpunkt sprach – `type` zur Trennung von Pauschalleistungen –, ist mit dem
+  Gruppierungswert **`is_lumpsum`** entfallen.
+- **`grouping` kennt mehr Werte als benutzt**: neben `projects_id`, `users_id`,
+  `customers_id`, `month`, `year`, `week`, `day` auch `is_lumpsum`, `billable`,
+  `services_id`, `subprojects_id`, `lumpsum_services_id` und `texts_id`. Dazu gibt es
+  serverseitige Filter (`filter[projects_id]`, `filter[users_id]`, `filter[customers_id]`,
+  `filter[billable]`, `filter[budget_type]`) und `prepend_customer_to_project_name` –
+  letzteres erklärt das „Kunde / Projekt" im Feld `name`. Laut Doku sind `time_since` und
+  `time_until` **beide** Pflicht.
 
 Weiter zu beachten, ebenfalls verifiziert:
 
@@ -111,7 +147,22 @@ Weiter zu beachten, ebenfalls verifiziert:
   daraus ein Phantom-Projekt.
 - `revenue_factor` ist bei allen aktiven Projekten 1, `test_data` überall `false`, und
   kein aktives Projekt hat Teilprojekte. Diese Felder brauchen keine Sonderbehandlung,
-  solange das so bleibt.
+  solange das so bleibt. Die Doku nennt die Regel dahinter: `revenue_factor` ist `1` bei
+  weichem oder fehlendem Budget, `null` bei einem harten Budget vor Projektende, und
+  darunter, wenn ein hartes Budget überzogen wurde (bei 400 % Nutzung `0.25`). Weil
+  `budget.hard` hier überall `false` ist, bleibt er 1 – bei einem harten Budget müsste er
+  in Umsatz und Stundensatz eingerechnet werden.
+- **`start_date`, `deadline` und `automatic_completion` sind bisher unbenutzt** (geprüft
+  am 26.08.2026). `automatic_completion` ist bei 121 von 122 aktiven Projekten `true`,
+  eine `deadline` haben aber nur 3 – eine davon der 30.09.2026 und damit **innerhalb des
+  heutigen Horizonts**: dieses Projekt wird zum Monatsende automatisch abgeschlossen und
+  trägt ab Oktober nichts mehr bei. Für 5.4 ist das relevant und nicht modelliert.
+  `start_date` ist nur bei 6 von 122 gesetzt und taugt damit nicht dazu, den Beginn des
+  Beobachtungsfensters aus 5.2 zu bestimmen.
+- **`budget.interval` ist ein Integer-Enum** (0 wochenweise, 1 monatlich, 2 quartalsweise,
+  3 jährlich), kein String. Die 0 ist gültig und falsy – eine Prüfung auf den
+  Wahrheitswert würde ein Wochenbudget still als Gesamtbudget lesen. In dieser
+  Installation ist `interval` bei allen 659 Projekten mit Budget `null`.
 - **Historientiefe:** `revenue` deckt die ganze Historie ab, sobald die untere
   Zeitgrenze weit genug liegt – `time_since=2010-01-01` liefert dieselben 870 Gruppen
   und dieselbe Summe wie `2020-01-01`. Die Antwort hat kein `paging`.
@@ -189,9 +240,22 @@ braucht.
 - Der effektive Stundensatz eines Projekts ist `revenue / (duration/3600)` über seine
   gesamte Historie. Pauschalleistungen mit gebuchter Zeit sind darin normalisiert
   enthalten, ohne eigenen Modellzweig.
-- **Umsatz ohne jede erfasste Zeit** (8 Gruppen; `duration == 0`) liefert keinen Satz.
+- **Diese Normalisierung ist am 26.08.2026 gemessen worden** (`grouping[]=is_lumpsum`):
+  17,9 der 30,6 Mio. EUR Gesamtumsatz sind Pauschalen, und Pauschaleinträge tragen
+  **grundsätzlich keine Dauer** – 0,0 Stunden über alle. Im Prognose-Scope sind es 22,8 %
+  des Verbrauchs, verteilt auf 33 der 42 Projekte, viele davon zu 100 %. Die Annahme hält
+  trotzdem: die Arbeit hinter einer Pauschale wird als Zeit **ohne** Umsatz gebucht, und
+  die abgeleiteten Sätze im Scope bleiben plausibel (53,57 bis 368,14 EUR je Stunde,
+  Median 168,34; kein Wert über 600). Wäre die Arbeit gar nicht erfasst, müssten hier
+  Sätze in Tausenderhöhe stehen.
+- **Umsatz ohne jede erfasste Zeit** (6 Gruppen; `duration == 0`) liefert keinen Satz.
   Solche Projekte gehen mit ihrem Restvolumen in die Simulation ein, verbrauchen aber
   **keine Kapazität**
+- **Ein Stundensatz von genau 0 ist derselbe Fall wie kein Satz.** Zwei Projekte im Scope
+  haben gebuchte Zeit (36,5 h und 1,5 h) und noch keinen Umsatz; ihr abgeleiteter Satz ist
+  `0.0`. In Schritt 3 von 5.4 wäre das eine Division durch Null, sie dürfen also keinen
+  Stundenbedarf erzeugen. Der Hinweis aus 5.5 nennt bisher nur die drei Projekte ohne
+  erfasste Zeit, nicht diese zwei.
 
 ### 5.2 Abrufquote-Verteilung
 
@@ -247,12 +311,19 @@ verfügbare Kapazität(Person, Monat) = Sollstunden(Person, Monat)
   Einträge.
 - **Geplante Abwesenheit** aus `/v4/absences?year=…`, in Stunden gegen dieselbe
   Sollarbeitszeit gerechnet.
-- **Feiertage** aus `/nonbusinessdays?year=…`, je Person über ihre
-  `nonbusinessgroups_id` aus `/v3/users`. Sie stehen weder in `/targethours` noch in
-  den Abwesenheiten und sind deshalb eigens abzuziehen: ein Feiertag mit
-  `half_day: 0` setzt die Sollstunden seines Wochentags auf 0, `half_day: 1`
-  halbiert sie. Fällt er auf einen Wochentag ohne Sollstunden, wirkt er von selbst
-  nicht – ein Sonderfall für Wochenenden ist nicht nötig.
+- **Feiertage** am besten aus `/v2/usersNonbusinessDays?year=…`, das sie je Person
+  fertig zugeordnet liefert; die eigene Zuordnung über `users.nonbusinessgroups_id`
+  erspart sich damit – und mit ihr der Fehler, für einen vergangenen Stichtag die heutige
+  Zuordnung zu benutzen (die historische steht in `/v3/usersNonbusinessGroups` mit
+  `date_since`/`date_until`). Sie stehen weder in `/targethours` noch in den Abwesenheiten
+  und sind deshalb eigens abzuziehen: ein Feiertag ohne `half_day` setzt die Sollstunden
+  seines Wochentags auf 0, mit `half_day` halbiert er sie. Fällt er auf einen Wochentag
+  ohne Sollstunden, wirkt er von selbst nicht – ein Sonderfall für Wochenenden ist nicht
+  nötig.
+- **Sollstunden können fehlen.** `users.default_target_hours` heißt laut Doku „Uses the
+  company's default target hours": wer den Schalter trägt, hat keine eigene Zeile in
+  `/targethours`. Heute geht die Rechnung auf (26 offene Zeilen für 26 aktive Personen),
+  aber der Fall ist vorgesehen und braucht dann eine Quelle für den Firmenstandard.
 - **Abschlag für ungeplante Abwesenheit**: ein aus der Abwesenheitshistorie geschätzter
   Prozentsatz. Noch nicht geschätzt (11.2).
 
@@ -270,8 +341,10 @@ der Deckel, den er skaliert.
 
 Offen bleibt die Deutung von `half_day`: dass ein halber Feiertag die Sollstunden des
 Tages halbiert, passt zum Feldnamen und zu den betroffenen Tagen (Heiligabend und
-Silvester, in einer Gruppe gar nicht geführt), ist aber nicht an der Clockodo-Doku
-belegt. Es geht um zwei Tage im Dezember.
+Silvester, in einer Gruppe gar nicht geführt). Die OpenAPI-Beschreibung deklariert das
+Feld nur als Boolean und sagt nichts über seine Wirkung – die Annahme bleibt damit eine
+Annahme, belegt ist nur, dass es ein Schalter und keine Stundenzahl ist. Es geht um zwei
+Tage im Dezember.
 
 ### 5.4 Simulationslogik
 
@@ -411,10 +484,12 @@ Schätzung und keine Verzerrung, die sich beheben ließe, ohne Referenzklassen e
    nur auf den Cent auf (Clockodo rundet jede Gruppe einzeln), und `group == 0` kommt
    mehrfach vor – je Kunde ohne Projekt einmal.
 2. **Abwesenheiten und Feiertage auswerten** (5.3): `/v4/absences` anbinden und aus der
-   Historie den Abschlag für ungeplante Abwesenheit schätzen; `/nonbusinessdays` je
-   Feiertagsgruppe anbinden und die `nonbusinessgroups_id` der Person mitlesen, die
-   heute noch verworfen wird. Der Horizont reicht über eine Jahresgrenze, also zwei
-   Abrufe.
+   Historie den Abschlag für ungeplante Abwesenheit schätzen; für die Feiertage
+   `/v2/usersNonbusinessDays?year=…` statt der Feiertagsgruppen von Hand zuzuordnen. Der
+   Horizont reicht über eine Jahresgrenze, also zwei Abrufe je Endpunkt.
 3. **Simulation bauen** (5.4) und die Ausgabe aus 5.5 vollständig liefern.
 4. **Rückwärtstest über 12 Stichtage.** Er entscheidet auch, ob Referenzklassen nötig
-   sind (Abschnitt 6).
+   sind (Abschnitt 6). Zu beachten: ein Ladevorgang verbraucht drei der 10 zulässigen
+   `entrygroups`-Abrufe je Minute – 12 Stichtage brauchen also eine Drosselung oder eine
+   Wiederverwendung der Antworten über die Stichtage hinweg. Letzteres ist möglich, weil
+   sich zwischen zwei Stichtagen nur die Zeitgrenzen ändern, nicht die Gruppierung.

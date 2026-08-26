@@ -233,7 +233,9 @@ Stand der Clockodo-API:
 | Personen | `GET /v3/users` | `id`, `name`, `active` – **nicht** `default_target_hours` |
 | Sollarbeitszeit | `GET /targethours` (unversioniert) | `users_id`, `date_since`/`date_until`, Stunden je Wochentag |
 | Geplante Abwesenheit | `GET /v4/absences?year=…` | noch nicht ausgewertet (Spec 5.3) |
-| Feiertage | `GET /nonbusinessdays?year=…` (unversioniert) | `nonbusinessgroups_id`, `date`, `half_day` – noch nicht ausgewertet (Spec 5.3) |
+| Feiertage | `GET /v2/nonbusinessDays` | `nonbusiness_group_id`, `evaluated_date`, `half_day` (bool) – noch nicht ausgewertet (Spec 5.3) |
+| Feiertage je Person | `GET /v2/usersNonbusinessDays?year=…` | `users_id`, `days[]` – noch nicht ausgewertet |
+| Feiertagsgruppe je Person | `GET /v3/usersNonbusinessGroups` | `users_id`, `nonbusiness_groups_id`, `date_since`/`date_until` |
 | Einzeleinträge | `GET /v2/entries` | **wird nicht benutzt**, siehe unten |
 
 `budget.hard` ist in dieser Installation `false` – Budgets sind also weiche Grenzen und
@@ -247,13 +249,36 @@ Deshalb führt `Projekt` beide Größen getrennt – `restvolumen_roh`
 (vorzeichenbehaftet, für die Kalibrierung) und `restvolumen_prognosewirksam` (bei 0
 gekappt, für die Simulation).
 
+**`/api/entrygroups` ist auf 10 GET je Minute begrenzt** – ein endpunkteigenes Limit
+zusätzlich zum globalen (900/min, 20.000/Tag), bei Überschreitung 429. Das ist die engste
+Stelle des ganzen Moduls: ein Ladevorgang verbraucht **drei** davon (Verbrauch je Person,
+Umsatz je Monat, Verbrauch je Projektmonat). Der Rückwärtstest über 12 Stichtage aus Spec
+11.4 wären 36 Abrufe und läuft damit ohne Drosselung in den 429. Der Client behandelt 429
+heute nicht eigens; er wirft `ClockodoError` wie bei jedem Fehlerstatus.
+
 Basis-URL ist `https://my.clockodo.com/api`. Authentifizierung über drei Header, alle
 drei sind Pflicht: `X-ClockodoApiUser` (E-Mail des Benutzers), `X-ClockodoApiKey` und
 `X-Clockodo-External-Application` im Format `name;email` mit **maximal 50 Zeichen
 Gesamtlänge**. `clockodo.config.ClockodoCredentials` kapselt das und prüft die Längengrenze.
 
-`docs.clockodo.com` wird als JavaScript-Anwendung ausgeliefert und war nicht auslesbar;
-die Response-Strukturen stammen daher aus echten Läufen, nicht aus der Doku.
+**Die OpenAPI-Beschreibung liegt seit dem 26.08.2026 im Repository**:
+`spec/clocodo-api.yaml`, Fassung `2026-08-24`, rund 20.600 Zeilen. Vorher war
+`docs.clockodo.com` als JavaScript-Anwendung nicht auslesbar, und alle Strukturen
+stammten aus echten Läufen.
+
+**Die Doku ist die erste Anlaufstelle, die echte Antwort bleibt die Entscheidung.** An
+drei Stellen widersprechen sich beide, und zwar so, dass die Doku die schlechtere Quelle
+ist:
+
+- `EntryGroupV2.group` ist als `string` deklariert, kommt aber bei `group == 0` und bei
+  `grouping[]=year` als **Zahl**. Deshalb bleibt `str()` vor dem Zerlegen.
+- `EntryGroupV2.revenue` ist als `integer/int64` deklariert und ist in Wahrheit ein
+  **Float** (86.661,88). Deshalb bleibt `float()`.
+- `EntryGroupV2.duration` nennt keine Einheit; **Sekunden** steht nur an den Feldern von
+  `/v2/entries` („Duration in seconds").
+
+Umgekehrt hat die Doku zwei unserer Befunde widerlegt – beide waren
+Schreibweisenfehler, siehe unten bei den Feiertagen.
 
 `/v4/projects` liefert
 
@@ -267,7 +292,7 @@ ein `paging`-Objekt. `items_per_page` ist 1000 bei aktuell 895 Projekten – die
 nah, deshalb läuft `ClockodoClient.get_paged` über alle Seiten statt nur über die erste.
 
 Die Paginierung ist inzwischen ausgeführt und nicht mehr geraten: `items_per_page` setzt
-die Seitengröße, `page` wählt die Seite. Mit `items_per_page=3` antwortet die API mit
+die Seitengröße (laut Doku bis 5000), `page` wählt die Seite. Mit `items_per_page=3` antwortet die API mit
 `count_pages: 299`, und `page=2` liefert `current_page: 2` samt anderer IDs.
 
 **Unbekannte Query-Parameter werden still ignoriert, nicht abgelehnt.** `count=3` und
@@ -351,7 +376,9 @@ eigener Rechnerei:
   - **Die Untergruppen kommen nach `duration` absteigend, nie chronologisch** – bei allen
     667 Gruppen mit mehr als einem Monat. Die Rückrechnung des Restvolumens aus 5.2 lebt
     von der Reihenfolge; wer sie übernimmt, rechnet still falsch. Bei der
-    Personengruppierung fiel das nie auf, weil Personen keine Reihenfolge haben.
+    Personengruppierung fiel das nie auf, weil Personen keine Reihenfolge haben. **Die
+    Doku sagt zur Reihenfolge nichts** – sie ist damit auch nicht zugesagt, und selbst die
+    beobachtete Sortierung wäre kein Verlass. `Verbrauchsverlauf.fuer()` sortiert deshalb.
   - **Die Monatssummen gehen nur auf den Cent auf.** Bei 31 Projekten weicht die Summe
     der Monate von der Projektsumme ab, höchstens um 0,06 EUR und in der Gesamtsumme um
     0,63 EUR auf 30,6 Mio. – Clockodo rundet jede Gruppe einzeln. Die Zeitsummen stimmen
@@ -362,9 +389,30 @@ eigener Rechnerei:
     `VerbrauchsverlaufRepository.abbilden()` faltet deshalb je Projekt-ID zusammen,
     statt zuzuweisen.
 
-**`/v2/entries` wird bewusst nicht benutzt.** Erst wenn eine
-Auswertung wirklich den einzelnen Eintrag braucht (etwa `type` zur Trennung von
-Pauschalleistungen), lohnt er sich.
+- Der Gruppierungswert **`is_lumpsum`** trennt Pauschalleistungen von Zeitbuchungen –
+  Untergruppen `"0"` und `"1"` als String. Damit ist der letzte Grund für `/v2/entries`
+  entfallen: die Trennung braucht den Einzeleintrag nicht.
+- Weitere gültige Gruppierungswerte laut `clocodo-api.yaml`, bisher unbenutzt:
+  `billable`, `services_id`, `subprojects_id`, `lumpsum_services_id`, `texts_id`.
+- **Serverseitige Filter gibt es auch**, ebenfalls bisher unbenutzt: `filter[projects_id]`,
+  `filter[users_id]`, `filter[customers_id]`, `filter[billable]` und `filter[budget_type]`
+  als `deepObject`. Dazu `prepend_customer_to_project_name` (daher das „Kunde / Projekt"
+  in `name`), `round_to_minutes` und
+  `calc_also_revenues_for_projects_with_hard_budget`.
+- Laut Doku sind **`time_since` und `time_until` beide Pflicht**, nicht nur `time_since`.
+
+**Pauschalleistungen, gemessen statt vermutet** (26.08.2026, `grouping[]=is_lumpsum`):
+17,9 der 30,6 Mio. EUR Gesamtumsatz sind Pauschalen, und sie tragen **0,0 Stunden** –
+Pauschaleinträge haben grundsätzlich keine Dauer. Im Prognose-Scope sind es 22,8 % des
+Verbrauchs, verteilt auf 33 der 42 Projekte, viele davon zu 100 %. Die Annahme aus Spec
+5.1, dass Pauschalen mit gebuchter Zeit im abgeleiteten Stundensatz normalisiert sind,
+hält damit stand: die Arbeit hinter der Pauschale wird als Zeit ohne Umsatz gebucht, und
+die abgeleiteten Sätze im Scope bleiben plausibel (53,57 bis 368,14 EUR je Stunde, Median
+168,34, kein Ausreißer über 600). Die Ausnahme sind die Projekte mit Umsatz **ohne jede**
+Zeit – sechs in der Historie, drei im Scope; die weist ein Hinweis aus.
+
+**`/v2/entries` wird trotzdem nicht benutzt.** Der einzige genannte Grund – `type` zur
+Trennung von Pauschalleistungen – ist mit `grouping[]=is_lumpsum` erledigt.
 
 ### Sollarbeitszeit
 Die Werte stehen im **unversionierten** `/targethours` (`/v2` und `/v3` geben 404):
@@ -375,8 +423,62 @@ Die Werte stehen im **unversionierten** `/targethours` (`/v2` und `/v3` geben 40
                   "monday": 7, …, "sunday": 0}]}
 ```
 
+Die Doku ergänzt vier Dinge dazu:
+
+- **`type` kennt genau zwei Werte**, `weekly` und `monthly`, mit je eigenem Schema. Eine
+  monatliche Zeile führt `monthly_target` statt der Wochentage – die Wochentagsfelder
+  fehlen dort. In dieser Anlage sind alle 186 Zeilen `weekly`; tritt `monthly` auf, ist
+  es kein unbekannter Fall mehr, sondern ein zu bauender.
+- **Die Stunden sind `number`, nicht `integer`** – halbe Stunden (8.5) sind vorgesehen.
+- **`users.default_target_hours` heißt „Uses the company's default target hours".** Der
+  Schalter ist damit nicht nur kein Stundenwert, er hat eine Folge: wer ihn gesetzt hat,
+  hat **keine eigene Zeile** in `/targethours`, und `Mitarbeiter.wochenstunden()` liefert
+  `None`. Heute geht das auf – 26 offene Zeilen für 26 aktive Personen –, aber es ist eine
+  stille Lücke, sobald jemand auf den Firmenstandard umgestellt wird.
+- `/targethours` nimmt einen `users_id`-Filter (Array, Zahl oder CSV), bisher unbenutzt.
+
 Für die geplanten Abwesenheiten (5.3) ist `/v4/absences?year=…` der richtige Endpunkt:
 `/absences`, `/v2/absences` und `/v3/absences` antworten mit 410 `deprecated`.
+
+### Feiertage: zwei Generationen, und die Schreibweise entscheidet
+
+**Hier lagen wir zweimal falsch, und beide Male an der Groß-/Kleinschreibung.** Frühere
+Notizen sagten, `/v2` bis `/v4` von `/nonbusinessdays` gäben 404 und die Feiertagsgruppen
+seien überhaupt nicht abrufbar. Beides stimmt nicht – geprüft am 26.08.2026:
+
+- `/v2/nonbusinessDays` **mit großem D** antwortet 200. `/v2/nonbusinessdays` gibt 404.
+- `/v2/nonbusinessGroups` **mit großem G** antwortet 200 und liefert die Gruppennamen
+  („it-agile BRB, HH, HB, NI, SH", „it-agile NRW, RP", „BY mit Mariä Himmelfahrt", …),
+  je Gruppe `id`, `name`, `company_default`. `/nonbusinessgroups` gibt 410 `deprecated` –
+  daraus war der falsche Schluss entstanden.
+
+Die beiden Generationen liefern **dieselben Feiertage in verschiedenen Feldern**, und wer
+sie verwechselt, liest `null`:
+
+| | `/nonbusinessdays` (unversioniert) | `/v2/nonbusinessDays` |
+|---|---|---|
+| Envelope | `nonbusinessdays` | `data` |
+| Gruppe | `nonbusinessgroups_id` | `nonbusiness_group_id` |
+| Datum | `date` | `evaluated_date` |
+| Halber Tag | `half_day: 0` / `1` | `half_day: false` / `true` |
+| `year` | Pflicht (400 ohne) | optional |
+| Filter | `nonbusinessgroups_id` | `nonbusiness_group_id` |
+
+Für 5.3 sind zwei weitere Endpunkte die kürzere Strecke, beide mit Paginierung
+(50 je Seite):
+
+- `/v2/usersNonbusinessDays?year=…` liefert die Feiertage **je Person** fertig
+  zugeordnet, `{"users_id": …, "days": [...]}` – die eigene Zuordnung über die
+  Feiertagsgruppe erspart sich damit.
+- `/v3/usersNonbusinessGroups` liefert die Zuordnung Person → Gruppe **mit
+  Gültigkeitszeitraum** (`date_since`, `date_until`); 60 Einträge auf 59 Personen, eine
+  Zuordnung hat also schon gewechselt. `users.nonbusinessgroups_id` kennt nur den
+  heutigen Stand – für einen vergangenen Stichtag (Rückwärtstest, Spec 11.4) ist das der
+  falsche Wert.
+
+**Was die Doku nicht klärt: was `half_day` bewirkt.** Sie deklariert nur ein Boolean.
+Dass ein halber Feiertag die Sollstunden des Tages halbiert, bleibt damit die Annahme aus
+Spec 5.3 – belegt ist jetzt lediglich, dass es ein Schalter ist und keine Stundenzahl.
 
 **Kundennamen nur über `/v3/customers`**: `/v4/customers`
 antwortet mit 404 `RouteNotFound`, `/v2/customers` mit 410 `deprecated`. Die Antwortform
@@ -416,7 +518,15 @@ zu, statt sie der Prognose anzurechnen.
 
 Laut Spec Abschnitt 11, Schritt 2: **Abwesenheiten und Feiertage auswerten** (5.3).
 `/v4/absences?year=…` anbinden und daraus den Abschlag für ungeplante Abwesenheit
-schätzen; `/nonbusinessdays?year=…` je Feiertagsgruppe anbinden und die
-`nonbusinessgroups_id` der Person mitlesen, die heute noch verworfen wird. Der Horizont
-reicht über eine Jahresgrenze, also zwei Abrufe je Endpunkt. Danach die Simulation (5.4)
-samt vollständiger Ausgabe (5.5), dann der Rückwärtstest über 12 Stichtage.
+schätzen; für die Feiertage `/v2/usersNonbusinessDays?year=…`, das sie je Person fertig
+zugeordnet liefert – die Zuordnung über die Feiertagsgruppe von Hand erübrigt sich damit.
+Der Horizont reicht über eine Jahresgrenze, also zwei Abrufe je Endpunkt. Danach die
+Simulation (5.4) samt vollständiger Ausgabe (5.5), dann der Rückwärtstest über 12
+Stichtage – der braucht wegen des Limits von 10 `entrygroups`-Abrufen je Minute eine
+Drosselung oder wiederverwendete Antworten.
+
+Zwei Dinge, die vor der Simulation zu klären sind und aus der Doku-Gegenprobe stammen:
+ein Stundensatz von genau 0 (zwei Projekte im Scope) darf in 5.4 Schritt 3 keinen
+Stundenbedarf erzeugen, sonst ist es eine Division durch Null; und ein Projekt mit
+`deadline` im Horizont und `automatic_completion` fällt mitten im Horizont aus dem Scope
+(eines zum 30.09.2026).

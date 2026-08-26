@@ -34,7 +34,12 @@ class Budget:
     * ``monetaer`` false: der Betrag ist eine **Stundenzahl** (8 Projekte, alle inaktiv,
       mit Werten wie 6, 12, 48). Als Euro gelesen waere das ein stiller Faktor-Fehler.
     * ``intervall`` gesetzt: Budget je Intervall statt Gesamtbudget - die Formel aus
-      5.1 gilt dann nicht.
+      5.1 gilt dann nicht. Laut ``spec/clocodo-api.yaml`` ist das ein **Integer-Enum**
+      (0 wochenweise, 1 monatlich, 2 quartalsweise, 3 jaehrlich) und kein String.
+      **Die 0 ist ein gueltiger Wert und falsy** - ``if budget.intervall`` wuerde ein
+      Wochenbudget still als Gesamtbudget lesen, deshalb prueft :attr:`sonderfall` auf
+      ``is not None``. In dieser Installation ist ``interval`` bei allen 659 Projekten
+      mit Budget ``null``, die Falle ist also latent.
     * ``aus_teilprojekten``: das Budget stammt aus Teilprojekten.
 
     Bei den aktiven Projekten trat keiner der drei Faelle auf, keiner ist also an
@@ -52,7 +57,7 @@ class Budget:
     betrag: float | None = None
     monetaer: bool = True
     hart: bool = False
-    intervall: str | None = None
+    intervall: int | None = None
     aus_teilprojekten: bool = False
 
     @property

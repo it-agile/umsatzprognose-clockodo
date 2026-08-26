@@ -35,8 +35,18 @@ def test_stundenbudget_wird_nicht_als_euro_gelesen():
 
 
 def test_intervallbudget_und_teilprojektbudget_bleiben_unbenutzt():
-    assert Budget(betrag=1000.0, intervall="monthly").auftragsvolumen is None
+    # interval ist laut clocodo-api.yaml ein Integer-Enum: 0 wochenweise, 1 monatlich,
+    # 2 quartalsweise, 3 jaehrlich.
+    assert Budget(betrag=1000.0, intervall=1).auftragsvolumen is None
     assert Budget(betrag=1000.0, aus_teilprojekten=True).auftragsvolumen is None
+
+
+def test_wochenbudget_faellt_nicht_durch_die_null():
+    # 0 ist ein gueltiges Intervall und falsy - eine Pruefung auf den Wahrheitswert
+    # wuerde das Wochenbudget still als Gesamtbudget lesen.
+    wochenbudget = Budget(betrag=1000.0, intervall=0)
+    assert wochenbudget.sonderfall == "Budget je Intervall statt Gesamtbudget"
+    assert wochenbudget.auftragsvolumen is None
 
 
 def test_restvolumen_ist_budget_minus_verbrauch():
