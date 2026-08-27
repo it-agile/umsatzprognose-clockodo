@@ -53,6 +53,8 @@ uv run pytest                  # Tests
 uv run ruff check .            # Lint
 uv run ruff format .           # Formatierung
 uv run jupyter lab             # Notebooks lokal
+uvx tox                        # Tests unter Python 3.12-3.14 + Coverage + Lint, ein Kommando
+uvx tox -e jupyter             # Notebooks starten (wie uv run jupyter lab, mit --autoreload)
 ```
 
 ## Aufbau
