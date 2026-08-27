@@ -1,7 +1,7 @@
 """Umsatzprognose - Baustein Bestand (Clockodo).
 
 Rollierende 1-3-Monats-Prognose des Umsatzes aus laufenden, in Clockodo angelegten
-Projekten. Massgeblich ist ``spec/spec-umsatzprognose-clockodo-modul.md``.
+Projekten.
 
 Das Paket ist in drei Schichten geschnitten, mit genau einer erlaubten
 Abhaengigkeitsrichtung::
@@ -12,7 +12,7 @@ Abhaengigkeitsrichtung::
   Projektanteil, Umsatzhistorie und der Bestand als Ganzes. Kennt weder JSON noch HTTP.
 * :mod:`umsatzprognose.clockodo` - der Zugriff auf die API und die Uebersetzung ihrer
   Antworten in Fachobjekte. Traegt das gesammelte Wissen ueber die Eigenheiten dieser
-  API, das durchgehend an echten Antworten geprueft ist.
+  API.
 * :mod:`umsatzprognose.darstellung` - Diagramme, Tabellen und das
   :class:`~umsatzprognose.darstellung.dashboard.Dashboard`, das die Notebooks benutzen.
 
