@@ -10,6 +10,7 @@ angelegtes venv. Colab läuft auf Python 3.13.
 
 ```bash
 uv sync --extra notebook       # Umgebung herstellen
+git config core.hooksPath .githooks  # einmalig: Pre-Commit-Hook aktivieren (siehe unten)
 uv run pytest                  # alle Tests
 uv run pytest tests/test_projekt.py::test_restvolumen_ist_budget_minus_verbrauch  # ein Test
 uv run ruff check .            # Lint
@@ -130,7 +131,12 @@ Geschäfts- und Personendaten.
 Erlaubt bleibt die Beschreibung des **Verhaltens**: Envelope, Feldnamen, Typen,
 Sonderfälle, Statuscodes, Grenzen der API. Testfixtures bilden die **Struktur** der
 echten Antwort nach, mit frei erfundenen IDs, Namen und Beträgen. Notebooks werden
-**ohne Zellausgaben** committet.
+**ohne Zellausgaben** committet – durchgesetzt durch den Pre-Commit-Hook
+`.githooks/pre-commit` (reine Standardbibliothek, kein zusätzliches Paket): er entfernt
+Ausgaben und Ausführungszähler aus staged `.ipynb`-Dateien, staged sie neu und bricht
+den ersten Commit-Versuch ab, damit die Bereinigung sichtbar bleibt statt unbemerkt
+unter den Ursprungsstand zu rutschen. Aktivierung ist pro Klon nötig (kein Git-Standard):
+`git config core.hooksPath .githooks`.
 
 ## Was das Modul fachlich tut
 

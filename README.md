@@ -29,7 +29,12 @@ Voraussetzung ist [uv](https://docs.astral.sh/uv/); die Python-Version ist über
 
 ```bash
 uv sync --extra notebook
+git config core.hooksPath .githooks
 ```
+
+Der zweite Befehl aktiviert einmalig pro Klon den Pre-Commit-Hook (`.githooks/`), der
+Zellausgaben aus Notebooks entfernt, bevor sie committet werden – das Repository ist
+öffentlich, Notebook-Ausgaben könnten reale Geschäftsdaten enthalten.
 
 Zugangsdaten aus `.env.sample` nach `.env` kopieren und ausfüllen. Den API-Key findet
 jede Person in Clockodo unter „Persönliche Daten“. Für den Baustein Schulungsanmeldungen
