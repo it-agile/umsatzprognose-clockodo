@@ -256,14 +256,14 @@ def entrygroup_antwort() -> dict:
 
 @pytest.fixture
 def projekt_monats_antwort() -> dict:
-    """Verbrauch je Projekt mit Monats-Untergruppen - die Antwort aus Spec 11.1.
+    """Verbrauch je Projekt mit Monats-Untergruppen
 
     Traegt die Eigenheiten, die an der echten Antwort aufgefallen sind:
 
     * Die Monate kommen **nach Dauer absteigend**, nicht chronologisch.
     * ``202606`` fehlt: ein Monat ohne Buchung steht nicht in der Antwort.
     * ``202609`` liegt **nach** dem Stichtag (24.08.2026) - Untergrenze der Bandbreite
-      (Spec 5.4) und kein Verbrauch.
+        und kein Verbrauch.
     * Die Monatssummen gehen nur auf den Cent auf (hier 65.000,00 gegen 64.999,99 an
       der Gruppe) - Clockodo rundet jede Gruppe einzeln.
     * ``group == 0`` kommt **zweimal** vor, je Kunde ohne Projekt einmal.

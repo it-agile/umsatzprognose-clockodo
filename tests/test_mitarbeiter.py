@@ -74,7 +74,7 @@ def _abwesenheit(typ: int) -> Abwesenheit:
 def test_gilt_als_abwesend_ist_nur_urlaub_und_krankheit():
     # AbsenceType laut clocodo-api.yaml: 1 RegularHoliday (Urlaub), 4 SickSelf,
     # 5 SickChild, 11 SickSelfUnpaid, 12 SickChildUnpaid, 15 SickSelfWithCertificate -
-    # alle fuenf Krankheitsvarianten zaehlen laut Entscheidung 26.08.2026 als Krankheit.
+    # alle fuenf Krankheitsvarianten zaehlen als Krankheit.
     for urlaub_oder_krankheit in (1, 4, 5, 11, 12, 15):
         assert _abwesenheit(urlaub_oder_krankheit).gilt_als_abwesend
 

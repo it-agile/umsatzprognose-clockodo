@@ -325,6 +325,6 @@ def test_bestand_setzt_alles_zusammen(
     # Verbrauch, Monatsumsatz, Monatsverbrauch je Projekt.
     assert len(requests) == 9
     assert any("ohne Projekt" in h.text for h in bestand.hinweise())
-    # Der Monatsverbrauch je Projekt traegt die Verteilung aus Spec 5.2 bis in den Bestand.
+    # Der Monatsverbrauch je Projekt traegt die Verteilung bis in den Bestand.
     assert [v.projekt.id for v in bestand.verbrauchsverlaeufe] == [101]
     assert bestand.abrufquotenverteilung().anzahl == 4

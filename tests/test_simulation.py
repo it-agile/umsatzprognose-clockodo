@@ -144,7 +144,7 @@ def test_kapazitaetsdeckel_kuerzt_anteilig_ueber_alle_projekte_einer_person():
 
 
 def test_projekt_ohne_stundensatz_verbraucht_keine_kapazitaet():
-    """Umsatz ohne erfasste Zeit geht ungedeckelt ein (Spec 5.1/5.4), siehe Projekt-Docstring."""
+    """Umsatz ohne erfasste Zeit geht ungedeckelt ein, siehe Projekt-Docstring."""
     projekt = Projekt(
         id=1,
         name="Pauschale ohne Zeit",
@@ -182,7 +182,7 @@ def test_gezogene_quote_wird_auf_restvolumen_gekappt_und_folgemonat_liefert_nich
         stichtag=STICHTAG,
         projekte=(projekt,),
         mitarbeiter=(anna,),
-        verbrauchsverlaeufe=(historie(3.0),),  # Quote > 1: weiche Budgets, Spec 5.2
+        verbrauchsverlaeufe=(historie(3.0),),  # Quote > 1: weiche Budgets
     )
 
     prognose = b.simulieren(monate=2, laeufe=3, zufall=np.random.default_rng(4))
@@ -253,7 +253,7 @@ def test_bereits_gebuchter_betrag_ist_die_untergrenze_in_kuenftigen_monaten():
 
     # September: min(100000, 0.1*100000) = 10000, unveraendert. Oktober: simulierter
     # Verbrauch waere nur 0.1*90000=9000 - der real gebuchte Betrag von 20000 ist die
-    # Untergrenze und ueberschreibt ihn (Spec 5.4).
+    # Untergrenze und ueberschreibt ihn.
     for werte in prognose.monatswerte().values():
         assert werte == [pytest.approx(10000.0), pytest.approx(20000.0)]
     assert prognose.gebucht() == [pytest.approx(0.0), pytest.approx(20000.0)]

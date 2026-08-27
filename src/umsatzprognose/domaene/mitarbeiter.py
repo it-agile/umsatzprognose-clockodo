@@ -37,7 +37,7 @@ WOCHENTAGE = ("montag", "dienstag", "mittwoch", "donnerstag", "freitag", "samsta
 STATUS_GENEHMIGT = 1
 
 # AbsenceStatus-Codes, die als geplante Abwesenheit zaehlen: Enquired (beantragt) und
-# Approved (genehmigt). Entscheidung 26.08.2026 - der Status zaehlt schon ab
+# Approved (genehmigt). Der Status zaehlt schon ab
 # "beantragt", nicht erst ab "genehmigt"; Declined, ApprovalCancelled und Cancelled
 # sind keine reale Abwesenheit (mehr).
 STATUS_GEPLANT = frozenset({0, STATUS_GENEHMIGT})
@@ -52,10 +52,10 @@ TYP_URLAUB = 1
 
 # AbsenceType-Codes, die Krankheit sind: SickSelf, SickChild, SickSelfUnpaid,
 # SickChildUnpaid, SickSelfWithCertificate - eigene und Kind, bezahlt/unbezahlt, mit
-# Attest gehen laut Entscheidung 26.08.2026 alle als Krankheit ein.
+# Attest gehen alle als Krankheit ein.
 TYPEN_KRANKHEIT = frozenset({4, 5, 11, 12, 15})
 
-# Entscheidung 26.08.2026: nur Urlaub und Krankheit zaehlen als Abwesenheit vom
+# Nur Urlaub und Krankheit zaehlen als Abwesenheit vom
 # Arbeiten - siehe Modul-Docstring.
 TYPEN_ABWESEND = frozenset({TYP_URLAUB}) | TYPEN_KRANKHEIT
 
