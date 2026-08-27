@@ -12,7 +12,13 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
-    from umsatzprognose.domaene import Hinweis, Prognose, Projekt, Umsatzhistorie
+    from umsatzprognose.domaene import (
+        Hinweis,
+        Prognose,
+        Projekt,
+        Schulungsplan,
+        Umsatzhistorie,
+    )
 
 import pandas as pd
 
@@ -20,7 +26,14 @@ from umsatzprognose.domaene.umsatzhistorie import MONATSNAMEN
 from umsatzprognose.domaene.zahlen import euro
 
 PROJEKTSPALTEN = ["Kunde", "Projekt", "Beauftragt", "Verbraucht", "Offen", "Budget überschritten"]
-UMSATZSPALTEN = ["Monat", "Abgerechnet", "Nicht abgerechnet", "Prognostiziert", "Summe"]
+UMSATZSPALTEN = [
+    "Monat",
+    "Abgerechnet",
+    "Nicht abgerechnet",
+    "Prognostiziert",
+    "Schulungsanmeldungen",
+    "Summe",
+]
 HINWEISSPALTEN = ["Hinweis", "Betroffen", "Projekte"]
 
 
@@ -44,7 +57,11 @@ def projekttabelle(projekte: Sequence[Projekt]) -> pd.DataFrame:
     )
 
 
-def umsatztabelle(historie: Umsatzhistorie, prognose: Prognose | None = None) -> pd.DataFrame:
+def umsatztabelle(
+    historie: Umsatzhistorie,
+    prognose: Prognose | None = None,
+    schulungsplan: Schulungsplan | None = None,
+) -> pd.DataFrame:
     """Ein Monat je Zeile, juengster zuletzt, und daran anschliessend der Prognosehorizont.
 
     Der Umsatz steht nicht mehr in einer Spalte, sondern nach Rechnungsstellung
@@ -53,8 +70,10 @@ def umsatztabelle(historie: Umsatzhistorie, prognose: Prognose | None = None) ->
     Vergangenheitsmonate, **Nicht abgerechnet** fuer schon in Clockodo gebuchte, aber
     per Definition noch nicht abgerechnete Betraege (der laufende Monat, und im
     Prognosehorizont bereits gebuchte kuenftige Monate, :meth:`Prognose.gebucht`), und
-    **Prognostiziert** fuer den Rest bis zum Median der Simulation. Die Summenspalte
-    fasst die drei je Monat zusammen.
+    **Prognostiziert** fuer den Rest bis zum Median der Simulation. Mit
+    ``schulungsplan`` kommt zusaetzlich **Schulungsanmeldungen** dazu - additiv und
+    unabhaengig von der Bestand-Bandbreite (Spec Baustein Schulungsanmeldungen,
+    Abschnitt 6). Die Summenspalte fasst alle vier je Monat zusammen.
 
     Der erste Horizontmonat ist derselbe Kalendermonat wie der laufende und
     ergaenzt dessen Zeile deshalb nur um die Prognose, statt eine zweite Zeile fuer
@@ -71,6 +90,7 @@ def umsatztabelle(historie: Umsatzhistorie, prognose: Prognose | None = None) ->
             if laufender and monat.schluessel == laufender.schluessel
             else "",
             "Prognostiziert": "",
+            "Schulungsanmeldungen": "",
             "Summe": euro(monat.umsatz),
         }
         for monat in historie.monate
@@ -81,12 +101,22 @@ def umsatztabelle(historie: Umsatzhistorie, prognose: Prognose | None = None) ->
         median = prognose.monatswerte()[0.50]
         gebucht = prognose.gebucht()
         basis = laufender.umsatz if laufender else 0.0
+        schulung = (
+            schulungsplan.umsatz_je_monat(horizont)
+            if schulungsplan is not None
+            else [0.0] * len(horizont)
+        )
 
-        for (jahr, monat), wert, gebuchter_betrag in zip(horizont, median, gebucht, strict=True):
+        for (jahr, monat), wert, gebuchter_betrag, schulungsbetrag in zip(
+            horizont, median, gebucht, schulung, strict=True
+        ):
             beschriftung = f"{MONATSNAMEN[monat - 1]} {jahr}"
             if zeilen and zeilen[-1]["Monat"] == beschriftung:
                 zeilen[-1]["Prognostiziert"] = euro(wert)
-                zeilen[-1]["Summe"] = euro(basis + wert)
+                zeilen[-1]["Schulungsanmeldungen"] = (
+                    euro(schulungsbetrag) if schulungsbetrag else ""
+                )
+                zeilen[-1]["Summe"] = euro(basis + wert + schulungsbetrag)
             else:
                 zeilen.append(
                     {
@@ -94,7 +124,8 @@ def umsatztabelle(historie: Umsatzhistorie, prognose: Prognose | None = None) ->
                         "Abgerechnet": "",
                         "Nicht abgerechnet": euro(gebuchter_betrag) if gebuchter_betrag else "",
                         "Prognostiziert": euro(wert - gebuchter_betrag),
-                        "Summe": euro(wert),
+                        "Schulungsanmeldungen": euro(schulungsbetrag) if schulungsbetrag else "",
+                        "Summe": euro(wert + schulungsbetrag),
                     }
                 )
 

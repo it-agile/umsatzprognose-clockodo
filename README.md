@@ -1,12 +1,17 @@
-# Umsatzprognose – Baustein Bestand (Clockodo)
+# Umsatzprognose – Baustein Bestand (Clockodo) + Schulungsanmeldungen
 
 Rollierende 1–3-Monats-Prognose des Umsatzes aus laufenden, in Clockodo angelegten
 Projekten – als Bandbreite (Konfidenzniveaus 95 % / 85 % / 50 % je Monat und als
 Summe), nicht als Punktwert. Modelliert wird dabei nur eine Unsicherheit: wie viel des
-beauftragten Restvolumens im Prognosezeitraum tatsächlich abgerufen wird.
+beauftragten Restvolumens im Prognosezeitraum tatsächlich abgerufen wird. Additiv dazu
+kommt der Umsatz bereits geplanter öffentlicher Schulungstermine aus einer externen
+Google-Sheets-Tabelle – deterministisch, ohne eigene Bandbreite.
 
-Maßgeblich ist die Spezifikation:
-[`spec/spec-umsatzprognose-clockodo-modul.md`](spec/spec-umsatzprognose-clockodo-modul.md).
+Maßgeblich sind die Spezifikationen:
+[`spec/spec-umsatzprognose-clockodo-modul.md`](spec/spec-umsatzprognose-clockodo-modul.md)
+(Baustein Bestand) und
+[`spec/spec-schulungsanmeldungen.md`](spec/spec-schulungsanmeldungen.md)
+(Baustein Schulungsanmeldungen).
 
 ## Stand
 
@@ -15,7 +20,7 @@ Abrufquote-Verteilung (5.2), dazu das vollständige Domänenmodell außer der Si
 inklusive Aufteilungsschlüssel je Person und Sollarbeitszeit. Es fehlen die verfügbare
 Kapazität (5.3: Abwesenheiten, Feiertage) und die Monte-Carlo-Simulation (5.4). Das
 Dashboard zeigt an der Stelle der Bandbreite eine Begründung an, statt eine Zahl zu
-erfinden.
+erfinden. Der Baustein Schulungsanmeldungen ist umgesetzt.
 
 ## Setup
 
@@ -27,7 +32,10 @@ uv sync --extra notebook
 ```
 
 Zugangsdaten aus `.env.sample` nach `.env` kopieren und ausfüllen. Den API-Key findet
-jede Person in Clockodo unter „Persönliche Daten“.
+jede Person in Clockodo unter „Persönliche Daten“. Für den Baustein Schulungsanmeldungen
+zusätzlich eine OAuth-Client-ID (kein Service-Account, siehe `.env.sample`) sowie die
+Jahr-zu-Spreadsheet-Zuordnung eintragen; der erste Aufruf öffnet dafür lokal einmalig
+einen Browser-Tab zum Anmelden.
 
 ## Nutzung
 
@@ -59,19 +67,24 @@ uvx tox -e jupyter             # Notebooks starten (wie uv run jupyter lab, mit 
 
 ## Aufbau
 
-Drei Schichten mit genau einer erlaubten Abhängigkeitsrichtung:
+Vier Pakete, `clockodo/` und `schulungen/` als zwei gleichrangige Quellschichten:
 
 ```
 darstellung  ──►  domaene  ◄──  clockodo
+                      ▲
+                      └──  schulungen
 ```
 
 - `src/umsatzprognose/domaene/` – die Fachobjekte (Kunde, Projekt, Mitarbeiter,
-  Projektanteil, Umsatzhistorie, Verbrauchsverlauf, Abrufquote, Bestand, Prognose),
-  unveränderlich und ohne Bibliotheksabhängigkeit.
+  Projektanteil, Umsatzhistorie, Verbrauchsverlauf, Abrufquote, Bestand, Prognose,
+  Schulungsplan), unveränderlich und ohne Bibliotheksabhängigkeit.
 - `src/umsatzprognose/clockodo/` – Zugriff auf die Clockodo-API (Client, Konfiguration,
   Nebenläufigkeit) und je Endpunkt ein Repository, das die Antworten in Fachobjekte
   abbildet.
+- `src/umsatzprognose/schulungen/` – Zugriff auf die Schulungs-Sheets (Google Sheets API,
+  OAuth-Client-ID statt Service-Account) und das Repository, das ein Tabellenblatt je
+  Jahr in einen `Schulungsplan` abbildet.
 - `src/umsatzprognose/darstellung/` – Diagramme (plotly), Tabellen (pandas) und die
   Fassade `Dashboard`, die die Notebooks benutzen.
 - `tests/` – pytest.
-- `spec/` – Spezifikation und die Clockodo-OpenAPI-Beschreibung.
+- `spec/` – Spezifikationen und die Clockodo-OpenAPI-Beschreibung.

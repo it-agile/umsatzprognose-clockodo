@@ -1,5 +1,4 @@
-"""Tests zu Budget und Projekt
-"""
+"""Tests zu Budget und Projekt"""
 
 from __future__ import annotations
 

@@ -19,9 +19,10 @@ if TYPE_CHECKING:
     import pandas as pd
     import plotly.graph_objects as go
 
-    from umsatzprognose.domaene import Bestand, Prognose
+    from umsatzprognose.domaene import Bestand, Prognose, Schulungsplan
 
 from umsatzprognose.clockodo import BestandRepository
+from umsatzprognose.schulungen import SchulungenRepository
 
 from . import diagramme, tabellen
 
@@ -34,6 +35,7 @@ class Dashboard:
     def __init__(self, bestand: Bestand) -> None:
         self.bestand = bestand
         self.prognose: Prognose | None = None
+        self.schulungsplan: Schulungsplan | None = None
 
     @classmethod
     def laden(
@@ -100,9 +102,21 @@ class Dashboard:
     def simuliere(self, *, monate: int = 3, laeufe: int = 10_000):
         self.prognose = self.bestand.simulieren(monate=monate, laeufe=laeufe)
 
+    def schulungen_laden(self, *, horizont_monate: int = 3) -> None:
+        """Die Schulungstermine aus den konfigurierten Google-Sheets-Dateien laden.
+
+        Additiver Baustein neben der Bestand-Prognose (Spec Baustein
+        Schulungsanmeldungen) - unabhaengig von :meth:`simuliere`, in beliebiger
+        Reihenfolge aufrufbar. Die Zugangsdaten und die Jahr-zu-Datei-Zuordnung kommen,
+        wie bei :meth:`laden`, aus Colab-Secrets oder einer lokalen ``.env``.
+        """
+        self.schulungsplan = SchulungenRepository.mit_automatischen_zugangsdaten().laden(
+            self.stichtag, horizont_monate=horizont_monate
+        )
+
     def umsatzverlauf(self) -> go.Figure:
         """Der Umsatz je Monat - Historie und, daran anschliessend, der Prognosehorizont."""
-        return diagramme.umsatzverlauf(self._historie(), self.prognose)
+        return diagramme.umsatzverlauf(self._historie(), self.prognose, self.schulungsplan)
 
     def restvolumen_je_projekt(self, top: int = STANDARD_TOP) -> go.Figure:
         """Das offene Auftragsvolumen der groessten Projekte."""
@@ -110,7 +124,7 @@ class Dashboard:
 
     def umsatztabelle(self) -> pd.DataFrame:
         """Dieselben Monate wie im Verlaufsdiagramm, zum Nachlesen - inklusive Prognose."""
-        return tabellen.umsatztabelle(self._historie(), self.prognose)
+        return tabellen.umsatztabelle(self._historie(), self.prognose, self.schulungsplan)
 
     def projekttabelle(self, top: int | None = None) -> pd.DataFrame:
         """Die Projekte der Prognose, groesstes offenes Volumen zuerst."""
@@ -131,7 +145,10 @@ class Dashboard:
 
     def hinweise(self) -> pd.DataFrame:
         """Was zu den Zahlen zu wissen ist - Datenlage und offene fachliche Fragen."""
-        return tabellen.hinweistabelle(self.bestand.hinweise())
+        hinweise = self.bestand.hinweise()
+        if self.schulungsplan is not None and self.prognose is not None and self.prognose.vorhanden:
+            hinweise += self.schulungsplan.hinweise(self.prognose.horizontmonate())
+        return tabellen.hinweistabelle(hinweise)
 
     def _historie(self):
         historie = self.bestand.umsatzhistorie

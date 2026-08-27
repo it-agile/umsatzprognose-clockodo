@@ -12,7 +12,7 @@ from datetime import date
 import numpy as np
 
 from umsatzprognose.darstellung import Dashboard, diagramme, tabellen
-from umsatzprognose.darstellung.gestaltung import PROGNOSE_DECKKRAFT, SERIE_HELL
+from umsatzprognose.darstellung.gestaltung import PROGNOSE_DECKKRAFT, SCHULUNG, SERIE_HELL
 from umsatzprognose.domaene import (
     Bestand,
     Budget,
@@ -22,10 +22,13 @@ from umsatzprognose.domaene import (
     Monatsumsatz,
     Projekt,
     Projektanteil,
+    Schulungsplan,
+    Schulungstermin,
     Umsatzhistorie,
     Verbrauchsverlauf,
     Wochenarbeitszeit,
 )
+from umsatzprognose.domaene.zahlen import euro
 
 STICHTAG = date(2026, 8, 24)
 KUNDE = Kunde(id=7, name="Union Asset Management Holding AG")
@@ -166,6 +169,100 @@ def test_umsatzverlauf_haengt_horizont_mit_zwei_farbtoenen_an():
     # bewusst mit "Nicht abgerechnet" und bekommt deshalb kein eigenes Feld.
     legende = {spur.name for spur in fig.data if spur.showlegend}
     assert legende == {"Abgerechnet", "Nicht abgerechnet", "Prognostiziert"}
+
+
+def _historie_und_prognose_mit_horizont():
+    """Historie samt Prognose ueber zwei Horizontmonate - Grundlage der Schulungs-Tests."""
+    stichtag = date(2026, 9, 1)
+    historie = Umsatzhistorie.zum_stichtag(
+        [Monatsumsatz(2026, 8, 100000.0, 800.0), Monatsumsatz(2026, 9, 20000.0, 150.0)],
+        stichtag,
+        abgeschlossene=1,
+    )
+    projekt = Projekt(
+        id=1, name="Projekt", kunde=KUNDE, aktiv=True,
+        budget=Budget(betrag=220000.0), verbrauchtes_volumen=20000.0, verbrauchte_stunden=200.0,
+    )  # fmt: skip
+    bestand = Bestand(
+        stichtag=stichtag,
+        projekte=(projekt,),
+        umsatzhistorie=historie,
+        verbrauchsverlaeufe=(_historie_fuer_abrufquote(0.2),),
+    )
+    prognose = bestand.simulieren(monate=2, laeufe=5, zufall=np.random.default_rng(1))
+    assert prognose.vorhanden
+    return historie, prognose
+
+
+def test_umsatzverlauf_mit_schulungsplan_zeigt_eigenes_segment_und_legende():
+    historie, prognose = _historie_und_prognose_mit_horizont()
+    schulungsplan = Schulungsplan(
+        stichtag=historie.stichtag,
+        termine=(Schulungstermin(2026, 9, 3000.0), Schulungstermin(2026, 10, 1500.0)),
+    )
+
+    fig = diagramme.umsatzverlauf(historie, prognose, schulungsplan)
+    namen = [spur.name for spur in fig.data]
+    assert "Schulungsanmeldungen" in namen
+
+    schulung_spur = next(s for s in fig.data if s.name == "Schulungsanmeldungen")
+    assert list(schulung_spur.y) == [3000.0, 1500.0]
+    assert schulung_spur.marker.color == SCHULUNG
+
+    legende = {spur.name for spur in fig.data if spur.showlegend}
+    assert "Schulungsanmeldungen" in legende
+
+
+def test_umsatzverlauf_ohne_schulungsplan_zeigt_kein_segment():
+    fig = diagramme.umsatzverlauf(HISTORIE, BESTAND.simulieren())
+    namen = [spur.name for spur in fig.data]
+    assert "Schulungsanmeldungen" not in namen
+
+
+def test_umsatztabelle_mit_schulungsplan_ergaenzt_spalte_und_summe():
+    historie, prognose = _historie_und_prognose_mit_horizont()
+    schulungsplan = Schulungsplan(
+        stichtag=historie.stichtag,
+        termine=(Schulungstermin(2026, 9, 3000.0), Schulungstermin(2026, 10, 1500.0)),
+    )
+
+    tabelle = tabellen.umsatztabelle(historie, prognose, schulungsplan)
+    sep, okt = tabelle.iloc[1], tabelle.iloc[2]
+    assert sep["Schulungsanmeldungen"] == "3.000,00 EUR"
+    assert okt["Schulungsanmeldungen"] == "1.500,00 EUR"
+
+    erwartete_sep_summe = historie.laufender.umsatz + prognose.monatswerte()[0.50][0] + 3000.0
+    assert sep["Summe"] == euro(erwartete_sep_summe)
+
+
+def test_umsatztabelle_ohne_schulungsplan_laesst_spalte_leer():
+    tabelle = tabellen.umsatztabelle(HISTORIE, BESTAND.simulieren())
+    assert (tabelle["Schulungsanmeldungen"] != "").sum() == 0
+
+
+def test_dashboard_hinweise_enthaelt_luecken_des_schulungsplans():
+    historie, _prognose = _historie_und_prognose_mit_horizont()
+    projekt = Projekt(
+        id=1,
+        name="Projekt",
+        kunde=KUNDE,
+        aktiv=True,
+        budget=Budget(betrag=220000.0),
+        verbrauchtes_volumen=20000.0,
+        verbrauchte_stunden=200.0,
+    )
+    bestand = Bestand(
+        stichtag=historie.stichtag,
+        projekte=(projekt,),
+        umsatzhistorie=historie,
+        verbrauchsverlaeufe=(_historie_fuer_abrufquote(0.2),),
+    )
+    dashboard = Dashboard(bestand)
+    dashboard.prognose = bestand.simulieren(monate=2, laeufe=5, zufall=np.random.default_rng(1))
+    dashboard.schulungsplan = Schulungsplan(stichtag=historie.stichtag, termine=())
+
+    hinweise = dashboard.hinweise()
+    assert any("Schulungsanmeldung" in text for text in hinweise["Hinweis"])
 
 
 def test_dashboard_zeigt_horizont_im_umsatzverlauf():

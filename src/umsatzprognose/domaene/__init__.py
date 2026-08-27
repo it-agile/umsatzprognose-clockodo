@@ -15,6 +15,7 @@ from umsatzprognose.domaene.mitarbeiter import Mitarbeiter, Wochenarbeitszeit
 from umsatzprognose.domaene.prognose import KONFIDENZNIVEAUS, NochKeinePrognose, Prognose
 from umsatzprognose.domaene.projekt import OHNE_BUDGET, Budget, Projekt
 from umsatzprognose.domaene.projektanteil import Projektanteil
+from umsatzprognose.domaene.schulung import Schulungsplan, Schulungstermin
 from umsatzprognose.domaene.simulation import MonteCarloPrognose
 from umsatzprognose.domaene.umsatzhistorie import Monatsumsatz, Umsatzhistorie
 from umsatzprognose.domaene.verbrauchsverlauf import Verbrauchsverlauf
@@ -35,6 +36,8 @@ __all__ = [
     "Prognose",
     "Projekt",
     "Projektanteil",
+    "Schulungsplan",
+    "Schulungstermin",
     "Umsatzhistorie",
     "Verbrauchsverlauf",
     "Wochenarbeitszeit",

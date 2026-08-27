@@ -13,6 +13,10 @@ import plotly.graph_objects as go
 
 SERIE = "#2a78d6"
 SERIE_HELL = "#86b6ef"
+# Eigene Farbfamilie fuer den Baustein Schulungsanmeldungen - additiv und von einer
+# anderen Quelle als der Bestand-Umsatz, deshalb bewusst nicht nur eine weitere
+# Saettigung von SERIE (siehe Moduldocstring).
+SCHULUNG = "#d68a2c"
 FLAECHE = "#fcfcfb"
 TINTE = "#0b0b0b"
 TINTE_ZWEITRANGIG = "#52514e"

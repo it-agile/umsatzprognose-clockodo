@@ -1,4 +1,5 @@
 .env
+.google_oauth_token.json
 .DS_Store
 
 # Python

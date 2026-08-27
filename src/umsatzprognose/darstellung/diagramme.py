@@ -15,12 +15,19 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
-    from umsatzprognose.domaene import Monatsumsatz, Prognose, Projekt, Umsatzhistorie
+    from umsatzprognose.domaene import (
+        Monatsumsatz,
+        Prognose,
+        Projekt,
+        Schulungsplan,
+        Umsatzhistorie,
+    )
 
 import plotly.graph_objects as go
 
 from umsatzprognose.darstellung.gestaltung import (
     PROGNOSE_DECKKRAFT,
+    SCHULUNG,
     SERIE,
     SERIE_HELL,
     TINTE,
@@ -40,7 +47,11 @@ MAXIMALE_PROJEKTLAENGE = 38
 
 
 def umsatzverlauf(
-    historie: Umsatzhistorie, prognose: Prognose | None = None, *, hoehe: int = 420
+    historie: Umsatzhistorie,
+    prognose: Prognose | None = None,
+    schulungsplan: Schulungsplan | None = None,
+    *,
+    hoehe: int = 420,
 ) -> go.Figure:
     """Monatsumsatz als Balken: Historie, und daran anschliessend der Prognosehorizont.
 
@@ -55,6 +66,12 @@ def umsatzverlauf(
     duenner Fehlerbalken je Monat zeigt, wie weit die 85-%- und 95-%-Niveaus darunter
     liegen. Ohne ``prognose`` oder ohne Bandbreite bleibt das Bild bei der
     Historie; die Begruendung steht dann als Hinweis rechts daneben.
+
+    Mit ``schulungsplan`` kommt, additiv unterhalb von "Bereits gebucht" und
+    "Prognostiziert", ein eigenfarbiger Balkenabschnitt "Schulungsanmeldungen" fuer den
+    Umsatz aus bereits geplanten oeffentlichen Schulungsterminen hinzu (Spec Baustein
+    Schulungsanmeldungen, Abschnitt 6) - unabhaengig von der Bestand-Bandbreite und ohne
+    eigene Unsicherheit.
 
     Der erste Horizontmonat ist derselbe Kalendermonat wie der laufende - beide teilen
     dieselbe Balkenbeschriftung und stapeln sich deshalb an derselben Stelle
@@ -93,7 +110,12 @@ def umsatzverlauf(
 
     if prognose is not None:
         if prognose.vorhanden:
-            _prognosehorizont(fig, prognose, verbrauch_laufender_monat=laufender)
+            _prognosehorizont(
+                fig,
+                prognose,
+                verbrauch_laufender_monat=laufender,
+                schulungsplan=schulungsplan,
+            )
         else:
             _keine_prognose_hinweis(fig, prognose)
 
@@ -118,11 +140,18 @@ def umsatzverlauf(
         )
 
     horizont_gebucht = prognose.gebucht() if prognose is not None and prognose.vorhanden else []
+    horizont_schulung = (
+        schulungsplan.umsatz_je_monat(prognose.horizontmonate())
+        if prognose is not None and prognose.vorhanden and schulungsplan is not None
+        else []
+    )
     _legendeintrag(fig, "Abgerechnet", SERIE)
     if laufender or any(horizont_gebucht):
         _legendeintrag(fig, "Nicht abgerechnet", SERIE_HELL)
     if prognose is not None and prognose.vorhanden:
         _legendeintrag(fig, "Prognostiziert", SERIE_HELL, deckkraft=PROGNOSE_DECKKRAFT)
+    if any(horizont_schulung):
+        _legendeintrag(fig, "Schulungsanmeldungen", SCHULUNG)
     fig.update_layout(
         showlegend=True,
         legend={
@@ -163,7 +192,11 @@ def _monatsbeschriftung(jahr: int, monat: int) -> str:
 
 
 def _prognosehorizont(
-    fig: go.Figure, prognose: Prognose, *, verbrauch_laufender_monat: Monatsumsatz | None
+    fig: go.Figure,
+    prognose: Prognose,
+    *,
+    verbrauch_laufender_monat: Monatsumsatz | None,
+    schulungsplan: Schulungsplan | None = None,
 ) -> None:
     """Haengt die Horizontmonate als zweigeteilte Balken an eine bestehende Figur an.
 
@@ -174,6 +207,12 @@ def _prognosehorizont(
     ``base``/``y`` werden bewusst ohne ``barmode="stack"`` gesetzt (der laeuft bei
     mehreren Kategorien mit gleichem Namen nicht zuverlaessig zusammen) - stattdessen
     zeichnet jede Spur ihr Segment selbst von ``base`` bis ``base + y``.
+
+    Mit ``schulungsplan`` kommt, additiv und unabhaengig von der Simulation, ein
+    weiteres Segment "Schulungsanmeldungen" **unten im Stapel** hinzu - direkt ueber dem
+    fuer den laufenden Monat schon gezeichneten Historie-Balken bzw. bei 0 fuer die
+    folgenden Monate; "Bereits gebucht" und "Prognostiziert" ruecken entsprechend nach
+    oben.
     """
     horizont = prognose.horizontmonate()
     if not horizont:
@@ -184,13 +223,34 @@ def _prognosehorizont(
     median, p85, p95 = monatswerte[0.50], monatswerte[0.85], monatswerte[0.95]
 
     basis0 = verbrauch_laufender_monat.umsatz if verbrauch_laufender_monat else 0.0
-    sockel = [basis0, *gebucht[1:]]
+    schulung = (
+        list(schulungsplan.umsatz_je_monat(horizont))
+        if schulungsplan is not None
+        else [0.0] * len(horizont)
+    )
+    schulung_basis = [basis0, *([0.0] * (len(horizont) - 1))]
+    sockel = [basis0 + schulung[0]] + [
+        g + s for g, s in zip(gebucht[1:], schulung[1:], strict=True)
+    ]
     prognostiziert = [median[0]] + [m - g for m, g in zip(median[1:], gebucht[1:], strict=True)]
+
+    if any(schulung):
+        fig.add_bar(
+            x=beschriftungen,
+            y=schulung,
+            base=schulung_basis,
+            marker={"color": SCHULUNG},
+            customdata=[[euro(betrag)] for betrag in schulung],
+            hovertemplate="<b>%{x}</b><br>Schulungsanmeldungen: %{customdata[0]}<extra></extra>",
+            showlegend=False,
+            name="Schulungsanmeldungen",
+        )
 
     if any(gebucht[1:]):
         fig.add_bar(
             x=beschriftungen[1:],
             y=gebucht[1:],
+            base=schulung[1:],
             marker={"color": SERIE_HELL},
             customdata=[[euro(betrag)] for betrag in gebucht[1:]],
             hovertemplate="<b>%{x}</b><br>Bereits gebucht: %{customdata[0]}<extra></extra>",

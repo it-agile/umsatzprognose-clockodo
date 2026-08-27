@@ -194,8 +194,7 @@ def test_monatsende_traegt_die_laenge_des_monats(tag, erwartet):
 
 
 def test_obere_zeitgrenze_wird_je_aufruf_bestimmt():
-    """Kein eingefrorener Wert.
-    """
+    """Kein eingefrorener Wert."""
     client, requests = client_mit(lambda _: httpx.Response(200, json={"groups": []}))
     synchron(client.entrygroups(["projects_id"]))
     assert dict(requests[0].url.params)["time_until"] == verbrauch_bis()

@@ -26,10 +26,13 @@ uvx tox -e jupyter             # Notebooks starten (wie uv run jupyter lab, mit 
 
 ## Aufbau
 
-Drei Schichten mit genau einer erlaubten Abhängigkeitsrichtung:
+Vier Pakete mit genau einer erlaubten Abhängigkeitsrichtung – `clockodo/` und
+`schulungen/` sind zwei gleichrangige, voneinander unabhängige Quellschichten:
 
 ```
 darstellung  ──►  domaene  ◄──  clockodo
+                      ▲
+                      └──  schulungen
 ```
 
 - `src/umsatzprognose/domaene/` – die Fachobjekte, unveränderlich (`frozen=True`) und
@@ -52,13 +55,22 @@ darstellung  ──►  domaene  ◄──  clockodo
   (`synchron`, `gleichzeitig`, siehe unten), dazu je Endpunkt ein Repository:
   `kunden.py`, `mitarbeiter.py`, `projekte.py`, `umsatz.py`, `verbrauchsverlauf.py` und
   `bestand.py` (`BestandRepository`, der eine Einstieg).
+- `src/umsatzprognose/schulungen/` – **alles, was von den Schulungs-Sheets weiß, weiß
+  nur dieses Paket** (Baustein Schulungsanmeldungen, siehe unten). `config.py`
+  (`SchulungenConfig`, dieselben benannten Konstruktoren wie bei `ClockodoCredentials`),
+  `client.py` (`SchulungenSheetsClient`: Google-Sheets-API über OAuth-Client-ID statt
+  Service-Account, synchron), `schulungen.py` (`SchulungenRepository` – Header-basiertes
+  Spalten-Mapping, deutsches Euro-Format parsen, ein nicht ladbares Jahr wird zum
+  `Hinweis`, nicht zum Fehler). Keine Abhängigkeit zu `clockodo/`.
 - `src/umsatzprognose/darstellung/` – der einzige Ort mit plotly (`diagramme.py`,
   `gestaltung.py`) und pandas (`tabellen.py`), dazu `dashboard.py` mit der Fassade
   `Dashboard`, die die Notebooks benutzen.
 - `tests/` – pytest. Die Antwortausschnitte in `conftest.py` sind gekürzte, aber echte
   Antworten samt ihrer Fallen.
 - `notebooks/` – zwei Notebooks mit verschiedenen Zielgruppen, siehe unten.
-- `spec/spec-umsatzprognose-clockodo-modul.md` – die Spezifikation.
+- `spec/spec-umsatzprognose-clockodo-modul.md` – die Spezifikation des Bausteins Bestand.
+- `spec/spec-schulungsanmeldungen.md` – die Spezifikation des Bausteins
+  Schulungsanmeldungen.
 - `spec/clocodo-api.yaml` – OpenAPI-Beschreibung der Clockodo-API.
 
 ### Kernregeln
@@ -108,8 +120,9 @@ Paket, nicht ins Notebook.
 
 ## Keine gelesenen Werte im Repository
 
-**Werte, die aus der Clockodo-API gelesen wurden, gehören in keine Datei dieses
-Repositories** – weder in Code, Tests, Spec, diese Datei noch in Notizen. Gemeint sind
+**Werte, die aus der Clockodo-API oder den Schulungs-Sheets gelesen wurden, gehören in
+keine Datei dieses Repositories** – weder in Code, Tests, Spec, diese Datei noch in
+Notizen. Gemeint sind
 Umsätze, Stundensätze, Budgets, Anzahlen von Projekten, Personen oder Gruppen, IDs sowie
 Kunden-, Projekt- und Personennamen. Das Repository ist öffentlich, die Werte sind echte
 Geschäfts- und Personendaten.
@@ -134,6 +147,15 @@ Zwei Annahmen prägen das Modell:
 
 Nicht im Modell: Pipeline, Kurzfristgeschäft, Cash-Schicht, Projekte ohne
 Clockodo-Eintrag, ein Abschlag für ungeplante Abwesenheit in der Kapazitätsrechnung.
+
+Additiv daneben steht der **Baustein Schulungsanmeldungen**
+(`spec/spec-schulungsanmeldungen.md`, `domaene.schulung.Schulungsplan`,
+`schulungen/`): der Umsatz bereits geplanter öffentlicher Schulungstermine aus einer
+externen Google-Sheets-Tabelle, eine Datei je Jahr. Anders als beim Bestand steht der
+Betrag je Termin schon fest – keine Simulation, keine Bandbreite. Die einzige
+Unsicherheit ist die Pflegequalität der Quelle, sichtbar über `Schulungsplan.hinweise()`
+statt über eine Kennzahl. Der Baustein bleibt unabhängig von der Bestand-Simulation und
+verändert weder Restvolumen noch Abrufquote noch Kapazitätsdeckel.
 
 ## Rechenkern (Monte Carlo, 10.000 Läufe)
 
@@ -250,3 +272,32 @@ mit Wochentagsfeldern, oder `monthly` mit `monthly_target` – in dieser Anlage 
 `/v4/absences` ist der richtige Endpunkt für geplante Abwesenheiten (ältere Versionen →
 410 deprecated); Jahresfilter als `deepObject` (`filter[year]`), Envelope-Key `data`,
 kein `paging`.
+
+## Schulungs-Sheets
+
+**Kein Service-Account** – für diese Anlage gibt Google nur eine OAuth-Client-ID aus
+(Anwendungstyp „Desktopanwendung"), kein Service-Account-Key. Deshalb zwei
+unterschiedliche Logins statt eines: in Colab meldet sich die aufrufende Person über ihr
+eigenes Google-Konto an (`google.colab.auth.authenticate_user`, kein JSON, kein
+Secret dafür nötig – sie braucht selbst Lesezugriff auf die Trainings-Sheets); lokal
+startet `schulungen.client._lokale_credentials()` einen einmaligen interaktiven Login im
+Browser (`google_auth_oauthlib.flow.InstalledAppFlow`) auf Basis des Client-JSON aus
+`GOOGLE_OAUTH_CLIENT_JSON` und speichert das Ergebnis in `.google_oauth_token.json`
+(gitignored) zwischen; folgende Aufrufe erneuern den Token automatisch.
+
+`TRAINING_SHEET_ID` (JSON-Objekt Jahr → Spreadsheet-ID) wird in beiden Umgebungen
+gebraucht, gelesen über `schulungen.config.SchulungenConfig` – dieselben drei benannten
+Konstruktoren wie bei `ClockodoCredentials`, aber ohne Abhängigkeit zu `clockodo/`
+(bewusste kleine Dopplung von `in_colab()`/`MissingCredentialsError`). Der Zugriff läuft
+über `google-api-python-client`, synchron und ohne `nebenlaeufig()` – bei ein bis zwei
+Dateien im Horizont lohnt sich eigene Nebenläufigkeit nicht.
+
+Tabellenblatt `Öffentliche Schulungen`, Spalten werden **über die Kopfzeile
+namentlich** zugeordnet (`Jahr`, `Monat`, `Umsatz gesamt`), nicht über die Position –
+robust gegenüber den vielen ungenutzten Spalten. `Umsatz gesamt` ist uneinheitlich
+formatiertes deutsches Zahlenformat mit Euro-Zeichen; `schulungen.schulungen._euro_parsen()`
+entfernt alles außer Ziffern/Punkt/Komma, dann den Tausenderpunkt, dann Komma → Punkt.
+
+Ein für ein Jahr fehlender Eintrag in `TRAINING_SHEET_ID` oder eine nicht lesbare Datei
+führt **nicht** zu einem Fehler (anders als bei Clockodo), sondern zu einem `Hinweis` an
+`Schulungsplan.abbildungshinweise` – Spec-Vorgabe (Abschnitt 6).

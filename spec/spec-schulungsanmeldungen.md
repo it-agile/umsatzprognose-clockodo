@@ -34,7 +34,7 @@ Pflegequalität der Quelle selbst.
 
 | Zweck | Zugriff | Relevante Spalten |
 |---|---|---|
-| Schulungsumsatz je Termin | Google Sheets API (Service-Account), Tabellenblatt `Öffentliche Schulungen` | `Jahr`, `Monat`, `Umsatz gesamt` |
+| Schulungsumsatz je Termin | Google Sheets API (OAuth-Client-ID, kein Service-Account - siehe Abschnitt 5.3), Tabellenblatt `Öffentliche Schulungen` | `Jahr`, `Monat`, `Umsatz gesamt` |
 
 Weitere vorhandene, hier ungenutzte Spalten: `Schulung`, `Trainer`, `Datum`, `TN Zahl`,
 diverse Rabattstufen-Spalten (`TN`/`Umsatz` je Rabattart), `Kostenfreie TN`,
@@ -77,6 +77,14 @@ Die Spreadsheet-ID ist **kein fester Wert im Code**, sondern wird aus Colab Secr
 mehrerer Jahrgänge übergeben; ihre Schulungstermine werden vor der Aggregation
 (5.1) zusammengeführt.
 
+**Authentifizierung: kein Service-Account, sondern OAuth-Client-ID.** Google gibt für
+diese Anlage keine Service-Account-Keys aus, sondern eine OAuth-Client-ID (Anwendungstyp
+"Desktopanwendung"). Deshalb meldet sich in Colab die aufrufende Person über ihr eigenes
+Google-Konto an (`google.colab.auth.authenticate_user`, kein JSON nötig - sie braucht
+selbst Lesezugriff auf die Trainings-Sheets); lokal startet ein einmaliger interaktiver
+Login im Browser auf Basis des Client-JSON aus `GOOGLE_OAUTH_CLIENT_JSON`, dessen Token
+danach lokal zwischengespeichert wird.
+
 ### 5.4 Verhältnis zur Bestand-Simulation
 
 Der Schulungsumsatz ist **additiv und unabhängig** von der Monte-Carlo-Simulation des
@@ -107,4 +115,8 @@ diese, sondern eine eigene, bereits konkret geplante Größe.
 
 ## 8. Stand der Umsetzung
 
-Noch nicht umgesetzt – siehe Plan.
+Umgesetzt: `domaene.schulung.Schulungstermin`/`Schulungsplan` (5.1, 5.2, 6), das Paket
+`schulungen/` mit `SchulungenConfig`, `SchulungenSheetsClient` und
+`SchulungenRepository` (4, 5.3), sowie die additive Darstellung in
+`diagramme.umsatzverlauf()`, `tabellen.umsatztabelle()` und `Dashboard.schulungen_laden()`
+(6).
