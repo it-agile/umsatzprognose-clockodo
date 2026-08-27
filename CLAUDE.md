@@ -33,9 +33,8 @@ darstellung  ──►  domaene  ◄──  clockodo
   `kunde.py`, `mitarbeiter.py` (`Mitarbeiter`, `Wochenarbeitszeit`), `projektanteil.py`
   (der Aufteilungsschlüssel aus 5.4 Schritt 3), `umsatzhistorie.py` (`Monatsumsatz`,
   `Umsatzhistorie`), `verbrauchsverlauf.py` (`Verbrauchsverlauf` – der Monatsverbrauch je
-  Projekt, die Rückrechnung des Restvolumens und das Beobachtungsfenster aus 5.2),
-  `abrufquote.py` (`Abrufquote`, `Abrufquotenverteilung` – die empirische Verteilung nach
-  5.2 samt Ziehung mit Zurücklegen), `bestand.py` (das Aggregat), `prognose.py` (ABC plus
+  Projekt, die Rückrechnung des Restvolumens und das Beobachtungsfenster),
+  `abrufquote.py` (`Abrufquote`, `Abrufquotenverteilung` – die empirische Verteilung samt Ziehung mit Zurücklegen), `bestand.py` (das Aggregat), `prognose.py` (ABC plus
   `NochKeinePrognose`), `hinweis.py`, `zahlen.py` (deutsche Zahlformate ohne `locale`).
 - `src/umsatzprognose/clockodo/` – **alles, was Clockodo weiß, weiß nur dieses Paket.**
   `config.py` (Zugangsdaten mit den benannten Konstruktoren `automatisch`,
