@@ -56,10 +56,20 @@ class SchulungenSheetsClient:
 
 
 def _colab_credentials() -> CredentialsBase:
-    """Anmeldung als die aufrufende Person selbst - kein Client-JSON, keine Token-Datei."""
+    """Anmeldung als die aufrufende Person selbst - kein Client-JSON, keine Token-Datei.
+
+    ``USE_AUTH_EPHEM=0`` erzwingt Colabs aelteren, auf ``gcloud auth login`` basierenden
+    Login-Fluss statt des neueren ephemeren Consent-Dialogs, der bei manchen Konten
+    (insbesondere Google-Workspace) mit ``MessageError: credential propagation was
+    unsuccessful`` fehlschlaegt (https://github.com/googlecolab/colabtools/issues/4343,
+    Stand 2026 weiterhin offen).
+    """
+    import os
+
     import google.auth
     from google.colab import auth  # type: ignore[import-not-found]
 
+    os.environ["USE_AUTH_EPHEM"] = "0"
     auth.authenticate_user()
     credentials, _ = google.auth.default(scopes=SCOPES)
     return credentials
