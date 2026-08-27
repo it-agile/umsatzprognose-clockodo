@@ -1,4 +1,4 @@
-"""Tests zur Monte-Carlo-Simulation aus Spec 5.4.
+"""Tests zur Monte-Carlo-Simulation.
 
 Jede Abrufquote-Verteilung hier hat bewusst nur **einen** Wert: eine Historie mit genau
 einem Beobachtungsmonat, dessen Projekt selbst nicht im Prognose-Scope liegt (siehe
@@ -220,7 +220,7 @@ def test_deadline_monat_zaehlt_noch_voll_folgemonat_nicht():
     werte = next(iter(prognose.monatswerte().values()))
     september, oktober, november = werte
     assert september > 0.0
-    # Oktober enthaelt die deadline (15.10.) und zaehlt laut Entscheidung noch voll.
+    # Oktober enthaelt die deadline (15.10.) und zaehlt noch voll.
     assert oktober > 0.0
     # November liegt vollstaendig nach der deadline.
     assert november == pytest.approx(0.0)

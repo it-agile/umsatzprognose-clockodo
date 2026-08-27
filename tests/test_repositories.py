@@ -265,7 +265,7 @@ def test_monatsverbrauch_wird_je_projekt_und_chronologisch_abgebildet(
     # Gruppensumme (64.999,99) waere ein Fehlalarm.
     assert round(verlaeufe[0].verbrauch, 2) == 65000.0
     # Das Fenster reicht bis zum Ende des Horizonts, nicht bis zum Stichtag: derselbe
-    # Abruf traegt die gebuchten Betraege im Horizont (Spec 11.1).
+    # Abruf traegt die gebuchten Betraege im Horizont.
     assert requests[0].url.params["time_until"] == "2026-10-31T23:59:59Z"
 
 

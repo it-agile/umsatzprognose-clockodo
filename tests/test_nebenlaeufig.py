@@ -1,9 +1,5 @@
 """Tests zur Nebenlaeufigkeit der Abrufe.
 
-Ohne diese Tests waere die Umstellung nicht pruefbar: ein Ladevorgang, der die Abrufe
-still nacheinander ausfuehrt, liefert dieselben Zahlen - nur langsamer. Geprueft wird
-deshalb nicht das Ergebnis, sondern **dass die Requests einander ueberlappen**.
-
 Das Mittel dafuer ist eine ``asyncio.Barrier``: jeder Handler wartet dort, bis alle
 erwarteten Requests eingetroffen sind. Laufen sie nacheinander, wartet der erste
 vergeblich - der Test schlaegt mit einem Timeout fehl statt haengenzubleiben.

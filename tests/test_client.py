@@ -1,10 +1,5 @@
 """Tests zum HTTP-Zugriff.
 
-Gegen einen ``httpx.MockTransport``, nicht gegen die echte Installation - geprueft
-wird, ob Paginierung, Parameterform und Fehlerbehandlung dem entsprechen, was am
-24.08.2026 gegen die Installation verifiziert wurde (siehe Modul-Docstring von
-``umsatzprognose.clockodo.client``).
-
 Die Methoden des Clients sind Coroutinen; hier steht deshalb ``synchron`` darum - wie
 in den ``laden``-Methoden der Repositories. Das erspart eine Testabhaengigkeit auf
 ``pytest-asyncio`` und prueft die Bruecke gleich mit.
@@ -90,8 +85,7 @@ def test_monatsgruppierung_heisst_month_im_singular():
 
 
 def test_doppelgruppierung_nach_projekt_und_monat():
-    # Die Kombination aus Spec 11.1, am 26.08.2026 an der Installation geprueft: die
-    # zuerst genannte Gruppierung ist die aeussere Ebene.
+    # die zuerst genannte Gruppierung ist die aeussere Ebene.
     client, requests = client_mit(lambda _: httpx.Response(200, json={"groups": []}))
     synchron(client.entrygroups_je_projekt_und_monat(time_until="2026-10-31T23:59:59Z"))
 
@@ -101,7 +95,7 @@ def test_doppelgruppierung_nach_projekt_und_monat():
 
 
 def test_horizontende_ist_die_dritte_obere_zeitgrenze():
-    """Spec 5.4: der Horizont beginnt mit dem laufenden Monat.
+    """der Horizont beginnt mit dem laufenden Monat.
 
     Drei Monate ab dem 24.08.2026 enden damit am 31.10.2026 - nicht am 24.11. und nicht
     am 30.11. Verbrauchsgrenze und Historienfenster liegen beide woanders.
@@ -178,11 +172,9 @@ def test_client_nimmt_eine_abweichende_basis_url():
 
 
 def test_verbrauchsfenster_endet_am_stichtag_nicht_am_monatsende():
-    """Spec 5.1: Verbrauch ist streng Vergangenheit.
+    """Verbrauch ist Vergangenheit.
 
-    Was spaeter datiert ist, liegt im Horizont und wird dort angerechnet (5.4). Der
-    Fall tritt in der Installation regelmaessig auf - reichte das Fenster bis zum
-    Monatsende, verschwaenden diese Betraege lautlos aus der Prognose.
+    Was spaeter datiert ist, liegt im Horizont und wird dort angerechnet
     """
     assert verbrauch_bis(date(2026, 8, 24)) == "2026-08-24T23:59:59Z"
     assert monatsende(date(2026, 8, 24)) == "2026-08-31T23:59:59Z"
@@ -202,10 +194,7 @@ def test_monatsende_traegt_die_laenge_des_monats(tag, erwartet):
 
 
 def test_obere_zeitgrenze_wird_je_aufruf_bestimmt():
-    """Kein eingefrorener Wert - weder als Modulkonstante noch als Default-Parameter.
-
-    Ein Notebook bleibt in Colab tagelang offen. Wuerde die Grenze beim Import
-    festgelegt, schnitte sie nach einem Tageswechsel stumm ab.
+    """Kein eingefrorener Wert.
     """
     client, requests = client_mit(lambda _: httpx.Response(200, json={"groups": []}))
     synchron(client.entrygroups(["projects_id"]))

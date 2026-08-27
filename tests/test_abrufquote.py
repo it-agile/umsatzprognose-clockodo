@@ -1,10 +1,4 @@
-"""Tests zur Abrufquote-Verteilung - Spec 5.2.
-
-Geprueft wird das, was die Spec **nicht** festlegt und was hier entschieden werden
-musste: welche Monate eine Beobachtung sind. Die Rueckrechnung des Restvolumens auf einen
-vergangenen Monatsbeginn steht daneben, weil sie von der Reihenfolge der Monate lebt -
-und die API liefert sie nach Dauer sortiert.
-"""
+"""Tests zur Abrufquote-Verteilung"""
 
 from __future__ import annotations
 
@@ -56,7 +50,7 @@ def test_restvolumen_zu_monatsbeginn_wird_aus_dem_heutigen_budget_zurueckgerechn
 
 
 def test_ohne_bezifferbares_budget_gibt_es_kein_restvolumen_und_keine_quote():
-    # Ein Stundenbudget (monetary=false) ist kein Euro-Gesamtbudget - Spec 5.0.
+    # Ein Stundenbudget (monetary=false) ist kein Euro-Gesamtbudget.
     gebaut = verlauf((2026, 4, 30000.0), budget=Budget(betrag=48.0, monetaer=False))
 
     assert gebaut.restvolumen_zu_monatsbeginn(2026, 4) is None
@@ -82,7 +76,7 @@ def test_luecke_im_fenster_ist_eine_quote_von_null():
 def test_fenster_eines_laufenden_projekts_reicht_bis_zum_vormonat_des_stichtags():
     # Ein Projekt im Prognose-Scope, auf das seit Monaten nichts gebucht wird, liefert
     # die Nullen, die es verdient - der Stichtagsmonat selbst bleibt aussen vor, weil
-    # er angebrochen ist (Spec 5.4).
+    # er angebrochen ist.
     gebaut = verlauf((2026, 4, 30000.0), (2026, 8, 11661.88))
 
     assert gebaut.beobachtungsmonate(STICHTAG) == ((2026, 4), (2026, 5), (2026, 6), (2026, 7))
@@ -90,7 +84,7 @@ def test_fenster_eines_laufenden_projekts_reicht_bis_zum_vormonat_des_stichtags(
 
 
 def test_fenster_eines_beendeten_projekts_endet_mit_seiner_letzten_buchung():
-    # abgeschlossen schlaegt aktiv (Spec 5.0): das Projekt ist nicht im Scope, und die
+    # abgeschlossen schlaegt aktiv: das Projekt ist nicht im Scope, und die
     # Monate nach seinem Ende sind keine Beobachtung - niemand ruft dort noch etwas ab.
     beendet = verlauf((2026, 4, 30000.0), (2026, 5, 25000.0), abgeschlossen=True)
 
@@ -98,7 +92,7 @@ def test_fenster_eines_beendeten_projekts_endet_mit_seiner_letzten_buchung():
 
 
 def test_buchungen_nach_dem_stichtag_zaehlen_nicht_zur_historie():
-    # Sie sind laut Spec 5.4 die Untergrenze der Bandbreite und nicht Verbrauch.
+    # Sie sind die Untergrenze der Bandbreite.
     gebaut = verlauf((2026, 4, 30000.0), (2026, 9, 6000.0))
 
     assert gebaut.beobachtungsmonate(STICHTAG)[-1] == (2026, 7)
@@ -115,7 +109,7 @@ def test_monate_ohne_offenes_restvolumen_sind_keine_beobachtung():
 
 
 def test_quote_ueber_eins_bleibt_stehen():
-    # Budgets sind weiche Grenzen (Spec 5.1). Gekappt wird erst in der Simulation.
+    # Budgets sind weiche Grenzen. Gekappt wird erst in der Simulation.
     gebaut = verlauf((2026, 7, 120000.0))
 
     assert gebaut.abrufquoten(STICHTAG)[0].wert == 1.2

@@ -1,8 +1,4 @@
-"""Tests zu Budget und Projekt - den Groessen aus Spec 5.1.
-
-Die Faelle sind nicht ausgedacht: jeder steht fuer eine Konstellation, die in dieser
-Clockodo-Installation vorkommt und die eine Euro-Zahl verfaelschen wuerde, wenn man sie
-uebersieht.
+"""Tests zu Budget und Projekt
 """
 
 from __future__ import annotations
@@ -57,7 +53,7 @@ def test_restvolumen_ist_budget_minus_verbrauch():
 
 def test_ueberschreitung_bleibt_roh_sichtbar_und_wird_prognostisch_gekappt():
     # budget.hard ist false, der Verbrauch kann das Budget uebersteigen. Fuer die
-    # Prognose gilt trotzdem: kein zukuenftiger Umsatz (Spec 5.1 seit v0.5).
+    # Prognose gilt trotzdem: kein zukuenftiger Umsatz.
     p = projekt(verbrauchtes_volumen=130000.0)
     assert p.restvolumen_roh == -30000.0
     assert p.restvolumen_prognosewirksam == 0.0
@@ -91,7 +87,7 @@ def test_abgeschlossenes_projekt_faellt_aus_dem_scope_trotz_aktiv():
 
 def test_automatischer_abschluss_nur_mit_automatic_completion():
     # Eine deadline allein ist laut Doku unverbindlich - erst automatic_completion
-    # macht sie zu einem festen Endedatum (Spec Abschnitt 4).
+    # macht sie zu einem festen Endedatum.
     frist = date(2026, 9, 30)
     mit_schalter = projekt(deadline=frist, automatic_completion=True)
     ohne_schalter = projekt(deadline=frist, automatic_completion=False)
@@ -118,7 +114,7 @@ def test_pauschalleistung_ohne_zeit_hat_keinen_stundensatz():
 
 def test_gebuchte_zeit_ohne_umsatz_ergibt_stundensatz_null():
     # Anders als der Pauschalfall: hier ist verbrauchte_stunden > 0, nur der Umsatz
-    # ist 0. Das waere in Spec 5.4 Schritt 3 eine Division durch null.
+    # ist 0. Das waere eine Division durch null.
     ohne_umsatz = projekt(verbrauchtes_volumen=0.0, verbrauchte_stunden=40.0)
     assert ohne_umsatz.effektiver_stundensatz == 0.0
 

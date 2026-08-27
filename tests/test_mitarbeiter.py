@@ -95,7 +95,7 @@ def test_feiertage_bleiben_ohne_hinterlegung_leer():
 
 
 def test_feiertagsstunden_ignoriert_den_halben_tag():
-    # Entscheidung 26.08.2026: ein halber Feiertag zaehlt wie ein ganzer, siehe
+    # ein halber Feiertag zaehlt wie ein ganzer, siehe
     # Modul-Docstring - die Kollegen nehmen den Rest in aller Regel als Urlaub.
     person = Mitarbeiter(
         id=1,
@@ -141,7 +141,7 @@ def _urlaub_mit_status(status: int) -> Abwesenheit:
 
 
 def test_zaehlt_als_kapazitaetsabzug_beachtet_typ_und_status():
-    # Entscheidung 26.08.2026: der Status zaehlt schon ab "beantragt" (Enquired), nicht
+    # der Status zaehlt schon ab "beantragt" (Enquired), nicht
     # erst ab "genehmigt" (Approved) - Declined/ApprovalCancelled/Cancelled nicht mehr.
     assert _urlaub_mit_status(0).zaehlt_als_kapazitaetsabzug  # Enquired
     assert _urlaub_mit_status(1).zaehlt_als_kapazitaetsabzug  # Approved
