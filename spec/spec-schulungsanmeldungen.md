@@ -47,7 +47,6 @@ diverse Rabattstufen-Spalten (`TN`/`Umsatz` je Rabattart), `Kostenfreie TN`,
   Eurozeichen). Muss beim Einlesen robust geparst werden (Tausenderpunkt entfernen,
   Komma als Dezimaltrennzeichen, Eurozeichen/Leerzeichen abtrennen).
 - `Monat` steht als reine Zahl (1–12, ohne führende Null), nicht als Monatsname
-  (verifiziert am 27.08.2026).
 - Zeilen mit `Umsatz gesamt = 0 €` kommen vor (u. a. abgesagte Termine, laut
   Stichprobe rund ein Viertel der Zeilen) und werden wie jede andere Zeile behandelt
   (tragen 0 zur Monatssumme bei).
@@ -66,7 +65,7 @@ Keine Sonderbehandlung für Stornos oder Nullzeilen (siehe Nicht-Ziele). Keine a
 
 ### 5.2 Zeitfenster
 
-Nur Monate **ab dem aktuellen Monat** (Stichtagsmonat, wie in 5.1/5.4 des
+Nur Monate **ab dem aktuellen Monat** (Stichtagsmonat, wie der des
 Bestand-Bausteins) fließen ein. Vergangene Monate sind bereits über Clockodo als
 Ist-Umsatz erfasst; sie hier zusätzlich einzubeziehen, würde Umsatz doppelt ausweisen.
 
