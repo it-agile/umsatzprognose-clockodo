@@ -265,8 +265,8 @@ class ClockodoClient:
         """Verbrauch je Projekt, darunter die Anteile je Person.
 
         Ein Abruf statt zweier: die Projektsummen dieser Antwort sind mit denen der
-        einfachen Gruppierung identisch, und die Untergruppen summieren sich exakt auf sie. Damit sind
-        Verbrauch und Aufteilungsschluessel garantiert konsistent.
+        einfachen Gruppierung identisch, und die Untergruppen summieren sich exakt auf sie. Damit
+        sind Verbrauch und Aufteilungsschluessel garantiert konsistent.
         """
         return await self.entrygroups(
             [GRUPPIERUNG_PROJEKT, GRUPPIERUNG_PERSON],

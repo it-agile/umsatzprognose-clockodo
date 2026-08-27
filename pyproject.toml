@@ -6,18 +6,9 @@ readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
     "httpx>=0.28",
-    # Traegt seit dem 27.08.2026 die Monte-Carlo-Simulation (Spec 5.4): alle Laeufe
-    # gleichzeitig als Arrays statt einzeln in Python. Untergrenze niedrig, Obergrenze
-    # bei 2.3, weil numba (in Colab vorinstalliert) numpy 2.3+ noch nicht unterstuetzt -
-    # ein engerer oder fehlender Pin wuerde dort eine Neuinstallation erzwingen, die
-    # numba und google-colab bricht (siehe die Installationszelle der Notebooks).
     "numpy>=2.0,<2.3",
     "pandas-stubs~=3.0.5",
     "pandas>=2.2",
-    # Untergrenze niedrig und ohne Obergrenze mit Absicht: Colab bringt plotly mit,
-    # "plotly>=5" ist damit erfuellt und pip laesst die vorhandene Version stehen.
-    # Ein enger Pin wuerde dort eine Neuinstallation erzwingen - genau das, was bei
-    # numpy schon einmal google-colab und numba gebrochen hat.
     "plotly>=5",
     "python-dotenv>=1.0",
 ]
@@ -26,7 +17,6 @@ dependencies = [
 notebook = [
     "ipykernel>=6.29",
     "jupyterlab>=4.2",
-    # Ohne nbformat rendert fig.show() in lokalem JupyterLab nicht. In Colab ist es da.
     "nbformat>=4.2",
 ]
 
@@ -39,8 +29,6 @@ packages = ["src/umsatzprognose"]
 
 [dependency-groups]
 dev = [
-    # Nur lokal: rendert Diagramme als PNG, damit man sie vor dem Ausliefern ansieht.
-    # Bewusst keine Laufzeitabhaengigkeit - in Colab zeichnet der Browser.
     "kaleido>=0.2",
     "pytest>=8.3",
     "ruff>=0.8",

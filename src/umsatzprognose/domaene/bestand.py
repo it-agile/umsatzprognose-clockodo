@@ -1,23 +1,17 @@
 """Bestand - das Portfolio als Ganzes, und der Ort der Simulation.
 
-Der Baustein Bestand aus der Spec: alle in Clockodo angelegten Projekte, die Personen,
+Der Baustein Bestand: alle in Clockodo angelegten Projekte, die Personen,
 die darauf buchen, und der Umsatz, der daraus bisher entstanden ist. Das Aggregat
 beantwortet alles, was ueber ein einzelnes Objekt hinausgeht - welche Projekte in die
 Prognose eingehen, welche Projekte zu einem Kunden gehoeren, wie viel Volumen insgesamt
 noch abrufbar ist.
 
-**Die Simulation gehoert hierher, nicht an das Projekt.** Spec 5.4 Schritt 4 deckelt den
-Bedarf je Person ueber alle ihre Projekte und kuerzt bei Ueberschreitung anteilig; ein
-Projekt allein kann diesen Deckel nicht kennen. Und ein Lauf ist eine Ziehung ueber das
-gesamte Portfolio - die Summe aus 44 unabhaengig gerechneten Projektverteilungen ergibt
+**Die Simulation gehoert hierher, nicht an das Projekt.** Der
+Bedarf je Person ist ueber alle ihre Projekte gedeckelt und wird bei Ueberschreitung anteilig
+gekürzt; ein Projekt allein kann diesen Deckel nicht kennen. Und ein Lauf ist eine Ziehung ueber
+das gesamte Portfolio - die Summe aus 44 unabhaengig gerechneten Projektverteilungen ergibt
 nicht die Portfolio-Bandbreite, und die Kennzahl "Anteil der Laeufe mit Kapazitaet als
-limitierendem Faktor" (5.5) entsteht ueberhaupt erst auf dieser Ebene.
-
-Zu beachten, wenn :meth:`simulieren` gebaut wird: die Objekte hier sind
-unveraenderlich, und das mit Absicht. Bei 10.000 Laeufen existieren 10.000 verschiedene
-Restvolumen-Verlaeufe gleichzeitig; ein ``projekt.restvolumen -= verbrauch`` im
-Simulationsschritt wuerde die Stammdaten zum Lauf-Zustand machen und beim zweiten Lauf
-falsche Zahlen liefern. Der Lauf-Zustand gehoert neben die Objekte, nicht in sie.
+limitierendem Faktor" entsteht ueberhaupt erst auf dieser Ebene.
 """
 
 from __future__ import annotations
@@ -51,7 +45,7 @@ class Bestand:
 
     Attributes:
         verbrauchsverlaeufe: je Projekt der monatliche Verbrauch - die Beobachtungen,
-            aus denen die Abrufquote-Verteilung entsteht (Spec 5.2). Leer, wenn sie
+            aus denen die Abrufquote-Verteilung entsteht. Leer, wenn sie
             nicht mitgeladen wurden.
         abbildungshinweise: Befunde aus dem Lesen der Clockodo-Antworten. Die
             fachlichen Befunde kommen in :meth:`hinweise` dazu.
@@ -96,11 +90,7 @@ class Bestand:
         return tuple(p for p in self.projekte if p.kunde and p.kunde.id == kunde.id)
 
     def projekte_von_mitarbeiter(self, mitarbeiter: Mitarbeiter) -> tuple[Projekt, ...]:
-        """Alle Projekte, auf die eine Person gebucht hat.
-
-        Die Rueckrichtung des Aufteilungsschluessels und damit die Grundlage des
-        Kapazitaetsdeckels aus 5.4 Schritt 4, der je Person ueber alle Projekte wirkt.
-        """
+        """Alle Projekte, auf die eine Person gebucht hat."""
         return tuple(
             p for p in self.projekte if any(a.mitarbeiter.id == mitarbeiter.id for a in p.anteile)
         )
@@ -179,7 +169,7 @@ class Bestand:
             gefunden.append(
                 Hinweis(
                     "Projekte im Prognose-Scope mit Stundensatz 0 - gebuchte Zeit ohne "
-                    "Umsatz; ohne Korrektur würde Spec 5.4 Schritt 3 dort durch null "
+                    "Umsatz; ohne Korrektur würde die Simulation dort durch null "
                     "teilen. Mit Dashboard.stundensatz_uebersteuern() lässt sich für "
                     "diese Projekte von Hand ein Stundensatz hinterlegen",
                     tuple(p.name if p.name else str(p.id) for p in stundensatz_null),
@@ -193,8 +183,8 @@ class Bestand:
             gefunden.append(
                 Hinweis(
                     "Projekte im Prognose-Scope mit automatischem Abschluss zu einem "
-                    "festen Datum - sie tragen ab diesem Datum keinen Umsatz mehr bei "
-                    "(Spec 5.4); die Simulation berücksichtigt das noch nicht",
+                    "festen Datum - sie tragen ab diesem Datum keinen Umsatz mehr bei; "
+                    "die Simulation berücksichtigt das noch nicht",
                     tuple(
                         f"{p.name if p.name else str(p.id)} "
                         f"({
@@ -245,7 +235,7 @@ class Bestand:
                 )
             )
 
-        # Buchungen in Monaten nach dem Stichtagsmonat sind laut Spec 5.4 die Untergrenze
+        # Buchungen in Monaten nach dem Stichtagsmonat sind die Untergrenze
         # der Bandbreite und kein Verbrauch - sie sind vom Restvolumen nicht abgezogen.
         kuenftig = {
             verlauf.projekt: summe
@@ -263,16 +253,16 @@ class Bestand:
                 Hinweis(
                     "Nach dem Stichtagsmonat datierte Buchungen über "
                     f"{euro(sum(kuenftig.values()))} - sie sind Untergrenze der Bandbreite "
-                    "(Spec 5.4) und nicht Verbrauch",
+                    "und nicht Verbrauch",
                     tuple(projekt.bezeichnung for projekt in kuenftig),
                 )
             )
         return tuple(gefunden)
 
     def abrufquotenverteilung(self) -> Abrufquotenverteilung:
-        """Die empirische Verteilung der Abrufquote (Spec 5.2).
+        """Die empirische Verteilung der Abrufquote.
 
-        **Portfolioweit gebildet und nicht je Projekt** - so legt es 5.2 fest, und
+        **Portfolioweit gebildet und nicht je Projekt**, und
         deshalb steht sie hier und nicht am Projekt: ein einzelnes Projekt hat zu wenige
         Monate fuer eine eigene Verteilung, Referenzklassen sind zurueckgestellt.
 
@@ -291,7 +281,7 @@ class Bestand:
     def simulieren(
         self, *, monate: int = 3, laeufe: int = 10000, zufall: np.random.Generator | None = None
     ) -> Prognose:
-        """Die Monte-Carlo-Simulation aus Spec 5.4.
+        """Die Monte-Carlo-Simulation.
 
         Delegiert an :func:`umsatzprognose.domaene.simulation.simulieren` - der Bestand
         ist der fachlich richtige Einstieg (siehe Moduldocstring), die Rechnung selbst
@@ -299,8 +289,8 @@ class Bestand:
         Fachobjekte stellt statt in sie hinein.
 
         Args:
-            monate: Laenge des Prognosehorizonts; die Spec sieht 1 bis 3 vor.
-            laeufe: Anzahl der Monte-Carlo-Laeufe, 10.000 laut Spec.
+            monate: Laenge des Prognosehorizonts; default: 3.
+            laeufe: Anzahl der Monte-Carlo-Laeufe, default: 10.000.
             zufall: der Zufallsgenerator; ungesetzt erzeugt jeder Aufruf einen neuen.
         """
         return simulieren(self, monate, laeufe=laeufe, zufall=zufall)

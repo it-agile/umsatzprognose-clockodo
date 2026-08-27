@@ -2,10 +2,7 @@
 
 Die erste Groesse im Dashboard und die einzige, die sich keinem Projekt zuordnen laesst:
 gemeint ist der **Gesamtumsatz** aller Buchungen eines Monats, einschliesslich der
-Buchungen auf einen Kunden ohne Projekt. Genau deshalb steht sie neben Projekt und
-Kunde und nicht in ihnen.
-
-Zwei Festlegungen, die sich aus den Daten ergeben und nicht aus der Spec:
+Buchungen auf einen Kunden ohne Projekt.
 
 **Der laufende Monat wird getrennt gefuehrt.** Am Stichtag ist er unvollstaendig und
 liegt deutlich unter dem Monatsschnitt der abgeschlossenen Monate. In einer
@@ -52,11 +49,7 @@ class Monatsumsatz:
 
     @property
     def beschriftung(self) -> str:
-        """Etwa ``Sep 2025``.
-
-        Fest verdrahtet statt ueber ``locale``: in Colab ist keine deutsche Locale
-        gesetzt, ``%b`` liefert dort englische Namen.
-        """
+        """Etwa ``Sep 2025``"""
         return f"{MONATSNAMEN[self.monat - 1]} {self.jahr}"
 
     @property

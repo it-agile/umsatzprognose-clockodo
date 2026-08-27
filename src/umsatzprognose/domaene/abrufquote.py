@@ -1,25 +1,10 @@
 """Abrufquote - die einzige Unsicherheit, die dieses Modell kennt.
 
-Ein in Clockodo angelegtes Projekt gilt als beauftragt (Spec 1), das Budget steht. Offen
+Ein in Clockodo angelegtes Projekt gilt als beauftragt, das Budget steht. Offen
 ist allein, **wie viel** vom offenen Restvolumen in einem Monat tatsaechlich abgerufen
-wird. Genau das ist die Abrufquote, und Spec 5.2 schaetzt sie nicht als Formel, sondern
+wird. Genau das ist die Abrufquote, nicht als Formel, sondern
 als **empirische Verteilung** aus der eigenen Historie: eine Beobachtung je Projekt und
 Monat, gezogen wird spaeter mit Zuruecklegen daraus.
-
-Zwei Festlegungen der Spec, die hier sichtbar sind:
-
-* **Quoten ueber 1 werden nicht gekappt.** Budgets sind weiche Grenzen, ein Monat kann
-  mehr abrufen als zu seinem Beginn offen war. Begrenzt wird erst in der Simulation
-  (5.4, Schritt 2), und zwar auf das Restvolumen - nicht an der Verteilung.
-* **Eine Quote auf ein Restvolumen von 0 gibt es nicht.** Sie waere undefiniert, nicht 0;
-  solche Projekt-Monate sind laut 5.2 keine Beobachtung. Darum der Waechter in
-  :meth:`Abrufquote.__post_init__` - eine 0 im Nenner ist hier ein Programmfehler und
-  keine Zahl, die man auffangen darf.
-
-Was die Verteilung **nicht** weiss: dass die Projekte voneinander abhaengen. Die
-unabhaengige Ziehung mittelt einen portfolioweiten Nachfrageeinbruch weg und liefert
-damit eine zu enge Bandbreite (5.2, Abschnitt 9.2). Die Richtung dieses Fehlers ist
-bekannt, seine Groesse nicht.
 """
 
 from __future__ import annotations
@@ -41,7 +26,7 @@ from .umsatzhistorie import MONATSNAMEN
 
 @dataclass(frozen=True)
 class Abrufquote:
-    """Eine einzelne Beobachtung: ein Projekt in einem Monat (Spec 5.2).
+    """Eine einzelne Beobachtung: ein Projekt in einem Monat.
 
     Attributes:
         projekt: das beobachtete Projekt - mitgefuehrt, damit eine auffaellige Quote
@@ -61,7 +46,7 @@ class Abrufquote:
     def __post_init__(self) -> None:
         if self.restvolumen_zu_monatsbeginn <= 0:
             raise ValueError(
-                "Eine Abrufquote braucht ein Restvolumen > 0 zu Monatsbeginn (Spec 5.2); "
+                "Eine Abrufquote braucht ein Restvolumen > 0 zu Monatsbeginn; "
                 f"hier: {self.restvolumen_zu_monatsbeginn}"
             )
 
@@ -85,16 +70,14 @@ class Abrufquote:
 
 @dataclass(frozen=True)
 class Abrufquotenverteilung:
-    """Die empirische Verteilung der Abrufquote ueber alle Projekt-Monate (Spec 5.2).
+    """Die empirische Verteilung der Abrufquote ueber alle Projekt-Monate.
 
-    **Portfolioweit und nicht je Projekt.** Referenzklassen sind zurueckgestellt; ein
-    einzelnes Projekt hat zu wenige Monate, um eine eigene Verteilung zu tragen, und die
-    Spec zieht deshalb aus einem Topf.
+    **Portfolioweit und nicht je Projekt.** ein
+    einzelnes Projekt hat zu wenige Monate, um eine eigene Verteilung zu tragen.
 
     Die Verteilung ist ein Vorrat an beobachteten Quoten, aus dem die Simulation zieht -
     kein Modell mit Parametern. Sie hat damit weder Verteilungsannahme noch Rand: sie
-    kann nichts liefern, was nicht schon einmal vorkam. Das ist Absicht (5.2) und
-    zugleich ihre Grenze.
+    kann nichts liefern, was nicht schon einmal vorkam.
     """
 
     quoten: tuple[Abrufquote, ...] = ()
@@ -124,7 +107,7 @@ class Abrufquotenverteilung:
 
     # cached_property schreibt in ``__dict__`` und umgeht damit ``__setattr__`` - das
     # funktioniert auch an einer frozen dataclass. Gerechnet wird die Sortierung
-    # deshalb einmal und nicht bei jeder Ziehung: die Simulation zieht laut 5.4 je Lauf,
+    # deshalb einmal und nicht bei jeder Ziehung: die Simulation zieht je Lauf,
     # Projekt und Monat, das sind bei 10.000 Laeufen ueber alle Projekte des Scope und
     # drei Monate weit mehr als eine Million Ziehungen.
     @cached_property
@@ -180,17 +163,17 @@ class Abrufquotenverteilung:
 
     @property
     def anteil_ueber_budget(self) -> float:
-        """Anteil der Beobachtungen mit einer Quote ueber 1 - weiche Budgets (5.1)."""
+        """Anteil der Beobachtungen mit einer Quote ueber 1 - weiche Budgets."""
         if not self.quoten:
             return 0.0
         return sum(1 for wert in self._werte if wert > 1.0) / self.anzahl
 
     def hoechste(self, anzahl: int = 5) -> tuple[Abrufquote, ...]:
-        """Die auffaelligsten Beobachtungen - fuer die Kalibrierung (Spec 7)."""
+        """Die auffaelligsten Beobachtungen - fuer die Kalibrierung."""
         return tuple(sorted(self.quoten, key=lambda q: q.wert, reverse=True)[:anzahl])
 
     def ziehen(self, zufall: np.random.Generator) -> float:
-        """Eine Quote, mit Zuruecklegen gezogen (Spec 5.2).
+        """Eine Quote, mit Zuruecklegen gezogen.
 
         Der Zufallsgenerator wird uebergeben und nicht hier erzeugt: ein Lauf muss
         wiederholbar sein, und wer den Startwert setzt, ist der Aufrufer.
@@ -208,7 +191,7 @@ class Abrufquotenverteilung:
     def ziehen_array(self, form: tuple[int, ...], zufall: np.random.Generator) -> np.ndarray:
         """Wie :meth:`ziehungen`, aber als Array beliebiger Form statt als Tupel.
 
-        Fuer die Monte-Carlo-Simulation (5.4): sie zieht die Quoten aller Laeufe und
+        Fuer die Monte-Carlo-Simulation: sie zieht die Quoten aller Laeufe und
         Projekte eines Horizontmonats in einem Aufruf statt einzeln ueber
         :meth:`ziehen` - der Gewinn der numpy-Umstellung entsteht durch das
         Vektorisieren ueber die Laeufe, nicht durch den Zufallsgenerator allein.

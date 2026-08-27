@@ -1,13 +1,7 @@
 """Zahlen in der Form, in der ein Fachexperte sie liest.
 
 Deutsche Schreibweise mit Punkt als Tausender- und Komma als Dezimaltrennzeichen, ohne
-``locale``: in Colab ist keine deutsche Locale gesetzt, und ein
-``locale.setlocale``-Aufruf wirkt prozessweit - ein zu hoher Preis fuer ein
-Tausendertrennzeichen.
-
-Steht in der Domaene, weil bereits die Hinweise und die Monatsbeschriftungen fertige
-Saetze fuer Menschen sind. Die Darstellungsschicht benutzt dieselben Funktionen, damit
-Tabelle, Diagramm und Hinweis dieselbe Schreibweise zeigen.
+``locale``:.
 """
 
 from __future__ import annotations

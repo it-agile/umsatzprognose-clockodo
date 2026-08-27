@@ -1,41 +1,24 @@
 """Mitarbeiter - die Person, die Zeit auf Projekte bucht.
 
 Zwei Rollen im Modell: die Person ist Traeger des historischen Anteils an einem Projekt
-(Spec 5.4, Schritt 3, siehe :mod:`umsatzprognose.domaene.projektanteil`) und sie bringt
-die Kapazitaet mit, an der die Prognose gedeckelt wird (5.3).
+siehe :mod:`umsatzprognose.domaene.projektanteil`) und sie bringt
+die Kapazitaet mit, an der die Prognose gedeckelt wird.
 
-**Die Spec liegt bei der Sollarbeitszeit falsch.** Abschnitt 4 nennt
-``default_target_hours`` aus ``/v3/users``. Das Feld ist ein Boolean-Schalter, keine
-Stundenzahl - am 24.08.2026 an der Installation geprueft, mit beiden Werten auch bei
-aktiven Personen. Die tatsaechliche Sollarbeitszeit steht im
-unversionierten Legacy-Endpunkt ``/targethours``, je Person mit Gueltigkeitszeitraum und
-Stunden je Wochentag. Details in :mod:`umsatzprognose.clockodo.mitarbeiter`.
-
-Die geplante Abwesenheit (``Abwesenheit``, aus ``/v4/absences``) und die Feiertage
-(``Feiertag``, aus ``/v2/usersNonbusinessDays``) sind inzwischen hier.
-:meth:`Mitarbeiter.feiertagsstunden` zieht daraus den Sollstunden-Abzug eines Monats
-(Entscheidung 26.08.2026): ein Feiertag setzt die Sollstunden seines Wochentags auf 0,
-**auch wenn er nur ein halber ist** - Spec 5.3 nennt eine Halbierung als Annahme, in der
-Praxis nehmen die Kollegen den Rest eines halben Feiertags aber in aller Regel als
-Urlaub, und eine Halbierung wuerde diesen Tag doppelt und uneinheitlich erfassen: einmal
-ueber den Feiertag, einmal ueber die Abwesenheit. ``Feiertag.halber_tag`` bleibt am
-Objekt erhalten, geht aber nicht mehr in die Rechnung ein.
-
-**Welcher ``typ`` als Abwesenheit vom Arbeiten zaehlt, ist entschieden (26.08.2026):
-nur Urlaub und Krankheit.** ``Abwesenheit.gilt_als_abwesend`` prueft das. Alle anderen
+**Nur Urlaub und Krankheit zählen als ``typ`` als Abwesenheit vom Arbeiten
+.** ``Abwesenheit.gilt_als_abwesend`` prueft das. Alle anderen
 Typen - Sonderurlaub, Ueberstundenabbau, Fortbildung, Mutterschutz, Home office, Work
-out of office, Quarantaene, Wehr-/Ersatzdienst - zaehlen nach dieser Entscheidung
+out of office, Quarantaene, Wehr-/Ersatzdienst - zaehlen
 **nicht**, auch dort, wo das fachlich diskutabel ist (etwa Quarantaene).
 
-**Der ``status`` ist ebenfalls entschieden (26.08.2026): eine Abwesenheit zaehlt schon
+**Eine Abwesenheit zaehlt schon
 ab "beantragt", nicht erst ab "genehmigt".** ``Enquired`` und ``Approved`` zaehlen also
 beide, ``Declined``, ``ApprovalCancelled`` und ``Cancelled`` nicht - das sind keine reale
 Abwesenheit (mehr). ``Abwesenheit.zaehlt_als_kapazitaetsabzug`` kombiniert diese
 Status-Regel mit ``gilt_als_abwesend``.
 
-**Der Abschlag fuer ungeplante Abwesenheit wird im MVP ignoriert (Entscheidung
-26.08.2026)** - keine Schaetzung, kein Abzug. Damit ist die **verfuegbare** Kapazitaet
-aus 5.3 vollstaendig berechenbar: :meth:`Mitarbeiter.verfuegbare_kapazitaet` zieht
+**Der Abschlag fuer ungeplante Abwesenheit wird ignoriert** - keine Schaetzung, kein Abzug.
+Damit ist die **verfuegbare** Kapazitaet vollstaendig berechenbar:
+:meth:`Mitarbeiter.verfuegbare_kapazitaet` zieht
 Feiertage und zaehlende Abwesenheit von den Sollstunden eines Monats ab, taggenau und
 ohne einen Tag doppelt abzuziehen, wenn sich beide ueberschneiden (etwa Urlaub ueber
 Weihnachten, der auch die Feiertage einschliesst).
@@ -79,7 +62,7 @@ TYPEN_ABWESEND = frozenset({TYP_URLAUB}) | TYPEN_KRANKHEIT
 
 @dataclass(frozen=True)
 class Abwesenheit:
-    """Eine geplante Abwesenheit einer Person, aus ``/v4/absences`` (Spec 5.3).
+    """Eine geplante Abwesenheit einer Person, aus ``/v4/absences``.
 
     ``typ`` und ``status`` bleiben Clockodos numerische Codes (siehe
     :mod:`umsatzprognose.clockodo.abwesenheiten` fuer ihre Bedeutung).
@@ -105,7 +88,7 @@ class Abwesenheit:
 
     @property
     def gilt_als_abwesend(self) -> bool:
-        """Ob ``typ`` als Abwesenheit vom Arbeiten zaehlt (Entscheidung 26.08.2026).
+        """Ob ``typ`` als Abwesenheit vom Arbeiten zaehlt.
 
         Nur Urlaub und Krankheit - siehe Modul-Docstring fuer die Begruendung und die
         Liste der ausgeschlossenen Typen. Sagt nichts ueber ``status`` - siehe
@@ -115,19 +98,18 @@ class Abwesenheit:
 
     @property
     def zaehlt_als_kapazitaetsabzug(self) -> bool:
-        """Ob diese Abwesenheit den Kapazitaetsdeckel mindert (Spec 5.3).
+        """Ob diese Abwesenheit den Kapazitaetsdeckel mindert.
 
         Kombiniert Typ (:attr:`gilt_als_abwesend`) und Status (:data:`STATUS_GEPLANT` -
-        zaehlt schon ab "beantragt", nicht erst ab "genehmigt"; Entscheidung
-        26.08.2026, siehe Modul-Docstring). Eine abgelehnte, zurueckgezogene oder
-        stornierte Abwesenheit zaehlt nicht, auch wenn ihr Typ passt.
+        zaehlt schon ab "beantragt", nicht erst ab "genehmigt"). Eine abgelehnte, zurueckgezogene
+        oder stornierte Abwesenheit zaehlt nicht, auch wenn ihr Typ passt.
         """
         return self.gilt_als_abwesend and self.status in STATUS_GEPLANT
 
 
 @dataclass(frozen=True)
 class Feiertag:
-    """Ein Feiertag, der fuer eine Person gilt, aus ``/v2/usersNonbusinessDays`` (Spec 5.3).
+    """Ein Feiertag, der fuer eine Person gilt, aus ``/v2/usersNonbusinessDays``.
 
     Die Zuordnung Person -> Feiertagsgruppe hat Clockodo bereits aufgeloest; das Modell
     kennt nur noch das Ergebnis, keine Gruppe.
@@ -135,8 +117,8 @@ class Feiertag:
     Attributes:
         datum: der Kalendertag (``evaluated_date`` der API).
         halber_tag: ob der Feiertag nur einen halben Tag umfasst. Fuer
-            :meth:`Mitarbeiter.feiertagsstunden` ohne Wirkung (Entscheidung
-            26.08.2026, siehe Modul-Docstring); als Rohwert der API bleibt er erhalten.
+            :meth:`Mitarbeiter.feiertagsstunden` ohne Wirkung); als Rohwert der API bleibt er
+            erhalten.
         name: die Bezeichnung, sofern vorhanden.
     """
 
@@ -186,9 +168,8 @@ class Mitarbeiter:
     def wochenarbeitszeit(self, stichtag: date) -> Wochenarbeitszeit | None:
         """Die am Stichtag gueltige Vereinbarung, ``None`` wenn keine vorliegt.
 
-        Bei mehreren gueltigen Eintraegen gewinnt der zuletzt begonnene. In dieser
-        Installation trat der Fall nicht auf - jede aktive Person hat genau eine
-        laufende Vereinbarung -, aber die Historie fuehrt zu jeder Person mehrere
+        Bei mehreren gueltigen Eintraegen gewinnt der zuletzt begonnene.Jede aktive Person hat genau
+        eine laufende Vereinbarung -, aber die Historie fuehrt zu jeder Person mehrere
         Eintraege, und ein ueberlappender Zeitraum darf nicht von der Reihenfolge der
         Antwort abhaengen.
         """
@@ -201,10 +182,10 @@ class Mitarbeiter:
         return vereinbarung.wochenstunden if vereinbarung else None
 
     def feiertagsstunden(self, jahr: int, monat: int) -> float:
-        """Sollstunden-Abzug durch Feiertage in diesem Monat (Spec 5.3).
+        """Sollstunden-Abzug durch Feiertage in diesem Monat.
 
-        Jeder Feiertag - ganz oder halb - setzt die Sollstunden seines Wochentags auf 0
-        (Entscheidung 26.08.2026, siehe Modul-Docstring); ``halber_tag`` geht nicht ein.
+        Jeder Feiertag - ganz oder halb - setzt die Sollstunden seines Wochentags auf 0;
+        ``halber_tag`` geht nicht ein.
         Ein Feiertag auf einen Wochentag ohne Sollstunden (etwa ein Wochenende) wirkt
         von selbst nicht, weil dort nichts abzuziehen ist. Die Wochenarbeitszeit wird je
         Feiertag einzeln nachgeschlagen, nicht einmal fuer den Monat: eine Vereinbarung
@@ -225,11 +206,10 @@ class Mitarbeiter:
         return abzug
 
     def verfuegbare_kapazitaet(self, jahr: int, monat: int) -> float:
-        """Verfuegbare Kapazitaet in diesem Monat (Spec 5.3).
+        """Verfuegbare Kapazitaet in diesem Monat.
 
         ``Sollstunden - Feiertage - geplante Abwesenheit`` - der Abschlag fuer
-        ungeplante Abwesenheit fehlt hier bewusst, er wird im MVP ignoriert
-        (Entscheidung 26.08.2026, siehe Modul-Docstring).
+        ungeplante Abwesenheit fehlt hier bewusst, er wird im MVP ignoriert.
 
         Gerechnet wird **taggenau**, nicht als drei separate Summen: jeder Kalendertag
         des Monats zaehlt hoechstens einmal als belegt, auch wenn ein Feiertag und eine

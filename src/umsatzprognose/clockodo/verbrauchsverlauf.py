@@ -12,7 +12,7 @@ Form::
                                    "grouped_by": "month"}]}]}
 
 * **Die Monate kommen nach Dauer absteigend**, nicht chronologisch - bei jeder Gruppe
-  mit mehr als einem Monat, ohne Ausnahme. Die Rueckrechnung des Restvolumens 
+  mit mehr als einem Monat, ohne Ausnahme. Die Rueckrechnung des Restvolumens
   lebt von der Reihenfolge, sortiert wird deshalb beim Bauen des Verlaufs.
 * **Der Monat kommt als String** ``"JJJJMM"``, wie bei der einfachen Monatsgruppierung.
   Gelesen wird er darum mit derselben Funktion (:func:`.umsatz.monatsumsatz`).

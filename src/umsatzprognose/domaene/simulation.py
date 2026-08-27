@@ -1,16 +1,14 @@
-"""Simulation - die Monte-Carlo-Rechnung aus Spec 5.4.
+"""Simulation - die Monte-Carlo-Rechnung.
 
 Ein Lauf zieht je Horizontmonat und Projekt eine Abrufquote aus der portfolioweiten
-Verteilung (5.2), rechnet sie ueber den effektiven Stundensatz in Stunden um, verteilt
+Verteilung, rechnet sie ueber den effektiven Stundensatz in Stunden um, verteilt
 sie auf die beteiligten Personen nach ihrem historischen Anteil
 (:meth:`~umsatzprognose.domaene.projekt.Projekt.anteil_je_mitarbeiter`) und deckelt den
-Bedarf je Person projektuebergreifend gegen ihre verfuegbare Kapazitaet (5.3). Das
-Restvolumen wandert von Monat zu Monat weiter; die Fachobjekte selbst bleiben
-unveraendert, der Lauf-Zustand steht als numpy-Array neben ihnen, nicht in ihnen (siehe
-:mod:`umsatzprognose.domaene.bestand`).
+Bedarf je Person projektuebergreifend gegen ihre verfuegbare Kapazitaet. Das
+Restvolumen wandert von Monat zu Monat weiter.
 
-**Stundensatz 0 und ``None`` werden identisch behandelt.** Beide erzeugen laut Spec 5.1
-und der Entscheidung vom 26.08.2026 "keinen Stundenbedarf" - ein Projekt ohne
+**Stundensatz 0 und ``None`` werden identisch behandelt.** Beide erzeugen
+"keinen Stundenbedarf" - ein Projekt ohne
 ableitbaren Satz kann seinen gewuenschten Euro-Betrag nicht in Stunden umrechnen und
 geht deshalb ungedeckelt (ohne Kapazitaetsverbrauch) in die Prognose ein, begrenzt nur
 durch sein Restvolumen.
@@ -18,15 +16,15 @@ durch sein Restvolumen.
 **Monat 1 ist angebrochen.** Gezogene Abrufquote und verfuegbare Kapazitaet werden mit
 dem Anteil der ab dem Stichtag verbleibenden Arbeitstage am Monat skaliert - hier als
 Anteil der Wochentage Montag bis Freitag verstanden, ohne Feiertage oder individuelle
-Abwesenheiten, weil das schon die Kapazitaetsrechnung selbst leistet.
+Abwesenheiten.
 
-**Der Cutoff durch ``automatic_completion`` gilt monatsweise, nicht taggenau**
-(Entscheidung 26.08.2026): der Horizontmonat, der die ``deadline`` enthaelt, zaehlt noch
+**Der Cutoff durch ``automatic_completion`` gilt monatsweise, nicht taggenau**: der
+Horizontmonat, der die ``deadline`` enthaelt, zaehlt noch
 voll, der erste vollstaendig danach liegende Monat liefert 0. Eine taggenaue Skalierung
 wie bei Monat 1 waere je Projekt individuell noetig statt einmal global fuer den ganzen
-Horizont - der Mehraufwand steht in keinem Verhaeltnis zur gewonnenen Genauigkeit.
+Horizont.
 
-**Bereits gebuchte Betraege je Horizontmonat sind die Untergrenze** (5.4): sie zaehlen
+**Bereits gebuchte Betraege je Horizontmonat sind die Untergrenze**: sie zaehlen
 gegen dasselbe Restvolumen wie der simulierte Betrag, werden also nicht zusaetzlich
 abgerufen, koennen es aber nach oben korrigieren, wenn die Simulation weniger zieht als
 schon real gebucht ist.
@@ -35,24 +33,6 @@ Kapazitaeten haengen nur an Stichtag und Horizontmonat, nicht am Lauf - sie werd
 einmal vor der Lauf-Schleife berechnet und nicht bei jedem der 10.000 Laeufe neu
 (:meth:`~umsatzprognose.domaene.mitarbeiter.Mitarbeiter.verfuegbare_kapazitaet` iteriert
 selbst schon ueber jeden Tag des Monats).
-
-**Seit dem 27.08.2026 rechnet die Simulation mit numpy, und zwar ueber alle Laeufe
-gleichzeitig.** Der Zufallsgenerator alleine auszutauschen (``random.Random`` gegen
-``numpy.random.Generator``) haette nichts gebracht - der Aufwand steckte in der
-10.000-mal wiederholten Python-Schleife, nicht im Ziehen einer einzelnen Zahl. Der
-Lauf-Zustand ist deshalb kein Dictionary mehr je Projekt, sondern ein Array der Form
-``(laeufe, Projekte im Scope)``; ein Monat der Simulation ist eine Handvoll
-Array-Operationen statt einer Python-Schleife ueber Projekte innerhalb einer Schleife
-ueber Laeufe. Die Aufteilung auf Personen (Schritt 3) und der Kapazitaetsdeckel
-(Schritt 4) laufen ueber eine ``(Projekte, Personen)``-Matrix aus
-:meth:`~umsatzprognose.domaene.projekt.Projekt.anteil_je_mitarbeiter`: einmal vorwaerts
-multipliziert ergibt sie den Bedarf je Person, einmal (transponiert) zurueck den
-Kuerzungsfaktor je Projekt - das haelt den dritten, nur gedachten Tensor
-``(Laeufe, Projekte, Personen)`` aus dem Speicher, den eine direkte Umsetzung der
-Ruecktransformation brauchen wuerde. Die Fachregeln selbst (Kapazitaetsdeckel
-projektuebergreifend, Restvolumen-Fortschreibung, Cutoff durch
-``automatic_completion``, Untergrenze aus Gebuchtem) sind unveraendert - nur ihre
-Ausfuehrungsform wechselt von Skalar-Python zu Array-numpy.
 """
 
 from __future__ import annotations
@@ -86,7 +66,7 @@ def _aus_ordnung(ordnung: int) -> Monat:
 
 
 def _horizontmonate(stichtag: date, monate: int) -> tuple[Monat, ...]:
-    """Die Horizontmonate, beginnend mit dem Monat des Stichtags (Spec 5.4)."""
+    """Die Horizontmonate, beginnend mit dem Monat des Stichtags."""
     start = _ordnung(stichtag.year, stichtag.month)
     return tuple(_aus_ordnung(start + i) for i in range(monate))
 
@@ -107,11 +87,11 @@ def _anteil_verbleibender_arbeitstage(stichtag: date) -> float:
 
 
 def _traegt_noch_bei(projekt: Projekt, monat: Monat) -> bool:
-    """Ob das Projekt in diesem Horizontmonat noch Umsatz beitraegt (Spec 5.4 Schritt 1).
+    """Ob das Projekt in diesem Horizontmonat noch Umsatz beitraegt.
 
     Ohne ``automatic_completion``/``deadline`` immer ``True``. Sonst: der Monat, der die
     ``deadline`` enthaelt, zaehlt noch voll, der erste vollstaendig danach liegende
-    Monat liefert 0 (Entscheidung 26.08.2026, siehe Modul-Docstring).
+    Monat liefert 0.
     """
     abschluss = projekt.automatischer_abschluss
     if abschluss is None:
@@ -121,7 +101,7 @@ def _traegt_noch_bei(projekt: Projekt, monat: Monat) -> bool:
 
 @dataclass(frozen=True)
 class MonteCarloPrognose(Prognose):
-    """Das Ergebnis der Monte-Carlo-Simulation (Spec 5.4/5.5).
+    """Das Ergebnis der Monte-Carlo-Simulation.
 
     Traegt nur fertig aggregierte Kennzahlen - die 10.000 Einzellaeufe selbst werden
     nicht aufgehoben, sie waeren als Speicherlast ohne Gegenwert.
@@ -168,15 +148,15 @@ def simulieren(
     laeufe: int = 10000,
     zufall: np.random.Generator | None = None,
 ) -> Prognose:
-    """Die Monte-Carlo-Simulation aus Spec 5.4.
+    """Die Monte-Carlo-Simulation.
 
     Aufgerufen ueber :meth:`~umsatzprognose.domaene.bestand.Bestand.simulieren`, nicht
     direkt - der Bestand ist der fachlich richtige Einstieg (siehe dessen Docstring).
 
     Args:
         bestand: das Portfolio zum Stichtag.
-        monate: Laenge des Horizonts, 1 bis 3 (Spec 5.4).
-        laeufe: Anzahl der Monte-Carlo-Laeufe, 10.000 laut Spec.
+        monate: Laenge des Horizonts, 1 bis 3.
+        laeufe: Anzahl der Monte-Carlo-Laeufe, 10.000.
         zufall: der Zufallsgenerator; wer den Startwert setzt, ist der Aufrufer - ein
             Lauf muss wiederholbar sein (siehe
             :meth:`~umsatzprognose.domaene.abrufquote.Abrufquotenverteilung.ziehen`).
@@ -194,10 +174,10 @@ def simulieren(
     skalierung_monat1 = _anteil_verbleibender_arbeitstage(bestand.stichtag)
 
     # Statische Groessen: einmal aus den Fachobjekten gelesen und als Array angelegt,
-    # nicht bei jedem der ``laeufe`` Laeufe neu (siehe Modul-Docstring).
+    # nicht bei jedem der ``laeufe`` Laeufe neu.
     startvolumen = np.array([p.restvolumen_prognosewirksam or 0.0 for p in scope])
     saetze = np.array([p.effektiver_stundensatz or 0.0 for p in scope])
-    # Satz 0 und ``None`` werden identisch behandelt (Entscheidung 26.08.2026): beide
+    # Satz 0 und ``None`` werden identisch behandelt: beide
     # erzeugen keinen Stundenbedarf, der gewuenschte Betrag geht ungedeckelt ein.
     hat_satz = saetze != 0.0
     saetze_sicher = np.where(hat_satz, saetze, 1.0)  # Divisor, ungenutzt wo hat_satz falsch
@@ -238,7 +218,7 @@ def simulieren(
     # Monat 0 ist der Stichtagsmonat: ``verlauf.gebucht()`` kommt aus einer
     # Monatsgruppierung ohne Tagesgrenze und liefert deshalb den ganzen Monat, vor und
     # nach dem Stichtag zusammen. Der Teil vor dem Stichtag ist schon als Verbrauch
-    # (5.1) vom Restvolumen abgezogen ("es taucht hier nicht wieder auf", Spec 5.4) -
+    # vom Restvolumen abgezogen ("es taucht hier nicht wieder auf" -
     # als Untergrenze fuer Monat 0 gezaehlt, wuerde er ein zweites Mal auftauchen. Fuer
     # Monat 0 gibt es deshalb keine Untergrenze aus gebuchten Betraegen; was dort schon
     # feststeht, zeigt die Historie (``Umsatzhistorie.laufender``) getrennt.
@@ -254,7 +234,7 @@ def simulieren(
                 gebucht[j, i] = betrag
 
     # Lauf-Zustand: alle ``laeufe`` Restvolumen-Verlaeufe gleichzeitig als Array
-    # (laeufe, Projekte im Scope) statt 10.000 Dictionaries (siehe Modul-Docstring).
+    # (laeufe, Projekte im Scope) statt 10.000 Dictionaries.
     restvolumen = np.tile(startvolumen, (laeufe, 1))
     monatssummen = np.zeros((len(horizont), laeufe))
     kapazitaet_limitiert_je_lauf = np.zeros(laeufe, dtype=bool)

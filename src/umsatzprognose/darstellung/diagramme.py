@@ -1,8 +1,9 @@
 """Die Diagramme des Dashboards.
 
-Jede Funktion nimmt Fachobjekte und gibt eine plotly-Figur zurueck. Was dargestellt wird, entscheidet die Domaene; hier steht nur, wie.
+Jede Funktion nimmt Fachobjekte und gibt eine plotly-Figur zurueck. Was dargestellt wird,
+entscheidet die Domaene; hier steht nur, wie.
 
-Gestaltung: 
+Gestaltung:
  * verschiedene Sättigungen einer Farbe für [abgerechnet, nicht abgerechnet, prognostiziert].
  * verschiedene Farben für unetrschiedliche Quellen
 """
@@ -144,8 +145,7 @@ def umsatzverlauf(
 
 
 def _legendeintrag(fig: go.Figure, name: str, farbe: str, *, deckkraft: float = 1.0) -> None:
-    """Eine unsichtbare Spur einzig fuer den Legendeneintrag.
-    """
+    """Eine unsichtbare Spur einzig fuer den Legendeneintrag."""
     fig.add_scatter(
         x=[None],
         y=[None],
