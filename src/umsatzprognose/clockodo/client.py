@@ -8,9 +8,9 @@
 ``/v3/users``                Personen. ``default_target_hours`` ist ein Schalter!
 ``/targethours``             Sollarbeitszeit, unversioniert. ``/v2`` und ``/v3`` -> 404
 ``/v2/entrygroups``          Verbrauch und Umsatz, aggregiert
-``/v4/absences``             geplante Abwesenheiten (5.3), Jahresfilter als ``filter[year]``.
+``/v4/absences``             geplante Abwesenheiten, Jahresfilter als ``filter[year]``.
                               ``/``, ``/v2``, ``/v3`` -> 410 deprecated
-``/v2/usersNonbusinessDays``  Feiertage je Person (5.3), Jahresfilter als einfaches
+``/v2/usersNonbusinessDays``  Feiertage je Person, Jahresfilter als einfaches
                               ``year``. Paginiert wie ``/v4/projects``
 ===========================  ==========================================================
 

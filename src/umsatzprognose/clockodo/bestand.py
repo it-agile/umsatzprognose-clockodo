@@ -91,8 +91,8 @@ class BestandRepository:
         """
         stichtag = stichtag or date.today()
         personen = MitarbeiterRepository(self._client)
-        # Der Horizont beginnt im Stichtagsjahr und kann bis ins naechste reichen
-        # (Spec 5.4); /v4/absences und /v2/usersNonbusinessDays filtern beide nur nach
+        # Der Horizont beginnt im Stichtagsjahr und kann bis ins naechste reichen;
+        # /v4/absences und /v2/usersNonbusinessDays filtern beide nur nach
         # einem Jahr, also eines oder zwei je Endpunkt.
         jahre = sorted({stichtag.year, int(horizontende(stichtag, horizont_monate)[:4])})
 

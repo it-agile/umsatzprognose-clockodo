@@ -53,7 +53,7 @@ def umsatzverlauf(
     :data:`~umsatzprognose.darstellung.gestaltung.PROGNOSE_DECKKRAFT`). Sicherheit einer
     Zahl zeigt sich also ueber die Deckkraft, nicht ueber eine dritte Farbfamilie. Ein
     duenner Fehlerbalken je Monat zeigt, wie weit die 85-%- und 95-%-Niveaus darunter
-    liegen (Spec 5.5). Ohne ``prognose`` oder ohne Bandbreite bleibt das Bild bei der
+    liegen. Ohne ``prognose`` oder ohne Bandbreite bleibt das Bild bei der
     Historie; die Begruendung steht dann als Hinweis rechts daneben.
 
     Der erste Horizontmonat ist derselbe Kalendermonat wie der laufende - beide teilen

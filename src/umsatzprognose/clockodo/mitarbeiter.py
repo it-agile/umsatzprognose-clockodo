@@ -159,12 +159,7 @@ class MitarbeiterRepository:
         return je_person
 
     def _abwesenheiten(self, abwesenheiten: list[dict[str, Any]]) -> dict[int, list[Abwesenheit]]:
-        """Rohe Abwesenheiten zu Personen - ungefiltert nach Typ und Status.
-
-        Welche Typen und Status als Kapazitaetsabzug zaehlen, ist Teil des noch zu
-        bauenden Deckels (Spec 5.3) und wird hier nicht entschieden - siehe
-        :mod:`umsatzprognose.domaene.mitarbeiter`.
-        """
+        """Rohe Abwesenheiten zu Personen - ungefiltert nach Typ und Status."""
         je_person: dict[int, list[Abwesenheit]] = defaultdict(list)
         for eintrag in abwesenheiten:
             users_id = int(eintrag["users_id"])
