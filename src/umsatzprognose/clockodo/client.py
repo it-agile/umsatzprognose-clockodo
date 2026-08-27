@@ -1,12 +1,6 @@
 """HTTP-Zugriff auf die Clockodo-API.
 
-Die Struktur der Antworten und die zulaessigen Query-Parameter sind nicht der Doku
-entnommen (``docs.clockodo.com`` ist eine JavaScript-Anwendung und war nicht
-auslesbar), sondern per ``curl`` und im Python-Aufruf gegen die echte Installation
-geprueft. Was dabei herauskam und hier abgebildet ist:
-
-**Vier API-Generationen nebeneinander**, kein Versehen, sondern Stand der Clockodo-API.
-Die Version je Endpunkt ist keine freie Wahl, sondern ausprobiert:
+**Stand der Clockodo-API: Vier API-Generationen nebeneinander**
 
 ===========================  ==========================================================
 ``/v4/projects``             Auftragsvolumen (``budget``), Paginierung, ``data``-Envelope
@@ -37,7 +31,7 @@ legt :func:`~umsatzprognose.clockodo.nebenlaeufig.synchron` darum - genau das tu
 und ``limit=3`` antworten mit 200 und der vollen, ungekuerzten Liste). Ein 200 belegt
 einen Parameternamen also nicht; dafuer muss das ``paging``-Objekt geprueft werden.
 
-``/v2/entrygroups`` ist umgekehrt streng - ein falscher Parameter fuehrt zu 400. Die
+``/v2/entrygroups`` ist streng - ein falscher Parameter fuehrt zu 400. Die
 akzeptierte Form, jeder Punkt an einer 400er-Antwort belegt:
 
 * ``grouping`` ist ein Array-Parameter. ``grouping=projects_id`` antwortet mit
@@ -60,10 +54,9 @@ akzeptierte Form, jeder Punkt an einer 400er-Antwort belegt:
   Ausnahme (geprueft am 26.08.2026). Wer die Reihenfolge uebernimmt, rechnet eine
   Rueckrechnung ueber die Historie falsch, ohne dass etwas abbricht.
 
-Die Antwort hat **kein** ``paging`` - alle Gruppen kommen in einem Rutsch (mit
-Personen-Untergruppen rund 1,9 MB und etwa 20 Sekunden).
+Die Antwort hat **kein** ``paging``.
 
-**Fehler werden am Koerper diagnostiziert, nicht am Status.** Clockodo begruendet einen
+**Fehler werden über Body diagnostiziert, nicht über Status.** Clockodo begruendet einen
 400 in der Form ``{"error": {"message": …, "fields": [...]}}`` und benennt dort den
 beanstandeten Parameter. ``httpx.Response.raise_for_status`` zeigt nur Status und URL
 und verwirft genau diese Information, deshalb :class:`ClockodoError`.
@@ -89,11 +82,10 @@ from .nebenlaeufig import gleichzeitig
 
 DEFAULT_TIMEOUT = 60.0
 
-# Untere Grenze des Verbrauchsfensters. ``revenue_kumuliert`` aus Spec 5.1 ist der
+# Untere Grenze des Verbrauchsfensters. ``revenue_kumuliert`` ist der
 # Gesamtverbrauch eines Projekts, nicht der eines Monats - die Grenze muss deshalb vor
-# dem aeltesten Eintrag liegen. 2020 schneidet nichts ab: mit
-# ``time_since=2010-01-01`` kommen dieselben Gruppen und dieselbe Umsatzsumme.
-HISTORIE_VON = "2020-01-01T00:00:00Z"
+# dem aeltesten Eintrag liegen. 2021 ist der früheste Zeitraum.
+HISTORIE_VON = "2021-01-01T00:00:00Z"
 
 GRUPPIERUNG_PROJEKT = "projects_id"
 GRUPPIERUNG_PERSON = "users_id"
@@ -101,13 +93,11 @@ GRUPPIERUNG_MONAT = "month"
 
 
 def verbrauch_bis(stichtag: date | None = None) -> str:
-    """Obere Grenze des Verbrauchsfensters: der Stichtag selbst (Spec 5.1).
+    """Obere Grenze des Verbrauchsfensters: der Stichtag selbst.
 
-    Der Stichtag und **nicht** das Monatsende: Verbrauch ist streng Vergangenheit. Was
-    spaeter datiert ist, liegt im Prognosehorizont und wird laut Spec 5.4 dort
-    angerechnet, statt vorab vom Restvolumen abgezogen zu werden - sonst waere der
-    Umsatz weder in der Historie noch in der Bandbreite zu finden. Der Fall tritt in
-    dieser Installation regelmaessig auf und ist kein Randfall.
+    Der Stichtag und **nicht** das Monatsende: Verbrauch ist Vergangenheit. Was
+    spaeter datiert ist, liegt im Prognosehorizont und wird dort
+    angerechnet, statt vorab vom Restvolumen abgezogen zu werden.
 
     Nicht zu verwechseln mit :func:`monatsende`, das die Umsatzhistorie zieht: dort ist
     der laufende Kalendermonat der Balken, hier der Schnitt zwischen Ist und Prognose.
@@ -130,12 +120,12 @@ def monatsende(tag: date | None = None) -> str:
 def horizontende(stichtag: date, monate: int = 3) -> str:
     """Letzter Tag des letzten Horizontmonats - die obere Grenze des Prognosefensters.
 
-    Die dritte obere Zeitgrenze neben :func:`verbrauch_bis` und :func:`monatsende`, und
-    wieder eine andere: der Horizont **beginnt mit dem laufenden Monat** (Spec 5.4), bei
+    Die dritte obere Zeitgrenze neben :func:`verbrauch_bis` und :func:`monatsende`,
+    der Horizont **beginnt mit dem laufenden Monat**, bei
     drei Monaten endet er also zwei Monate nach dem Stichtagsmonat. Gebraucht wird die
-    Grenze fuer die Monatsgruppierung je Projekt, die laut Spec 11.1 zwei Zwecke bedient:
-    die Historie fuer die Abrufquote-Verteilung (5.2) und die bereits gebuchten Betraege
-    im Horizont als Untergrenze der Bandbreite (5.4).
+    Grenze fuer die Monatsgruppierung je Projekt, die zwei Zwecke bedient:
+    die Historie fuer die Abrufquote-Verteilung und die bereits gebuchten Betraege
+    im Horizont als Untergrenze der Bandbreite.
     """
     if monate < 1:
         raise ValueError(f"Ein Horizont umfasst mindestens einen Monat, nicht {monate}")
@@ -144,11 +134,10 @@ def horizontende(stichtag: date, monate: int = 3) -> str:
 
 
 class ClockodoError(RuntimeError):
-    """HTTP-Fehler samt Antwortkoerper.
+    """HTTP-Fehler samt Antwortbody.
 
-    Der Koerper ist der eigentliche Inhalt: er benennt bei einem 400 den beanstandeten
-    Parameter. Bei einem neuen 400er also die Meldung lesen, statt Parametervarianten
-    zu raten.
+    Der Body ist der eigentliche Inhalt: er benennt bei einem 400 den beanstandeten
+    Parameter.
     """
 
 
@@ -196,8 +185,7 @@ class ClockodoClient:
 
         Die erste Seite muss allein kommen - erst ihr ``paging`` nennt ``count_pages``.
         Danach steht die Seitenzahl fest, und die restlichen Seiten werden gleichzeitig
-        geholt statt eine nach der anderen. Solange alles auf eine Seite passt, aendert
-        das nichts; es wirkt an dem Tag, an dem die Grenze faellt.
+        geholt statt eine nach der anderen.
 
         Returns:
             Die zusammengefuegte ``data``-Liste in Seitenreihenfolge und das
@@ -256,8 +244,7 @@ class ClockodoClient:
             time_until: obere Zeitgrenze, volle ISO-Form mit Uhrzeit. Ohne Angabe der
                 heutige Tag (:func:`verbrauch_bis`), aufgeloest **hier** und nicht als
                 Default: eine Modulkonstante oder ein Default-Parameter wird beim
-                Import einmal berechnet und friert ein. Ein Colab-Notebook bleibt
-                tagelang offen und schnitte ueber einen Tageswechsel hinweg stumm ab.
+                Import einmal berechnet und friert ein.
 
         Returns:
             Die ``groups``-Liste.
@@ -278,8 +265,7 @@ class ClockodoClient:
         """Verbrauch je Projekt, darunter die Anteile je Person.
 
         Ein Abruf statt zweier: die Projektsummen dieser Antwort sind mit denen der
-        einfachen Gruppierung identisch (am 24.08.2026 ueber alle Gruppen verglichen,
-        keine Abweichung), und die Untergruppen summieren sich exakt auf sie. Damit sind
+        einfachen Gruppierung identisch, und die Untergruppen summieren sich exakt auf sie. Damit sind
         Verbrauch und Aufteilungsschluessel garantiert konsistent.
         """
         return await self.entrygroups(
@@ -291,14 +277,9 @@ class ClockodoClient:
     async def entrygroups_je_projekt_und_monat(
         self, *, time_since: str = HISTORIE_VON, time_until: str | None = None
     ) -> list[dict[str, Any]]:
-        """Verbrauch je Projekt, darunter die Monate - die Kombination aus Spec 11.1.
+        """Verbrauch je Projekt, darunter die Monate.
 
-        Am 26.08.2026 gegen die Installation geprueft, rund 23 Sekunden. Die
-        Projektsummen stimmen mit denen der einfachen Gruppierung exakt ueberein; die
-        Monatssummen weichen bei einigen Projekten um **Cent** davon ab - Clockodo
-        rundet jede Gruppe einzeln. Die Zeitsummen stimmen ueberall exakt.
-
-        Zwei Fallen, beide belegt: ``group`` der Untergruppe ist der Monat als String
+        Achutng: ``group`` der Untergruppe ist der Monat als String
         ``"JJJJMM"``, und die Untergruppen sind **nach Dauer absteigend** sortiert und
         nicht chronologisch - siehe
         :meth:`~umsatzprognose.domaene.verbrauchsverlauf.Verbrauchsverlauf.fuer`.
@@ -318,26 +299,14 @@ class ClockodoClient:
         )
 
     async def absences(self, year: int) -> list[dict[str, Any]]:
-        """Abwesenheiten eines Jahres aus ``/v4/absences`` (Spec 5.3).
-
-        Die Legacy-Pfade ``/absences``, ``/v2/absences`` und ``/v3/absences``
-        antworten mit 410 ``deprecated`` - ``/v4`` ist keine freie Wahl. Der
-        Jahresfilter ist ein ``deepObject``-Parameter (``filter[year]``, nicht
-        ``year`` direkt), analog zu ``grouping[]`` bei ``/v2/entrygroups``. Die
-        Antwort traegt kein ``paging`` - Envelope-Key ist ``data``.
-
-        Der Abruf ist ungefiltert nach Status und Typ: welche der beiden fuer den
-        Kapazitaetsdeckel zaehlen (etwa ob eine unbestaetigte oder eine abgelehnte
-        Abwesenheit mitzaehlt), ist Teil des noch zu bauenden Deckels und wird nicht
-        hier vorweggenommen.
-        """
+        """Abwesenheiten eines Jahres aus ``/v4/absences``."""
         payload = await self.get("/v4/absences", {"filter[year]": year})
         return payload["data"]
 
     async def users_nonbusiness_days(
         self, year: int
     ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
-        """Feiertage eines Jahres, fertig je Person zugeordnet (Spec 5.3).
+        """Feiertage eines Jahres, fertig je Person zugeordnet.
 
         ``/v2/usersNonbusinessDays`` erspart die eigene Zuordnung ueber die
         Feiertagsgruppe (``/v3/usersNonbusinessGroups``) und damit den Fehler, dafuer

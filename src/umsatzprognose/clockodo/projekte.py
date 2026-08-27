@@ -4,7 +4,7 @@
 Hier laufen zwei Antworten zusammen: das Auftragsvolumen aus ``/v4/projects`` und der
 Verbrauch samt Personenanteilen aus ``/v2/entrygroups``.
 
-**Projekte** (Form am 24.08.2026 an der Installation verifiziert)::
+**Projekte**::
 
     {"paging": {…, "count_items": …},
      "data": [{"id": …, "customers_id": …, "name": …, "active": …, "budget": …}]}
@@ -41,8 +41,7 @@ unverbindlich. Siehe
         ],
     }
 
-Drei Fallen darin, alle an den Gruppen dieser Installation belegt:
-
+ACHTUNG:
 * **Die Projekt-ID kommt als String**, nicht als Zahl. Bei den Untergruppen ist es
   genauso.
 * **``group == 0``** (dort als Zahl) steht fuer Buchungen auf einen Kunden ohne
@@ -53,9 +52,7 @@ Drei Fallen darin, alle an den Gruppen dieser Installation belegt:
   ``duration`` (**Sekunden**) abgeleitet, siehe
   :attr:`~umsatzprognose.domaene.projekt.Projekt.effektiver_stundensatz`.
 
-``revenue`` deckt die ganze Historie ab, sobald die untere Zeitgrenze weit genug liegt:
-``time_since=2010-01-01`` liefert dieselben Gruppen und dieselbe Umsatzsumme wie
-``2020-01-01``.
+``revenue`` deckt die ganze Historie ab, sobald die untere Zeitgrenze weit genug liegt
 """
 
 from __future__ import annotations
@@ -122,9 +119,7 @@ class ProjektRepository:
         Datenabrufs.
 
         Args:
-            mit_anteilen: auch die Anteile je Person abbilden. Kostet nichts extra an
-                Requests, aber Zeit: die Antwort waechst von rund 800 KB auf 1,9 MB
-                und braucht etwa 20 statt 10 Sekunden.
+            mit_anteilen: auch die Anteile je Person abbilden.
             time_since: untere Grenze des Verbrauchsfensters.
             time_until: obere Grenze; ohne Angabe das Ende des laufenden Monats.
         """
@@ -260,7 +255,7 @@ def budget(rohprojekt: Mapping[str, Any]) -> Budget:
 
     Nimmt wie :func:`projekt_id` das Projekt und nicht das Teilobjekt: beide gehoeren
     zum selben Aufruf, und ein versehentlich uebergebenes Teilobjekt saehe hier wie
-    ein Projekt ohne Budget aus - eine still zu niedrige Zahl.
+    ein Projekt ohne Budget aus.
     """
     rohbudget = rohprojekt.get("budget")
     if not isinstance(rohbudget, Mapping):
@@ -280,13 +275,11 @@ async def rohdaten(
     time_since: str = HISTORIE_VON,
     time_until: str | None = None,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-    """Die beiden Antworten, aus denen ein Projekt entsteht - gleichzeitig geholt.
+    """Die beiden Antworten, aus denen ein Projekt entsteht.
 
     ``/v4/projects`` traegt das Auftragsvolumen, ``/v2/entrygroups`` den Verbrauch; sie
     haengen nicht voneinander ab, treffen sich aber in
-    :meth:`ProjektRepository.abbilden` ueber die Projekt-ID. Der Verbrauchsabruf ist
-    mit rund 20 Sekunden der langsamste der ganzen Prognose - nacheinander wuerde die
-    Projektliste seine Wartezeit verlaengern.
+    :meth:`ProjektRepository.abbilden` ueber die Projekt-ID.
     """
     (projekte, _), gruppen = await gleichzeitig(
         client.projects(),

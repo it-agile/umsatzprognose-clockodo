@@ -1,12 +1,6 @@
 """Abbildung von ``/v3/users``, ``/targethours``, ``/v4/absences`` und
 ``/v2/usersNonbusinessDays`` auf :class:`~umsatzprognose.domaene.mitarbeiter.Mitarbeiter`.
 
-**Hier weicht die Umsetzung bewusst von der Spec ab.** Abschnitt 4 nennt
-``default_target_hours`` aus ``/v3/users`` als Sollarbeitszeit. Das Feld ist ein
-Boolean-Schalter - am 24.08.2026 an allen Personen der Installation geprueft, ohne
-Zusammenhang zu ``active``. Es sagt aus, ob die Person die Standard-Sollzeit der Anlage
-nutzt, und nicht, wie viel sie arbeitet. Wer es als Stundenzahl liest, bekommt 0 oder 1.
-
 Die Sollarbeitszeit steht im unversionierten Legacy-Endpunkt ``/targethours``, je
 Person und Gueltigkeitszeitraum::
 
@@ -30,16 +24,11 @@ Person und Gueltigkeitszeitraum::
 Die Historie fuehrt zu jeder Person mehrere Zeilen; abgeschlossene tragen ein
 ``date_until``, offene nicht. In dieser Anlage hat jede aktive Person genau eine offene
 Zeile. Ein anderer ``type`` als ``weekly`` ist nie aufgetreten und wird deshalb nicht
-gedeutet, sondern uebersprungen und gemeldet - raten waere hier besonders teuer, weil
-eine falsche Sollzeit den Kapazitaetsdeckel (Spec 5.3) still verschiebt.
+gedeutet, sondern uebersprungen und gemeldet.
 
 **Abwesenheiten und Feiertage kommen dazu, beide ungefiltert und beide je Jahr.**
 ``/v4/absences`` nimmt einen Jahresfilter als ``filter[year]``, ``/v2/usersNonbusinessDays``
-dagegen ein einfaches ``year`` - zwei verschiedene Parameterformen fuer denselben
-Zweck, keine Wahl. Wer den Kapazitaetsdeckel spaeter baut, ruft :meth:`laden_async`
-deshalb mit den Jahren, die der Horizont ueberspannt. Ohne ``jahre`` bleiben
-``Mitarbeiter.abwesenheiten`` und ``Mitarbeiter.feiertage`` leer - das ist der Stand vor
-diesem Schritt und bleibt fuer Aufrufer ohne Kapazitaetsbedarf ohne zusaetzlichen Abruf.
+dagegen ein einfaches ``year``.
 """
 
 from __future__ import annotations
@@ -95,7 +84,7 @@ class MitarbeiterRepository:
 
         Args:
             jahre: die Kalenderjahre, fuer die Abwesenheiten und Feiertage geladen
-                werden - der Aufrufer kennt den Horizont, hier ist er nicht bekannt.
+                werden.
                 Leer bleiben ``Mitarbeiter.abwesenheiten`` und ``Mitarbeiter.feiertage``
                 ungeladen, ohne zusaetzlichen Abruf.
         """
@@ -195,8 +184,6 @@ class MitarbeiterRepository:
 
         Ein Eintrag je Person und Jahr (``users_id`` und ``days``); ueber mehrere Jahre
         kommt dieselbe ``users_id`` mehrfach vor, ihre Tage werden hier zusammengefuehrt.
-        Was ein halber Tag (``half_day``) fuer die Sollstunden bedeutet, ist Teil des
-        noch zu bauenden Kapazitaetsdeckels (Spec 5.3) und wird hier nicht entschieden.
         """
         je_person: dict[int, list[Feiertag]] = defaultdict(list)
         for eintrag in eintraege:

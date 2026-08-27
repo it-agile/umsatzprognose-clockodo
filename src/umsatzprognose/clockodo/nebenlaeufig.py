@@ -1,10 +1,8 @@
-"""Zwei Helfer fuer nebenlaeufige Abrufe - und die Bruecke zurueck ins Synchrone.
+"""Helfer fuer nebenlaeufige Abrufe.
 
 Die Abrufe einer Prognose haengen **nicht** voneinander ab: Kunden, Personen,
 Sollzeiten, Projekte, Verbrauch und Umsatzhistorie sind sechs unabhaengige Antworten,
-die erst beim Zusammensetzen aufeinandertreffen. Nacheinander abgerufen addieren sich
-ihre Wartezeiten (rund 30 Sekunden gegen die echte Installation, das meiste davon
-Warten auf 1,9 MB Entrygroups); gleichzeitig abgerufen zaehlt nur die langsamste.
+die erst beim Zusammensetzen aufeinandertreffen.
 
 Deshalb ist der Abruf async - und deshalb steht hier :func:`synchron`, denn die
 Notebooks rufen eine gewoehnliche Funktion auf und sollen es weiter tun.
@@ -56,8 +54,6 @@ async def gleichzeitig(*coroutinen: Coroutine[Any, Any, Any]) -> list[Any]:
 
     Die Ergebnisse kommen in der Reihenfolge der Argumente zurueck, unabhaengig davon,
     welche Antwort zuerst da war.
-
-    Zwei Entscheidungen stecken darin:
 
     * Die Sperre entsteht **hier** und nicht am Client. Ein ``asyncio.Semaphore``
       bindet sich an den Loop, in dem es zuerst benutzt wird; als Objektattribut

@@ -1,29 +1,15 @@
-"""Der eine Einstieg, der aus Clockodo einen fertigen Bestand macht.
+"""Der Einstieg in Clockodo.
 
 **Sieben Abrufe, alle gleichzeitig - plus zwei je Jahr im Horizont fuer Abwesenheiten
 und Feiertage.** Kunden, Personen, Sollzeiten, Projekte, Verbrauch, Umsatzhistorie und
 der monatliche Verbrauch je Projekt sind sieben unabhaengige Antworten, dazu die
-geplanten Abwesenheiten und Feiertage (Spec 5.3): ``/v4/absences`` und
+geplanten Abwesenheiten und Feiertage: ``/v4/absences`` und
 ``/v2/usersNonbusinessDays`` filtern beide nur nach einem Jahr, ein Horizont ueber die
 Jahresgrenze braucht also je zwei Abrufe statt einem. Keine dieser Antworten baut auf
 einer anderen auf. Aufeinander angewiesen ist erst das *Zusammensetzen*: die Projekte
 brauchen Kunden und Personen als Beschriftung und fuer die Anteile, die
 Verbrauchsverlaeufe brauchen die fertigen Projekte samt Budget. Deshalb ist der Abruf
 hier gefaechert und die Abbildung danach der Reihe nach.
-
-Nacheinander abgerufen addierten sich die Wartezeiten auf rund 30 Sekunden gegen die
-echte Installation; gleichzeitig zaehlt im Wesentlichen der langsamste Abruf - die
-Entrygroups mit Personen-Untergruppen (1,9 MB, etwa 20 Sekunden). Die Wartezeit ist
-hier fast alles: gerechnet wird beim Abbilden wenig, gewartet wird auf das Netz.
-
-Die beiden teuren Abrufe sind zweimal dieselbe Doppelgruppierung von
-``/v2/entrygroups`` - einmal nach Person, einmal nach Monat, je rund 20 Sekunden. Sie
-laufen nebeneinander, kosten zusammen also kaum mehr als einer. Wer den monatlichen
-Verlauf nicht braucht, schaltet ihn mit ``mit_verbrauchsverlauf=False`` ab; ohne ihn gibt
-es allerdings keine geschaetzte Abrufquote-Verteilung (Spec 5.2).
-
-Wer den Bestand in eigenem async-Code laedt, ruft :meth:`BestandRepository.laden_async`
-auf; :meth:`BestandRepository.laden` ist derselbe Vorgang fuer Notebook und Skript.
 """
 
 from __future__ import annotations
@@ -92,15 +78,15 @@ class BestandRepository:
 
         Args:
             stichtag: Tag, auf den sich die Prognose bezieht; ohne Angabe heute. Er
-                begrenzt auch den Verbrauch (Spec 5.1) - ein Bestand zu einem
+                begrenzt auch den Verbrauch - ein Bestand zu einem
                 vergangenen Stichtag rechnet damit nicht mit Buchungen, die es damals
                 noch nicht gab.
-            mit_anteilen: die Anteile je Person mitladen (Spec 5.4, Schritt 3).
-            mit_verbrauchsverlauf: den monatlichen Verbrauch je Projekt mitladen. Er
-                traegt die Abrufquote-Verteilung (Spec 5.2) und die bereits gebuchten
-                Betraege im Horizont (5.4); ohne ihn bleibt beides leer.
+            mit_anteilen: die Anteile je Person.
+            mit_verbrauchsverlauf: den monatlichen Verbrauch je Projekt. Er
+                traegt die Abrufquote-Verteilung und die bereits gebuchten
+                Betraege im Horizont.
             abgeschlossene_monate: Laenge der Umsatzhistorie vor dem laufenden Monat.
-            horizont_monate: Laenge des Prognosehorizonts (Spec 5.4: 1 bis 3). Sie
+            horizont_monate: Laenge des Prognosehorizonts. Sie
                 bestimmt, wie weit der monatliche Verbrauch in die Zukunft reicht.
         """
         stichtag = stichtag or date.today()

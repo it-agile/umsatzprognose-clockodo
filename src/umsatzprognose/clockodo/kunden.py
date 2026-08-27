@@ -2,16 +2,6 @@
 
 Der Kundenname ist keine Rechengroesse, sondern Beschriftung - ``/v4/projects`` fuehrt
 nur ``customers_id``. Ohne Namen waere eine Tabelle aus 44 Zahlen-IDs nicht pruefbar.
-
-Am 24.08.2026 geprueft, welche Version die Kunden liefert: ``/v4/customers`` antwortet
-mit 404 ``RouteNotFound``, ``/v2/customers`` mit 410 ``deprecated``, ``/v3/customers``
-mit 200 und derselben Form wie ``/v4/projects``::
-
-    {"paging": {…, "count_items": …},
-     "data": [{"id": …, "name": …, "number": null, …}]}
-
-Die Kunden passen auf eine Seite von 1000; der Abruf laeuft trotzdem ueber alle Seiten,
-weil dieselbe Grenze bei den Projekten schon knapp ist.
 """
 
 from __future__ import annotations
