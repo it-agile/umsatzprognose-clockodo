@@ -22,7 +22,7 @@ notebook = [
 ]
 
 [build-system]
-requires = ["hatchling"]
+requires = [ "hatchling>=1.32", "tox>=4.59", "tox-uv>=1.36" ]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
