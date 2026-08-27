@@ -162,5 +162,5 @@ class Dashboard:
 
         return tabellen.projekte_ohne_budget(
             (projekt.bezeichnung, projekt.budget.sonderfall or "kein Budget gesetzt")
-            for projekt in ohne_budget
+            for projekt in sorted(ohne_budget, key=lambda projekt: projekt.bezeichnung)
         )
