@@ -60,7 +60,7 @@ def _colab_credentials() -> CredentialsBase:
     import google.auth
     from google.colab import auth  # type: ignore[import-not-found]
 
-    auth.authenticate_user(scopes=SCOPES)
+    auth.authenticate_user()
     credentials, _ = google.auth.default(scopes=SCOPES)
     return credentials
 
