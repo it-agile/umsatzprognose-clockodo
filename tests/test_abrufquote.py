@@ -9,8 +9,8 @@ und die API liefert sie nach Dauer sortiert.
 from __future__ import annotations
 
 from datetime import date
-from random import Random
 
+import numpy as np
 import pytest
 
 from umsatzprognose.domaene import (
@@ -168,14 +168,14 @@ def test_leere_verteilung_liefert_keine_zahlen_und_zieht_nicht():
     assert leer.median is None
     assert leer.mittelwert is None
     with pytest.raises(ValueError, match="leeren Verteilung"):
-        leer.ziehen(Random(1))
+        leer.ziehen(np.random.default_rng(1))
 
 
 def test_ziehung_ist_mit_zuruecklegen_und_mit_startwert_wiederholbar():
     gebaut = verteilung(0.0, 0.5, 1.0)
 
-    erste = gebaut.ziehungen(20, Random(42))
-    zweite = gebaut.ziehungen(20, Random(42))
+    erste = gebaut.ziehungen(20, np.random.default_rng(42))
+    zweite = gebaut.ziehungen(20, np.random.default_rng(42))
 
     assert erste == zweite
     assert set(erste) <= {0.0, 0.5, 1.0}

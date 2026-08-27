@@ -8,7 +8,8 @@ und dass gleichnamige Projekte nicht zu einem Balken verschmelzen.
 from __future__ import annotations
 
 from datetime import date
-from random import Random
+
+import numpy as np
 
 from umsatzprognose.darstellung import Dashboard, diagramme, tabellen
 from umsatzprognose.darstellung.gestaltung import PROGNOSE_DECKKRAFT, SERIE_HELL
@@ -142,7 +143,7 @@ def test_umsatzverlauf_haengt_horizont_mit_zwei_farbtoenen_an():
         umsatzhistorie=historie,
         verbrauchsverlaeufe=(_historie_fuer_abrufquote(0.2), verlauf_projekt),
     )
-    prognose = bestand.simulieren(monate=2, laeufe=5, zufall=Random(1))
+    prognose = bestand.simulieren(monate=2, laeufe=5, zufall=np.random.default_rng(1))
     assert prognose.vorhanden
 
     fig = diagramme.umsatzverlauf(historie, prognose)
@@ -217,7 +218,7 @@ def test_umsatztabelle_verschmilzt_laufenden_monat_mit_der_prognose():
         umsatzhistorie=historie,
         verbrauchsverlaeufe=(_historie_fuer_abrufquote(0.2),),
     )
-    prognose = bestand.simulieren(monate=2, laeufe=5, zufall=Random(1))
+    prognose = bestand.simulieren(monate=2, laeufe=5, zufall=np.random.default_rng(1))
     assert prognose.vorhanden
 
     tabelle = tabellen.umsatztabelle(historie, prognose)

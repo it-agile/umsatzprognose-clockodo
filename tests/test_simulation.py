@@ -2,7 +2,7 @@
 
 Jede Abrufquote-Verteilung hier hat bewusst nur **einen** Wert: eine Historie mit genau
 einem Beobachtungsmonat, dessen Projekt selbst nicht im Prognose-Scope liegt (siehe
-:func:`historie`). ``Random.choice`` auf einem Einerbett zieht immer denselben Wert -
+:func:`historie`). Eine Ziehung aus einem Einerbett liefert immer denselben Wert -
 die Laeufe sind damit exakt vorhersagbar, ohne den Zufallsgenerator zu mocken oder viele
 Laeufe statistisch abzuklopfen. Wo mehrere Projekte im selben Bestand einen Wert
 brauchen, tragen eigene Bestaende mit eigener Historie ihn getrennt bei, damit sich die
@@ -12,8 +12,8 @@ Verteilungen nicht mischen.
 from __future__ import annotations
 
 from datetime import date
-from random import Random
 
+import numpy as np
 import pytest
 
 from umsatzprognose.domaene import (
@@ -92,7 +92,7 @@ def test_einfacher_lauf_ohne_kapazitaetsdeckel():
         verbrauchsverlaeufe=(historie(0.5),),
     )
 
-    prognose = b.simulieren(monate=1, laeufe=5, zufall=Random(1))
+    prognose = b.simulieren(monate=1, laeufe=5, zufall=np.random.default_rng(1))
 
     assert prognose.vorhanden
     # Restvolumen 8000, Quote 0.5 -> gewuenscht 4000 Euro, bei 50 Euro/h sind das 80h,
@@ -135,7 +135,7 @@ def test_kapazitaetsdeckel_kuerzt_anteilig_ueber_alle_projekte_einer_person():
     # Wochenarbeitszeit im September hergibt.
     assert kapazitaet < 160.0
 
-    prognose = b.simulieren(monate=1, laeufe=5, zufall=Random(2))
+    prognose = b.simulieren(monate=1, laeufe=5, zufall=np.random.default_rng(2))
 
     erwarteter_umsatz = kapazitaet * 50.0
     for werte in prognose.monatswerte().values():
@@ -159,7 +159,7 @@ def test_projekt_ohne_stundensatz_verbraucht_keine_kapazitaet():
         verbrauchsverlaeufe=(historie(0.5),),
     )
 
-    prognose = b.simulieren(monate=1, laeufe=3, zufall=Random(3))
+    prognose = b.simulieren(monate=1, laeufe=3, zufall=np.random.default_rng(3))
 
     # Restvolumen 4000, Quote 0.5 -> 2000 Euro, direkt geliefert, keine Person beteiligt.
     for werte in prognose.monatswerte().values():
@@ -185,7 +185,7 @@ def test_gezogene_quote_wird_auf_restvolumen_gekappt_und_folgemonat_liefert_nich
         verbrauchsverlaeufe=(historie(3.0),),  # Quote > 1: weiche Budgets, Spec 5.2
     )
 
-    prognose = b.simulieren(monate=2, laeufe=3, zufall=Random(4))
+    prognose = b.simulieren(monate=2, laeufe=3, zufall=np.random.default_rng(4))
 
     for werte in prognose.monatswerte().values():
         # Monat 1: min(4000, 3.0*4000) = 4000, das komplette Restvolumen.
@@ -215,7 +215,7 @@ def test_deadline_monat_zaehlt_noch_voll_folgemonat_nicht():
         verbrauchsverlaeufe=(historie(0.5),),
     )
 
-    prognose = b.simulieren(monate=3, laeufe=3, zufall=Random(5))
+    prognose = b.simulieren(monate=3, laeufe=3, zufall=np.random.default_rng(5))
 
     werte = next(iter(prognose.monatswerte().values()))
     september, oktober, november = werte
@@ -249,7 +249,7 @@ def test_bereits_gebuchter_betrag_ist_die_untergrenze_in_kuenftigen_monaten():
         verbrauchsverlaeufe=(historie(0.1), verlauf_projekt),
     )
 
-    prognose = b.simulieren(monate=2, laeufe=3, zufall=Random(6))
+    prognose = b.simulieren(monate=2, laeufe=3, zufall=np.random.default_rng(6))
 
     # September: min(100000, 0.1*100000) = 10000, unveraendert. Oktober: simulierter
     # Verbrauch waere nur 0.1*90000=9000 - der real gebuchte Betrag von 20000 ist die
@@ -285,7 +285,7 @@ def test_stichtagsmonat_zaehlt_keine_gebuchten_betraege_als_untergrenze():
         verbrauchsverlaeufe=(historie(0.1), verlauf_projekt),
     )
 
-    prognose = b.simulieren(monate=1, laeufe=3, zufall=Random(7))
+    prognose = b.simulieren(monate=1, laeufe=3, zufall=np.random.default_rng(7))
 
     # Ohne den Ausschluss fuer Monat 0 wuerde hier 90000 statt 10000 stehen.
     for werte in prognose.monatswerte().values():

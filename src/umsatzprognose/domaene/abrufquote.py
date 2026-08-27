@@ -28,12 +28,13 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
-    from random import Random
 
     from .projekt import Projekt
 
 from dataclasses import dataclass
 from functools import cached_property
+
+import numpy as np
 
 from .umsatzhistorie import MONATSNAMEN
 
@@ -130,6 +131,11 @@ class Abrufquotenverteilung:
     def _werte(self) -> tuple[float, ...]:
         return tuple(sorted(quote.wert for quote in self.quoten))
 
+    @cached_property
+    def _werte_array(self) -> np.ndarray:
+        """``_werte`` als Array - fuer die vektorisierte Ziehung in ``ziehen_array``."""
+        return np.array(self._werte)
+
     def werte(self) -> tuple[float, ...]:
         """Alle beobachteten Quoten, aufsteigend sortiert."""
         return self._werte
@@ -183,7 +189,7 @@ class Abrufquotenverteilung:
         """Die auffaelligsten Beobachtungen - fuer die Kalibrierung (Spec 7)."""
         return tuple(sorted(self.quoten, key=lambda q: q.wert, reverse=True)[:anzahl])
 
-    def ziehen(self, zufall: Random) -> float:
+    def ziehen(self, zufall: np.random.Generator) -> float:
         """Eine Quote, mit Zuruecklegen gezogen (Spec 5.2).
 
         Der Zufallsgenerator wird uebergeben und nicht hier erzeugt: ein Lauf muss
@@ -191,10 +197,22 @@ class Abrufquotenverteilung:
         """
         if not self.quoten:
             raise ValueError("Aus einer leeren Verteilung kann nicht gezogen werden")
-        return zufall.choice(self._werte)
+        return float(zufall.choice(self._werte_array))
 
-    def ziehungen(self, anzahl: int, zufall: Random) -> tuple[float, ...]:
+    def ziehungen(self, anzahl: int, zufall: np.random.Generator) -> tuple[float, ...]:
         """``anzahl`` Quoten in einem Zug - unabhaengig und mit Zuruecklegen."""
         if not self.quoten:
             raise ValueError("Aus einer leeren Verteilung kann nicht gezogen werden")
-        return tuple(zufall.choices(self._werte, k=anzahl))
+        return tuple(float(wert) for wert in zufall.choice(self._werte_array, size=anzahl))
+
+    def ziehen_array(self, form: tuple[int, ...], zufall: np.random.Generator) -> np.ndarray:
+        """Wie :meth:`ziehungen`, aber als Array beliebiger Form statt als Tupel.
+
+        Fuer die Monte-Carlo-Simulation (5.4): sie zieht die Quoten aller Laeufe und
+        Projekte eines Horizontmonats in einem Aufruf statt einzeln ueber
+        :meth:`ziehen` - der Gewinn der numpy-Umstellung entsteht durch das
+        Vektorisieren ueber die Laeufe, nicht durch den Zufallsgenerator allein.
+        """
+        if not self.quoten:
+            raise ValueError("Aus einer leeren Verteilung kann nicht gezogen werden")
+        return zufall.choice(self._werte_array, size=form)

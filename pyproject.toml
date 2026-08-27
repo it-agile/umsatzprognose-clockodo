@@ -6,10 +6,13 @@ readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
     "httpx>=0.28",
+    # Traegt seit dem 27.08.2026 die Monte-Carlo-Simulation (Spec 5.4): alle Laeufe
+    # gleichzeitig als Arrays statt einzeln in Python. Untergrenze niedrig, Obergrenze
+    # bei 2.3, weil numba (in Colab vorinstalliert) numpy 2.3+ noch nicht unterstuetzt -
+    # ein engerer oder fehlender Pin wuerde dort eine Neuinstallation erzwingen, die
+    # numba und google-colab bricht (siehe die Installationszelle der Notebooks).
+    "numpy>=2.0,<2.3",
     "pandas-stubs~=3.0.5",
-    # Kein numpy: es wird noch nirgends benutzt und der Pin wuerde in Colab eine
-    # Aktualisierung erzwingen (numba dort verlangt numpy < 2.3). Kommt mit der
-    # Monte-Carlo-Simulation (Spec 5.4) wieder herein.
     "pandas>=2.2",
     # Untergrenze niedrig und ohne Obergrenze mit Absicht: Colab bringt plotly mit,
     # "plotly>=5" ist damit erfuellt und pip laesst die vorhandene Version stehen.

@@ -27,7 +27,8 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from collections.abc import Mapping
     from datetime import date
-    from random import Random
+
+    import numpy as np
 
     from .kunde import Kunde
     from .mitarbeiter import Mitarbeiter
@@ -288,7 +289,7 @@ class Bestand:
         )
 
     def simulieren(
-        self, *, monate: int = 3, laeufe: int = 10000, zufall: Random | None = None
+        self, *, monate: int = 3, laeufe: int = 10000, zufall: np.random.Generator | None = None
     ) -> Prognose:
         """Die Monte-Carlo-Simulation aus Spec 5.4.
 
