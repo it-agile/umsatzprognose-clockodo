@@ -33,6 +33,40 @@ dev = [
     "pytest>=8.3",
     "ruff>=0.8",
 ]
+ruff = [
+    "ruff>=0.8",
+]
+coverage = [
+    "pytest>=8.3",
+    "coverage>=7.0",
+]
+
+[tool.tox]
+env_list = [ "py313", "coverage", "ruff" ]
+use_develop = true
+
+[tool.tox.env_run_base]
+extras = [ "dev" ]
+allowlist_externals = [ "pytest" ]
+commands = [["pytest", { replace = "posargs", default = [], extend = true }]]
+
+[tool.tox.env.coverage]
+base_python = [ "3.13" ]
+extras = [ "coverage" ]
+allowlist_externals = [ "coverage" ]
+commands = [
+    ["coverage", "erase"],
+    ["coverage", "run", "-m", "pytest", { replace = "posargs", default = ["tests"], extend = true }],
+    ["coverage", "report"],
+    ["coverage", "xml"],
+    ["coverage", "html"],
+]
+
+[tool.tox.env.ruff]
+base_python = [ "3.13" ]
+extras = [ "ruff" ]
+allowlist_externals = [ "ruff" ]
+commands = [[ "ruff", "check", { replace = "posargs", default = ["src", "tests"], extend = true }]]
 
 [tool.ruff]
 line-length = 100
