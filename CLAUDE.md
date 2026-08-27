@@ -57,7 +57,7 @@ das Wissen über Clockodos Eigenheiten steht in `clockodo/`, je Endpunkt
 dort, wo seine Abbildung liegt.
 
 **Die Simulation gehört an den `Bestand`, nicht an das `Projekt`.** Der
-Kapazitätsdeckel aus 5.4 Schritt 4 wirkt je Person über *alle* ihre Projekte, und ein
+Kapazitätsdeckel wirkt je Person über *alle* ihre Projekte, und ein
 Lauf ist eine Ziehung über das gesamte Portfolio – die Summe unabhängig gerechneter
 Projektverteilungen ist nicht die Portfolio-Bandbreite, und der geforderte „Anteil der
 Läufe mit Kapazität als limitierendem Faktor" entsteht erst auf dieser Ebene. Projekt
@@ -79,8 +79,7 @@ und Abbildung sind in den Repositories dafür getrennt (`laden_async` / `abbilde
 bei den Projekten zusätzlich die freie Funktion `projekte.rohdaten`).
 
 Zwei der sieben Abrufe sind dieselbe Doppelgruppierung von `/v2/entrygroups` – einmal
-nach Person, einmal nach Monat, je rund 20 Sekunden. Nebeneinander kosten sie zusammen
-kaum mehr als einer: ein vollständiger Ladevorgang dauerte am 26.08.2026 18 Sekunden.
+nach Person, einmal nach Monat.
 Wer den Monatsverbrauch nicht braucht, schaltet ihn mit `mit_verbrauchsverlauf=False` ab
 – dann gibt es allerdings keine geschätzte Abrufquote-Verteilung.
 
@@ -112,7 +111,7 @@ dieselbe Aufteilung fertig aggregiert, in einem Abruf. Der Begriff bleibt als
 
 ### Notebooks
 
-Zielwerkzeug ist laut Spec (Abschnitt 9) ein Notebook in **Google Colab**, deshalb
+Zielwerkzeug ist ein Notebook in **Google Colab**, deshalb
 bleibt der Notebook-Layer dünn und beginnt mit einer nur in Colab greifenden
 Installationszelle – das lokale venv steht dort nicht zur Verfügung.
 
@@ -123,91 +122,6 @@ Installationszelle – das lokale venv steht dort nicht zur Verfügung.
   (`ENTSCHEIDEN`-Abschnitte).
 
 Rechenlogik gehört ins Paket, nicht ins Notebook.
-
-## Stand der Implementierung
-
-Umgesetzt sind die Schritte 1 bis 3 aus Spec Abschnitt 11: Restvolumen je Projekt (5.1),
-die **geschätzte Abrufquote-Verteilung** (5.2), die **verfügbare Kapazität** (5.3,
-`Mitarbeiter.verfuegbare_kapazitaet(jahr, monat)`: Sollstunden minus Feiertage minus
-geplante Abwesenheit, taggenau gerechnet – der Abschlag für ungeplante Abwesenheit wird
-im MVP ignoriert, Entscheidung 26.08.2026) und seit dem 26.08.2026 die **Monte-Carlo-
-Simulation** (5.4) selbst: `umsatzprognose.domaene.simulation.simulieren()`, aufgerufen
-über `Bestand.simulieren()`. Der Lauf-Zustand (Restvolumen je Projekt und Lauf) liegt als
-einfaches Dictionary neben den unveränderlichen Fachobjekten, nicht in ihnen – siehe der
-Moduldocstring von `simulation.py` und der Kommentar an `Bestand`.
-
-Drei Modellierungsentscheidungen dabei, alle 26.08.2026:
-
-- **Stundensatz `None` und `0.0` werden identisch behandelt**: ein Projekt ohne
-  ableitbaren Satz kann seinen gewünschten Euro-Betrag nicht in Stunden umrechnen und
-  geht deshalb ungedeckelt (ohne Kapazitätsverbrauch) in die Prognose ein, nur durch sein
-  Restvolumen begrenzt.
-- **Monat 1 skaliert über den Anteil der verbleibenden Wochentage Mo–Fr am Monat** –
-  ohne Feiertage oder individuelle Abwesenheiten einzurechnen, weil das schon die
-  Kapazitätsrechnung selbst leistet.
-- **Der Cutoff durch `automatic_completion`/`deadline` gilt monatsweise, nicht
-  taggenau**: der Horizontmonat, der die `deadline` enthält, zählt noch voll, der erste
-  vollständig danach liegende Monat liefert 0. Eine taggenaue Skalierung wie bei Monat 1
-  wäre je Projekt einzeln nötig statt einmal global für den ganzen Horizont – der
-  Mehraufwand stand in keinem Verhältnis zur gewonnenen Genauigkeit.
-
-Kapazitäten hängen nur an Stichtag und Horizontmonat, nicht am Lauf, und werden deshalb
-einmal vor der Lauf-Schleife berechnet statt bei jedem der 10.000 Läufe neu –
-`verfuegbare_kapazitaet()` iteriert selbst schon über jeden Tag des Monats.
-
-Seit dem 26.08.2026 liefert `MonteCarloPrognose` (über die `Prognose`-ABC) auch den
-**bereits gebuchten Betrag je Horizontmonat** (`gebucht()`) und die Horizontmonate selbst
-(`horizontmonate()`) – die Ausgabe aus Spec 5.5 ist damit vollständig, bis auf den
-Verbrauch vor dem Stichtag im laufenden Monat, der nicht separat berechnet werden muss:
-er steht schon als `Umsatzhistorie.laufender` bereit und wird im Diagramm direkt darauf
-gestapelt (siehe unten).
-
-**Bugfix beim Bauen des Diagramms gefunden und behoben (26.08.2026):** `Verbrauchsverlauf.
-gebucht()` kennt im Stichtagsmonat keine Tagesgrenze (die Monatsgruppierung liefert den
-ganzen Monat, vor und nach dem Stichtag zusammen) und hätte als Untergrenze für Monat 0
-den schon vom Restvolumen abgezogenen Verbrauch vor dem Stichtag ein zweites Mal gezählt
-– Spec 5.4 sagt ausdrücklich, dass genau das nicht passieren darf ("es taucht hier nicht
-wieder auf"). `simulieren()` schließt Monat 0 deshalb von der Untergrenze aus
-`gebucht[]` aus; `Prognose.gebucht()` liefert für Monat 0 immer 0. Details und ein
-Regressionstest dazu in `simulation.py` und `tests/test_simulation.py`.
-
-`diagramme.umsatzverlauf()` zeigt seitdem Historie und Prognosehorizont in **einem**
-Diagramm (`Dashboard.umsatzverlauf(monate=3)`): bereits gebuchter Umsatz je Horizontmonat
-in derselben satten Farbe wie die Historie, prognostizierter Umsatz obendrauf gedämpft
-(`gestaltung.PROGNOSE_DECKKRAFT`) – Sicherheit einer Zahl drückt sich über die Deckkraft
-aus, keine zweite Farbfamilie. Ein dünner Fehlerbalken zeigt die 85-%/95-%-Niveaus
-unterhalb des Medians. Der bisherige eigene `Dashboard.prognose()`/`diagramme.prognose()`
-ist entfallen, ebenso die zugehörige Notebook-Zelle „Prognose der nächsten Monate" – die
-Bandbreite steht jetzt direkt im „Umsatz je Monat"-Diagramm, mitsamt der Begründung, wenn
-keine Bandbreite vorliegt.
-
-Die Verteilung liegt an `Bestand.abrufquotenverteilung()` und stammt aus den
-`Verbrauchsverlauf`-Objekten. Ihre Kennzahlen stehen hier bewusst nicht: sie stammen aus
-der Installation, bewegen sich mit jeder Zeitbuchung und gehören in die Notebook-Ausgabe,
-nicht in eine versionierte Datei. Ihre Form ist stark rechtsschief – niedriger Median,
-deutlich höherer Mittelwert, ein erheblicher Anteil Monate ohne jeden Abruf und einzelne
-Quoten weit über 1.
-
-Zwei Punkte dazu, die man wissen muss:
-
-- **Das Beobachtungsfenster ist eine Entscheidung, keine Vorgabe.** Spec 5.2 nennt nur
-  „Restvolumen > 0 zu Monatsbeginn"; welche Monate überhaupt dazugehören, legt
-  `Verbrauchsverlauf.beobachtungsmonate()` fest: von der ersten Buchung bis zum Vormonat
-  des Stichtags, wenn das Projekt heute im Prognose-Scope ist – sonst bis zur letzten
-  Buchung. Lücken darin zählen als Quote 0, der angebrochene Stichtagsmonat zählt nie
-  mit. Ruhige Monate **vor** der ersten Buchung fehlen der Verteilung; ihre Quoten liegen
-  damit eher zu hoch.
-- **Quoten über 1 sind echt und bleiben stehen.** Sie entstehen, wo einem kleinen
-  rekonstruierten Restvolumen eine große Buchung gegenübersteht – genau der Fall, den 5.2
-  benennt: das Budget ist nur in seinem heutigen Stand bekannt. In der Simulation ist der
-  Schaden begrenzt, weil Schritt 2 auf das verbleibende Restvolumen kappt – eine Quote von
-  weit über 1 heißt dort „ruf alles ab, was offen ist".
-
-`Bestand.simulieren()` liefert weiterhin `NochKeinePrognose` mit Begründung, aber nur
-noch, wenn tatsächlich Daten fehlen – kein Projekt im Prognose-Scope oder keine
-Abrufquote-Verteilung mangels Beobachtungen. Das Dashboard zeigt an der Stelle der
-Bandbreite in dem Fall weiterhin genau diese Begründung an; eine erfundene Kurve wäre
-der schlechtere Platzhalter.
 
 ## Keine gelesenen Werte im Repository
 
@@ -240,23 +154,20 @@ Zwei Annahmen prägen das ganze Modell:
 - Die einzige modellierte Unsicherheit ist die **Abrufquote**: wie viel des beauftragten
   Restvolumens im Prognosezeitraum tatsächlich abgerufen wird.
 
-Nicht im MVP: Pipeline, Kurzfristgeschäft, Cash-Schicht, Projekte ohne Clockodo-Eintrag.
-
 ## Rechenkern (Monte Carlo, 10.000 Läufe)
 
 Die Simulation rechnet **in Euro als Leitgröße** und nutzt **Stunden** nur als
-Zwischenschritt für den Kapazitätsdeckel. Diese Richtung ist zentral – wer sie umdreht,
-baut ein anderes Modell. Stunden und nicht Personentage, weil `/targethours` Stunden je
+Zwischenschritt für den Kapazitätsdeckel. Stunden und nicht Personentage, weil `/targethours` Stunden je
 Wochentag liefert (20–35 h/Woche, meist 7 h/Tag) und keine Taglänge hinterlegt ist; eine
-angenommene würde den Deckel still verschieben (Spec 5.3).
+angenommene würde den Deckel still verschieben.
 
 Der Horizont **beginnt mit dem laufenden Monat**, genauer: am Stichtag. Monat 1 ist nur
 der Rest des Monats, deshalb werden gezogene Abrufquote und Kapazität mit dem Anteil der
 verbleibenden Arbeitstage skaliert. Was **vor** dem Stichtag gebucht wurde, ist Verbrauch
 und aus dem Restvolumen abgezogen; es taucht in der Bandbreite nicht wieder auf, wird für
-die Darstellung aber daneben ausgewiesen (5.5).
+die Darstellung aber daneben ausgewiesen.
 
-**Was nach dem Stichtag datiert ist, ist die Untergrenze**, nicht Verbrauch (5.4):
+**Was nach dem Stichtag datiert ist, ist die Untergrenze**, nicht Verbrauch:
 
     Monatsumsatz = max(simulierter Umsatz, bereits gebuchter Umsatz dieses Monats)
 
@@ -311,30 +222,22 @@ Stand der Clockodo-API:
 sind kein technisches Limit: der Verbrauch kann sie übersteigen, das rohe Restvolumen
 wird dann negativ. Das ist ein Kalibrierungssignal und kein Fehler.
 
-Für die Prognose gilt trotzdem eine harte Grenze (Spec 5.1): **eine
+Für die Prognose gilt trotzdem eine harte Grenze: **eine
 Überschreitung kann nur historisch entstehen, die Prognose überschreitet das Budget
 nicht.** Projekte mit historisch überschrittenem Budget tragen 0 zur Prognose bei.
 Deshalb führt `Projekt` beide Größen getrennt – `restvolumen_roh`
 (vorzeichenbehaftet, für die Kalibrierung) und `restvolumen_prognosewirksam` (bei 0
 gekappt, für die Simulation).
 
-**`/api/entrygroups` ist auf 10 GET je Minute begrenzt** – ein endpunkteigenes Limit
-zusätzlich zum globalen (900/min, 20.000/Tag), bei Überschreitung 429. Das ist die engste
-Stelle des ganzen Moduls: ein Ladevorgang verbraucht **drei** davon (Verbrauch je Person,
-Umsatz je Monat, Verbrauch je Projektmonat). Der Client behandelt 429 heute nicht eigens;
-er wirft `ClockodoError` wie bei jedem Fehlerstatus.
-
 Basis-URL ist `https://my.clockodo.com/api`. Authentifizierung über drei Header, alle
 drei sind Pflicht: `X-ClockodoApiUser` (E-Mail des Benutzers), `X-ClockodoApiKey` und
 `X-Clockodo-External-Application` im Format `name;email` mit **maximal 50 Zeichen
 Gesamtlänge**. `clockodo.config.ClockodoCredentials` kapselt das und prüft die Längengrenze.
 
-**Die OpenAPI-Beschreibung liegt seit dem 26.08.2026 im Repository**:
-`spec/clocodo-api.yaml`, Fassung `2026-08-24`, rund 20.600 Zeilen. Vorher war
-`docs.clockodo.com` als JavaScript-Anwendung nicht auslesbar, und alle Strukturen
-stammten aus echten Läufen.
+**Die OpenAPI-Beschreibung liegt im Repository**:
+`spec/clocodo-api.yaml`, Fassung `2026-08-24`.
 
-**Die Doku ist die erste Anlaufstelle, die echte Antwort bleibt die Entscheidung.** An
+**Die Doku ist die erste Anlaufstelle.** An
 drei Stellen widersprechen sich beide, und zwar so, dass die Doku die schlechtere Quelle
 ist:
 
@@ -344,50 +247,6 @@ ist:
   **Float**. Deshalb bleibt `float()`.
 - `EntryGroupV2.duration` nennt keine Einheit; **Sekunden** steht nur an den Feldern von
   `/v2/entries` („Duration in seconds").
-
-Umgekehrt hat die Doku zwei unserer Befunde widerlegt – beide waren
-Schreibweisenfehler, siehe unten bei den Feiertagen.
-
-`/v4/projects` liefert
-
-```
-{"paging": {"items_per_page": 1000, "current_page": 1, "count_pages": 1, "count_items": …},
- "data": [{"id": …, "customers_id": …, "name": …, "number": …, "active": …, …}]}
-```
-
-Also: Envelope-Key ist `data` (nicht `projects`), die Projekt-ID heißt `id`, und es gibt
-ein `paging`-Objekt. `items_per_page` ist 1000, und die Projektzahl liegt nah daran –
-deshalb läuft `ClockodoClient.get_paged` über alle Seiten statt nur über die erste.
-
-Die Paginierung ist inzwischen ausgeführt und nicht mehr geraten: `items_per_page` setzt
-die Seitengröße (laut Doku bis 5000), `page` wählt die Seite. Mit `items_per_page=3`
-antwortet die API mit entsprechend vielen `count_pages`, und `page=2` liefert
-`current_page: 2` samt anderer IDs.
-
-**Unbekannte Query-Parameter werden still ignoriert, nicht abgelehnt.** `count=3` und
-`limit=3` antworten mit 200 und der vollen, ungekürzten Liste. Ein 200 belegt einen
-Parameternamen also nicht – dafür muss das `paging`-Objekt der Antwort geprüft werden.
-Bei `/v2/entrygroups` ist es umgekehrt: dort führt ein falscher Parameter zu 400.
-
-`/v2/entrygroups` verlangt genau diese Form:
-
-```
-GET /v2/entrygroups?time_since=2020-01-01T00:00:00Z&time_until=2026-08-31T23:59:59Z&grouping[]=projects_id
-→ {"groups": [...]}
-```
-
-Vier Punkte, jeder an einer 400er-Antwort belegt:
-
-- `grouping` ist ein **Array-Parameter**. `grouping=projects_id` antwortet mit
-  `{"error":{"message":"Array expected.","fields":["grouping"]}}`; erst `grouping[]=…`
-  wird akzeptiert. In httpx heißt das ein Dict mit dem Schlüssel `"grouping[]"` – als
-  Python-Schlüsselwort ist der Name nicht schreibbar, deshalb nimmt `get()` im Notebook
-  ein Params-Dict.
-- Gültiger Gruppierungswert ist `projects_id`, nicht `projects` (`Unknown group option`).
-  `customers_id` funktioniert ebenfalls, die Werte tragen also durchgehend das Suffix.
-- `grouping` und `time_since` sind Pflicht (`Missing data: …`).
-- Zeitgrenzen brauchen die volle ISO-Form mit Uhrzeit; ein reines Datum gibt
-  `{"error":{"message":"Wrong format","fields":["time_since"]}}`.
 
 **Fehler immer im Body diagnostizieren, nicht am Status.** Clockodo begründet 400er in
 der Form `{"error": {"message": …, "fields": [...]}}` und benennt dort den beanstandeten
@@ -405,7 +264,6 @@ Eine Entrygroup sieht so aus (Felder gekürzt):
 ```
 
 Fallen:
-
 - **Die Projekt-ID kommt als String** (hier `"101"`), nicht als Zahl.
 - **`group == 0`** (dort als Zahl) steht für Buchungen auf einen Kunden ohne Projekt.
   Ohne Filter entsteht daraus ein Phantom-Projekt 0.
@@ -430,7 +288,7 @@ eigener Rechnerei:
 - **Mehrfachgruppierung** ist erlaubt. `grouping[]=projects_id&grouping[]=users_id`
   hängt die Personen als `sub_groups` unter das Projekt, jede mit `group` (die
   `users_id` als String), `name`, `duration` und `revenue`. Das ist der historische
-  Aufteilungsschlüssel aus Spec 5.4 Schritt 3, fertig aggregiert.
+  Aufteilungsschlüssel fertig aggregiert.
 - Die Projektsummen dieser Antwort sind mit denen der einfachen Gruppierung
   **identisch** (über alle Gruppen verglichen, keine Abweichung), und die
   Untergruppen summieren sich exakt auf sie. Deshalb genügt ein Abruf für Verbrauch und
@@ -439,15 +297,9 @@ eigener Rechnerei:
 - Die Monatsgruppierung enthält **alle** Buchungen, auch die auf einen Kunden ohne
   Projekt. Genau das ist im Dashboard gewollt: gefragt ist der Gesamtumsatz.
 - `grouping[]=projects_id&grouping[]=month` liefert je Projekt die Monate als
-  `sub_groups` – die Kombination aus Spec 11.1, am 26.08.2026 verifiziert, rund
-  23 Sekunden. **Die äußere
-  Ebene ist die zuerst genannte.** Drei Fallen darin:
+  `sub_groups` 
   - **Die Untergruppen kommen nach `duration` absteigend, nie chronologisch** – bei allen
-    Gruppen mit mehr als einem Monat. Die Rückrechnung des Restvolumens aus 5.2 lebt
-    von der Reihenfolge; wer sie übernimmt, rechnet still falsch. Bei der
-    Personengruppierung fiel das nie auf, weil Personen keine Reihenfolge haben. **Die
-    Doku sagt zur Reihenfolge nichts** – sie ist damit auch nicht zugesagt, und selbst die
-    beobachtete Sortierung wäre kein Verlass. `Verbrauchsverlauf.fuer()` sortiert deshalb.
+    Gruppen mit mehr als einem Monat.
   - **Die Monatssummen gehen nur auf den Cent auf.** Bei einer Reihe von Projekten
     weicht die Summe der Monate von der Projektsumme um Cent-Beträge ab – Clockodo
     rundet jede Gruppe einzeln. Die Zeitsummen stimmen
@@ -469,19 +321,6 @@ eigener Rechnerei:
   in `name`), `round_to_minutes` und
   `calc_also_revenues_for_projects_with_hard_budget`.
 - Laut Doku sind **`time_since` und `time_until` beide Pflicht**, nicht nur `time_since`.
-
-**Pauschalleistungen, gemessen statt vermutet** (26.08.2026, `grouping[]=is_lumpsum`):
-Pauschalen machen einen erheblichen Teil des Gesamtumsatzes aus und tragen **null
-Stunden** – Pauschaleinträge haben grundsätzlich keine Dauer. Auch im Prognose-Scope
-betreffen sie die Mehrzahl der Projekte, viele davon vollständig. Die Annahme aus Spec
-5.1, dass Pauschalen mit gebuchter Zeit im abgeleiteten Stundensatz normalisiert sind,
-hält damit stand: die Arbeit hinter der Pauschale wird als Zeit ohne Umsatz gebucht, und
-die abgeleiteten Sätze im Scope bleiben in einer plausiblen Größenordnung für
-Beratungsleistung, ohne Ausreißer nach oben. Die Ausnahme sind die Projekte mit Umsatz
-**ohne jede** Zeit; die weist ein Hinweis aus.
-
-**`/v2/entries` wird trotzdem nicht benutzt.** Der einzige genannte Grund – `type` zur
-Trennung von Pauschalleistungen – ist mit `grouping[]=is_lumpsum` erledigt.
 
 ### Sollarbeitszeit
 Die Werte stehen im **unversionierten** `/targethours` (`/v2` und `/v3` geben 404):
@@ -506,7 +345,7 @@ Die Doku ergänzt vier Dinge dazu:
   stille Lücke, sobald jemand auf den Firmenstandard umgestellt wird.
 - `/targethours` nimmt einen `users_id`-Filter (Array, Zahl oder CSV), bisher unbenutzt.
 
-Für die geplanten Abwesenheiten (5.3) ist `/v4/absences` der richtige Endpunkt –
+Für die geplanten Abwesenheiten ist `/v4/absences` der richtige Endpunkt –
 `/absences`, `/v2/absences` und `/v3/absences` antworten mit 410 `deprecated`. Der
 Jahresfilter ist ein `deepObject`-Parameter (`filter[year]`, nicht `year` direkt),
 analog zu `grouping[]` bei `/v2/entrygroups`; die Antwort hat kein `paging`, Envelope-Key
@@ -515,7 +354,7 @@ holen sie ungefiltert nach Status und Typ – Envelope und Feldnamen stehen fest
 jede Abwesenheit soll in den Kapazitätsdeckel eingehen. `Mitarbeiter.abwesenheiten` führt
 sie deshalb roh, mit Clockodos `type`- und `status`-Codes.
 
-**Welcher `type` als Abwesenheit vom Arbeiten zählt, ist entschieden (26.08.2026): nur
+**`type` als Abwesenheit vom Arbeiten: nur
 Urlaub und Krankheit.** `Abwesenheit.gilt_als_abwesend` prüft das gegen
 `domaene.mitarbeiter.TYPEN_ABWESEND` – `TYP_URLAUB` (1, `RegularHoliday`, das
 Kontingent, nicht `SpecialLeave`/Sonderurlaub) und `TYPEN_KRANKHEIT` (4 `SickSelf`,
@@ -527,169 +366,9 @@ wo das fachlich diskutabel ist – etwa `Quarantine` (13, „work not possible�
 schon vorher heraus: sie tragen laut Doku die geplanten Stunden („planned hours get
 applied“), sind also keine Abwesenheit vom Arbeiten.
 
-**Der `status` ist ebenfalls entschieden (26.08.2026): eine Abwesenheit zählt schon ab
+**`status`: eine Abwesenheit zählt schon ab
 „beantragt", nicht erst ab „genehmigt".** `Enquired` und `Approved` (`STATUS_GEPLANT`)
 zählen beide, `Declined`, `ApprovalCancelled` und `Cancelled` nicht – das sind keine
 reale Abwesenheit (mehr). `Abwesenheit.zaehlt_als_kapazitaetsabzug` kombiniert Typ und
 Status; `Abwesenheit.genehmigt` (nur `Approved`) bleibt separat verfügbar, geht aber
 nicht mehr in den Kapazitätsdeckel ein.
-
-### Feiertage: zwei Generationen, und die Schreibweise entscheidet
-
-**Hier lagen wir zweimal falsch, und beide Male an der Groß-/Kleinschreibung.** Frühere
-Notizen sagten, `/v2` bis `/v4` von `/nonbusinessdays` gäben 404 und die Feiertagsgruppen
-seien überhaupt nicht abrufbar. Beides stimmt nicht – geprüft am 26.08.2026:
-
-- `/v2/nonbusinessDays` **mit großem D** antwortet 200. `/v2/nonbusinessdays` gibt 404.
-- `/v2/nonbusinessGroups` **mit großem G** antwortet 200 und liefert je Gruppe `id`,
-  `name` (die Bundesländer-Kombination) und `company_default`. `/nonbusinessgroups` gibt 410 `deprecated` –
-  daraus war der falsche Schluss entstanden.
-
-Die beiden Generationen liefern **dieselben Feiertage in verschiedenen Feldern**, und wer
-sie verwechselt, liest `null`:
-
-| | `/nonbusinessdays` (unversioniert) | `/v2/nonbusinessDays` |
-|---|---|---|
-| Envelope | `nonbusinessdays` | `data` |
-| Gruppe | `nonbusinessgroups_id` | `nonbusiness_group_id` |
-| Datum | `date` | `evaluated_date` |
-| Halber Tag | `half_day: 0` / `1` | `half_day: false` / `true` |
-| `year` | Pflicht (400 ohne) | optional |
-| Filter | `nonbusinessgroups_id` | `nonbusiness_group_id` |
-
-Für 5.3 sind zwei weitere Endpunkte die kürzere Strecke, beide mit Paginierung
-(50 je Seite):
-
-- `/v2/usersNonbusinessDays?year=…` liefert die Feiertage **je Person** fertig
-  zugeordnet, `{"users_id": …, "days": [...]}` – die eigene Zuordnung über die
-  Feiertagsgruppe erspart sich damit. **Dieser ist angebunden**:
-  `ClockodoClient.users_nonbusiness_days(year)` liest ihn über `get_paged` (er trägt
-  `paging`, anders als `/v4/absences`), `MitarbeiterRepository.laden_async(jahre=…)`
-  holt ihn je Jahr im Horizont gleichzeitig mit Personen, Sollzeiten und Abwesenheiten.
-  `Mitarbeiter.feiertage` führt das Ergebnis als `Feiertag`-Tupel (`datum`,
-  `halber_tag`, `name`). `Mitarbeiter.feiertagsstunden(jahr, monat)` zieht daraus den
-  Sollstunden-Abzug eines Monats. **`year` ist hier ein einfacher Query-Parameter**,
-  kein `deepObject` wie `filter[year]` bei `/v4/absences` – beide Endpunkte filtern
-  nach Jahr, aber nicht auf dieselbe Art.
-- `/v3/usersNonbusinessGroups` liefert die Zuordnung Person → Gruppe **mit
-  Gültigkeitszeitraum** (`date_since`, `date_until`); es gibt mehr Einträge als Personen,
-  eine Zuordnung hat also schon gewechselt. `users.nonbusinessgroups_id` kennt nur den
-  heutigen Stand – für einen vergangenen Stichtag ist das der falsche Wert.
-  **Ungenutzt**, weil `/v2/usersNonbusinessDays` die Zuordnung bereits auflöst.
-
-**Was die Doku nicht klärt: was `half_day` bewirkt.** Sie deklariert nur ein Boolean,
-keine Wirkung. Spec 5.3 nennt eine Halbierung der Sollstunden als Annahme; **entschieden
-wurde stattdessen (26.08.2026): ein Feiertag setzt die Sollstunden seines Wochentags auf
-0, ob ganz oder halb.** Grund ist die Praxis, nicht die Doku – an einem halben Feiertag
-nehmen die Kollegen den Rest in aller Regel als Urlaub, eine Halbierung würde den Tag
-doppelt und uneinheitlich erfassen (einmal über den Feiertag, einmal über die
-Abwesenheit). `Feiertag.halber_tag` bleibt als Rohwert der API erhalten, geht aber nicht
-mehr in `Mitarbeiter.feiertagsstunden()` ein.
-
-**Kundennamen nur über `/v3/customers`**: `/v4/customers`
-antwortet mit 404 `RouteNotFound`, `/v2/customers` mit 410 `deprecated`. Die Antwortform
-gleicht `/v4/projects` – `{"paging": {...}, "data": [{"id": …, "name": …, …}]}`. `/v4/projects` selbst führt nur `customers_id`, keinen
-Kundennamen. Alle Projekte tragen einen `name` und eine auflösbare `customers_id`;
-`clockodo/projekte.py` lässt eine Lücke trotzdem als `None` durch, statt einen Abruf mit
-einem `KeyError` zu beenden – eine fehlende Beschriftung darf keine Zahl kosten. Für
-Personen gilt dasselbe: eine `users_id` ohne Stammdatensatz bekommt ein
-Platzhalterobjekt, ihre Stunden gehen nicht verloren.
-
-`revenue` deckt die ganze Historie ab, sobald die untere Zeitgrenze weit genug liegt:
-`time_since=2010-01-01` liefert dieselben Gruppen und dieselbe Umsatzsumme wie
-`2020-01-01`. Die Antwort hat **kein `paging`** – alle Gruppen kommen in einem Rutsch.
-
-**Drei obere Zeitgrenzen, und keine ist die andere.** Alle in `client.py`, alle
-Funktionen:
-
-- `verbrauch_bis(stichtag)` – **der Stichtag selbst**, Grenze des Verbrauchs (Spec 5.1).
-  Verbrauch ist streng Vergangenheit. `BestandRepository.laden()` bindet sie an den
-  Stichtag des Bestands, nicht an heute; erst damit ist ein Bestand zu einem vergangenen
-  Stichtag konsistent.
-- `monatsende(tag)` – der letzte Tag des Kalendermonats, Fenster der **Umsatzhistorie**.
-  Dort ist der laufende Monat ein Balken, und eine später im Monat datierte Buchung
-  gehört hinein.
-- `horizontende(stichtag, monate)` – der letzte Tag des letzten **Horizontmonats**.
-  Weil der Horizont mit dem laufenden Monat beginnt (5.4), enden drei Monate ab dem
-  26.08.2026 am 31.10.2026. Diese Grenze zieht den Monatsverbrauch je Projekt: derselbe
-  Abruf trägt die Historie für 5.2 und die gebuchten Beträge im Horizont für 5.4.
-
-Wer zwei davon zusammenlegt, bricht eines von beidem. Bis zum 24.08.2026 lag die
-Verbrauchsgrenze am Monatsende: das schlug die nach dem Stichtag datierten Buchungen des
-laufenden Monats stumm dem Verbrauch zu, statt sie der Prognose anzurechnen.
-
-**Funktionen und nicht Konstanten**.
-
-## Kapazität (5.3), Simulation (5.4) und Ausgabe (5.5)
-
-**Spec 5.3 (Abwesenheiten, Feiertage, verfügbare Kapazität), 5.4 (Monte-Carlo-Simulation)
-und 5.5 (Ausgabe) sind vollständig umgesetzt und entschieden.**
-
-Zugriff: `ClockodoClient.absences(year)` liest `/v4/absences` mit `filter[year]`,
-`ClockodoClient.users_nonbusiness_days(year)` liest `/v2/usersNonbusinessDays` mit dem
-einfachen Parameter `year` (kein `deepObject` wie bei `absences`, und anders als dort
-mit `paging`, deshalb über `get_paged`). `MitarbeiterRepository.laden_async(jahre=…)`
-holt beide je Jahr im Horizont gleichzeitig mit Personen und Sollzeiten; `Mitarbeiter.
-abwesenheiten` und `Mitarbeiter.feiertage` führen sie als `Abwesenheit`- bzw.
-`Feiertag`-Tupel.
-
-Drei Entscheidungen, alle 26.08.2026, machen daraus die verfügbare Kapazität:
-
-- **Feiertage**: ein Feiertag setzt die Sollstunden seines Wochentags auf 0, ob ganz
-  oder halb – an einem halben Feiertag nehmen die Kollegen den Rest in aller Regel als
-  Urlaub, eine Halbierung würde ihn doppelt erfassen. `Feiertag.halber_tag` bleibt als
-  Rohwert erhalten, geht aber nicht mehr ein.
-- **Abwesenheits-Typ**: nur Urlaub (`TYP_URLAUB`, 1) und Krankheit (`TYPEN_KRANKHEIT`,
-  alle fünf Sick*-Codes) zählen als Abwesenheit vom Arbeiten – `Abwesenheit.
-  gilt_als_abwesend` prüft das. Alles andere zählt ausdrücklich nicht, auch nicht
-  `Quarantine` oder `MaternityProtection`, obwohl das fachlich diskutabel ist.
-- **Abwesenheits-Status**: zählt schon ab „beantragt" (`Enquired`), nicht erst ab
-  „genehmigt" (`Approved`) – `Declined`, `ApprovalCancelled` und `Cancelled` zählen
-  nicht. `Abwesenheit.zaehlt_als_kapazitaetsabzug` kombiniert Typ und Status.
-- **Abschlag für ungeplante Abwesenheit**: wird im MVP ignoriert, keine Schätzung.
-
-`Mitarbeiter.verfuegbare_kapazitaet(jahr, monat)` zieht daraus die verfügbare Kapazität:
-Sollstunden minus Feiertage minus geplante Abwesenheit, **taggenau** gerechnet, damit ein
-Tag, an dem sich Feiertag und Abwesenheit überschneiden (z. B. Urlaub über Weihnachten),
-nicht doppelt abgezogen wird. Details unter „Geplante Abwesenheiten" und „Feiertage: zwei
-Generationen" oben.
-
-Die **Simulation (5.4)** ist seit dem 26.08.2026 gebaut:
-`umsatzprognose.domaene.simulation.simulieren()`, aufgerufen über `Bestand.simulieren()`.
-10.000 Läufe, je Monat und Projekt eine Abrufquote aus der Verteilung (5.2) gezogen, in
-Stunden umgerechnet, auf Personen aufgeteilt (`Projekt.anteil_je_mitarbeiter()`), gegen
-`Mitarbeiter.verfuegbare_kapazitaet()` projektübergreifend gedeckelt, zurück in Euro.
-Kapazitäten sind laufunabhängig und werden einmal vorab je Person und Horizontmonat
-berechnet, nicht 10.000-mal. `MonteCarloPrognose` trägt das Ergebnis; die beiden Fälle,
-in denen weiterhin `NochKeinePrognose` zurückkommt, stehen unter „Stand der
-Implementierung" oben.
-
-Zwei Punkte aus der Doku-Gegenprobe, die jetzt in der Simulation verdrahtet sind:
-
-- **Stundensatz genau 0** (kommt im Scope vor) erzeugt in Schritt 3 keinen
-  Stundenbedarf – die Simulation behandelt ihn identisch zu `None` (kein ableitbarer
-  Satz): der gewünschte Euro-Betrag geht ungedeckelt, ohne Kapazitätsverbrauch, direkt in
-  die Prognose ein. `Projekt.stundensatz_uebersteuerung` bleibt daneben verfügbar, um
-  einen belastbaren Satz von Hand zu hinterlegen (`Bestand.mit_stundensatz_uebersteuerungen()`,
-  `Dashboard.stundensatz_uebersteuern()`); ein Hinweis benennt betroffene Projekte, solange
-  keine Korrektur hinterlegt ist.
-- **Ein Projekt mit `deadline` und `automatic_completion`** trägt ab dem Horizontmonat
-  nach der `deadline` keinen Umsatz mehr bei (Spec 5.4 Schritt 1) – der Monat, der die
-  `deadline` selbst enthält, zählt noch voll (Entscheidung 26.08.2026: monatsweiser statt
-  taggenauer Cutoff, siehe `simulation.py`-Moduldocstring und
-  `_traegt_noch_bei()`). Eine `deadline` ohne `automatic_completion` bleibt unverbindlich
-  und ohne Wirkung.
-
-Die **Ausgabe aus Spec 5.5** ist seit dem 26.08.2026 vollständig: `Prognose` trägt neben
-den Konfidenzniveaus und dem Anteil kapazitätslimitierter Läufe jetzt auch
-`horizontmonate()` und `gebucht()` (bereits gebuchter Betrag je Horizontmonat, 0 im
-Stichtagsmonat – siehe den Bugfix unter „Stand der Implementierung" oben). Der Verbrauch
-vor dem Stichtag im laufenden Monat brauchte keine eigene Berechnung: er steht schon als
-`Umsatzhistorie.laufender` bereit.
-
-`diagramme.umsatzverlauf()` zeigt seitdem Historie und Prognosehorizont in einem
-Diagramm statt in zwei getrennten – der frühere `Dashboard.prognose()`/
-`diagramme.prognose()` ist entfallen. Bereits gebuchter und prognostizierter Umsatz sind
-farblich unterscheidbar (satt vs. gedämpft über `gestaltung.PROGNOSE_DECKKRAFT`, keine
-zweite Farbfamilie), dazu ein Fehlerbalken für die 85-%/95-%-Niveaus. Details und die
-Begründung der Farbwahl im Docstring von `diagramme.umsatzverlauf()`.
