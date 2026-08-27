@@ -3,7 +3,7 @@
 Diese Schicht kennt weder JSON noch HTTP. Wie die Clockodo-Antworten aussehen und welche
 Eigenheiten sie haben, steht ausschliesslich in :mod:`umsatzprognose.clockodo`; wie die
 Zahlen dargestellt werden, ausschliesslich in :mod:`umsatzprognose.darstellung`. Die
-Trennung ist die Voraussetzung dafuer, dass die Fachlogik ohne Netz und ohne pandas
+Trennung ist die Voraussetzung dafuer, dass die Fachlogik ohne Netz
 pruefbar bleibt - und dass Clockodos Eigenarten nicht in die Fachbegriffe sickern.
 """
 
