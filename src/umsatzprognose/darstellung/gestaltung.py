@@ -1,17 +1,5 @@
 """Ein gemeinsames Erscheinungsbild fuer alle Diagramme.
 
-Farben, Schrift und Achsen stehen an einer Stelle, damit die drei Ansichten des
-Dashboards wie ein Werkzeug wirken und nicht wie drei. Die Werte stammen aus einer
-gepruefen Standardpalette: eine Serienfarbe (Blau), eine hellere Stufe derselben Farbe
-fuer den unvollstaendigen Monat, und zurueckhaltende Grautoene fuer Gitter, Achsen und
-Beschriftung. Keine zweite Farbfamilie - alle Diagramme zeigen genau eine Groesse, und
-eine zweite Farbe wuerde eine Unterscheidung behaupten, die es nicht gibt.
-
-**Feste helle Flaeche, kein Umschalten auf Dunkel.** Ein Notebook laeuft in Colab, in
-JupyterLab und in der GitHub-Vorschau, jeweils mit eigener Themenwahl, und eine
-plotly-Figur erfaehrt davon nichts. Statt in einer dunklen Umgebung zufaellig
-unlesbar zu werden, legt sich jede Figur eine eigene helle Karte an.
-
 **Deutsche Zahlen ohne locale**: ``separators=",."`` in jedem Layout sagt plotly, dass
 Komma das Dezimal- und Punkt das Tausendertrennzeichen ist. Damit stimmen auch die
 Zahlen in den Hinweisfenstern, die plotly selbst formatiert.

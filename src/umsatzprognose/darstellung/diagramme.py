@@ -1,19 +1,10 @@
 """Die Diagramme des Dashboards.
 
-Jede Funktion nimmt Fachobjekte und gibt eine plotly-Figur zurueck - keine Rechnung,
-keine Abrufe. Was dargestellt wird, entscheidet die Domaene; hier steht nur, wie.
+Jede Funktion nimmt Fachobjekte und gibt eine plotly-Figur zurueck. Was dargestellt wird, entscheidet die Domaene; hier steht nur, wie.
 
-Gestaltungsentscheidungen, die sich wiederholen: eine Groesse je Diagramm und deshalb
-meist keine Legende (der Titel benennt sie), Beschriftungen direkt am Balken statt einer
-zusaetzlichen Achse, wo es die Menge zulaesst, und Zahlen im Hinweisfenster statt an
-jedem Balken. Der laufende Monat ist heller gezeichnet und beschriftet - eine hellere
-Stufe derselben Farbe, weil es dieselbe Groesse ist und keine zweite Kategorie.
-
-Die eine Ausnahme ist :func:`umsatzverlauf`: dort stehen bis zu drei Farbtoene
-nebeneinander (abgerechnet, nicht abgerechnet, prognostiziert), und der Titel kann sie
-nicht mehr benennen. Die Legende dort besteht aus eigenen, unsichtbaren Spuren statt aus
-den echten Balken - die Historie-Spur faerbt sich ueber ein Array uneinheitlicher Werte,
-und ein Legendenfeld direkt daraus waere irrefuehrend.
+Gestaltung: 
+ * verschiedene Sättigungen einer Farbe für [abgerechnet, nicht abgerechnet, prognostiziert].
+ * verschiedene Farben für unetrschiedliche Quellen
 """
 
 from __future__ import annotations
@@ -52,12 +43,7 @@ def umsatzverlauf(
 ) -> go.Figure:
     """Monatsumsatz als Balken: Historie, und daran anschliessend der Prognosehorizont.
 
-    Der laufende Monat steht bewusst im Bild, obwohl er unvollstaendig ist: er zeigt,
-    wie weit der Monat gediehen ist. Damit er nicht als Einbruch missverstanden wird,
-    ist er hell gezeichnet und ausdruecklich beschriftet - und er geht in die
-    Durchschnittslinie nicht ein.
-
-    Drei Farbtoene, nach Rechnungsstellung unterschieden statt nach Kalendermonat:
+    Drei Sättigungen einer Farbe, nach Rechnungsstellung unterschieden statt nach Kalendermonat:
     **abgerechnet** (satt, nur abgeschlossene Vergangenheitsmonate), **nicht
     abgerechnet** (hell, deckend - der laufende Monat und, im Prognosehorizont, bereits
     in Clockodo gebuchte Betraege kuenftiger Monate, die per Definition noch nicht
@@ -136,9 +122,6 @@ def umsatzverlauf(
         _legendeintrag(fig, "Nicht abgerechnet", SERIE_HELL)
     if prognose is not None and prognose.vorhanden:
         _legendeintrag(fig, "Prognostiziert", SERIE_HELL, deckkraft=PROGNOSE_DECKKRAFT)
-    # Waagerecht unterhalb der x-Achse statt rechts daneben: das braucht nur zusaetzliche
-    # Hoehe, keine zusaetzliche Breite - ein rechter Rand wurde in Notebook-Umgebungen
-    # mit fester Zellenbreite (etwa Colab) abgeschnitten, bevor er sichtbar wurde.
     fig.update_layout(
         showlegend=True,
         legend={
@@ -162,13 +145,6 @@ def umsatzverlauf(
 
 def _legendeintrag(fig: go.Figure, name: str, farbe: str, *, deckkraft: float = 1.0) -> None:
     """Eine unsichtbare Spur einzig fuer den Legendeneintrag.
-
-    Die echten Spuren tragen ``showlegend=False`` (die Historie-Spur faerbt ihre Balken
-    ueber ein Array aus zwei Farben, "Bereits gebucht" teilt sich ihre Farbe absichtlich
-    mit dem laufenden Monat) - ein Legendenfeld direkt daraus waere pro Farbe nicht
-    sauber zu gewinnen. ``x=[None]`` statt einer leeren Liste: manche Plotly-Renderer (etwa Colab)
-    lassen eine Spur ganz ohne Datenpunkt auch aus der Legende verschwinden, ein
-    einzelner ``None``-Punkt zeichnet nichts, haelt die Spur aber sichtbar.
     """
     fig.add_scatter(
         x=[None],
@@ -198,12 +174,6 @@ def _prognosehorizont(
     ``base``/``y`` werden bewusst ohne ``barmode="stack"`` gesetzt (der laeuft bei
     mehreren Kategorien mit gleichem Namen nicht zuverlaessig zusammen) - stattdessen
     zeichnet jede Spur ihr Segment selbst von ``base`` bis ``base + y``.
-
-    "Bereits gebucht" faerbt sich hell wie der laufende Monat, nicht dunkel wie die
-    abgeschlossene Historie: ein fuer einen kuenftigen Monat schon in Clockodo erfasster
-    Betrag kann per Definition noch nicht abgerechnet sein, der Monat hat ja noch nicht
-    einmal begonnen. Beide teilen sich deshalb dieselbe Farbe und dasselbe Legendenfeld
-    ("Nicht abgerechnet") - unterschieden von der Prognose einzig ueber die Deckkraft.
     """
     horizont = prognose.horizontmonate()
     if not horizont:
@@ -363,11 +333,6 @@ def kennzahlen(eintraege: Sequence[tuple[str, float, str]], *, hoehe: int = 150)
 
     Args:
         eintraege: je Kachel Beschriftung, Wert und Einheit (etwa ``"EUR"``).
-
-    Kein Diagramm, sondern die Zahl selbst - fuer eine einzelne Groesse ohne Verlauf
-    ist ein Balken nur Verpackung. Die Zahlen stehen in derselben Figur, damit sie in
-    jeder Umgebung nebeneinander bleiben; nebeneinandergestellte Ausgaben tun das im
-    Notebook nicht zuverlaessig.
     """
     fig = figur("", hoehe=hoehe, grid={"rows": 1, "columns": len(eintraege), "pattern": "coupled"})
     fig.update_layout(margin={"l": 12, "r": 12, "t": 24, "b": 12})

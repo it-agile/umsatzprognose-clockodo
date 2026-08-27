@@ -1,6 +1,6 @@
 """Die Tabellen des Dashboards.
 
-Der einzige Ort mit pandas. Die Zahlen sind hier bereits in deutscher Schreibweise
+Die Zahlen sind hier bereits in deutscher Schreibweise
 formatiert: die Tabellen sind zum Lesen gedacht, nicht zum Weiterrechnen - wer rechnen
 will, nimmt die Fachobjekte, die hinter jeder Zeile stehen.
 """
@@ -56,7 +56,7 @@ def umsatztabelle(historie: Umsatzhistorie, prognose: Prognose | None = None) ->
     **Prognostiziert** fuer den Rest bis zum Median der Simulation. Die Summenspalte
     fasst die drei je Monat zusammen.
 
-    Der erste Horizontmonat ist derselbe Kalendermonat wie der laufende (Spec 5.4) und
+    Der erste Horizontmonat ist derselbe Kalendermonat wie der laufende und
     ergaenzt dessen Zeile deshalb nur um die Prognose, statt eine zweite Zeile fuer
     denselben Monat anzuhaengen.
     """

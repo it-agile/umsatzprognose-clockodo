@@ -1,4 +1,4 @@
-"""Das Dashboard - die einzige Klasse, die ein Fachexperte im Notebook anfasst.
+"""Das Dashboard - fachliche Klasse, Wissen von Fachexperten.
 
 Eine Fassade ueber Abruf, Fachlogik und Darstellung: :meth:`Dashboard.laden` holt die
 Daten, jede weitere Methode gibt eine fertige Ansicht zurueck. Im Notebook steht damit
@@ -49,7 +49,7 @@ class Dashboard:
 
         Die Zugangsdaten kommen aus der Colab-Secrets-Verwaltung oder aus einer lokalen
         ``.env``, je nachdem, wo das Notebook laeuft. Die sieben Abrufe laufen
-        gleichzeitig; gegen die echte Installation bestimmt der langsamste die Dauer.
+        gleichzeitig.
         """
         bestand = BestandRepository.mit_automatischen_zugangsdaten().laden(
             stichtag=stichtag,
