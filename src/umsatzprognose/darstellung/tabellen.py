@@ -25,6 +25,9 @@ import pandas as pd
 from umsatzprognose.domaene.umsatzhistorie import MONATSNAMEN
 from umsatzprognose.domaene.zahlen import euro
 
+# Diese Tabellen sind zum Lesen gedacht - kein abgeschnittener Hinweistext.
+pd.set_option("display.max_colwidth", None)
+
 PROJEKTSPALTEN = ["Kunde", "Projekt", "Beauftragt", "Verbraucht", "Offen", "Budget überschritten"]
 UMSATZSPALTEN = [
     "Monat",
@@ -129,12 +132,14 @@ def umsatztabelle(
                     }
                 )
 
-    return pd.DataFrame(zeilen, columns=UMSATZSPALTEN)
+    tabelle = pd.DataFrame(zeilen, columns=UMSATZSPALTEN)
+    tabelle.index = [""] * len(tabelle)
+    return tabelle
 
 
 def hinweistabelle(hinweise: Sequence[Hinweis]) -> pd.DataFrame:
     """Die Befunde zur Datenlage, mit den betroffenen Projekten in der letzten Spalte."""
-    return pd.DataFrame(
+    tabelle = pd.DataFrame(
         [
             {
                 "Hinweis": hinweis.text,
@@ -146,3 +151,5 @@ def hinweistabelle(hinweise: Sequence[Hinweis]) -> pd.DataFrame:
         ],
         columns=HINWEISSPALTEN,
     )
+    tabelle.index = [""] * len(tabelle)
+    return tabelle

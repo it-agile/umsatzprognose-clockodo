@@ -176,27 +176,6 @@ class Bestand:
                 )
             )
 
-        mit_automatischem_abschluss = [
-            p for p in self.im_prognose_scope if p.automatischer_abschluss is not None
-        ]
-        if mit_automatischem_abschluss:
-            gefunden.append(
-                Hinweis(
-                    "Projekte im Prognose-Scope mit automatischem Abschluss zu einem "
-                    "festen Datum - sie tragen ab diesem Datum keinen Umsatz mehr bei; "
-                    "die Simulation berücksichtigt das noch nicht",
-                    tuple(
-                        f"{p.name if p.name else str(p.id)} "
-                        f"({
-                            p.automatischer_abschluss.strftime('%d.%m.%Y')
-                            if p.automatischer_abschluss
-                            else None
-                        })"
-                        for p in mit_automatischem_abschluss
-                    ),
-                )
-            )
-
         ohne_beteiligte = [p for p in self.im_prognose_scope if not p.anteile]
         if ohne_beteiligte:
             gefunden.append(
