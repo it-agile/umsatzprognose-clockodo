@@ -67,6 +67,11 @@ extras = [ "ruff" ]
 allowlist_externals = [ "ruff" ]
 commands = [[ "ruff", "check", { replace = "posargs", default = ["src", "tests"], extend = true }]]
 
+[tool.tox.env.jupyter]
+extras = [ "notebook" ]
+allowlist_externals = [ "jupyter" ]
+commands = [[ "jupyter", "lab", "--autoreload" ]]
+
 [tool.ruff]
 line-length = 100
 src = ["src", "tests"]
