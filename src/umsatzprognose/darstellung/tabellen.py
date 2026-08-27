@@ -10,7 +10,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Iterable, Sequence
 
     from umsatzprognose.domaene import (
         Hinweis,
@@ -38,6 +38,7 @@ UMSATZSPALTEN = [
     "Summe",
 ]
 HINWEISSPALTEN = ["Hinweis", "Betroffen", "Projekte"]
+PROJEKT_OHNE_BUDGET_SPALTEN = ["Projekt", "Grund"]
 
 
 def projekttabelle(projekte: Sequence[Projekt]) -> pd.DataFrame:
@@ -150,6 +151,21 @@ def hinweistabelle(hinweise: Sequence[Hinweis]) -> pd.DataFrame:
             for hinweis in hinweise
         ],
         columns=HINWEISSPALTEN,
+    )
+    tabelle.index = [""] * len(tabelle)
+    return tabelle
+
+
+def projekte_ohne_budget(projekte: Iterable[tuple[str, str]]) -> pd.DataFrame:
+    tabelle = pd.DataFrame(
+        [
+            {
+                "Projekt": projekt[0],
+                "Grund": projekt[1],
+            }
+            for projekt in projekte
+        ],
+        columns=PROJEKT_OHNE_BUDGET_SPALTEN,
     )
     tabelle.index = [""] * len(tabelle)
     return tabelle

@@ -28,6 +28,7 @@ from umsatzprognose.domaene import (
     Verbrauchsverlauf,
     Wochenarbeitszeit,
 )
+from umsatzprognose.domaene.projekt import OHNE_BUDGET
 from umsatzprognose.domaene.zahlen import euro
 
 STICHTAG = date(2026, 8, 24)
@@ -263,6 +264,60 @@ def test_dashboard_hinweise_enthaelt_luecken_des_schulungsplans():
 
     hinweise = dashboard.hinweise()
     assert any("Schulungsanmeldung" in text for text in hinweise["Hinweis"])
+
+
+def test_dashboard_projekte_ohne_budget_enthaelt_gefilterte_projekte():
+    historie, _prognose = _historie_und_prognose_mit_horizont()
+    projekt = Projekt(
+        id=1,
+        name="Projekt ohne Budget",
+        kunde=KUNDE,
+        aktiv=True,
+        budget=OHNE_BUDGET,
+        verbrauchtes_volumen=20000.0,
+        verbrauchte_stunden=200.0,
+    )
+    bestand = Bestand(
+        stichtag=historie.stichtag,
+        projekte=(projekt,),
+        umsatzhistorie=historie,
+        verbrauchsverlaeufe=(_historie_fuer_abrufquote(0.2),),
+    )
+    dashboard = Dashboard(bestand)
+    dashboard.prognose = bestand.simulieren(monate=2, laeufe=5, zufall=np.random.default_rng(1))
+    dashboard.schulungsplan = Schulungsplan(stichtag=historie.stichtag, termine=())
+
+    projekte_ohne_budget = dashboard.projekte_ohne_budget()
+    assert any("Projekt ohne Budget" in text for text in projekte_ohne_budget["Projekt"]), (
+        projekte_ohne_budget
+    )
+
+
+def test_dashboard_projekte_ohne_budget_filtert_projekte():
+    historie, _prognose = _historie_und_prognose_mit_horizont()
+    projekt = Projekt(
+        id=1,
+        name="gefiltertes Projekt ohne Budget",
+        kunde=KUNDE,
+        aktiv=True,
+        budget=OHNE_BUDGET,
+        verbrauchtes_volumen=20000.0,
+        verbrauchte_stunden=200.0,
+    )
+    bestand = Bestand(
+        stichtag=historie.stichtag,
+        projekte=(projekt,),
+        umsatzhistorie=historie,
+        verbrauchsverlaeufe=(_historie_fuer_abrufquote(0.2),),
+    )
+    dashboard = Dashboard(bestand)
+    dashboard.prognose = bestand.simulieren(monate=2, laeufe=5, zufall=np.random.default_rng(1))
+    dashboard.schulungsplan = Schulungsplan(stichtag=historie.stichtag, termine=())
+
+    projekte_ohne_budget = dashboard.projekte_ohne_budget(filter=["kein Match", "gefiltert"])
+    assert not any("Projekt ohne Budget" in text for text in projekte_ohne_budget["Projekt"]), (
+        projekte_ohne_budget
+    )
 
 
 def test_dashboard_zeigt_horizont_im_umsatzverlauf():

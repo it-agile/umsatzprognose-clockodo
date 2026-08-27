@@ -14,6 +14,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
     from datetime import date
 
     import pandas as pd
@@ -155,3 +156,11 @@ class Dashboard:
         if historie is None:
             raise ValueError("Der Bestand enthält keine Umsatzhistorie.")
         return historie
+
+    def projekte_ohne_budget(self, /, filter: Sequence[str] | None = None) -> pd.DataFrame:
+        ohne_budget = self.bestand.ohne_budget(filter=filter)
+
+        return tabellen.projekte_ohne_budget(
+            (projekt.bezeichnung, projekt.budget.sonderfall or "kein Budget gesetzt")
+            for projekt in ohne_budget
+        )

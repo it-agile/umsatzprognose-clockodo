@@ -19,7 +19,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
+    from collections.abc import Iterable, Mapping
     from datetime import date
 
     import numpy as np
@@ -273,3 +273,13 @@ class Bestand:
             zufall: der Zufallsgenerator; ungesetzt erzeugt jeder Aufruf einen neuen.
         """
         return simulieren(self, monate, laeufe=laeufe, zufall=zufall)
+
+    def ohne_budget(self, *, filter: Iterable[str] | None = None) -> list[Projekt]:
+        if filter is None:
+            filter = []
+
+        return [
+            p
+            for p in self.aktive_projekte
+            if not p.budget.verwertbar and not any(f in p.bezeichnung for f in filter)
+        ]
