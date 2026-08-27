@@ -1,8 +1,7 @@
 """Abbildung der Doppelgruppierung Projekt x Monat auf
 :class:`~umsatzprognose.domaene.verbrauchsverlauf.Verbrauchsverlauf`.
 
-Der Abruf, den Spec 11.1 fuer die Abrufquote-Verteilung verlangt. Am 26.08.2026 gegen
-die Installation geprueft; die Form, mit erfundenen Werten::
+Form::
 
     GET /v2/entrygroups?time_since=…&time_until=…&grouping[]=projects_id&grouping[]=month
     → {"groups": [{"group": "101", "name": "Kunde / Projekt",
@@ -12,18 +11,14 @@ die Installation geprueft; die Form, mit erfundenen Werten::
                                    "restrictions": {"projects_id": "101"},
                                    "grouped_by": "month"}]}]}
 
-Was dabei aufgefallen ist:
-
 * **Die Monate kommen nach Dauer absteigend**, nicht chronologisch - bei jeder Gruppe
-  mit mehr als einem Monat, ohne Ausnahme. Die Rueckrechnung des Restvolumens aus
-  Spec 5.2 lebt von der Reihenfolge, sortiert wird deshalb beim Bauen des Verlaufs.
-  Bei der Personengruppierung fiel das nie auf, weil Personen keine Reihenfolge haben.
+  mit mehr als einem Monat, ohne Ausnahme. Die Rueckrechnung des Restvolumens 
+  lebt von der Reihenfolge, sortiert wird deshalb beim Bauen des Verlaufs.
 * **Der Monat kommt als String** ``"JJJJMM"``, wie bei der einfachen Monatsgruppierung.
   Gelesen wird er darum mit derselben Funktion (:func:`.umsatz.monatsumsatz`).
 * **Die Monatssummen gehen nur auf den Cent auf.** Bei einer Reihe von Projekten weicht
   die Summe der Monate von der Projektsumme um Cent-Betraege ab - Clockodo rundet jede
-  Gruppe einzeln. Die Zeitsummen stimmen exakt. Ein Vergleich auf Gleichheit waere hier
-  also ein Fehlalarm.
+  Gruppe einzeln. Die Zeitsummen stimmen exakt.
 * **Die Projektsummen sind mit der einfachen Gruppierung identisch**, ueber alle
   Gruppen ohne Abweichung - dieselbe Zusicherung wie bei der Personengruppierung.
 * **``group == 0`` kommt mehrfach vor** - je Kunde ohne Projekt einmal, und das ist der
@@ -34,8 +29,8 @@ Was dabei aufgefallen ist:
   ein zweiter Verlauf und damit dieselben Monate zweimal in der Verteilung.
 
 Das Fenster reicht bis zum **Ende des Horizonts** und nicht bis zum Stichtag: dieselbe
-Antwort traegt laut Spec 11.1 die bereits gebuchten Betraege der Horizontmonate, die
-Untergrenze der Bandbreite aus 5.4. Welche Monate davon Historie sind, entscheidet die
+Antwort traegt die bereits gebuchten Betraege der Horizontmonate, die
+Untergrenze der Bandbreite. Welche Monate davon Historie sind, entscheidet die
 Domaene am Stichtag, nicht der Abruf.
 """
 
@@ -99,7 +94,7 @@ class VerbrauchsverlaufRepository:
                 ohne das sich kein Restvolumen zurueckrechnen laesst.
             stichtag: bestimmt ueber den Horizont die obere Zeitgrenze; ohne Angabe
                 heute.
-            horizont_monate: Laenge des Prognosehorizonts (Spec 5.4: 1 bis 3).
+            horizont_monate: Laenge des Prognosehorizonts.
             time_since: untere Grenze der Historie.
         """
         gruppen = await rohdaten(
@@ -118,7 +113,7 @@ class VerbrauchsverlaufRepository:
 
         Projekte ohne jede Buchung kommen in der Antwort nicht vor und bekommen auch
         keinen leeren Verlauf: ohne einen einzigen gebuchten Monat gibt es kein
-        Beobachtungsfenster (Spec 5.2), und ein leerer Verlauf saehe wie ein Projekt
+        Beobachtungsfenster, und ein leerer Verlauf saehe wie ein Projekt
         aus, das nichts abgerufen hat.
         """
         nach_id: Mapping[int, Projekt] = {projekt.id: projekt for projekt in projekte}

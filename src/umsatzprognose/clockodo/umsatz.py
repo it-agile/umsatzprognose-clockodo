@@ -1,13 +1,11 @@
 """Abbildung der Monatsgruppierung von ``/v2/entrygroups`` auf
 :class:`~umsatzprognose.domaene.umsatzhistorie.Umsatzhistorie`.
 
-Am 24.08.2026 an der Installation verifiziert; die Form, mit erfundenen Werten::
+Form::
 
     GET /v2/entrygroups?time_since=…&time_until=…&grouping[]=month
     → {"groups": [{"group": "202509", "name": "202509", "duration": 3600000,
                    "revenue": 300000.0, "grouped_by": "month"}]}
-
-Drei Dinge, die dabei aufgefallen sind:
 
 * Der Gruppierungswert heisst ``month``, im Singular und ohne ``_id``-Suffix - anders
   als bei Objekten (``projects_id``). ``months`` und ``date`` antworten mit 400.
@@ -15,8 +13,7 @@ Drei Dinge, die dabei aufgefallen sind:
   stattdessen eine **Zahl**; auf den Typ ist also kein Verlass, deshalb ``str()`` vor
   dem Zerlegen.
 * Die Antwort enthaelt **alle** Buchungen des Monats, auch die auf einen Kunden ohne
-  Projekt. Genau das ist im Dashboard gewollt: gefragt ist der Gesamtumsatz, die Zahl,
-  die ein Fachexperte aus der Buchhaltung kennt.
+  Projekt.
 
 Monate ohne Buchungen tauchen in der Antwort nicht auf; aufgefuellt werden sie in
 :meth:`~umsatzprognose.domaene.umsatzhistorie.Umsatzhistorie.zum_stichtag`.
