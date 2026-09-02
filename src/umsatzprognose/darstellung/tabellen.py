@@ -165,15 +165,15 @@ def umsatztabelle(
     return tabelle
 
 
-def hinweistabelle(hinweise: Sequence[Hinweis]) -> pd.DataFrame:
+def hinweistabelle(hinweise: Sequence[Hinweis], *, max_anzahl_betroffen: int = 10) -> pd.DataFrame:
     """Die Befunde zur Datenlage, mit den betroffenen Projekten in der letzten Spalte."""
     tabelle = pd.DataFrame(
         [
             {
                 "Hinweis": hinweis.text,
                 "Betroffen": hinweis.anzahl or "",
-                "Projekte": ", ".join(str(i) for i in hinweis.betroffene[:8])
-                + (" …" if hinweis.anzahl > 8 else ""),
+                "Projekte": ", ".join(str(i) for i in hinweis.betroffene[:max_anzahl_betroffen])
+                + (" …" if hinweis.anzahl > max_anzahl_betroffen else ""),
             }
             for hinweis in hinweise
         ],

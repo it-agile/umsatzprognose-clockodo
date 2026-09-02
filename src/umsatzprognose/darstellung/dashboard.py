@@ -170,7 +170,7 @@ class Dashboard:
         """
         self.bestand = self.bestand.mit_stundensatz_uebersteuerungen(werte)
 
-    def hinweise(self) -> pd.DataFrame:
+    def hinweise(self, *, max_anzahl_betroffen: int = 10) -> pd.DataFrame:
         """Was zu den Zahlen zu wissen ist - Datenlage und offene fachliche Fragen."""
         hinweise = self.bestand.hinweise()
         monate = list(_historie_monate(self.bestand))
@@ -181,7 +181,7 @@ class Dashboard:
             monate += [m for m in horizont if m not in monate]
         if self.kostenplan is not None:
             hinweise += self.kostenplan.hinweise(monate)
-        return tabellen.hinweistabelle(hinweise)
+        return tabellen.hinweistabelle(hinweise, max_anzahl_betroffen=max_anzahl_betroffen)
 
     def _historie(self):
         historie = self.bestand.umsatzhistorie
