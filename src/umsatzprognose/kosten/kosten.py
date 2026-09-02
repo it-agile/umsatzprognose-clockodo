@@ -58,6 +58,9 @@ def _zeilen_zu_posten(zeilen: list[list[str]], jahr: int) -> list[Kostenposten]:
         return []
     kopf = zeilen[0]
     index = {name.strip(): i for i, name in enumerate(kopf)}
+    # workaround für fehlende Monatsspalten-Bezeichnung
+    index["Monat"] = 0
+
     fehlend = {SPALTE_MONAT, SPALTE_GESAMTKOSTEN} - index.keys()
     if fehlend:
         raise ValueError(f"Spalten fehlen im Tabellenblatt: {sorted(fehlend)}")

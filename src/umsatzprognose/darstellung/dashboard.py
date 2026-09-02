@@ -113,6 +113,14 @@ class Dashboard:
     def stichtag(self) -> date:
         return self.bestand.stichtag
 
+    @property
+    def anzahl_schulungen(self) -> int:
+        return len(self.schulungsplan.termine)
+
+    @property
+    def anzahl_kostenmonate(self) -> int:
+        return len(self.kostenplan.posten)
+
     def kennzahlen(self) -> go.Figure:
         """Die vier Zahlen, mit denen ein Blick auf das Dashboard beginnt."""
         historie = self._historie()
@@ -128,18 +136,6 @@ class Dashboard:
 
     def simuliere(self, *, monate: int = 3, laeufe: int = 10_000):
         self.prognose = self.bestand.simulieren(monate=monate, laeufe=laeufe)
-
-    def schulungen_laden(self, *, horizont_monate: int = 3) -> None:
-        """Die Schulungstermine aus den konfigurierten Google-Sheets-Dateien laden.
-
-        Additiver Baustein neben der Bestand-Prognose (Spec Baustein
-        Schulungsanmeldungen) - unabhaengig von :meth:`simuliere`, in beliebiger
-        Reihenfolge aufrufbar. Die Zugangsdaten und die Jahr-zu-Datei-Zuordnung kommen,
-        wie bei :meth:`laden`, aus Colab-Secrets oder einer lokalen ``.env``.
-        """
-        self.schulungsplan = SchulungenRepository.mit_automatischen_zugangsdaten().laden(
-            self.stichtag, horizont_monate=horizont_monate
-        )
 
     def umsatzverlauf(self) -> go.Figure:
         """Der Umsatz je Monat - Historie und, daran anschliessend, der Prognosehorizont."""
