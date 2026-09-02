@@ -96,6 +96,12 @@ quote-style = "double"
 testpaths = ["tests"]
 addopts = "-q"
 
+[tool.coverage.paths]
+source = [
+    "src/umsatzprognose",
+    "*/umsatzprognose"
+]
+
 [tool.coverage.run]
 source_pkgs = [
     "umsatzprognose",
