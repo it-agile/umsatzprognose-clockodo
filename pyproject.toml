@@ -95,3 +95,15 @@ quote-style = "double"
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
+
+[tool.coverage.run]
+source_pkgs = [
+    "umsatzprognose",
+]
+
+[tool.coverage.report]
+omit = [
+    ".githooks/*",
+    "tests/*",
+    "*/__init__.py",
+]
