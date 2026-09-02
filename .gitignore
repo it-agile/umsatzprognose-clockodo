@@ -1,6 +1,7 @@
 .env
 .google_oauth_token.json
 .DS_Store
+.idea/
 
 # Python
 __pycache__/
