@@ -1,17 +1,22 @@
-"""HTTP-Zugriff auf die Google Sheets API fuer die Schulungs-Tabellenblaetter.
+"""HTTP-Zugriff auf die Google Sheets API - gemeinsame Infrastruktur fuer alle
+Bausteine, die aus denselben jaehrlichen Google-Sheets-Dateien lesen (siehe
+Moduldocstring von :mod:`umsatzprognose.google_sheets.config`).
 
-Ein Google-Sheet je Jahr, Tabellenblatt ``Öffentliche Schulungen`` (Spec Abschnitt 5.3).
 **Kein Service-Account** - fuer diese Anlage gibt Google nur eine OAuth-Client-ID aus,
 kein Service-Account-Key. Die Anmeldung laeuft deshalb je Umgebung unterschiedlich:
 
 - **In Colab** authentifiziert sich die aufrufende Person ueber ihr eigenes Google-Konto
   (``google.colab.auth.authenticate_user``) - kein Client-JSON noetig, keine
-  Token-Datei. Sie braucht selbst Lesezugriff auf die Trainings-Sheets.
+  Token-Datei. Sie braucht selbst Lesezugriff auf die betreffenden Sheets.
 - **Lokal** startet ein einmaliger interaktiver Login im Browser
   (``google_auth_oauthlib.flow.InstalledAppFlow``), auf Basis des Client-JSON aus
-  :class:`~umsatzprognose.schulungen.config.SchulungenConfig`. Das Ergebnis (Refresh-Token)
-  wird in :data:`TOKEN_PFAD` zwischengespeichert und danach automatisch erneuert -
-  die Datei ist in ``.gitignore`` aufgenommen.
+  :class:`~umsatzprognose.google_sheets.config.GoogleSheetsConfig`. Das Ergebnis
+  (Refresh-Token) wird in :data:`TOKEN_PFAD` zwischengespeichert und danach automatisch
+  erneuert - die Datei ist in ``.gitignore`` aufgenommen.
+
+Dieses Modul kennt keinen bestimmten Baustein und damit auch kein bestimmtes
+Tabellenblatt - welcher Reiter bzw. Zellbereich gelesen wird, entscheidet jeder
+Aufrufer (:mod:`umsatzprognose.schulungen`, :mod:`umsatzprognose.kosten`, ...) selbst.
 """
 
 from __future__ import annotations
@@ -27,12 +32,11 @@ from googleapiclient.discovery import build
 from .config import OAUTH_CLIENT_VAR, MissingCredentialsError, in_colab
 
 SCOPES = ("https://www.googleapis.com/auth/spreadsheets.readonly",)
-TABELLENBLATT = "Öffentliche Schulungen"
 TOKEN_PFAD = Path(".google_oauth_token.json")
 
 
-class SchulungenSheetsClient:
-    """Lesender Zugriff auf ein Tabellenblatt je Aufruf."""
+class GoogleSheetsClient:
+    """Lesender Zugriff auf einen Zellbereich je Aufruf."""
 
     def __init__(self, oauth_client_config: dict | None = None) -> None:
         credentials = (
@@ -40,11 +44,14 @@ class SchulungenSheetsClient:
         )
         self._service = build("sheets", "v4", credentials=credentials, cache_discovery=False)
 
-    def werte(self, spreadsheet_id: str, bereich: str = TABELLENBLATT) -> list[list[str]]:
-        """Alle Zellwerte des Tabellenblatts, zeilenweise, roh als Strings.
+    def werte(self, spreadsheet_id: str, bereich: str) -> list[list[str]]:
+        """Alle Zellwerte des angegebenen Bereichs, zeilenweise, roh als Strings.
 
-        Die erste Zeile ist die Kopfzeile - die Zuordnung auf Spaltennamen macht
-        :mod:`umsatzprognose.schulungen.schulungen`, nicht dieser Client.
+        ``bereich`` ist ein A1-Bereich, meist ein Tabellenblattname (z. B.
+        ``"Öffentliche Schulungen"``) oder ein Tabellenblattname mit Zellbereich (z. B.
+        ``"Kosten 2026!L3:R15"``). Ob die erste Zeile eine Kopfzeile ist und wie die
+        Zuordnung auf Spaltennamen erfolgt, entscheidet der Aufrufer, nicht dieser
+        Client.
         """
         antwort = (
             self._service.spreadsheets()

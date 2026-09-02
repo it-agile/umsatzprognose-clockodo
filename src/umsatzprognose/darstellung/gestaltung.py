@@ -17,6 +17,9 @@ SERIE_HELL = "#86b6ef"
 # anderen Quelle als der Bestand-Umsatz, deshalb bewusst nicht nur eine weitere
 # Saettigung von SERIE (siehe Moduldocstring).
 SCHULUNG = "#d68a2c"
+# Eigene Farbfamilie fuer die Kostenprognose - aus derselben Ueberlegung: eine andere
+# Quelle als der Umsatz, keine weitere Saettigung von SERIE.
+KOSTEN = "#b3423f"
 FLAECHE = "#fcfcfb"
 TINTE = "#0b0b0b"
 TINTE_ZWEITRANGIG = "#52514e"

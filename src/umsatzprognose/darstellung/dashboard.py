@@ -20,9 +20,10 @@ if TYPE_CHECKING:
     import pandas as pd
     import plotly.graph_objects as go
 
-    from umsatzprognose.domaene import Bestand, Prognose, Schulungsplan
+    from umsatzprognose.domaene import Bestand, Kostenplan, Prognose, Schulungsplan
 
 from umsatzprognose.clockodo import BestandRepository
+from umsatzprognose.kosten import KostenRepository
 from umsatzprognose.schulungen import SchulungenRepository
 
 from . import diagramme, tabellen
@@ -30,13 +31,22 @@ from . import diagramme, tabellen
 STANDARD_TOP = 15
 
 
+def _historie_monate(bestand: Bestand) -> tuple[tuple[int, int], ...]:
+    """Die Monate der Umsatzhistorie, als Schluessel - leer ohne geladene Historie."""
+    historie = bestand.umsatzhistorie
+    return tuple(m.schluessel for m in historie.monate) if historie is not None else ()
+
+
 class Dashboard:
     """Alle Ansichten zu einem geladenen Bestand."""
 
-    def __init__(self, bestand: Bestand, schulungsplan: Schulungsplan) -> None:
+    def __init__(
+        self, bestand: Bestand, schulungsplan: Schulungsplan, kostenplan: Kostenplan
+    ) -> None:
         self.bestand = bestand
         self.prognose: Prognose | None = None
         self.schulungsplan: Schulungsplan = schulungsplan
+        self.kostenplan: Kostenplan = kostenplan
 
     @classmethod
     def laden(
@@ -64,7 +74,12 @@ class Dashboard:
         schulungsplan = SchulungenRepository.mit_automatischen_zugangsdaten().laden(
             stichtag=stichtag, horizont_monate=horizont_monate
         )
-        return cls(bestand, schulungsplan)
+        kostenplan = KostenRepository.mit_automatischen_zugangsdaten().laden(
+            stichtag=bestand.stichtag,
+            horizont_monate=horizont_monate,
+            historie_monate=_historie_monate(bestand),
+        )
+        return cls(bestand, schulungsplan, kostenplan)
 
     @classmethod
     async def laden_async(
@@ -87,7 +102,12 @@ class Dashboard:
         schulungsplan = SchulungenRepository.mit_automatischen_zugangsdaten().laden(
             stichtag=stichtag, horizont_monate=horizont_monate
         )
-        return cls(bestand, schulungsplan)
+        kostenplan = KostenRepository.mit_automatischen_zugangsdaten().laden(
+            stichtag=bestand.stichtag,
+            horizont_monate=horizont_monate,
+            historie_monate=_historie_monate(bestand),
+        )
+        return cls(bestand, schulungsplan, kostenplan)
 
     @property
     def stichtag(self) -> date:
@@ -123,7 +143,9 @@ class Dashboard:
 
     def umsatzverlauf(self) -> go.Figure:
         """Der Umsatz je Monat - Historie und, daran anschliessend, der Prognosehorizont."""
-        return diagramme.umsatzverlauf(self._historie(), self.prognose, self.schulungsplan)
+        return diagramme.umsatzverlauf(
+            self._historie(), self.prognose, self.schulungsplan, self.kostenplan
+        )
 
     def restvolumen_je_projekt(self, top: int = STANDARD_TOP) -> go.Figure:
         """Das offene Auftragsvolumen der groessten Projekte."""
@@ -131,7 +153,9 @@ class Dashboard:
 
     def umsatztabelle(self) -> pd.DataFrame:
         """Dieselben Monate wie im Verlaufsdiagramm, zum Nachlesen - inklusive Prognose."""
-        return tabellen.umsatztabelle(self._historie(), self.prognose, self.schulungsplan)
+        return tabellen.umsatztabelle(
+            self._historie(), self.prognose, self.schulungsplan, self.kostenplan
+        )
 
     def projekttabelle(self, top: int | None = None) -> pd.DataFrame:
         """Die Projekte der Prognose, groesstes offenes Volumen zuerst."""
@@ -153,8 +177,14 @@ class Dashboard:
     def hinweise(self) -> pd.DataFrame:
         """Was zu den Zahlen zu wissen ist - Datenlage und offene fachliche Fragen."""
         hinweise = self.bestand.hinweise()
-        if self.schulungsplan is not None and self.prognose is not None and self.prognose.vorhanden:
-            hinweise += self.schulungsplan.hinweise(self.prognose.horizontmonate())
+        monate = list(_historie_monate(self.bestand))
+        if self.prognose is not None and self.prognose.vorhanden:
+            horizont = self.prognose.horizontmonate()
+            if self.schulungsplan is not None:
+                hinweise += self.schulungsplan.hinweise(horizont)
+            monate += [m for m in horizont if m not in monate]
+        if self.kostenplan is not None:
+            hinweise += self.kostenplan.hinweise(monate)
         return tabellen.hinweistabelle(hinweise)
 
     def _historie(self):

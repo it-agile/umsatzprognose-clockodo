@@ -1,15 +1,16 @@
-"""Tests fuer schulungen.config: Parsing der Umgebungsvariablen, ohne Netzzugriff.
+"""Tests fuer google_sheets.config: Parsing der Umgebungsvariablen, ohne Netzzugriff.
 
 Insbesondere die Unterscheidung OAuth-Client-ID vs. Service-Account-Key - ein
 Service-Account-Key ist fuer diese Anlage kein gueltiger Wert fuer
-GOOGLE_OAUTH_CLIENT_JSON (siehe Moduldocstring von schulungen.config).
+GOOGLE_OAUTH_CLIENT_JSON (siehe Moduldocstring von google_sheets.config). Gemeinsame
+Konfiguration fuer :mod:`umsatzprognose.schulungen` und :mod:`umsatzprognose.kosten`.
 """
 
 from __future__ import annotations
 
 import pytest
 
-from umsatzprognose.schulungen.config import (
+from umsatzprognose.google_sheets.config import (
     MissingCredentialsError,
     _jahre_zu_dateien,
     _oauth_client_json,

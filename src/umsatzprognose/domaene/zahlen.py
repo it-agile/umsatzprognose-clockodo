@@ -1,4 +1,4 @@
-"""Zahlen in der Form, in der ein Fachexperte sie liest.
+"""Zahlen in der Form, in der ein Fachexperte sie liest - und zurueck.
 
 Deutsche Schreibweise mit Punkt als Tausender- und Komma als Dezimaltrennzeichen, ohne
 ``locale``:.
@@ -6,7 +6,10 @@ Deutsche Schreibweise mit Punkt als Tausender- und Komma als Dezimaltrennzeichen
 
 from __future__ import annotations
 
+import re
+
 _PLATZHALTER = "\x00"
+_UNERLAUBTE_ZEICHEN = re.compile(r"[^\d,.]")
 
 
 def _deutsch(wert: float, nachkommastellen: int) -> str:
@@ -27,3 +30,9 @@ def tausend_euro(betrag: float) -> str:
 def stunden(wert: float) -> str:
     """Etwa ``3.699,5 h``."""
     return f"{_deutsch(wert, 1)} h"
+
+
+def euro_parsen(text: str) -> float:
+    """``"12.345,67 €"`` -> ``12345.67``; leer oder ohne Ziffern -> ``0.0``."""
+    bereinigt = _UNERLAUBTE_ZEICHEN.sub("", text).replace(".", "").replace(",", ".")
+    return float(bereinigt) if bereinigt else 0.0

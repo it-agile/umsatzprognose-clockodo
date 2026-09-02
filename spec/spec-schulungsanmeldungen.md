@@ -116,7 +116,9 @@ diese, sondern eine eigene, bereits konkret geplante Größe.
 ## 8. Stand der Umsetzung
 
 Umgesetzt: `domaene.schulung.Schulungstermin`/`Schulungsplan` (5.1, 5.2, 6), das Paket
-`schulungen/` mit `SchulungenConfig`, `SchulungenSheetsClient` und
-`SchulungenRepository` (4, 5.3), sowie die additive Darstellung in
+`schulungen/` mit `SchulungenRepository` auf Basis der gemeinsamen
+Google-Sheets-Infrastruktur in `google_sheets/` (`GoogleSheetsConfig`,
+`GoogleSheetsClient`, seit dem Baustein Kosten geteilt mit `kosten/`, siehe
+`spec-kosten.md`) (4, 5.3), sowie die additive Darstellung in
 `diagramme.umsatzverlauf()`, `tabellen.umsatztabelle()` und `Dashboard.schulungen_laden()`
 (6).

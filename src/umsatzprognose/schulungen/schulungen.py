@@ -5,9 +5,9 @@ ueber die Position - robust gegenueber den vielen fuer die Prognose ungenutzten 
 (Rabattstufen, Trainer, Praesenz/Online, ...; siehe Spec Abschnitt 4).
 
 ``Umsatz gesamt`` steht im deutschen Zahlenformat mit Euro-Zeichen, uneinheitlich
-formatiert (``"12.345,67 €"``, ``"1.234,56€"``, mit/ohne Leerzeichen). Geparst wird
-robust: alles außer Ziffern, Punkt und Komma entfernen, den Tausenderpunkt entfernen,
-das Komma zum Dezimalpunkt machen.
+formatiert (``"12.345,67 €"``, ``"1.234,56€"``, mit/ohne Leerzeichen). Geparst wird mit
+:func:`~umsatzprognose.domaene.zahlen.euro_parsen`, robust: alles außer Ziffern, Punkt
+und Komma entfernen, den Tausenderpunkt entfernen, das Komma zum Dezimalpunkt machen.
 
 **Eine fehlende Quelle ist laut Spec Abschnitt 6 kein Fehler**: ein Jahr ohne
 konfigurierte Datei oder eine nicht lesbare Datei wird abgefangen und als
@@ -23,25 +23,17 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
-import re
 from datetime import date
 
 from umsatzprognose.domaene import Hinweis, Schulungsplan, Schulungstermin
+from umsatzprognose.domaene.zahlen import euro_parsen
+from umsatzprognose.google_sheets import GoogleSheetsClient, GoogleSheetsConfig
 
-from .client import TABELLENBLATT, SchulungenSheetsClient
-from .config import SchulungenConfig
+TABELLENBLATT = "Öffentliche Schulungen"
 
 SPALTE_JAHR = "Jahr"
 SPALTE_MONAT = "Monat"
 SPALTE_UMSATZ = "Umsatz gesamt"
-
-_UNERLAUBTE_ZEICHEN = re.compile(r"[^\d,.]")
-
-
-def _euro_parsen(text: str) -> float:
-    """``"12.345,67 €"`` -> ``12345.67``; leer oder ohne Ziffern -> ``0.0``."""
-    bereinigt = _UNERLAUBTE_ZEICHEN.sub("", text).replace(".", "").replace(",", ".")
-    return float(bereinigt) if bereinigt else 0.0
 
 
 def _zeilen_zu_terminen(zeilen: list[list[str]]) -> list[Schulungstermin]:
@@ -67,7 +59,7 @@ def _zeilen_zu_terminen(zeilen: list[list[str]]) -> list[Schulungstermin]:
             Schulungstermin(
                 jahr=int(jahr_text),
                 monat=int(monat_text),
-                umsatz=_euro_parsen(zelle(zeile, SPALTE_UMSATZ)),
+                umsatz=euro_parsen(zelle(zeile, SPALTE_UMSATZ)),
             )
         )
     return termine
@@ -82,15 +74,15 @@ def _benoetigte_jahre(stichtag: date, horizont_monate: int) -> tuple[int, ...]:
 class SchulungenRepository:
     """Laedt die Schulungstermine aus den konfigurierten Google-Sheets-Dateien."""
 
-    def __init__(self, client: SchulungenSheetsClient, jahre_zu_dateien: Mapping[int, str]) -> None:
+    def __init__(self, client: GoogleSheetsClient, jahre_zu_dateien: Mapping[int, str]) -> None:
         self._client = client
         self._jahre_zu_dateien = dict(jahre_zu_dateien)
 
     @classmethod
     def mit_automatischen_zugangsdaten(cls) -> SchulungenRepository:
         """Zugangsdaten und Jahr-Zuordnung aus Colab-Secrets oder ``.env``."""
-        config = SchulungenConfig.automatisch()
-        return cls(SchulungenSheetsClient(config.oauth_client_config), config.jahre_zu_dateien)
+        config = GoogleSheetsConfig.automatisch()
+        return cls(GoogleSheetsClient(config.oauth_client_config), config.jahre_zu_dateien)
 
     def laden(self, *, stichtag: date | None, horizont_monate: int = 3) -> Schulungsplan:
         """Der Schulungsplan zum Stichtag, ueber alle vom Horizont beruehrten Jahre.

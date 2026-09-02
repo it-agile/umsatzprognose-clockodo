@@ -14,6 +14,7 @@ if TYPE_CHECKING:
 
     from umsatzprognose.domaene import (
         Hinweis,
+        Kostenplan,
         Prognose,
         Projekt,
         Schulungsplan,
@@ -36,6 +37,8 @@ UMSATZSPALTEN = [
     "Prognostiziert",
     "Schulungsanmeldungen",
     "Summe",
+    "Kosten",
+    "Gewinn",
 ]
 HINWEISSPALTEN = ["Hinweis", "Betroffen", "Projekte"]
 PROJEKT_OHNE_BUDGET_SPALTEN = ["Projekt", "Grund"]
@@ -65,6 +68,7 @@ def umsatztabelle(
     historie: Umsatzhistorie,
     prognose: Prognose | None = None,
     schulungsplan: Schulungsplan | None = None,
+    kostenplan: Kostenplan | None = None,
 ) -> pd.DataFrame:
     """Ein Monat je Zeile, juengster zuletzt, und daran anschliessend der Prognosehorizont.
 
@@ -79,11 +83,21 @@ def umsatztabelle(
     unabhaengig von der Bestand-Bandbreite (Spec Baustein Schulungsanmeldungen,
     Abschnitt 6). Die Summenspalte fasst alle vier je Monat zusammen.
 
+    Mit ``kostenplan`` kommen **Kosten** und **Gewinn** (Summe minus Kosten) dazu -
+    anders als die Schulungsanmeldungen fuer **jeden** Monat, auch die Historie: die
+    Kostenprognose gilt laut Quelle auch fuer bereits vergangene Monate, siehe
+    Moduldocstring von :mod:`umsatzprognose.domaene.kosten`.
+
     Der erste Horizontmonat ist derselbe Kalendermonat wie der laufende und
     ergaenzt dessen Zeile deshalb nur um die Prognose, statt eine zweite Zeile fuer
     denselben Monat anzuhaengen.
     """
     laufender = historie.laufender
+    kosten_historie = (
+        kostenplan.kosten_je_monat([m.schluessel for m in historie.monate])
+        if kostenplan is not None
+        else [None] * len(historie.monate)
+    )
     zeilen = [
         {
             "Monat": monat.beschriftung,
@@ -96,8 +110,10 @@ def umsatztabelle(
             "Prognostiziert": "",
             "Schulungsanmeldungen": "",
             "Summe": euro(monat.umsatz),
+            "Kosten": euro(kosten) if kosten is not None else "",
+            "Gewinn": euro(monat.umsatz - kosten) if kosten is not None else "",
         }
-        for monat in historie.monate
+        for monat, kosten in zip(historie.monate, kosten_historie, strict=True)
     ]
 
     if prognose is not None and prognose.vorhanden:
@@ -110,18 +126,27 @@ def umsatztabelle(
             if schulungsplan is not None
             else [0.0] * len(horizont)
         )
+        kosten_horizont = (
+            kostenplan.kosten_je_monat(horizont)
+            if kostenplan is not None
+            else [None] * len(horizont)
+        )
 
-        for (jahr, monat), wert, gebuchter_betrag, schulungsbetrag in zip(
-            horizont, median, gebucht, schulung, strict=True
+        for (jahr, monat), wert, gebuchter_betrag, schulungsbetrag, kosten in zip(
+            horizont, median, gebucht, schulung, kosten_horizont, strict=True
         ):
             beschriftung = f"{MONATSNAMEN[monat - 1]} {jahr}"
             if zeilen and zeilen[-1]["Monat"] == beschriftung:
+                summe_wert = basis + wert + schulungsbetrag
                 zeilen[-1]["Prognostiziert"] = euro(wert)
                 zeilen[-1]["Schulungsanmeldungen"] = (
                     euro(schulungsbetrag) if schulungsbetrag else ""
                 )
-                zeilen[-1]["Summe"] = euro(basis + wert + schulungsbetrag)
+                zeilen[-1]["Summe"] = euro(summe_wert)
+                zeilen[-1]["Kosten"] = euro(kosten) if kosten is not None else ""
+                zeilen[-1]["Gewinn"] = euro(summe_wert - kosten) if kosten is not None else ""
             else:
+                summe_wert = wert + schulungsbetrag
                 zeilen.append(
                     {
                         "Monat": beschriftung,
@@ -129,7 +154,9 @@ def umsatztabelle(
                         "Nicht abgerechnet": euro(gebuchter_betrag) if gebuchter_betrag else "",
                         "Prognostiziert": euro(wert - gebuchter_betrag),
                         "Schulungsanmeldungen": euro(schulungsbetrag) if schulungsbetrag else "",
-                        "Summe": euro(wert + schulungsbetrag),
+                        "Summe": euro(summe_wert),
+                        "Kosten": euro(kosten) if kosten is not None else "",
+                        "Gewinn": euro(summe_wert - kosten) if kosten is not None else "",
                     }
                 )
 

@@ -27,13 +27,20 @@ uvx tox -e jupyter             # Notebooks starten (wie uv run jupyter lab, mit 
 
 ## Aufbau
 
-Vier Pakete mit genau einer erlaubten Abhängigkeitsrichtung – `clockodo/` und
-`schulungen/` sind zwei gleichrangige, voneinander unabhängige Quellschichten:
+Sechs Pakete mit genau einer erlaubten Abhängigkeitsrichtung. `clockodo/`,
+`schulungen/` und `kosten/` sind drei gleichrangige, voneinander unabhängige
+Quellschichten für die Domäne – `schulungen/` und `kosten/` hängen aber beide von
+`google_sheets/` ab, weil sie exakt dieselbe Google-Sheets-Infrastruktur (Zugangsdaten,
+HTTP-Client) nutzen, nur unterschiedliche Tabellenblätter derselben jährlichen Datei
+lesen:
 
 ```
 darstellung  ──►  domaene  ◄──  clockodo
                       ▲
-                      └──  schulungen
+          ┌───────────┼───────────┐
+      schulungen                kosten
+          │                       │
+          └──────►  google_sheets  ◄──────┘
 ```
 
 - `src/umsatzprognose/domaene/` – die Fachobjekte, unveränderlich (`frozen=True`) und
@@ -56,13 +63,24 @@ darstellung  ──►  domaene  ◄──  clockodo
   (`synchron`, `gleichzeitig`, siehe unten), dazu je Endpunkt ein Repository:
   `kunden.py`, `mitarbeiter.py`, `projekte.py`, `umsatz.py`, `verbrauchsverlauf.py` und
   `bestand.py` (`BestandRepository`, der eine Einstieg).
-- `src/umsatzprognose/schulungen/` – **alles, was von den Schulungs-Sheets weiß, weiß
-  nur dieses Paket** (Baustein Schulungsanmeldungen, siehe unten). `config.py`
-  (`SchulungenConfig`, dieselben benannten Konstruktoren wie bei `ClockodoCredentials`),
-  `client.py` (`SchulungenSheetsClient`: Google-Sheets-API über OAuth-Client-ID statt
-  Service-Account, synchron), `schulungen.py` (`SchulungenRepository` – Header-basiertes
-  Spalten-Mapping, deutsches Euro-Format parsen, ein nicht ladbares Jahr wird zum
-  `Hinweis`, nicht zum Fehler). Keine Abhängigkeit zu `clockodo/`.
+- `src/umsatzprognose/google_sheets/` – **der gemeinsame Google-Sheets-Zugriff, den
+  `schulungen/` und `kosten/` beide nutzen.** `config.py` (`GoogleSheetsConfig`,
+  dieselben benannten Konstruktoren wie bei `ClockodoCredentials`, liest u. a.
+  `TRAINING_SHEET_ID`), `client.py` (`GoogleSheetsClient`: Google-Sheets-API über
+  OAuth-Client-ID statt Service-Account, synchron, `werte()` nimmt Spreadsheet-ID und
+  Zellbereich entgegen – kennt selbst keinen bestimmten Reiter). Kennt weder
+  `schulungen/` noch `kosten/`.
+- `src/umsatzprognose/schulungen/` – **alles, was vom Tabellenblatt der
+  Schulungsanmeldungen weiß, weiß nur dieses Paket** (Baustein Schulungsanmeldungen,
+  siehe unten). `schulungen.py` (`SchulungenRepository` – Header-basiertes
+  Spalten-Mapping, deutsches Euro-Format parsen über `domaene.zahlen.euro_parsen()`,
+  ein nicht ladbares Jahr wird zum `Hinweis`, nicht zum Fehler). Keine Abhängigkeit zu
+  `clockodo/` oder `kosten/`.
+- `src/umsatzprognose/kosten/` – **alles, was vom Tabellenblatt der Kostenprognose
+  weiß, weiß nur dieses Paket** (Baustein Kosten, siehe unten). `kosten.py`
+  (`KostenRepository` – fester Zellbereich `Kosten {jahr}!L3:R15`, Header-basiertes
+  Spalten-Mapping wie bei `schulungen/`, Monatsname ausgeschrieben statt Zahl). Keine
+  Abhängigkeit zu `clockodo/` oder `schulungen/`.
 - `src/umsatzprognose/darstellung/` – der einzige Ort mit plotly (`diagramme.py`,
   `gestaltung.py`) und pandas (`tabellen.py`), dazu `dashboard.py` mit der Fassade
   `Dashboard`, die die Notebooks benutzen.
@@ -72,6 +90,7 @@ darstellung  ──►  domaene  ◄──  clockodo
 - `spec/spec-umsatzprognose-clockodo-modul.md` – die Spezifikation des Bausteins Bestand.
 - `spec/spec-schulungsanmeldungen.md` – die Spezifikation des Bausteins
   Schulungsanmeldungen.
+- `spec/spec-kosten.md` – die Spezifikation des Bausteins Kosten.
 - `spec/clocodo-api.yaml` – OpenAPI-Beschreibung der Clockodo-API.
 
 ### Kernregeln
@@ -162,6 +181,19 @@ Betrag je Termin schon fest – keine Simulation, keine Bandbreite. Die einzige
 Unsicherheit ist die Pflegequalität der Quelle, sichtbar über `Schulungsplan.hinweise()`
 statt über eine Kennzahl. Der Baustein bleibt unabhängig von der Bestand-Simulation und
 verändert weder Restvolumen noch Abrufquote noch Kapazitätsdeckel.
+
+Der **Baustein Kosten** (`spec/spec-kosten.md`, `domaene.kosten.Kostenplan`, `kosten/`)
+stellt der Umsatzseite eine Kostenprognose gegenüber: die Gesamtkosten je Monat aus
+derselben jährlichen Google-Sheets-Datei wie die Schulungsanmeldungen, aber einem
+eigenen Tabellenblatt (`Kosten {jahr}`, fester Zellbereich `L3:R15`). Wie bei den
+Schulungsanmeldungen steht der Betrag schon fest – keine Simulation, keine Bandbreite.
+**Anders als die Schulungsanmeldungen gilt die Kostenprognose auch für bereits
+vergangene Monate**, nicht nur für den Prognosehorizont: Clockodo liefert keine
+Ist-Kosten, nur Umsätze aus Einsätzen, also gibt es keine andere Quelle für die
+Vergangenheit. `Gewinn` (Gesamtumsatz aus Bestand und Schulungsanmeldungen minus
+Kosten) wird ausschließlich in der Darstellungsschicht gebildet
+(`tabellen.umsatztabelle()`, `diagramme.umsatzverlauf()`) – es gibt kein eigenes
+Domänenobjekt, das Umsatz und Kosten gegeneinander verrechnet.
 
 ## Rechenkern (Monte Carlo, 10.000 Läufe)
 
@@ -279,31 +311,49 @@ mit Wochentagsfeldern, oder `monthly` mit `monthly_target` – in dieser Anlage 
 410 deprecated); Jahresfilter als `deepObject` (`filter[year]`), Envelope-Key `data`,
 kein `paging`.
 
-## Schulungs-Sheets
+## Google Sheets (Schulungen und Kosten)
 
 **Kein Service-Account** – für diese Anlage gibt Google nur eine OAuth-Client-ID aus
 (Anwendungstyp „Desktopanwendung"), kein Service-Account-Key. Deshalb zwei
 unterschiedliche Logins statt eines: in Colab meldet sich die aufrufende Person über ihr
 eigenes Google-Konto an (`google.colab.auth.authenticate_user`, kein JSON, kein
-Secret dafür nötig – sie braucht selbst Lesezugriff auf die Trainings-Sheets); lokal
-startet `schulungen.client._lokale_credentials()` einen einmaligen interaktiven Login im
-Browser (`google_auth_oauthlib.flow.InstalledAppFlow`) auf Basis des Client-JSON aus
+Secret dafür nötig – sie braucht selbst Lesezugriff auf die betreffenden Sheets); lokal
+startet `google_sheets.client._lokale_credentials()` einen einmaligen interaktiven Login
+im Browser (`google_auth_oauthlib.flow.InstalledAppFlow`) auf Basis des Client-JSON aus
 `GOOGLE_OAUTH_CLIENT_JSON` und speichert das Ergebnis in `.google_oauth_token.json`
-(gitignored) zwischen; folgende Aufrufe erneuern den Token automatisch.
+(gitignored) zwischen; folgende Aufrufe erneuern den Token automatisch. Dieser gesamte
+Zugriff liegt in `google_sheets/`, gemeinsam genutzt von `schulungen/` und `kosten/`
+(siehe Aufbau) – **welcher Reiter/Zellbereich gelesen wird, weiß nur der jeweilige
+Aufrufer**, nicht `google_sheets.client.GoogleSheetsClient`.
 
-`TRAINING_SHEET_ID` (JSON-Objekt Jahr → Spreadsheet-ID) wird in beiden Umgebungen
-gebraucht, gelesen über `schulungen.config.SchulungenConfig` – dieselben drei benannten
-Konstruktoren wie bei `ClockodoCredentials`, aber ohne Abhängigkeit zu `clockodo/`
-(bewusste kleine Dopplung von `in_colab()`/`MissingCredentialsError`). Der Zugriff läuft
-über `google-api-python-client`, synchron und ohne `nebenlaeufig()` – bei ein bis zwei
-Dateien im Horizont lohnt sich eigene Nebenläufigkeit nicht.
+`TRAINING_SHEET_ID` (JSON-Objekt Jahr → Spreadsheet-ID) wird in beiden Umgebungen und
+von beiden Bausteinen gebraucht, gelesen über `google_sheets.config.GoogleSheetsConfig`
+– dieselben drei benannten Konstruktoren wie bei `ClockodoCredentials`, aber ohne
+Abhängigkeit zu `clockodo/` (bewusste kleine Dopplung von
+`in_colab()`/`MissingCredentialsError`). Der Name ist historisch (erste Nutzung war
+Schulungsanmeldungen) und bleibt bewusst unverändert – dieselbe Datei je Jahr trägt
+inzwischen auch das Kosten-Tabellenblatt, ein anderer Name wäre nur
+Migrationsaufwand. Der Zugriff läuft über `google-api-python-client`, synchron und ohne
+`nebenlaeufig()` – bei ein bis zwei Dateien im Horizont lohnt sich eigene
+Nebenläufigkeit nicht.
 
-Tabellenblatt `Öffentliche Schulungen`, Spalten werden **über die Kopfzeile
-namentlich** zugeordnet (`Jahr`, `Monat`, `Umsatz gesamt`), nicht über die Position –
-robust gegenüber den vielen ungenutzten Spalten. `Umsatz gesamt` ist uneinheitlich
-formatiertes deutsches Zahlenformat mit Euro-Zeichen; `schulungen.schulungen._euro_parsen()`
-entfernt alles außer Ziffern/Punkt/Komma, dann den Tausenderpunkt, dann Komma → Punkt.
+**Schulungsanmeldungen:** Tabellenblatt `Öffentliche Schulungen`, Spalten werden **über
+die Kopfzeile namentlich** zugeordnet (`Jahr`, `Monat`, `Umsatz gesamt`), nicht über die
+Position – robust gegenüber den vielen ungenutzten Spalten. `Umsatz gesamt` ist
+uneinheitlich formatiertes deutsches Zahlenformat mit Euro-Zeichen, geparst über
+`domaene.zahlen.euro_parsen()` (entfernt alles außer Ziffern/Punkt/Komma, dann den
+Tausenderpunkt, dann Komma → Punkt).
+
+**Kosten:** Tabellenblatt `Kosten {jahr}`, fester Zellbereich `L3:R15` (Zeile 3
+Kopfzeile, Zeile 4–15 die zwölf Monate des Jahres), Spalten ebenfalls über die
+Kopfzeile zugeordnet (`Monat`, `Gesamtkosten`). `Monat` steht als ausgeschriebener
+deutscher Monatsname (`Januar`…`Dezember`), nicht als Zahl wie bei den
+Schulungsanmeldungen. `Gesamtkosten` wird mit derselben `euro_parsen()` geparst.
+`KostenRepository.laden()` deckt anders als `SchulungenRepository.laden()` nicht nur
+den Prognosehorizont ab, sondern auch die bereits geladene Umsatzhistorie (Parameter
+`historie_monate`) – siehe Moduldocstring von `domaene.kosten`.
 
 Ein für ein Jahr fehlender Eintrag in `TRAINING_SHEET_ID` oder eine nicht lesbare Datei
 führt **nicht** zu einem Fehler (anders als bei Clockodo), sondern zu einem `Hinweis` an
-`Schulungsplan.abbildungshinweise` – Spec-Vorgabe (Abschnitt 6).
+`Schulungsplan.abbildungshinweise` bzw. `Kostenplan.abbildungshinweise` – Spec-Vorgabe
+(Abschnitt 6 der jeweiligen Spec).

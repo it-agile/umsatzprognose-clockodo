@@ -1,7 +1,7 @@
 """Tests fuer schulungen.schulungen: Parsing und Repository, ohne Netzzugriff.
 
 Kein Test spricht mit der echten Google Sheets API - statt eines echten
-``SchulungenSheetsClient`` bekommt das Repository einen Fake mit derselben
+``GoogleSheetsClient`` bekommt das Repository einen Fake mit derselben
 ``werte()``-Schnittstelle. Alle Beispielwerte (IDs, Beträge, Jahre) sind frei erfunden.
 """
 
@@ -14,7 +14,6 @@ import pytest
 from umsatzprognose.schulungen.schulungen import (
     SchulungenRepository,
     _benoetigte_jahre,
-    _euro_parsen,
     _zeilen_zu_terminen,
 )
 
@@ -32,20 +31,6 @@ class FakeClient:
         if isinstance(antwort, Exception):
             raise antwort
         return antwort
-
-
-@pytest.mark.parametrize(
-    ("text", "erwartet"),
-    [
-        ("12.345,67 €", 12345.67),
-        ("1.234,56€", 1234.56),
-        ("0 €", 0.0),
-        ("500 €", 500.0),
-        ("", 0.0),
-    ],
-)
-def test_euro_parsen(text: str, erwartet: float) -> None:
-    assert _euro_parsen(text) == pytest.approx(erwartet)
 
 
 def test_zeilen_zu_terminen_findet_spalten_ueber_die_kopfzeile() -> None:

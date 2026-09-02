@@ -1,22 +1,10 @@
-"""Umsatzprognose - Baustein Bestand (Clockodo).
+"""Umsatzprognose - Baustein Bestand (Clockodo), additiv Schulungsanmeldungen und Kosten.
 
 Rollierende 1-3-Monats-Prognose des Umsatzes aus laufenden, in Clockodo angelegten
-Projekten.
+Projekten, ergaenzt um Schulungsanmeldungen und eine Kostenprognose aus Google Sheets.
 
-Das Paket ist in drei Schichten geschnitten, mit genau einer erlaubten
-Abhaengigkeitsrichtung::
-
-    darstellung  ->  domaene  <-  clockodo
-
-* :mod:`umsatzprognose.domaene` - die Fachobjekte: Kunde, Projekt, Mitarbeiter,
-  Projektanteil, Umsatzhistorie und der Bestand als Ganzes. Kennt weder JSON noch HTTP.
-* :mod:`umsatzprognose.clockodo` - der Zugriff auf die API und die Uebersetzung ihrer
-  Antworten in Fachobjekte. Traegt das gesammelte Wissen ueber die Eigenheiten dieser
-  API.
-* :mod:`umsatzprognose.darstellung` - Diagramme, Tabellen und das
-  :class:`~umsatzprognose.darstellung.dashboard.Dashboard`, das die Notebooks benutzen.
-
-Der uebliche Einstieg ist eine Zeile::
+Siehe CLAUDE.md fuer das vollstaendige Aufbau-Diagramm. Der uebliche Einstieg ist eine
+Zeile::
 
     from umsatzprognose import Dashboard
 
@@ -36,7 +24,8 @@ from umsatzprognose.domaene import (
     Projektanteil,
     Umsatzhistorie,
 )
-from umsatzprognose.schulungen import SchulungenConfig, SchulungenRepository, SchulungenSheetsClient
+from umsatzprognose.kosten import KostenRepository
+from umsatzprognose.schulungen import SchulungenRepository
 
 __all__ = [
     "Bestand",
@@ -46,13 +35,12 @@ __all__ = [
     "ClockodoCredentials",
     "Dashboard",
     "Hinweis",
+    "KostenRepository",
     "Kunde",
     "Mitarbeiter",
     "Monatsumsatz",
     "Projekt",
     "Projektanteil",
-    "SchulungenConfig",
     "SchulungenRepository",
-    "SchulungenSheetsClient",
     "Umsatzhistorie",
 ]

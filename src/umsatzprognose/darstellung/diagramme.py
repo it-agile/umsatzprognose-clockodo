@@ -16,6 +16,7 @@ if TYPE_CHECKING:
     from collections.abc import Sequence
 
     from umsatzprognose.domaene import (
+        Kostenplan,
         Monatsumsatz,
         Prognose,
         Projekt,
@@ -26,6 +27,7 @@ if TYPE_CHECKING:
 import plotly.graph_objects as go
 
 from umsatzprognose.darstellung.gestaltung import (
+    KOSTEN,
     PROGNOSE_DECKKRAFT,
     SCHULUNG,
     SERIE,
@@ -50,6 +52,7 @@ def umsatzverlauf(
     historie: Umsatzhistorie,
     prognose: Prognose | None = None,
     schulungsplan: Schulungsplan | None = None,
+    kostenplan: Kostenplan | None = None,
     *,
     hoehe: int = 420,
 ) -> go.Figure:
@@ -72,6 +75,12 @@ def umsatzverlauf(
     Umsatz aus bereits geplanten oeffentlichen Schulungsterminen hinzu (Spec Baustein
     Schulungsanmeldungen, Abschnitt 6) - unabhaengig von der Bestand-Bandbreite und ohne
     eigene Unsicherheit.
+
+    Mit ``kostenplan`` kommt eine eigenfarbige Linie "Kosten" ueber die volle Breite
+    (Historie und Prognosehorizont) hinzu - anders als der Umsatz ohne eigene
+    Bandbreite, der Wert steht in der externen Kostenplanung schon fest. Die Luecke
+    zwischen Umsatzbalken und Kostenlinie ist der Gewinn; er steht als eigene Spalte in
+    :func:`~umsatzprognose.darstellung.tabellen.umsatztabelle`.
 
     Der erste Horizontmonat ist derselbe Kalendermonat wie der laufende - beide teilen
     dieselbe Balkenbeschriftung und stapeln sich deshalb an derselben Stelle
@@ -145,6 +154,7 @@ def umsatzverlauf(
         if prognose is not None and prognose.vorhanden and schulungsplan is not None
         else []
     )
+    zeigt_kosten = kostenplan is not None and _kostenlinie(fig, monate, prognose, kostenplan)
     _legendeintrag(fig, "Abgerechnet", SERIE)
     if laufender or any(horizont_gebucht):
         _legendeintrag(fig, "Nicht abgerechnet", SERIE_HELL)
@@ -152,6 +162,8 @@ def umsatzverlauf(
         _legendeintrag(fig, "Prognostiziert", SERIE_HELL, deckkraft=PROGNOSE_DECKKRAFT)
     if any(horizont_schulung):
         _legendeintrag(fig, "Schulungsanmeldungen", SCHULUNG)
+    if zeigt_kosten:
+        _legendeintrag(fig, "Kosten", KOSTEN)
     fig.update_layout(
         showlegend=True,
         legend={
@@ -189,6 +201,50 @@ def _legendeintrag(fig: go.Figure, name: str, farbe: str, *, deckkraft: float = 
 def _monatsbeschriftung(jahr: int, monat: int) -> str:
     """Dieselbe Form wie :attr:`Monatsumsatz.beschriftung` - Voraussetzung fuers Stapeln."""
     return f"{MONATSNAMEN[monat - 1]} {jahr}"
+
+
+def _alle_monatsschluessel(
+    monate: Sequence[Monatsumsatz], prognose: Prognose | None
+) -> list[tuple[int, int]]:
+    """Die Monate der Historie, ergaenzt um den Prognosehorizont (ohne Dopplung)."""
+    schluessel = [m.schluessel for m in monate]
+    if prognose is not None and prognose.vorhanden:
+        schluessel += [m for m in prognose.horizontmonate() if m not in schluessel]
+    return schluessel
+
+
+def _kostenlinie(
+    fig: go.Figure,
+    monate: Sequence[Monatsumsatz],
+    prognose: Prognose | None,
+    kostenplan: Kostenplan,
+) -> bool:
+    """Die Kostenlinie ueber die volle Breite - Historie und Prognosehorizont.
+
+    Anders als der Umsatz ohne eigene Bandbreite: der Wert steht in der externen
+    Kostenplanung schon fest, deshalb eine einfache Linie statt gestapelter Balken.
+
+    Returns:
+        Ob eine Linie gezeichnet wurde (mindestens ein Monat mit Kosten > 0) - dient
+        dem Aufrufer als Grundlage fuer den Legendeneintrag.
+    """
+    schluessel = _alle_monatsschluessel(monate, prognose)
+    werte = kostenplan.kosten_je_monat(schluessel)
+    if not any(werte):
+        return False
+    beschriftungen = [_monatsbeschriftung(jahr, monat) for jahr, monat in schluessel]
+    fig.add_scatter(
+        x=beschriftungen,
+        y=werte,
+        mode="lines+markers",
+        line={"color": KOSTEN, "width": 2, "dash": "dot"},
+        marker={"color": KOSTEN, "size": 5},
+        customdata=[[euro(betrag)] for betrag in werte],
+        hovertemplate="<b>%{x}</b><br>Kosten: %{customdata[0]}<extra></extra>",
+        name="Kosten",
+        showlegend=False,
+    )
+    return True
 
 
 def _prognosehorizont(

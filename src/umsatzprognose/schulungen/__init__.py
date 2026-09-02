@@ -3,17 +3,14 @@
 Zweite, zu :mod:`umsatzprognose.clockodo` gleichrangige Quellschicht - beide bilden
 externe Daten auf die Fachobjekte in :mod:`umsatzprognose.domaene` ab, ohne dass die
 Domaene etwas von Google Sheets oder Clockodo wuesste, und ohne dass diese Schicht
-Wissen ueber die jeweils andere Quelle braucht.
+Wissen ueber die jeweils andere Quelle braucht. Der eigentliche Google-Sheets-Zugriff
+(Zugangsdaten, HTTP-Client) liegt in :mod:`umsatzprognose.google_sheets` - gemeinsam
+mit :mod:`umsatzprognose.kosten` genutzt, die dieselben jaehrlichen Dateien lesen, aber
+ein anderes Tabellenblatt.
 """
 
-from umsatzprognose.schulungen.client import SchulungenSheetsClient
-from umsatzprognose.schulungen.config import MissingCredentialsError, SchulungenConfig, in_colab
 from umsatzprognose.schulungen.schulungen import SchulungenRepository
 
 __all__ = [
-    "MissingCredentialsError",
-    "SchulungenConfig",
     "SchulungenRepository",
-    "SchulungenSheetsClient",
-    "in_colab",
 ]

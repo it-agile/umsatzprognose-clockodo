@@ -12,11 +12,13 @@ from datetime import date
 import numpy as np
 
 from umsatzprognose.darstellung import Dashboard, diagramme, tabellen
-from umsatzprognose.darstellung.gestaltung import PROGNOSE_DECKKRAFT, SCHULUNG, SERIE_HELL
+from umsatzprognose.darstellung.gestaltung import KOSTEN, PROGNOSE_DECKKRAFT, SCHULUNG, SERIE_HELL
 from umsatzprognose.domaene import (
     Bestand,
     Budget,
     Hinweis,
+    Kostenplan,
+    Kostenposten,
     Kunde,
     Mitarbeiter,
     Monatsumsatz,
@@ -46,6 +48,7 @@ PROJEKTE = (
 )  # fmt: skip
 BESTAND = Bestand(stichtag=STICHTAG, projekte=PROJEKTE, umsatzhistorie=HISTORIE)
 SCHULUNGSPLAN = Schulungsplan(stichtag=STICHTAG, termine=())
+KOSTENPLAN = Kostenplan()
 
 
 def _historie_fuer_abrufquote(quote: float) -> Verbrauchsverlauf:
@@ -221,6 +224,39 @@ def test_umsatzverlauf_ohne_schulungsplan_zeigt_kein_segment():
     assert "Schulungsanmeldungen" not in namen
 
 
+def test_umsatzverlauf_mit_kostenplan_zeigt_linie_fuer_historie_und_horizont():
+    historie, prognose = _historie_und_prognose_mit_horizont()
+    kostenplan = Kostenplan(
+        posten=(
+            Kostenposten(2026, 8, 40000.0),
+            Kostenposten(2026, 9, 15000.0),
+            Kostenposten(2026, 10, 12000.0),
+        )
+    )
+
+    fig = diagramme.umsatzverlauf(historie, prognose, None, kostenplan)
+    kosten_spur = next(s for s in fig.data if s.name == "Kosten")
+    assert list(kosten_spur.x) == ["Aug 2026", "Sep 2026", "Okt 2026"]
+    assert list(kosten_spur.y) == [40000.0, 15000.0, 12000.0]
+    assert kosten_spur.line.color == KOSTEN
+
+    legende = {spur.name for spur in fig.data if spur.showlegend}
+    assert "Kosten" in legende
+
+
+def test_umsatzverlauf_ohne_kostenplan_zeigt_keine_linie():
+    fig = diagramme.umsatzverlauf(HISTORIE, BESTAND.simulieren())
+    namen = [spur.name for spur in fig.data]
+    assert "Kosten" not in namen
+
+
+def test_umsatzverlauf_kostenplan_ohne_werte_zeigt_keine_linie():
+    historie, prognose = _historie_und_prognose_mit_horizont()
+    fig = diagramme.umsatzverlauf(historie, prognose, None, Kostenplan())
+    namen = [spur.name for spur in fig.data]
+    assert "Kosten" not in namen
+
+
 def test_umsatztabelle_mit_schulungsplan_ergaenzt_spalte_und_summe():
     historie, prognose = _historie_und_prognose_mit_horizont()
     schulungsplan = Schulungsplan(
@@ -242,6 +278,37 @@ def test_umsatztabelle_ohne_schulungsplan_laesst_spalte_leer():
     assert (tabelle["Schulungsanmeldungen"] != "").sum() == 0
 
 
+def test_umsatztabelle_mit_kostenplan_ergaenzt_kosten_und_gewinn_fuer_historie_und_horizont():
+    historie, prognose = _historie_und_prognose_mit_horizont()
+    kostenplan = Kostenplan(
+        posten=(
+            Kostenposten(2026, 8, 40000.0),
+            Kostenposten(2026, 9, 15000.0),
+            Kostenposten(2026, 10, 12000.0),
+        )
+    )
+
+    tabelle = tabellen.umsatztabelle(historie, prognose, None, kostenplan)
+    aug, sep, okt = tabelle.iloc[0], tabelle.iloc[1], tabelle.iloc[2]
+
+    assert aug["Kosten"] == euro(40000.0)
+    assert aug["Gewinn"] == euro(100000.0 - 40000.0)
+
+    erwartete_sep_summe = historie.laufender.umsatz + prognose.monatswerte()[0.50][0]
+    assert sep["Kosten"] == euro(15000.0)
+    assert sep["Gewinn"] == euro(erwartete_sep_summe - 15000.0)
+
+    erwartete_okt_summe = prognose.monatswerte()[0.50][1]
+    assert okt["Kosten"] == euro(12000.0)
+    assert okt["Gewinn"] == euro(erwartete_okt_summe - 12000.0)
+
+
+def test_umsatztabelle_ohne_kostenplan_laesst_spalten_leer():
+    tabelle = tabellen.umsatztabelle(HISTORIE, BESTAND.simulieren())
+    assert (tabelle["Kosten"] != "").sum() == 0
+    assert (tabelle["Gewinn"] != "").sum() == 0
+
+
 def test_dashboard_hinweise_enthaelt_luecken_des_schulungsplans():
     historie, _prognose = _historie_und_prognose_mit_horizont()
     projekt = Projekt(
@@ -260,11 +327,36 @@ def test_dashboard_hinweise_enthaelt_luecken_des_schulungsplans():
         verbrauchsverlaeufe=(_historie_fuer_abrufquote(0.2),),
     )
     schulungsplan = Schulungsplan(stichtag=historie.stichtag, termine=())
-    dashboard = Dashboard(bestand, schulungsplan)
+    dashboard = Dashboard(bestand, schulungsplan, KOSTENPLAN)
     dashboard.prognose = bestand.simulieren(monate=2, laeufe=5, zufall=np.random.default_rng(1))
 
     hinweise = dashboard.hinweise()
     assert any("Schulungsanmeldung" in text for text in hinweise["Hinweis"])
+
+
+def test_dashboard_hinweise_enthaelt_luecken_des_kostenplans():
+    historie, _prognose = _historie_und_prognose_mit_horizont()
+    projekt = Projekt(
+        id=1,
+        name="Projekt",
+        kunde=KUNDE,
+        aktiv=True,
+        budget=Budget(betrag=220000.0),
+        verbrauchtes_volumen=20000.0,
+        verbrauchte_stunden=200.0,
+    )
+    bestand = Bestand(
+        stichtag=historie.stichtag,
+        projekte=(projekt,),
+        umsatzhistorie=historie,
+        verbrauchsverlaeufe=(_historie_fuer_abrufquote(0.2),),
+    )
+    schulungsplan = Schulungsplan(stichtag=historie.stichtag, termine=())
+    dashboard = Dashboard(bestand, schulungsplan, Kostenplan())
+    dashboard.prognose = bestand.simulieren(monate=2, laeufe=5, zufall=np.random.default_rng(1))
+
+    hinweise = dashboard.hinweise()
+    assert any("Kostenprognose" in text for text in hinweise["Hinweis"])
 
 
 def test_dashboard_projekte_ohne_budget_enthaelt_gefilterte_projekte():
@@ -285,7 +377,7 @@ def test_dashboard_projekte_ohne_budget_enthaelt_gefilterte_projekte():
         verbrauchsverlaeufe=(_historie_fuer_abrufquote(0.2),),
     )
     schulungsplan = Schulungsplan(stichtag=historie.stichtag, termine=())
-    dashboard = Dashboard(bestand, schulungsplan)
+    dashboard = Dashboard(bestand, schulungsplan, KOSTENPLAN)
     dashboard.prognose = bestand.simulieren(monate=2, laeufe=5, zufall=np.random.default_rng(1))
 
     projekte_ohne_budget = dashboard.projekte_ohne_budget()
@@ -312,7 +404,7 @@ def test_dashboard_projekte_ohne_budget_filtert_projekte():
         verbrauchsverlaeufe=(_historie_fuer_abrufquote(0.2),),
     )
     schulungsplan = Schulungsplan(stichtag=historie.stichtag, termine=())
-    dashboard = Dashboard(bestand, schulungsplan)
+    dashboard = Dashboard(bestand, schulungsplan, KOSTENPLAN)
     dashboard.prognose = bestand.simulieren(monate=2, laeufe=5, zufall=np.random.default_rng(1))
 
     projekte_ohne_budget = dashboard.projekte_ohne_budget(filter=["kein Match", "gefiltert"])
@@ -332,7 +424,7 @@ def test_dashboard_zeigt_horizont_im_umsatzverlauf():
         umsatzhistorie=historie,
         verbrauchsverlaeufe=(_historie_fuer_abrufquote(0.2),),
     )
-    dashboard = Dashboard(bestand, SCHULUNGSPLAN)
+    dashboard = Dashboard(bestand, SCHULUNGSPLAN, KOSTENPLAN)
     dashboard.simuliere(monate=1)
     fig = dashboard.umsatzverlauf()
     # Kein Projekt im Scope - dieselbe Begruendung wie an der Domaene direkt.
@@ -417,7 +509,7 @@ def test_hinweistabelle_kuerzt_lange_id_listen():
 
 
 def test_dashboard_rechnet_kennzahlen_ohne_den_laufenden_monat():
-    dashboard = Dashboard(BESTAND, SCHULUNGSPLAN)
+    dashboard = Dashboard(BESTAND, SCHULUNGSPLAN, KOSTENPLAN)
     kacheln = {k.title.text: k.value for k in dashboard.kennzahlen().data}
 
     assert kacheln["Umsatz letzte 12 Monate"] == 300000.0
@@ -427,7 +519,7 @@ def test_dashboard_rechnet_kennzahlen_ohne_den_laufenden_monat():
 
 
 def test_dashboard_liefert_alle_ansichten_zum_selben_stand():
-    dashboard = Dashboard(BESTAND, SCHULUNGSPLAN)
+    dashboard = Dashboard(BESTAND, SCHULUNGSPLAN, KOSTENPLAN)
     assert dashboard.stichtag == STICHTAG
     assert dashboard.umsatzverlauf().data
     assert dashboard.restvolumen_je_projekt(top=1).data[0].x == (34000.0,)

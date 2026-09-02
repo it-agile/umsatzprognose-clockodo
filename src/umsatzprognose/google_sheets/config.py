@@ -1,7 +1,10 @@
-"""Konfiguration fuer den Zugriff auf die Schulungs-Sheets: Zugangsdaten je Umgebung
+"""Konfiguration fuer den Zugriff auf Google-Sheets-Dateien: Zugangsdaten je Umgebung
 und die Zuordnung Jahr -> Spreadsheet-ID.
 
-Analog zu :mod:`umsatzprognose.clockodo.config`: benannte Konstruktoren
+Gemeinsame Infrastruktur fuer alle Bausteine, die aus denselben jaehrlichen
+Google-Sheets-Dateien lesen (aktuell :mod:`umsatzprognose.schulungen` und
+:mod:`umsatzprognose.kosten` - unterschiedliche Tabellenblaetter derselben Datei je
+Jahr). Analog zu :mod:`umsatzprognose.clockodo.config`: benannte Konstruktoren
 ``automatisch``/``aus_umgebung``/``aus_colab_secrets`` waehlen bzw. lesen die Quelle.
 Bewusst keine Abhaengigkeit zu ``clockodo`` - siehe Moduldocstring von
 :mod:`umsatzprognose.schulungen`.
@@ -10,11 +13,11 @@ Bewusst keine Abhaengigkeit zu ``clockodo`` - siehe Moduldocstring von
 Anlage keine Service-Account-Keys aus, sondern eine OAuth-Client-ID
 (``installed``/``web``-JSON aus der Google-Cloud-Konsole, Anwendungstyp
 "Desktopanwendung"). Die eigentliche Anmeldung passiert deshalb erst in
-:mod:`umsatzprognose.schulungen.client` - unterschiedlich je Umgebung:
+:mod:`umsatzprognose.google_sheets.client` - unterschiedlich je Umgebung:
 
 - **In Colab** meldet sich die aufrufende Person ueber ihr eigenes Google-Konto an
   (``google.colab.auth.authenticate_user``), kein Client-JSON noetig. Sie braucht dafuer
-  selbst Lesezugriff auf die Trainings-Sheets.
+  selbst Lesezugriff auf die betreffenden Sheets.
 - **Lokal** braucht es das OAuth-Client-JSON aus ``GOOGLE_OAUTH_CLIENT_JSON``, um einen
   einmaligen interaktiven Login im Browser zu starten; das Ergebnis wird lokal
   zwischengespeichert (siehe ``client.py``).
@@ -23,7 +26,10 @@ Eine zweite Umgebungsvariable/ein Colab-Secret in beiden Umgebungen:
 
 ``TRAINING_SHEET_ID``
     Ein JSON-Objekt Jahr -> Spreadsheet-ID, z. B. ``{"2026": "…", "2027": "…"}`` - eine
-    Datei je Jahr (Spec Abschnitt 5.3).
+    Datei je Jahr. Der Name ist historisch (die erste Nutzung war die
+    Schulungsanmeldungen-Tabelle) und bleibt bewusst unveraendert, weil dieselbe Datei
+    inzwischen auch fuer die Kostenprognose verwendet wird - ein anderer Name waere nur
+    Migrationsaufwand ohne fachlichen Nutzen.
 """
 
 from __future__ import annotations
@@ -45,8 +51,8 @@ class MissingCredentialsError(RuntimeError):
 
 
 @dataclass(frozen=True)
-class SchulungenConfig:
-    """Alles, was fuer den Zugriff auf die Schulungs-Sheets noetig ist.
+class GoogleSheetsConfig:
+    """Alles, was fuer den Zugriff auf die Google-Sheets-Dateien noetig ist.
 
     Attributes:
         jahre_zu_dateien: Jahr -> Spreadsheet-ID, in beiden Umgebungen gebraucht.
@@ -58,12 +64,12 @@ class SchulungenConfig:
     oauth_client_config: dict | None = None
 
     @classmethod
-    def automatisch(cls) -> SchulungenConfig:
+    def automatisch(cls) -> GoogleSheetsConfig:
         """Aus der passenden Quelle: Colab-Secrets in Colab, sonst ``.env``."""
         return cls.aus_colab_secrets() if in_colab() else cls.aus_umgebung()
 
     @classmethod
-    def aus_umgebung(cls, *, use_dotenv: bool = True) -> SchulungenConfig:
+    def aus_umgebung(cls, *, use_dotenv: bool = True) -> GoogleSheetsConfig:
         """Aus Umgebungsvariablen; lokal wird eine ``.env`` beruecksichtigt."""
         if use_dotenv:
             load_dotenv()
@@ -73,7 +79,7 @@ class SchulungenConfig:
         )
 
     @classmethod
-    def aus_colab_secrets(cls) -> SchulungenConfig:
+    def aus_colab_secrets(cls) -> GoogleSheetsConfig:
         """Aus der Colab-Secrets-Verwaltung. Kein Client-JSON - siehe Klassendocstring."""
         return cls(jahre_zu_dateien=_jahre_zu_dateien(_colab_secret(SHEET_ID_VAR)))
 
