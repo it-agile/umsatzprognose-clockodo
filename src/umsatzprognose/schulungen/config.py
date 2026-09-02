@@ -34,21 +34,14 @@ from dataclasses import dataclass
 
 from dotenv import load_dotenv
 
+from umsatzprognose.util import in_colab
+
 OAUTH_CLIENT_VAR = "GOOGLE_OAUTH_CLIENT_JSON"
 SHEET_ID_VAR = "TRAINING_SHEET_ID"
 
 
 class MissingCredentialsError(RuntimeError):
     """Eine benoetigte Umgebungsvariable oder ein Colab-Secret fehlt oder ist ungueltig."""
-
-
-def in_colab() -> bool:
-    """Ob der Code in Google Colab laeuft."""
-    try:
-        import google.colab  # noqa: F401
-    except ImportError:
-        return False
-    return True
 
 
 @dataclass(frozen=True)

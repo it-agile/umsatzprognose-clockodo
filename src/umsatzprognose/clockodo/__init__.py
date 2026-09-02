@@ -13,7 +13,7 @@ dahinter noetig ist, steht in :mod:`umsatzprognose.clockodo.nebenlaeufig`.
 
 from umsatzprognose.clockodo.bestand import BestandRepository
 from umsatzprognose.clockodo.client import ClockodoClient, ClockodoError
-from umsatzprognose.clockodo.config import ClockodoCredentials, MissingCredentialsError, in_colab
+from umsatzprognose.clockodo.config import ClockodoCredentials, MissingCredentialsError
 from umsatzprognose.clockodo.kunden import KundenRepository
 from umsatzprognose.clockodo.mitarbeiter import MitarbeiterRepository
 from umsatzprognose.clockodo.nebenlaeufig import gleichzeitig, synchron
@@ -33,6 +33,5 @@ __all__ = [
     "UmsatzRepository",
     "VerbrauchsverlaufRepository",
     "gleichzeitig",
-    "in_colab",
     "synchron",
 ]

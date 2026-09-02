@@ -33,10 +33,10 @@ STANDARD_TOP = 15
 class Dashboard:
     """Alle Ansichten zu einem geladenen Bestand."""
 
-    def __init__(self, bestand: Bestand) -> None:
+    def __init__(self, bestand: Bestand, schulungsplan: Schulungsplan) -> None:
         self.bestand = bestand
         self.prognose: Prognose | None = None
-        self.schulungsplan: Schulungsplan | None = None
+        self.schulungsplan: Schulungsplan = schulungsplan
 
     @classmethod
     def laden(
@@ -61,7 +61,10 @@ class Dashboard:
             abgeschlossene_monate=abgeschlossene_monate,
             horizont_monate=horizont_monate,
         )
-        return cls(bestand)
+        schulungsplan = SchulungenRepository.mit_automatischen_zugangsdaten().laden(
+            stichtag=stichtag, horizont_monate=horizont_monate
+        )
+        return cls(bestand, schulungsplan)
 
     @classmethod
     async def laden_async(
@@ -81,7 +84,10 @@ class Dashboard:
             abgeschlossene_monate=abgeschlossene_monate,
             horizont_monate=horizont_monate,
         )
-        return cls(bestand)
+        schulungsplan = SchulungenRepository.mit_automatischen_zugangsdaten().laden(
+            stichtag=stichtag, horizont_monate=horizont_monate
+        )
+        return cls(bestand, schulungsplan)
 
     @property
     def stichtag(self) -> date:

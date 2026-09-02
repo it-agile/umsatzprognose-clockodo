@@ -13,6 +13,8 @@ from dataclasses import dataclass
 
 from dotenv import load_dotenv
 
+from umsatzprognose.util import in_colab
+
 BASE_URL = "https://my.clockodo.com/api"
 
 # Clockodo-Vorgabe: name + ";" + email zusammen maximal 50 Zeichen.
@@ -21,15 +23,6 @@ EXTERNAL_APPLICATION_MAX_LENGTH = 50
 
 class MissingCredentialsError(RuntimeError):
     """Eine benoetigte Umgebungsvariable oder ein Colab-Secret fehlt."""
-
-
-def in_colab() -> bool:
-    """Ob der Code in Google Colab laeuft."""
-    try:
-        import google.colab  # noqa: F401
-    except ImportError:
-        return False
-    return True
 
 
 @dataclass(frozen=True)

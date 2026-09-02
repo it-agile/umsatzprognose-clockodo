@@ -45,6 +45,7 @@ PROJEKTE = (
             budget=Budget(betrag=20000.0), verbrauchtes_volumen=7000.0, verbrauchte_stunden=50.0),
 )  # fmt: skip
 BESTAND = Bestand(stichtag=STICHTAG, projekte=PROJEKTE, umsatzhistorie=HISTORIE)
+SCHULUNGSPLAN = Schulungsplan(stichtag=STICHTAG, termine=())
 
 
 def _historie_fuer_abrufquote(quote: float) -> Verbrauchsverlauf:
@@ -258,9 +259,9 @@ def test_dashboard_hinweise_enthaelt_luecken_des_schulungsplans():
         umsatzhistorie=historie,
         verbrauchsverlaeufe=(_historie_fuer_abrufquote(0.2),),
     )
-    dashboard = Dashboard(bestand)
+    schulungsplan = Schulungsplan(stichtag=historie.stichtag, termine=())
+    dashboard = Dashboard(bestand, schulungsplan)
     dashboard.prognose = bestand.simulieren(monate=2, laeufe=5, zufall=np.random.default_rng(1))
-    dashboard.schulungsplan = Schulungsplan(stichtag=historie.stichtag, termine=())
 
     hinweise = dashboard.hinweise()
     assert any("Schulungsanmeldung" in text for text in hinweise["Hinweis"])
@@ -283,9 +284,9 @@ def test_dashboard_projekte_ohne_budget_enthaelt_gefilterte_projekte():
         umsatzhistorie=historie,
         verbrauchsverlaeufe=(_historie_fuer_abrufquote(0.2),),
     )
-    dashboard = Dashboard(bestand)
+    schulungsplan = Schulungsplan(stichtag=historie.stichtag, termine=())
+    dashboard = Dashboard(bestand, schulungsplan)
     dashboard.prognose = bestand.simulieren(monate=2, laeufe=5, zufall=np.random.default_rng(1))
-    dashboard.schulungsplan = Schulungsplan(stichtag=historie.stichtag, termine=())
 
     projekte_ohne_budget = dashboard.projekte_ohne_budget()
     assert any("Projekt ohne Budget" in text for text in projekte_ohne_budget["Projekt"]), (
@@ -310,9 +311,9 @@ def test_dashboard_projekte_ohne_budget_filtert_projekte():
         umsatzhistorie=historie,
         verbrauchsverlaeufe=(_historie_fuer_abrufquote(0.2),),
     )
-    dashboard = Dashboard(bestand)
+    schulungsplan = Schulungsplan(stichtag=historie.stichtag, termine=())
+    dashboard = Dashboard(bestand, schulungsplan)
     dashboard.prognose = bestand.simulieren(monate=2, laeufe=5, zufall=np.random.default_rng(1))
-    dashboard.schulungsplan = Schulungsplan(stichtag=historie.stichtag, termine=())
 
     projekte_ohne_budget = dashboard.projekte_ohne_budget(filter=["kein Match", "gefiltert"])
     assert not any("Projekt ohne Budget" in text for text in projekte_ohne_budget["Projekt"]), (
@@ -331,7 +332,7 @@ def test_dashboard_zeigt_horizont_im_umsatzverlauf():
         umsatzhistorie=historie,
         verbrauchsverlaeufe=(_historie_fuer_abrufquote(0.2),),
     )
-    dashboard = Dashboard(bestand)
+    dashboard = Dashboard(bestand, SCHULUNGSPLAN)
     dashboard.simuliere(monate=1)
     fig = dashboard.umsatzverlauf()
     # Kein Projekt im Scope - dieselbe Begruendung wie an der Domaene direkt.
@@ -416,7 +417,7 @@ def test_hinweistabelle_kuerzt_lange_id_listen():
 
 
 def test_dashboard_rechnet_kennzahlen_ohne_den_laufenden_monat():
-    dashboard = Dashboard(BESTAND)
+    dashboard = Dashboard(BESTAND, SCHULUNGSPLAN)
     kacheln = {k.title.text: k.value for k in dashboard.kennzahlen().data}
 
     assert kacheln["Umsatz letzte 12 Monate"] == 300000.0
@@ -426,7 +427,7 @@ def test_dashboard_rechnet_kennzahlen_ohne_den_laufenden_monat():
 
 
 def test_dashboard_liefert_alle_ansichten_zum_selben_stand():
-    dashboard = Dashboard(BESTAND)
+    dashboard = Dashboard(BESTAND, SCHULUNGSPLAN)
     assert dashboard.stichtag == STICHTAG
     assert dashboard.umsatzverlauf().data
     assert dashboard.restvolumen_je_projekt(top=1).data[0].x == (34000.0,)

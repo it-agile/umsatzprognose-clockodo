@@ -22,9 +22,9 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
-    from datetime import date
 
 import re
+from datetime import date
 
 from umsatzprognose.domaene import Hinweis, Schulungsplan, Schulungstermin
 
@@ -92,7 +92,7 @@ class SchulungenRepository:
         config = SchulungenConfig.automatisch()
         return cls(SchulungenSheetsClient(config.oauth_client_config), config.jahre_zu_dateien)
 
-    def laden(self, stichtag: date, *, horizont_monate: int = 3) -> Schulungsplan:
+    def laden(self, *, stichtag: date | None, horizont_monate: int = 3) -> Schulungsplan:
         """Der Schulungsplan zum Stichtag, ueber alle vom Horizont beruehrten Jahre.
 
         Reicht der Horizont ueber einen Jahreswechsel, werden die Dateien mehrerer
@@ -100,6 +100,8 @@ class SchulungenRepository:
         (Spec 5.3). Ein fehlendes oder nicht lesbares Jahr wird nicht zum Fehler, siehe
         Moduldocstring.
         """
+        stichtag = stichtag or date.today()
+
         termine: list[Schulungstermin] = []
         hinweise: list[Hinweis] = []
         for jahr in _benoetigte_jahre(stichtag, horizont_monate):

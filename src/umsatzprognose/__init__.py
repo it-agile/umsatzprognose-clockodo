@@ -36,6 +36,7 @@ from umsatzprognose.domaene import (
     Projektanteil,
     Umsatzhistorie,
 )
+from umsatzprognose.schulungen import SchulungenConfig, SchulungenRepository, SchulungenSheetsClient
 
 __all__ = [
     "Bestand",
@@ -50,5 +51,8 @@ __all__ = [
     "Monatsumsatz",
     "Projekt",
     "Projektanteil",
+    "SchulungenConfig",
+    "SchulungenRepository",
+    "SchulungenSheetsClient",
     "Umsatzhistorie",
 ]

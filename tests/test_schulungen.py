@@ -95,7 +95,7 @@ def test_laden_fuehrt_mehrere_jahre_zusammen() -> None:
         }
     )
     repository = SchulungenRepository(client, {2026: "sheet-2026", 2027: "sheet-2027"})
-    plan = repository.laden(date(2026, 11, 1), horizont_monate=3)
+    plan = repository.laden(stichtag=date(2026, 11, 1), horizont_monate=3)
 
     assert plan.umsatz_je_monat([(2026, 12), (2027, 1)]) == [1000.0, 2000.0]
     assert plan.hinweise([(2026, 12), (2027, 1)]) == ()
@@ -104,7 +104,7 @@ def test_laden_fuehrt_mehrere_jahre_zusammen() -> None:
 def test_laden_mit_leerer_datei_liefert_keine_termine_und_keinen_hinweis() -> None:
     client = FakeClient({"sheet-2026": [KOPFZEILE]})
     repository = SchulungenRepository(client, {2026: "sheet-2026"})
-    plan = repository.laden(date(2026, 9, 15), horizont_monate=1)
+    plan = repository.laden(stichtag=date(2026, 9, 15), horizont_monate=1)
 
     assert plan.termine == ()
     assert plan.abbildungshinweise == ()
@@ -112,7 +112,7 @@ def test_laden_mit_leerer_datei_liefert_keine_termine_und_keinen_hinweis() -> No
 
 def test_laden_meldet_nicht_konfiguriertes_jahr_als_hinweis() -> None:
     repository = SchulungenRepository(FakeClient({}), {})
-    plan = repository.laden(date(2026, 9, 15), horizont_monate=1)
+    plan = repository.laden(stichtag=date(2026, 9, 15), horizont_monate=1)
 
     assert len(plan.abbildungshinweise) == 1
     assert "2026" in plan.abbildungshinweise[0].text
@@ -122,7 +122,7 @@ def test_laden_meldet_nicht_konfiguriertes_jahr_als_hinweis() -> None:
 def test_laden_meldet_lesefehler_als_hinweis_statt_absturz() -> None:
     client = FakeClient({"sheet-2026": RuntimeError("kein Zugriff")})
     repository = SchulungenRepository(client, {2026: "sheet-2026"})
-    plan = repository.laden(date(2026, 9, 15), horizont_monate=1)
+    plan = repository.laden(stichtag=date(2026, 9, 15), horizont_monate=1)
 
     assert plan.termine == ()
     assert len(plan.abbildungshinweise) == 1
