@@ -20,6 +20,12 @@ SCHULUNG = "#d68a2c"
 # Eigene Farbfamilie fuer die Kostenprognose - aus derselben Ueberlegung: eine andere
 # Quelle als der Umsatz, keine weitere Saettigung von SERIE.
 KOSTEN = "#b3423f"
+# Farben fuer den Ergebnis-Balken (Umsatz minus Kosten): Vorzeichen entscheidet die
+# Farbe, nicht die Quelle - deshalb ein eigenes Grün/Rot-Paar statt einer Saettigung
+# von SERIE oder KOSTEN. ERGEBNIS_NEGATIV ist bewusst ein anderer Farbton als KOSTEN,
+# damit beide Balken nebeneinander unterscheidbar bleiben.
+ERGEBNIS_POSITIV = "#3f7d54"
+ERGEBNIS_NEGATIV = "#8c2f2f"
 FLAECHE = "#fcfcfb"
 TINTE = "#0b0b0b"
 TINTE_ZWEITRANGIG = "#52514e"

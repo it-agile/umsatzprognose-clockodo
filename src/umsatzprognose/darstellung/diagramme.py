@@ -27,6 +27,8 @@ if TYPE_CHECKING:
 import plotly.graph_objects as go
 
 from umsatzprognose.darstellung.gestaltung import (
+    ERGEBNIS_NEGATIV,
+    ERGEBNIS_POSITIV,
     KOSTEN,
     PROGNOSE_DECKKRAFT,
     SCHULUNG,
@@ -76,11 +78,13 @@ def umsatzverlauf(
     Schulungsanmeldungen, Abschnitt 6) - unabhaengig von der Bestand-Bandbreite und ohne
     eigene Unsicherheit.
 
-    Mit ``kostenplan`` kommt eine eigenfarbige Linie "Kosten" ueber die volle Breite
-    (Historie und Prognosehorizont) hinzu - anders als der Umsatz ohne eigene
-    Bandbreite, der Wert steht in der externen Kostenplanung schon fest. Die Luecke
-    zwischen Umsatzbalken und Kostenlinie ist der Gewinn; er steht als eigene Spalte in
-    :func:`~umsatzprognose.darstellung.tabellen.umsatztabelle`.
+    Mit ``kostenplan`` kommen je Monat zwei weitere, eigenstaendige Balken neben dem
+    Umsatzbalken hinzu (Historie und Prognosehorizont): "Kosten" in der Kosten-Farbe
+    und "Ergebnis" (Umsatz minus Kosten, dieselbe Zahl wie die Spalte "Gewinn" in
+    :func:`~umsatzprognose.darstellung.tabellen.umsatztabelle`) - gruen bei einem
+    positiven, rot (ein anderer Farbton als "Kosten") bei einem negativen Ergebnis.
+    Anders als der Umsatz ohne eigene Bandbreite, der Wert steht in der externen
+    Kostenplanung schon fest.
 
     Der erste Horizontmonat ist derselbe Kalendermonat wie der laufende - beide teilen
     dieselbe Balkenbeschriftung und stapeln sich deshalb an derselben Stelle
@@ -105,6 +109,7 @@ def umsatzverlauf(
     fig.add_bar(
         x=[m.beschriftung for m in monate],
         y=[m.umsatz for m in monate],
+        offsetgroup="umsatz",
         marker={
             "color": [
                 SERIE_HELL if laufender and m.schluessel == laufender.schluessel else SERIE
@@ -117,9 +122,10 @@ def umsatzverlauf(
         name="Historie",
     )
 
+    horizont_gesamtumsatz: dict[tuple[int, int], float] = {}
     if prognose is not None:
         if prognose.vorhanden:
-            _prognosehorizont(
+            horizont_gesamtumsatz = _prognosehorizont(
                 fig,
                 prognose,
                 verbrauch_laufender_monat=laufender,
@@ -128,33 +134,15 @@ def umsatzverlauf(
         else:
             _keine_prognose_hinweis(fig, prognose)
 
-    fig.add_hline(
-        y=durchschnitt,
-        line={"color": TINTE_GEDAEMPFT, "width": 1, "dash": "dash"},
-        annotation={
-            "text": "Durchschnitt",
-            "font": {"color": TINTE_GEDAEMPFT, "size": 12},
-            "yanchor": "bottom",
-        },
-        annotation_position="top right",
-    )
-    if laufender:
-        fig.add_annotation(
-            x=laufender.beschriftung,
-            y=laufender.umsatz,
-            text="läuft noch",
-            showarrow=False,
-            yshift=14,
-            font={"color": TINTE_ZWEITRANGIG, "size": 12},
-        )
-
     horizont_gebucht = prognose.gebucht() if prognose is not None and prognose.vorhanden else []
     horizont_schulung = (
         schulungsplan.umsatz_je_monat(prognose.horizontmonate())
         if prognose is not None and prognose.vorhanden and schulungsplan is not None
         else []
     )
-    zeigt_kosten = kostenplan is not None and _kostenlinie(fig, monate, prognose, kostenplan)
+    zeigt_kosten = kostenplan is not None and _kosten_und_ergebnis(
+        fig, monate, prognose, kostenplan, horizont_gesamtumsatz
+    )
     _legendeintrag(fig, "Abgerechnet", SERIE)
     if laufender or any(horizont_gebucht):
         _legendeintrag(fig, "Nicht abgerechnet", SERIE_HELL)
@@ -164,6 +152,8 @@ def umsatzverlauf(
         _legendeintrag(fig, "Schulungsanmeldungen", SCHULUNG)
     if zeigt_kosten:
         _legendeintrag(fig, "Kosten", KOSTEN)
+        _legendeintrag(fig, "Ergebnis (positiv)", ERGEBNIS_POSITIV)
+        _legendeintrag(fig, "Ergebnis (negativ)", ERGEBNIS_NEGATIV)
     fig.update_layout(
         showlegend=True,
         legend={
@@ -179,7 +169,7 @@ def umsatzverlauf(
     )
 
     achsen(fig)
-    fig.update_layout(bargap=0.45, barcornerradius=4, barmode="overlay")
+    fig.update_layout(bargap=0.3, bargroupgap=0.08, barcornerradius=4, barmode="group")
     fig.update_yaxes(tickformat=",.0f", ticksuffix=" €", rangemode="tozero")
     fig.update_xaxes(tickangle=0)
     return fig
@@ -213,35 +203,50 @@ def _alle_monatsschluessel(
     return schluessel
 
 
-def _kostenlinie(
+def _kosten_und_ergebnis(
     fig: go.Figure,
     monate: Sequence[Monatsumsatz],
     prognose: Prognose | None,
     kostenplan: Kostenplan,
+    horizont_gesamtumsatz: dict[tuple[int, int], float],
 ) -> bool:
-    """Die Kostenlinie ueber die volle Breite - Historie und Prognosehorizont.
+    """Kosten- und Ergebnis-Balken ueber die volle Breite - Historie und Prognosehorizont.
 
-    Anders als der Umsatz ohne eigene Bandbreite: der Wert steht in der externen
-    Kostenplanung schon fest, deshalb eine einfache Linie statt gestapelter Balken.
+    Je Monat zwei eigene Balken neben dem Umsatzbalken (eigenes ``offsetgroup``, siehe
+    ``barmode="group"`` in :func:`umsatzverlauf`): "Kosten" in der Kosten-Farbe und
+    "Ergebnis" (Umsatz minus Kosten - der Umsatz kommt fuer die Historie aus
+    ``monate``, fuer den Prognosehorizont aus ``horizont_gesamtumsatz``, siehe
+    :func:`_prognosehorizont`), gruen bei positivem, rot bei negativem Vorzeichen.
 
     Returns:
-        Ob eine Linie gezeichnet wurde (mindestens ein Monat mit Kosten > 0) - dient
-        dem Aufrufer als Grundlage fuer den Legendeneintrag.
+        Ob Balken gezeichnet wurden (mindestens ein Monat mit Kosten > 0) - dient dem
+        Aufrufer als Grundlage fuer die Legendeneintraege.
     """
     schluessel = _alle_monatsschluessel(monate, prognose)
-    werte = kostenplan.kosten_je_monat(schluessel)
-    if not any(werte):
+    kosten = kostenplan.kosten_je_monat(schluessel)
+    if not any(kosten):
         return False
+    gesamtumsatz = {m.schluessel: m.umsatz for m in monate} | horizont_gesamtumsatz
+    ergebnis = [gesamtumsatz.get(s, 0.0) - k for s, k in zip(schluessel, kosten, strict=True)]
     beschriftungen = [_monatsbeschriftung(jahr, monat) for jahr, monat in schluessel]
-    fig.add_scatter(
+    fig.add_bar(
         x=beschriftungen,
-        y=werte,
-        mode="lines+markers",
-        line={"color": KOSTEN, "width": 2, "dash": "dot"},
-        marker={"color": KOSTEN, "size": 5},
-        customdata=[[euro(betrag)] for betrag in werte],
+        y=kosten,
+        offsetgroup="kosten",
+        marker={"color": KOSTEN},
+        customdata=[[euro(betrag)] for betrag in kosten],
         hovertemplate="<b>%{x}</b><br>Kosten: %{customdata[0]}<extra></extra>",
         name="Kosten",
+        showlegend=False,
+    )
+    fig.add_bar(
+        x=beschriftungen,
+        y=ergebnis,
+        offsetgroup="ergebnis",
+        marker={"color": [ERGEBNIS_POSITIV if b >= 0 else ERGEBNIS_NEGATIV for b in ergebnis]},
+        customdata=[[euro(betrag)] for betrag in ergebnis],
+        hovertemplate="<b>%{x}</b><br>Ergebnis: %{customdata[0]}<extra></extra>",
+        name="Ergebnis",
         showlegend=False,
     )
     return True
@@ -253,26 +258,31 @@ def _prognosehorizont(
     *,
     verbrauch_laufender_monat: Monatsumsatz | None,
     schulungsplan: Schulungsplan | None = None,
-) -> None:
+) -> dict[tuple[int, int], float]:
     """Haengt die Horizontmonate als zweigeteilte Balken an eine bestehende Figur an.
 
     Der erste Horizontmonat ist der laufende Monat: dessen "bereits gebucht"-Anteil
     steht schon als Balken in der Historie (``verbrauch_laufender_monat``), hier kommt
     nur noch das Prognostizierte obendrauf. Fuer die folgenden Monate liefert
-    :meth:`Prognose.gebucht` den gesicherten Anteil, und
-    ``base``/``y`` werden bewusst ohne ``barmode="stack"`` gesetzt (der laeuft bei
-    mehreren Kategorien mit gleichem Namen nicht zuverlaessig zusammen) - stattdessen
-    zeichnet jede Spur ihr Segment selbst von ``base`` bis ``base + y``.
+    :meth:`Prognose.gebucht` den gesicherten Anteil. Alle Segmente teilen sich
+    ``offsetgroup="umsatz"`` (siehe ``barmode="group"`` in :func:`umsatzverlauf`) und
+    ``base``/``y`` werden bewusst manuell gesetzt statt ueber ``barmode="stack"`` (der
+    laeuft bei mehreren Kategorien mit gleichem Namen nicht zuverlaessig zusammen) -
+    stattdessen zeichnet jede Spur ihr Segment selbst von ``base`` bis ``base + y``.
 
     Mit ``schulungsplan`` kommt, additiv und unabhaengig von der Simulation, ein
     weiteres Segment "Schulungsanmeldungen" **unten im Stapel** hinzu - direkt ueber dem
     fuer den laufenden Monat schon gezeichneten Historie-Balken bzw. bei 0 fuer die
     folgenden Monate; "Bereits gebucht" und "Prognostiziert" ruecken entsprechend nach
     oben.
+
+    Returns:
+        Je Horizontmonat der Gesamtumsatz (Summe aller Segmente) - Grundlage fuer den
+        Ergebnis-Balken in :func:`_kosten_und_ergebnis`.
     """
     horizont = prognose.horizontmonate()
     if not horizont:
-        return
+        return {}
     beschriftungen = [_monatsbeschriftung(jahr, monat) for jahr, monat in horizont]
     monatswerte = prognose.monatswerte()
     gebucht = prognose.gebucht()
@@ -295,6 +305,7 @@ def _prognosehorizont(
             x=beschriftungen,
             y=schulung,
             base=schulung_basis,
+            offsetgroup="umsatz",
             marker={"color": SCHULUNG},
             customdata=[[euro(betrag)] for betrag in schulung],
             hovertemplate="<b>%{x}</b><br>Schulungsanmeldungen: %{customdata[0]}<extra></extra>",
@@ -307,6 +318,7 @@ def _prognosehorizont(
             x=beschriftungen[1:],
             y=gebucht[1:],
             base=schulung[1:],
+            offsetgroup="umsatz",
             marker={"color": SERIE_HELL},
             customdata=[[euro(betrag)] for betrag in gebucht[1:]],
             hovertemplate="<b>%{x}</b><br>Bereits gebucht: %{customdata[0]}<extra></extra>",
@@ -318,36 +330,31 @@ def _prognosehorizont(
         x=beschriftungen,
         y=prognostiziert,
         base=sockel,
+        offsetgroup="umsatz",
         marker={"color": SERIE_HELL, "opacity": PROGNOSE_DECKKRAFT},
         customdata=list(zip([euro(m) for m in median], [euro(p) for p in p85], strict=True)),
         hovertemplate=(
             "<b>%{x}</b><br>Erwartet (Median): %{customdata[0]}<br>"
             "85%-Niveau: %{customdata[1]}<extra></extra>"
         ),
+        # Direkt an diesem Balken statt an einer eigenen Spur, damit die Fehlerbalken
+        # dessen ``offsetgroup="umsatz"`` erben und ueber dem Umsatzbalken sitzen, statt
+        # unter ``barmode="group"`` in der Mitte aller Balkengruppen zu landen.
+        error_y={
+            "type": "data",
+            "symmetric": False,
+            "array": [0.0] * len(beschriftungen),
+            "arrayminus": [m - p for m, p in zip(median, p95, strict=True)],
+            "color": TINTE_GEDAEMPFT,
+            "thickness": 1.5,
+            "width": 5,
+        },
         showlegend=False,
         name="Prognostiziert",
     )
 
     gesamt_median = [s + p for s, p in zip(sockel, prognostiziert, strict=True)]
-    fig.add_trace(
-        go.Scatter(
-            x=beschriftungen,
-            y=gesamt_median,
-            mode="markers",
-            marker={"size": 0, "color": "rgba(0,0,0,0)"},
-            error_y={
-                "type": "data",
-                "symmetric": False,
-                "array": [0.0] * len(beschriftungen),
-                "arrayminus": [m - p for m, p in zip(median, p95, strict=True)],
-                "color": TINTE_GEDAEMPFT,
-                "thickness": 1.5,
-                "width": 5,
-            },
-            hoverinfo="skip",
-            showlegend=False,
-        )
-    )
+    return dict(zip(horizont, gesamt_median, strict=True))
 
 
 def _keine_prognose_hinweis(fig: go.Figure, prognose: Prognose) -> None:

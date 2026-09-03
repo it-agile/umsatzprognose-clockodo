@@ -12,7 +12,14 @@ from datetime import date
 import numpy as np
 
 from umsatzprognose.darstellung import Dashboard, diagramme, tabellen
-from umsatzprognose.darstellung.gestaltung import KOSTEN, PROGNOSE_DECKKRAFT, SCHULUNG, SERIE_HELL
+from umsatzprognose.darstellung.gestaltung import (
+    ERGEBNIS_NEGATIV,
+    ERGEBNIS_POSITIV,
+    KOSTEN,
+    PROGNOSE_DECKKRAFT,
+    SCHULUNG,
+    SERIE_HELL,
+)
 from umsatzprognose.domaene import (
     Bestand,
     Budget,
@@ -71,7 +78,6 @@ def test_umsatzverlauf_zeigt_alle_monate_und_hebt_den_laufenden_hervor():
     assert balken.x[-1] == "Aug 2026"
     # Der laufende Monat bekommt die hellere Stufe derselben Farbe.
     assert balken.marker.color[-1] != balken.marker.color[-2]
-    assert any(a.text == "läuft noch" for a in fig.layout.annotations)
 
 
 def test_gleichnamige_projekte_bleiben_getrennte_balken():
@@ -224,7 +230,7 @@ def test_umsatzverlauf_ohne_schulungsplan_zeigt_kein_segment():
     assert "Schulungsanmeldungen" not in namen
 
 
-def test_umsatzverlauf_mit_kostenplan_zeigt_linie_fuer_historie_und_horizont():
+def test_umsatzverlauf_mit_kostenplan_zeigt_balken_fuer_historie_und_horizont():
     historie, prognose = _historie_und_prognose_mit_horizont()
     kostenplan = Kostenplan(
         posten=(
@@ -236,25 +242,48 @@ def test_umsatzverlauf_mit_kostenplan_zeigt_linie_fuer_historie_und_horizont():
 
     fig = diagramme.umsatzverlauf(historie, prognose, None, kostenplan)
     kosten_spur = next(s for s in fig.data if s.name == "Kosten")
+    assert kosten_spur.type == "bar"
     assert list(kosten_spur.x) == ["Aug 2026", "Sep 2026", "Okt 2026"]
     assert list(kosten_spur.y) == [40000.0, 15000.0, 12000.0]
-    assert kosten_spur.line.color == KOSTEN
+    assert kosten_spur.marker.color == KOSTEN
+
+    median = prognose.monatswerte()[0.50]
+    erwartetes_ergebnis = [
+        100000.0 - 40000.0,
+        (historie.laufender.umsatz + median[0]) - 15000.0,
+        median[1] - 12000.0,
+    ]
+    ergebnis_spur = next(s for s in fig.data if s.name == "Ergebnis")
+    assert ergebnis_spur.type == "bar"
+    assert list(ergebnis_spur.y) == erwartetes_ergebnis
+    assert list(ergebnis_spur.marker.color) == [
+        ERGEBNIS_POSITIV if betrag >= 0 else ERGEBNIS_NEGATIV for betrag in erwartetes_ergebnis
+    ]
 
     legende = {spur.name for spur in fig.data if spur.showlegend}
-    assert "Kosten" in legende
+    assert legende == {
+        "Abgerechnet",
+        "Nicht abgerechnet",
+        "Prognostiziert",
+        "Kosten",
+        "Ergebnis (positiv)",
+        "Ergebnis (negativ)",
+    }
 
 
-def test_umsatzverlauf_ohne_kostenplan_zeigt_keine_linie():
+def test_umsatzverlauf_ohne_kostenplan_zeigt_keine_kosten_und_ergebnis_balken():
     fig = diagramme.umsatzverlauf(HISTORIE, BESTAND.simulieren())
     namen = [spur.name for spur in fig.data]
     assert "Kosten" not in namen
+    assert "Ergebnis" not in namen
 
 
-def test_umsatzverlauf_kostenplan_ohne_werte_zeigt_keine_linie():
+def test_umsatzverlauf_kostenplan_ohne_werte_zeigt_keine_kosten_und_ergebnis_balken():
     historie, prognose = _historie_und_prognose_mit_horizont()
     fig = diagramme.umsatzverlauf(historie, prognose, None, Kostenplan())
     namen = [spur.name for spur in fig.data]
     assert "Kosten" not in namen
+    assert "Ergebnis" not in namen
 
 
 def test_umsatztabelle_mit_schulungsplan_ergaenzt_spalte_und_summe():
