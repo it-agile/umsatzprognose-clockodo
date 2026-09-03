@@ -35,6 +35,7 @@ from dataclasses import dataclass, field, replace
 
 from .abrufquote import Abrufquotenverteilung
 from .hinweis import Hinweis
+from .projekt import verwertbar
 from .simulation import simulieren
 from .zahlen import euro
 
@@ -133,7 +134,7 @@ class Bestand:
     def _fachliche_hinweise(self) -> tuple[Hinweis, ...]:
         gefunden: list[Hinweis] = []
 
-        ohne_budget = [p for p in self.aktive_projekte if not p.budget.verwertbar]
+        ohne_budget = [p for p in self.aktive_projekte if not verwertbar(p.budget)]
         if ohne_budget:
             gefunden.append(
                 Hinweis(
@@ -289,5 +290,5 @@ class Bestand:
         return [
             p
             for p in self.aktive_projekte
-            if not p.budget.verwertbar and not any(f in p.bezeichnung for f in filter)
+            if not verwertbar(p.budget) and not any(f in p.bezeichnung for f in filter)
         ]

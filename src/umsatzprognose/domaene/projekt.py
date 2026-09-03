@@ -8,7 +8,7 @@ Groessen ab.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, assert_never
 
 if TYPE_CHECKING:
     from datetime import date
@@ -21,55 +21,85 @@ from dataclasses import dataclass, field
 
 
 @dataclass(frozen=True)
-class Budget:
-    """Das vereinbarte Volumen eines Projekts.
+class Gesamtbudget:
+    """Der Normalfall: ``betrag`` ist ein Euro-Gesamtbudget."""
 
-    ``budget.amount`` ist das Auftragsvolumen. Ob dort wirklich ein
-    Euro-Gesamtbudget steht, entscheiden drei weitere Felder:
+    betrag: float
+    hart: bool = False
 
-    * ``monetaer`` false: der Betrag ist eine **Stundenzahl**. Der Fall kommt vor, nur
-      bei inaktiven Projekten. Als Euro gelesen waere das ein stiller Faktor-Fehler.
-    * ``intervall`` gesetzt: Budget je Intervall statt Gesamtbudget. Laut
-      Clockod-API ist das ein **Integer-Enum**
-      (0 wochenweise, 1 monatlich, 2 quartalsweise, 3 jaehrlich) und kein String.
-    * ``aus_teilprojekten``: das Budget stammt aus Teilprojekten.
+
+@dataclass(frozen=True)
+class StundenBudget:
+    """``amount`` ist eine Stundenzahl, kein Euro-Betrag.
+
+    Der Fall kommt vor, nur bei inaktiven Projekten. Als Euro gelesen waere das ein
+    stiller Faktor-Fehler.
     """
 
+    stunden: float
+
+
+@dataclass(frozen=True)
+class IntervallBudget:
+    """Budget je Intervall statt Gesamtbudget.
+
+    ``intervall`` ist laut Clockodo-API ein **Integer-Enum** (0 wochenweise,
+    1 monatlich, 2 quartalsweise, 3 jaehrlich) und kein String.
+    """
+
+    betrag: float
+    intervall: int
+
+
+@dataclass(frozen=True)
+class TeilprojektBudget:
+    """Das Budget stammt aus Teilprojekten."""
+
     betrag: float | None = None
-    monetaer: bool = True
-    hart: bool = False
-    intervall: int | None = None
-    aus_teilprojekten: bool = False
 
-    @property
-    def gesetzt(self) -> bool:
-        return self.betrag is not None
 
-    @property
-    def sonderfall(self) -> str | None:
-        """Warum der Betrag kein Euro-Gesamtbudget ist, oder ``None``."""
-        if not self.gesetzt:
+@dataclass(frozen=True)
+class KeinBudget:
+    """Kein Budget hinterlegt."""
+
+
+# Das vereinbarte Volumen eines Projekts - eine geschlossene Menge sich gegenseitig
+# ausschliessender Faelle, keine Kombination aus Flags. Welcher Fall vorliegt,
+# entscheidet clockodo.projekte.budget() beim Mapping der Clockodo-Antwort.
+Budget = Gesamtbudget | StundenBudget | IntervallBudget | TeilprojektBudget | KeinBudget
+
+OHNE_BUDGET = KeinBudget()
+
+
+def sonderfall(budget: Budget) -> str | None:
+    """Warum der Betrag kein Euro-Gesamtbudget ist, oder ``None``."""
+    match budget:
+        case Gesamtbudget():
             return None
-        if not self.monetaer:
+        case StundenBudget():
             return "Budget in Stunden statt in Euro"
-        if self.intervall is not None:
+        case IntervallBudget():
             return "Budget je Intervall statt Gesamtbudget"
-        if self.aus_teilprojekten:
+        case TeilprojektBudget():
             return "Budget stammt aus Teilprojekten"
-        return None
-
-    @property
-    def verwertbar(self) -> bool:
-        """Ob der Betrag als Euro-Gesamtbudget gelesen werden darf."""
-        return self.gesetzt and self.sonderfall is None
-
-    @property
-    def auftragsvolumen(self) -> float | None:
-        """Das Auftragsvolumen in Euro, ``None`` wenn keines bezifferbar ist."""
-        return float(self.betrag) if self.betrag and self.verwertbar else None
+        case KeinBudget():
+            return "kein Budget gesetzt"
+        case _:
+            assert_never(budget)
 
 
-OHNE_BUDGET = Budget()
+def auftragsvolumen(budget: Budget) -> float | None:
+    """Das Auftragsvolumen in Euro, ``None`` wenn keines bezifferbar ist."""
+    match budget:
+        case Gesamtbudget(betrag=betrag):
+            return betrag
+        case _:
+            return None
+
+
+def verwertbar(budget: Budget) -> bool:
+    """Ob der Betrag als Euro-Gesamtbudget gelesen werden darf."""
+    return auftragsvolumen(budget) is not None
 
 
 @dataclass(frozen=True)
@@ -86,8 +116,11 @@ class Projekt:
     verbrauchte_stunden: float = 0.0
     anteile: tuple[Projektanteil, ...] = field(default_factory=tuple)
     stundensatz_uebersteuerung: float | None = None
-    deadline: date | None = None
-    automatic_completion: bool = False
+    # Clockodo kennt ``deadline`` und ``automatic_completion`` getrennt - eine
+    # ``deadline`` allein ist unverbindlich. ``clockodo.projekte`` fuehrt das schon
+    # beim Mapping zu diesem einen Feld zusammen. Ab diesem Datum traegt das Projekt
+    # keinen Umsatz mehr bei.
+    automatischer_abschluss: date | None = None
 
     def __str__(self) -> str:
         return self.bezeichnung
@@ -101,7 +134,7 @@ class Projekt:
 
     @property
     def auftragsvolumen(self) -> float | None:
-        return self.budget.auftragsvolumen
+        return auftragsvolumen(self.budget)
 
     @property
     def restvolumen_roh(self) -> float | None:
@@ -140,19 +173,7 @@ class Projekt:
         Drei Bedingungen, alle drei noetig: das Projekt ist ``aktiv``, es ist **nicht**
         ``abgeschlossen``, und sein Budget ist als Euro-Gesamtbudget lesbar.
         """
-        return self.aktiv and not self.abgeschlossen and self.budget.verwertbar
-
-    @property
-    def automatischer_abschluss(self) -> date | None:
-        """Ab wann das Projekt automatisch abgeschlossen wird, ``None`` ohne einen.
-
-        Nur gesetzt, wenn ``automatic_completion`` aktiv ist - eine reine ``deadline``
-        ohne diesen Schalter ist unverbindlich und beendet das Projekt nicht
-        zuverlaessig (nur ``active``, ``completed`` und
-        ``completed_at`` gelten als zuverlaessiges Endesignal). Ab diesem Datum traegt
-        das Projekt keinen Umsatz mehr bei.
-        """
-        return self.deadline if self.automatic_completion else None
+        return self.aktiv and not self.abgeschlossen and verwertbar(self.budget)
 
     @property
     def effektiver_stundensatz(self) -> float | None:

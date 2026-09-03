@@ -23,7 +23,8 @@ from umsatzprognose.darstellung.gestaltung import (
 )
 from umsatzprognose.domaene import (
     Bestand,
-    Budget,
+    Erfasst,
+    Gesamtbudget,
     Hinweis,
     Kostenplan,
     Kostenposten,
@@ -50,9 +51,11 @@ HISTORIE = Umsatzhistorie.zum_stichtag(
 )
 PROJEKTE = (
     Projekt(id=1, name="Beispielprojekt Eins", kunde=KUNDE, aktiv=True,
-            budget=Budget(betrag=50000.0), verbrauchtes_volumen=16000.0, verbrauchte_stunden=100.0),
+            budget=Gesamtbudget(betrag=50000.0),
+            verbrauchtes_volumen=16000.0, verbrauchte_stunden=100.0),
     Projekt(id=2, name="Beispielprojekt Zwei", kunde=KUNDE, aktiv=True,
-            budget=Budget(betrag=20000.0), verbrauchtes_volumen=7000.0, verbrauchte_stunden=50.0),
+            budget=Gesamtbudget(betrag=20000.0),
+            verbrauchtes_volumen=7000.0, verbrauchte_stunden=50.0),
 )  # fmt: skip
 BESTAND = Bestand(stichtag=STICHTAG, projekte=PROJEKTE, umsatzhistorie=HISTORIE)
 SCHULUNGSPLAN = Schulungsplan(stichtag=STICHTAG, termine=())
@@ -65,7 +68,7 @@ def _historie_fuer_abrufquote(quote: float) -> Verbrauchsverlauf:
     Dasselbe Muster wie in ``tests/test_simulation.py``: das Projekt liegt ausserhalb
     des Prognose-Scope und traegt selbst keinen Umsatz bei, nur die eine Beobachtung.
     """
-    projekt = Projekt(id=900, name="Historie", aktiv=False, budget=Budget(betrag=1000.0))
+    projekt = Projekt(id=900, name="Historie", aktiv=False, budget=Gesamtbudget(betrag=1000.0))
     return Verbrauchsverlauf.fuer(
         projekt, [Monatsumsatz(jahr=2026, monat=6, umsatz=quote * 1000.0, stunden=1.0)]
     )
@@ -110,8 +113,8 @@ def test_kapazitaet_je_mitarbeiter_zeigt_werte_in_tagen():
 
 
 def test_kapazitaet_je_projekt_zeigt_null_bei_pauschalprojekt():
-    zeitbasiert = Projekt(id=1, name="Zeitbasiert", aktiv=True, budget=Budget(betrag=1000.0))
-    pauschal = Projekt(id=2, name="Pauschale", aktiv=True, budget=Budget(betrag=1000.0))
+    zeitbasiert = Projekt(id=1, name="Zeitbasiert", aktiv=True, budget=Gesamtbudget(betrag=1000.0))
+    pauschal = Projekt(id=2, name="Pauschale", aktiv=True, budget=Gesamtbudget(betrag=1000.0))
     fig = diagramme.kapazitaet_je_projekt([(zeitbasiert, 70.0), (pauschal, 0.0)])
     balken = fig.data[0]
 
@@ -162,7 +165,7 @@ def test_umsatzverlauf_haengt_horizont_mit_zwei_farbtoenen_an():
         name="Projekt",
         kunde=KUNDE,
         aktiv=True,
-        budget=Budget(betrag=220000.0),
+        budget=Gesamtbudget(betrag=220000.0),
         verbrauchtes_volumen=20000.0,
         verbrauchte_stunden=200.0,
         anteile=(Projektanteil(anna, stunden=200.0),),
@@ -214,7 +217,8 @@ def _historie_und_prognose_mit_horizont():
     )
     projekt = Projekt(
         id=1, name="Projekt", kunde=KUNDE, aktiv=True,
-        budget=Budget(betrag=220000.0), verbrauchtes_volumen=20000.0, verbrauchte_stunden=200.0,
+        budget=Gesamtbudget(betrag=220000.0),
+        verbrauchtes_volumen=20000.0, verbrauchte_stunden=200.0,
     )  # fmt: skip
     bestand = Bestand(
         stichtag=stichtag,
@@ -298,7 +302,9 @@ def test_umsatzverlauf_mit_kostenerfassung_zeigt_satteres_rot_und_eigene_legende
     historie, prognose = _historie_und_prognose_mit_horizont()
     kostenplan = Kostenplan(
         posten=(
-            Kostenposten(2026, 8, pauschale=40000.0, allgemeinkosten=10000.0, erfasst=12000.0),
+            Kostenposten(
+                2026, 8, pauschale=40000.0, allgemeinkosten=10000.0, erfassung=Erfasst(12000.0)
+            ),
             Kostenposten(2026, 9, 15000.0),
             Kostenposten(2026, 10, 12000.0),
         )
@@ -388,7 +394,7 @@ def test_dashboard_hinweise_enthaelt_luecken_des_schulungsplans():
         name="Projekt",
         kunde=KUNDE,
         aktiv=True,
-        budget=Budget(betrag=220000.0),
+        budget=Gesamtbudget(betrag=220000.0),
         verbrauchtes_volumen=20000.0,
         verbrauchte_stunden=200.0,
     )
@@ -413,7 +419,7 @@ def test_dashboard_hinweise_enthaelt_luecken_des_kostenplans():
         name="Projekt",
         kunde=KUNDE,
         aktiv=True,
-        budget=Budget(betrag=220000.0),
+        budget=Gesamtbudget(betrag=220000.0),
         verbrauchtes_volumen=20000.0,
         verbrauchte_stunden=200.0,
     )
@@ -527,7 +533,8 @@ def test_umsatztabelle_verschmilzt_laufenden_monat_mit_der_prognose():
     )
     projekt = Projekt(
         id=1, name="Projekt", kunde=KUNDE, aktiv=True,
-        budget=Budget(betrag=220000.0), verbrauchtes_volumen=20000.0, verbrauchte_stunden=200.0,
+        budget=Gesamtbudget(betrag=220000.0),
+        verbrauchtes_volumen=20000.0, verbrauchte_stunden=200.0,
     )  # fmt: skip
     bestand = Bestand(
         stichtag=stichtag,
@@ -623,7 +630,9 @@ def test_dashboard_kapazitaet_je_projekt_zeigt_werte_nach_simulation():
     projekt = next(p for p in prognose.kapazitaet_je_projekt())
     bestand = Bestand(
         stichtag=historie.stichtag,
-        projekte=(Projekt(id=projekt, name="Projekt", aktiv=True, budget=Budget(betrag=1.0)),),
+        projekte=(
+            Projekt(id=projekt, name="Projekt", aktiv=True, budget=Gesamtbudget(betrag=1.0)),
+        ),
         umsatzhistorie=historie,
     )
     dashboard = Dashboard(bestand, SCHULUNGSPLAN, KOSTENPLAN)

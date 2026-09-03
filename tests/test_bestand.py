@@ -6,7 +6,7 @@ from datetime import date
 
 from umsatzprognose.domaene import (
     Bestand,
-    Budget,
+    Gesamtbudget,
     Hinweis,
     Kunde,
     Mitarbeiter,
@@ -25,7 +25,7 @@ GROSS = Projekt(
     name="Gross",
     kunde=ITA,
     aktiv=True,
-    budget=Budget(betrag=100000.0),
+    budget=Gesamtbudget(betrag=100000.0),
     verbrauchtes_volumen=20000.0,
     verbrauchte_stunden=100.0,
     anteile=(Projektanteil(ANNA, stunden=100.0),),
@@ -35,7 +35,7 @@ KLEIN = Projekt(
     name="Klein",
     kunde=ITA,
     aktiv=True,
-    budget=Budget(betrag=50000.0),
+    budget=Gesamtbudget(betrag=50000.0),
     verbrauchtes_volumen=40000.0,
     verbrauchte_stunden=50.0,
     anteile=(Projektanteil(BERT, stunden=50.0),),
@@ -44,12 +44,12 @@ UEBERZOGEN = Projekt(
     id=3,
     name="Überzogen",
     aktiv=True,
-    budget=Budget(betrag=10000.0),
+    budget=Gesamtbudget(betrag=10000.0),
     verbrauchtes_volumen=12000.0,
     verbrauchte_stunden=60.0,
 )
 OHNE_BUDGET = Projekt(id=4, name="Schulungsprodukt", aktiv=True)
-INAKTIV = Projekt(id=5, name="Alt", aktiv=False, budget=Budget(betrag=99999.0))  # fmt: skip
+INAKTIV = Projekt(id=5, name="Alt", aktiv=False, budget=Gesamtbudget(betrag=99999.0))  # fmt: skip
 
 
 def bestand(*projekte: Projekt, **felder) -> Bestand:
@@ -93,12 +93,14 @@ def test_hinweise_nennen_die_offenen_faelle():
 
 
 def test_abgeschlossene_aber_aktive_projekte_werden_gemeldet():
-    beendet = Projekt(id=9, aktiv=True, abgeschlossen=True, budget=Budget(betrag=1000.0))
+    beendet = Projekt(id=9, aktiv=True, abgeschlossen=True, budget=Gesamtbudget(betrag=1000.0))
     assert any("abgeschlossen" in h.text for h in bestand(beendet).hinweise())
 
 
 def test_projekte_ohne_zeit_und_ohne_beteiligte_werden_gemeldet():
-    pauschal = Projekt(id=8, aktiv=True, budget=Budget(betrag=1000.0), verbrauchtes_volumen=500.0)
+    pauschal = Projekt(
+        id=8, aktiv=True, budget=Gesamtbudget(betrag=1000.0), verbrauchtes_volumen=500.0
+    )
     texte = [h.text for h in bestand(pauschal).hinweise()]
     assert any("ohne erfasste Zeit" in t for t in texte)
     assert any("niemand gebucht" in t for t in texte)
@@ -109,7 +111,7 @@ def test_stundensatz_null_wird_gemeldet():
         id=6,
         name="Interne Zeit",
         aktiv=True,
-        budget=Budget(betrag=1000.0),
+        budget=Gesamtbudget(betrag=1000.0),
         verbrauchtes_volumen=0.0,
         verbrauchte_stunden=40.0,
     )
@@ -123,7 +125,7 @@ def test_stundensatz_uebersteuerung_nimmt_den_hinweis_zurueck():
         id=6,
         name="Interne Zeit",
         aktiv=True,
-        budget=Budget(betrag=1000.0),
+        budget=Gesamtbudget(betrag=1000.0),
         verbrauchtes_volumen=0.0,
         verbrauchte_stunden=40.0,
     )

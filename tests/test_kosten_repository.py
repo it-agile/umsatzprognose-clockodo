@@ -11,6 +11,7 @@ from datetime import date
 
 import pytest
 
+from umsatzprognose.domaene.kosten import Erfasst, Geschaetzt
 from umsatzprognose.kosten.kosten import (
     KostenRepository,
     _monat_parsen,
@@ -71,9 +72,9 @@ def test_zeilen_zu_posten_ersetzt_nur_den_allgemeinkosten_anteil_bei_erfassung()
         ["Februar", "0,00 €", "800,00 €", "0,00 €", "800,00 €", ""],
     ]
     posten = _zeilen_zu_posten(zeilen, 2026)
-    assert [(p.pauschale, p.allgemeinkosten, p.erfasst, p.kosten) for p in posten] == [
-        (950.0, 50.0, 120.0, 1020.0),  # 950 - 50 + 120
-        (800.0, 0.0, None, 800.0),
+    assert [(p.pauschale, p.allgemeinkosten, p.erfassung, p.kosten) for p in posten] == [
+        (950.0, 50.0, Erfasst(120.0), 1020.0),  # 950 - 50 + 120
+        (800.0, 0.0, Geschaetzt(), 800.0),
     ]
 
 
@@ -82,7 +83,7 @@ def test_zeilen_zu_posten_ohne_kostenerfassung_spalte_faellt_immer_auf_die_pausc
 ):
     zeilen = [KOPFZEILE, ["Januar", "100,00 €", "800,00 €", "50,00 €", "950,00 €"]]
     posten = _zeilen_zu_posten(zeilen, 2026)
-    assert posten[0].erfasst is None
+    assert posten[0].erfassung == Geschaetzt()
     assert posten[0].kosten == 950.0
 
 

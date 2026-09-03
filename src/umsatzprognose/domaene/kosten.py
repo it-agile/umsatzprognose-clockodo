@@ -15,7 +15,7 @@ welche Monate gebraucht werden, entscheidet allein der Aufrufer ueber die an
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, assert_never
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -29,30 +29,52 @@ Monat = tuple[int, int]  # (jahr, monat)
 
 
 @dataclass(frozen=True)
+class Geschaetzt:
+    """Noch keine Erfassung nachgezogen - die Pauschale gilt unveraendert."""
+
+
+@dataclass(frozen=True)
+class Erfasst:
+    """Die tatsaechlich erfassten Allgemeinkosten, aus den ``AB {Monat}``-Reitern."""
+
+    betrag: float
+
+
+# Ob fuer einen Kostenposten schon eine Erfassung vorliegt oder nur die Pauschale
+# gilt - eine geschlossene Menge zweier Faelle, kein optionaler Betrag: ein
+# bewusst erfasster Wert von 0 ist ein vorliegender Wert, keine fehlende Erfassung.
+Kostenerfassung = Geschaetzt | Erfasst
+
+
+@dataclass(frozen=True)
 class Kostenposten:
     """Die Kosten eines Kalendermonats laut Kostenplanungstabelle.
 
     ``pauschale`` ist die von Anfang an geplante Kostenpauschale (Gehälter + Spesen +
     Allgemeinkosten, meist), ``allgemeinkosten`` deren Allgemeinkosten-Anteil, den die
-    Erfassung ersetzt, und ``erfasst`` die tatsächlich erfassten Allgemeinkosten -
-    anfangs ``None``, weil die Erfassung erst mit Zeitverzug aus den
-    ``AB {Monat}``-Reitern nachgezogen wird. Sobald erfasst wird, ersetzt der erfasste
-    Betrag ausschliesslich den Allgemeinkosten-Anteil der Pauschale; Gehälter und
-    Spesen bleiben unveraendert Teil der Pauschale.
+    Erfassung ersetzt, und ``erfassung`` die tatsächliche Erfassung der
+    Allgemeinkosten - anfangs :class:`Geschaetzt`, weil die Erfassung erst mit
+    Zeitverzug aus den ``AB {Monat}``-Reitern nachgezogen wird. Sobald
+    :class:`Erfasst`, ersetzt ihr Betrag ausschliesslich den Allgemeinkosten-Anteil
+    der Pauschale; Gehälter und Spesen bleiben unveraendert Teil der Pauschale.
     """
 
     jahr: int
     monat: int
     pauschale: float
     allgemeinkosten: float = 0.0
-    erfasst: float | None = None
+    erfassung: Kostenerfassung = Geschaetzt()
 
     @property
     def kosten(self) -> float:
         """Pauschale, mit erfassten Allgemeinkosten statt der geschaetzten, sobald vorhanden."""
-        if self.erfasst is None:
-            return self.pauschale
-        return self.pauschale - self.allgemeinkosten + self.erfasst
+        match self.erfassung:
+            case Geschaetzt():
+                return self.pauschale
+            case Erfasst(betrag=betrag):
+                return self.pauschale - self.allgemeinkosten + betrag
+            case _:
+                assert_never(self.erfassung)
 
     @property
     def schluessel(self) -> Monat:
@@ -86,7 +108,7 @@ class Kostenplan:
         """Ob fuer den Monat eine tatsaechliche Kostenerfassung vorliegt statt nur
         der geschaetzten Pauschale - Grundlage fuer die Darstellung (siehe
         :mod:`umsatzprognose.darstellung.diagramme`)."""
-        erfasst = {p.schluessel for p in self.posten if p.erfasst is not None}
+        erfasst = {p.schluessel for p in self.posten if isinstance(p.erfassung, Erfasst)}
         return [monat in erfasst for monat in monate]
 
     def hinweise(self, monate: Sequence[Monat]) -> tuple[Hinweis, ...]:

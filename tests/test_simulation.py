@@ -18,7 +18,7 @@ import pytest
 
 from umsatzprognose.domaene import (
     Bestand,
-    Budget,
+    Gesamtbudget,
     Kunde,
     Mitarbeiter,
     Monatsumsatz,
@@ -54,7 +54,7 @@ def historie(quote: float, id: int = 900) -> Verbrauchsverlauf:
     Das Projekt liegt ausserhalb des Prognose-Scope (``aktiv=False``) und traegt selbst
     keinen Umsatz zur Simulation bei - es liefert nur die eine Beobachtung.
     """
-    projekt = Projekt(id=id, name=f"Historie {id}", aktiv=False, budget=Budget(betrag=1000.0))
+    projekt = Projekt(id=id, name=f"Historie {id}", aktiv=False, budget=Gesamtbudget(betrag=1000.0))
     return Verbrauchsverlauf.fuer(
         projekt, [Monatsumsatz(jahr=2026, monat=6, umsatz=quote * 1000.0, stunden=1.0)]
     )
@@ -80,7 +80,7 @@ def test_einfacher_lauf_ohne_kapazitaetsdeckel():
         name="Projekt",
         kunde=KUNDE,
         aktiv=True,
-        budget=Budget(betrag=10000.0),
+        budget=Gesamtbudget(betrag=10000.0),
         verbrauchtes_volumen=2000.0,
         verbrauchte_stunden=40.0,  # effektiver Stundensatz 50.0
         anteile=(Projektanteil(anna, stunden=40.0),),
@@ -111,7 +111,7 @@ def test_kapazitaetsdeckel_kuerzt_anteilig_ueber_alle_projekte_einer_person():
         id=1,
         name="A",
         aktiv=True,
-        budget=Budget(betrag=10000.0),
+        budget=Gesamtbudget(betrag=10000.0),
         verbrauchtes_volumen=2000.0,
         verbrauchte_stunden=40.0,  # Satz 50.0, wie oben
         anteile=(Projektanteil(anna, stunden=40.0),),
@@ -120,7 +120,7 @@ def test_kapazitaetsdeckel_kuerzt_anteilig_ueber_alle_projekte_einer_person():
         id=2,
         name="B",
         aktiv=True,
-        budget=Budget(betrag=10000.0),
+        budget=Gesamtbudget(betrag=10000.0),
         verbrauchtes_volumen=2000.0,
         verbrauchte_stunden=40.0,
         anteile=(Projektanteil(anna, stunden=40.0),),
@@ -156,7 +156,7 @@ def test_projekt_ohne_stundensatz_verbraucht_keine_kapazitaet():
         id=1,
         name="Pauschale ohne Zeit",
         aktiv=True,
-        budget=Budget(betrag=5000.0),
+        budget=Gesamtbudget(betrag=5000.0),
         verbrauchtes_volumen=1000.0,
         verbrauchte_stunden=0.0,
     )
@@ -183,7 +183,7 @@ def test_gezogene_quote_wird_auf_restvolumen_gekappt_und_folgemonat_liefert_nich
         id=1,
         name="Klein mit hoher Quote",
         aktiv=True,
-        budget=Budget(betrag=5000.0),
+        budget=Gesamtbudget(betrag=5000.0),
         verbrauchtes_volumen=1000.0,  # Restvolumen 4000
         verbrauchte_stunden=20.0,  # Satz 50.0
         anteile=(Projektanteil(anna, stunden=20.0),),
@@ -211,12 +211,11 @@ def test_deadline_monat_zaehlt_noch_voll_folgemonat_nicht():
         id=1,
         name="Befristet",
         aktiv=True,
-        budget=Budget(betrag=1000000.0),
+        budget=Gesamtbudget(betrag=1000000.0),
         verbrauchtes_volumen=10000.0,  # Restvolumen 990000, bleibt ueber 2 Monate offen
         verbrauchte_stunden=100.0,  # Satz 100.0
         anteile=(Projektanteil(anna, stunden=100.0),),
-        deadline=date(2026, 10, 15),
-        automatic_completion=True,
+        automatischer_abschluss=date(2026, 10, 15),
     )
     b = Bestand(
         stichtag=STICHTAG,  # 2026-09-01, Horizont also Sep/Okt/Nov
@@ -242,7 +241,7 @@ def test_bereits_gebuchter_betrag_ist_die_untergrenze_in_kuenftigen_monaten():
         id=1,
         name="Mit Vorabbuchung",
         aktiv=True,
-        budget=Budget(betrag=100500.0),
+        budget=Gesamtbudget(betrag=100500.0),
         verbrauchtes_volumen=500.0,  # Restvolumen 100000
         verbrauchte_stunden=10.0,  # Satz 50.0
         anteile=(Projektanteil(anna, stunden=10.0),),
@@ -278,7 +277,7 @@ def test_stichtagsmonat_zaehlt_keine_gebuchten_betraege_als_untergrenze():
         id=1,
         name="Mit Buchung im Stichtagsmonat",
         aktiv=True,
-        budget=Budget(betrag=100500.0),
+        budget=Gesamtbudget(betrag=100500.0),
         verbrauchtes_volumen=500.0,  # Restvolumen 100000
         verbrauchte_stunden=10.0,  # Satz 50.0
         anteile=(Projektanteil(anna, stunden=10.0),),

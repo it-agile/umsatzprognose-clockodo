@@ -4,43 +4,53 @@ from __future__ import annotations
 
 from datetime import date
 
-from umsatzprognose.domaene import Budget, Kunde, Mitarbeiter, Projekt, Projektanteil
+from umsatzprognose.domaene import (
+    Gesamtbudget,
+    IntervallBudget,
+    KeinBudget,
+    Kunde,
+    Mitarbeiter,
+    Projekt,
+    Projektanteil,
+    StundenBudget,
+    TeilprojektBudget,
+)
+from umsatzprognose.domaene.projekt import auftragsvolumen, sonderfall, verwertbar
 
 
 def projekt(**felder) -> Projekt:
-    standard = {"id": 1, "aktiv": True, "budget": Budget(betrag=100000.0)}
+    standard = {"id": 1, "aktiv": True, "budget": Gesamtbudget(betrag=100000.0)}
     return Projekt(**{**standard, **felder})
 
 
 def test_budget_ohne_betrag_ist_kein_auftragsvolumen():
-    ohne = Budget()
-    assert not ohne.gesetzt
-    assert not ohne.verwertbar
-    assert ohne.auftragsvolumen is None
-    assert ohne.sonderfall is None
+    ohne = KeinBudget()
+    assert not verwertbar(ohne)
+    assert auftragsvolumen(ohne) is None
+    assert sonderfall(ohne) == "kein Budget gesetzt"
 
 
 def test_stundenbudget_wird_nicht_als_euro_gelesen():
-    # monetary=false heisst: in "amount" steht eine Stundenzahl. Als Euro gelesen
+    # Ein Stundenbudget heisst: der Betrag ist eine Stundenzahl. Als Euro gelesen
     # waere das ein stiller Faktor-Fehler.
-    stunden = Budget(betrag=48.0, monetaer=False)
-    assert stunden.auftragsvolumen is None
-    assert "Stunden" in stunden.sonderfall
+    stunden = StundenBudget(stunden=48.0)
+    assert auftragsvolumen(stunden) is None
+    assert "Stunden" in sonderfall(stunden)
 
 
 def test_intervallbudget_und_teilprojektbudget_bleiben_unbenutzt():
     # interval ist laut clocodo-api.yaml ein Integer-Enum: 0 wochenweise, 1 monatlich,
     # 2 quartalsweise, 3 jaehrlich.
-    assert Budget(betrag=1000.0, intervall=1).auftragsvolumen is None
-    assert Budget(betrag=1000.0, aus_teilprojekten=True).auftragsvolumen is None
+    assert auftragsvolumen(IntervallBudget(betrag=1000.0, intervall=1)) is None
+    assert auftragsvolumen(TeilprojektBudget(betrag=1000.0)) is None
 
 
 def test_wochenbudget_faellt_nicht_durch_die_null():
     # 0 ist ein gueltiges Intervall und falsy - eine Pruefung auf den Wahrheitswert
     # wuerde das Wochenbudget still als Gesamtbudget lesen.
-    wochenbudget = Budget(betrag=1000.0, intervall=0)
-    assert wochenbudget.sonderfall == "Budget je Intervall statt Gesamtbudget"
-    assert wochenbudget.auftragsvolumen is None
+    wochenbudget = IntervallBudget(betrag=1000.0, intervall=0)
+    assert sonderfall(wochenbudget) == "Budget je Intervall statt Gesamtbudget"
+    assert auftragsvolumen(wochenbudget) is None
 
 
 def test_restvolumen_ist_budget_minus_verbrauch():
@@ -60,7 +70,7 @@ def test_ueberschreitung_bleibt_roh_sichtbar_und_wird_prognostisch_gekappt():
 
 
 def test_ohne_budget_gibt_es_kein_restvolumen_und_keine_null():
-    p = projekt(budget=Budget(), verbrauchtes_volumen=5000.0)
+    p = projekt(budget=KeinBudget(), verbrauchtes_volumen=5000.0)
     assert p.restvolumen_roh is None
     assert p.restvolumen_prognosewirksam is None
     assert not p.budget_ueberschritten
@@ -70,7 +80,7 @@ def test_ohne_budget_gibt_es_kein_restvolumen_und_keine_null():
 def test_prognose_scope_verlangt_aktiv_und_verwertbares_budget():
     assert projekt().im_prognose_scope
     assert not projekt(aktiv=False).im_prognose_scope
-    assert not projekt(budget=Budget(betrag=48.0, monetaer=False)).im_prognose_scope
+    assert not projekt(budget=StundenBudget(stunden=48.0)).im_prognose_scope
 
 
 def test_abgeschlossenes_projekt_faellt_aus_dem_scope_trotz_aktiv():
@@ -86,17 +96,15 @@ def test_abgeschlossenes_projekt_faellt_aus_dem_scope_trotz_aktiv():
 
 def test_automatischer_abschluss_nur_mit_automatic_completion():
     # Eine deadline allein ist laut Doku unverbindlich - erst automatic_completion
-    # macht sie zu einem festen Endedatum.
+    # macht sie zu einem festen Endedatum. Diese Unterscheidung trifft schon
+    # clockodo.projekte beim Mapping; die Domaene kennt nur noch das Ergebnis.
     frist = date(2026, 9, 30)
-    mit_schalter = projekt(deadline=frist, automatic_completion=True)
-    ohne_schalter = projekt(deadline=frist, automatic_completion=False)
+    mit_schalter = projekt(automatischer_abschluss=frist)
     assert mit_schalter.automatischer_abschluss == frist
-    assert ohne_schalter.automatischer_abschluss is None
 
 
 def test_ohne_deadline_gibt_es_keinen_automatischen_abschluss():
     assert projekt().automatischer_abschluss is None
-    assert projekt(automatic_completion=True).automatischer_abschluss is None
 
 
 def test_effektiver_stundensatz_aus_umsatz_und_zeit():

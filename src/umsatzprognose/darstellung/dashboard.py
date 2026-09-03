@@ -23,6 +23,7 @@ if TYPE_CHECKING:
     from umsatzprognose.domaene import Bestand, Kostenplan, Prognose, Schulungsplan
 
 from umsatzprognose.clockodo import BestandRepository
+from umsatzprognose.domaene.projekt import sonderfall
 from umsatzprognose.kosten import KostenRepository
 from umsatzprognose.schulungen import SchulungenRepository
 
@@ -211,6 +212,7 @@ class Dashboard:
         ohne_budget = self.bestand.ohne_budget(filter=filter)
 
         return tabellen.projekte_ohne_budget(
-            (projekt.bezeichnung, projekt.budget.sonderfall or "kein Budget gesetzt")
+            (projekt.bezeichnung, grund)
             for projekt in sorted(ohne_budget, key=lambda projekt: projekt.bezeichnung)
+            if (grund := sonderfall(projekt.budget)) is not None
         )

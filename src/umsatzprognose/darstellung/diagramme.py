@@ -25,6 +25,8 @@ if TYPE_CHECKING:
         Umsatzhistorie,
     )
 
+from dataclasses import dataclass
+
 import plotly.graph_objects as go
 
 from umsatzprognose.darstellung.gestaltung import (
@@ -146,9 +148,9 @@ def umsatzverlauf(
         if prognose is not None and prognose.vorhanden and schulungsplan is not None
         else []
     )
-    zeigt_kosten = hat_pauschale = hat_erfassung = False
+    kosten_balken = KostenBalkenErgebnis()
     if kostenplan is not None:
-        zeigt_kosten, hat_pauschale, hat_erfassung = _kosten_und_ergebnis(
+        kosten_balken = _kosten_und_ergebnis(
             fig, monate, prognose, kostenplan, horizont_gesamtumsatz
         )
     _legendeintrag(fig, "Abgerechnet", SERIE)
@@ -158,10 +160,10 @@ def umsatzverlauf(
         _legendeintrag(fig, "Prognostiziert", SERIE_HELL, deckkraft=PROGNOSE_DECKKRAFT)
     if any(horizont_schulung):
         _legendeintrag(fig, "Schulungsanmeldungen", SCHULUNG)
-    if zeigt_kosten:
-        if hat_erfassung:
+    if kosten_balken.gezeichnet:
+        if kosten_balken.hat_erfassung:
             _legendeintrag(fig, "Kosten (erfasst)", KOSTEN)
-        if hat_pauschale:
+        if kosten_balken.hat_pauschale:
             _legendeintrag(fig, "Kosten (Pauschale)", KOSTEN_HELL)
         _legendeintrag(fig, "Ergebnis (positiv)", ERGEBNIS_POSITIV)
         _legendeintrag(fig, "Ergebnis (negativ)", ERGEBNIS_NEGATIV)
@@ -214,13 +216,26 @@ def _alle_monatsschluessel(
     return schluessel
 
 
+@dataclass(frozen=True)
+class KostenBalkenErgebnis:
+    """Was der Aufrufer von :func:`_kosten_und_ergebnis` fuer die Legende braucht.
+
+    Ersetzt ein zuvor positionsabhaengiges ``tuple[bool, bool, bool]`` - dieselben drei
+    Fragen, jetzt benannt statt per Tupel-Entpacken der Reihe nach geraten.
+    """
+
+    gezeichnet: bool = False
+    hat_pauschale: bool = False
+    hat_erfassung: bool = False
+
+
 def _kosten_und_ergebnis(
     fig: go.Figure,
     monate: Sequence[Monatsumsatz],
     prognose: Prognose | None,
     kostenplan: Kostenplan,
     horizont_gesamtumsatz: dict[tuple[int, int], float],
-) -> tuple[bool, bool, bool]:
+) -> KostenBalkenErgebnis:
     """Kosten- und Ergebnis-Balken ueber die volle Breite - Historie und Prognosehorizont.
 
     Je Monat zwei eigene Balken neben dem Umsatzbalken (eigenes ``offsetgroup``, siehe
@@ -240,7 +255,7 @@ def _kosten_und_ergebnis(
     schluessel = _alle_monatsschluessel(monate, prognose)
     kosten = kostenplan.kosten_je_monat(schluessel)
     if not any(kosten):
-        return False, False, False
+        return KostenBalkenErgebnis()
     hat_erfassung = kostenplan.hat_erfassung_je_monat(schluessel)
     gesamtumsatz = {m.schluessel: m.umsatz for m in monate} | horizont_gesamtumsatz
     ergebnis = [gesamtumsatz.get(s, 0.0) - k for s, k in zip(schluessel, kosten, strict=True)]
@@ -265,7 +280,9 @@ def _kosten_und_ergebnis(
         name="Ergebnis",
         showlegend=False,
     )
-    return True, not all(hat_erfassung), any(hat_erfassung)
+    return KostenBalkenErgebnis(
+        gezeichnet=True, hat_pauschale=not all(hat_erfassung), hat_erfassung=any(hat_erfassung)
+    )
 
 
 def _prognosehorizont(

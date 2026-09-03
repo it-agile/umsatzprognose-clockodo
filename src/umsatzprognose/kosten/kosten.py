@@ -39,7 +39,7 @@ if TYPE_CHECKING:
 
     from umsatzprognose.domaene.kosten import Monat
 
-from umsatzprognose.domaene import Hinweis, Kostenplan, Kostenposten
+from umsatzprognose.domaene import Erfasst, Geschaetzt, Hinweis, Kostenplan, Kostenposten
 from umsatzprognose.domaene.zahlen import euro_parsen
 from umsatzprognose.google_sheets import GoogleSheetsClient, GoogleSheetsConfig
 
@@ -95,7 +95,7 @@ def _zeilen_zu_posten(zeilen: list[list[str]], jahr: int) -> list[Kostenposten]:
                 monat=monat,
                 pauschale=euro_parsen(zelle(zeile, SPALTE_GESAMTKOSTEN)),
                 allgemeinkosten=euro_parsen(zelle(zeile, SPALTE_ALLGEMEINKOSTEN)),
-                erfasst=euro_parsen(erfassung_text) if erfassung_text else None,
+                erfassung=Erfasst(euro_parsen(erfassung_text)) if erfassung_text else Geschaetzt(),
             )
         )
     return posten

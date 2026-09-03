@@ -10,9 +10,10 @@ import pytest
 from umsatzprognose.domaene import (
     Abrufquote,
     Abrufquotenverteilung,
-    Budget,
+    Gesamtbudget,
     Monatsumsatz,
     Projekt,
+    StundenBudget,
     Verbrauchsverlauf,
 )
 
@@ -20,7 +21,7 @@ STICHTAG = date(2026, 8, 24)
 
 
 def projekt(**felder) -> Projekt:
-    standard = {"id": 1, "aktiv": True, "budget": Budget(betrag=100000.0)}
+    standard = {"id": 1, "aktiv": True, "budget": Gesamtbudget(betrag=100000.0)}
     return Projekt(**{**standard, **felder})
 
 
@@ -51,7 +52,7 @@ def test_restvolumen_zu_monatsbeginn_wird_aus_dem_heutigen_budget_zurueckgerechn
 
 def test_ohne_bezifferbares_budget_gibt_es_kein_restvolumen_und_keine_quote():
     # Ein Stundenbudget (monetary=false) ist kein Euro-Gesamtbudget.
-    gebaut = verlauf((2026, 4, 30000.0), budget=Budget(betrag=48.0, monetaer=False))
+    gebaut = verlauf((2026, 4, 30000.0), budget=StundenBudget(stunden=48.0))
 
     assert gebaut.restvolumen_zu_monatsbeginn(2026, 4) is None
     assert gebaut.abrufquoten(STICHTAG) == ()

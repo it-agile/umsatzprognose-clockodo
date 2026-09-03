@@ -10,11 +10,20 @@ pruefbar bleibt - und dass Clockodos Eigenarten nicht in die Fachbegriffe sicker
 from umsatzprognose.domaene.abrufquote import Abrufquote, Abrufquotenverteilung
 from umsatzprognose.domaene.bestand import Bestand
 from umsatzprognose.domaene.hinweis import Hinweis
-from umsatzprognose.domaene.kosten import Kostenplan, Kostenposten
+from umsatzprognose.domaene.kosten import Erfasst, Geschaetzt, Kostenplan, Kostenposten
 from umsatzprognose.domaene.kunde import Kunde
 from umsatzprognose.domaene.mitarbeiter import Mitarbeiter, Wochenarbeitszeit
 from umsatzprognose.domaene.prognose import KONFIDENZNIVEAUS, NochKeinePrognose, Prognose
-from umsatzprognose.domaene.projekt import OHNE_BUDGET, Budget, Projekt
+from umsatzprognose.domaene.projekt import (
+    OHNE_BUDGET,
+    Budget,
+    Gesamtbudget,
+    IntervallBudget,
+    KeinBudget,
+    Projekt,
+    StundenBudget,
+    TeilprojektBudget,
+)
 from umsatzprognose.domaene.projektanteil import Projektanteil
 from umsatzprognose.domaene.schulung import Schulungsplan, Schulungstermin
 from umsatzprognose.domaene.simulation import MonteCarloPrognose
@@ -28,7 +37,12 @@ __all__ = [
     "Abrufquotenverteilung",
     "Bestand",
     "Budget",
+    "Erfasst",
+    "Gesamtbudget",
+    "Geschaetzt",
     "Hinweis",
+    "IntervallBudget",
+    "KeinBudget",
     "Kostenplan",
     "Kostenposten",
     "Kunde",
@@ -41,6 +55,8 @@ __all__ = [
     "Projektanteil",
     "Schulungsplan",
     "Schulungstermin",
+    "StundenBudget",
+    "TeilprojektBudget",
     "Umsatzhistorie",
     "Verbrauchsverlauf",
     "Wochenarbeitszeit",

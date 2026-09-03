@@ -13,7 +13,8 @@ Der Envelope-Key ist ``data`` (nicht ``projects``), die Projekt-ID heisst ``id``
 ``budget`` ist immer als Schluessel vorhanden, oft aber ``null``; ist es gesetzt,
 entscheiden ``monetary``, ``interval`` und ``from_subprojects`` darueber, ob ``amount``
 ein Euro-Gesamtbudget ist - die Deutung steht bei
-:class:`~umsatzprognose.domaene.projekt.Budget`.
+:data:`~umsatzprognose.domaene.projekt.Budget` und der Funktion :func:`budget` weiter
+unten.
 
 ``deadline`` (``date``, ``null`` moeglich) und ``automatic_completion`` (``bool``)
 gehoeren zusammen: laut Doku wird das Projekt genau dann automatisch zur ``deadline``
@@ -67,7 +68,19 @@ if TYPE_CHECKING:
 from collections.abc import Mapping
 from datetime import date
 
-from umsatzprognose.domaene import Budget, Hinweis, Kunde, Mitarbeiter, Projekt, Projektanteil
+from umsatzprognose.domaene import (
+    Budget,
+    Gesamtbudget,
+    Hinweis,
+    IntervallBudget,
+    KeinBudget,
+    Kunde,
+    Mitarbeiter,
+    Projekt,
+    Projektanteil,
+    StundenBudget,
+    TeilprojektBudget,
+)
 from umsatzprognose.domaene.zahlen import euro, stunden
 
 from .client import HISTORIE_VON
@@ -162,7 +175,6 @@ class ProjektRepository:
         gebucht = verbrauch.get(projects_id, {})
         customers_id = rohprojekt.get("customers_id")
         name = rohprojekt.get("name")
-        rohe_deadline = rohprojekt.get("deadline")
         return Projekt(
             id=projects_id,
             name=str(name) if name else None,
@@ -173,8 +185,7 @@ class ProjektRepository:
             verbrauchtes_volumen=float(gebucht.get("revenue", 0.0)),
             verbrauchte_stunden=float(gebucht.get("stunden", 0.0)),
             anteile=self._anteile(gebucht) if mit_anteilen else (),
-            deadline=date.fromisoformat(rohe_deadline) if rohe_deadline else None,
-            automatic_completion=bool(rohprojekt.get("automatic_completion")),
+            automatischer_abschluss=automatischer_abschluss(rohprojekt),
         )
 
     def _anteile(self, gebucht: Mapping[str, Any]) -> tuple[Projektanteil, ...]:
@@ -256,17 +267,34 @@ def budget(rohprojekt: Mapping[str, Any]) -> Budget:
     Nimmt wie :func:`projekt_id` das Projekt und nicht das Teilobjekt: beide gehoeren
     zum selben Aufruf, und ein versehentlich uebergebenes Teilobjekt saehe hier wie
     ein Projekt ohne Budget aus.
+
+    Welche Variante entsteht, richtet sich nach dieser Prioritaet: zuerst
+    ``monetary``, dann ``interval``, dann ``from_subprojects`` - in der Praxis
+    schliessen sich die Flags gegenseitig aus, die Reihenfolge ist also nur fuer den
+    theoretischen Kombinationsfall wichtig.
     """
     rohbudget = rohprojekt.get("budget")
     if not isinstance(rohbudget, Mapping):
-        return Budget()
-    return Budget(
-        betrag=None if rohbudget.get("amount") is None else float(rohbudget["amount"]),
-        monetaer=rohbudget.get("monetary") is not False,
-        hart=bool(rohbudget.get("hard")),
-        intervall=rohbudget.get("interval"),
-        aus_teilprojekten=bool(rohbudget.get("from_subprojects")),
-    )
+        return KeinBudget()
+    betrag = None if rohbudget.get("amount") is None else float(rohbudget["amount"])
+    if betrag is None:
+        return KeinBudget()
+    if rohbudget.get("monetary") is False:
+        return StundenBudget(stunden=betrag)
+    intervall = rohbudget.get("interval")
+    if intervall is not None:
+        return IntervallBudget(betrag=betrag, intervall=intervall)
+    if rohbudget.get("from_subprojects"):
+        return TeilprojektBudget(betrag=betrag)
+    return Gesamtbudget(betrag=betrag, hart=bool(rohbudget.get("hard")))
+
+
+def automatischer_abschluss(rohprojekt: Mapping[str, Any]) -> date | None:
+    """``deadline`` nur, wenn ``automatic_completion`` gesetzt ist - siehe Moduldocstring."""
+    rohe_deadline = rohprojekt.get("deadline")
+    if not rohe_deadline or not rohprojekt.get("automatic_completion"):
+        return None
+    return date.fromisoformat(rohe_deadline)
 
 
 async def rohdaten(
