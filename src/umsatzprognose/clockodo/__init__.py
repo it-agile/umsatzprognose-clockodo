@@ -11,6 +11,7 @@ Antworten zusammen. Ihre ``laden``-Methoden bleiben gewoehnliche Funktionen - wa
 dahinter noetig ist, steht in :mod:`umsatzprognose.clockodo.nebenlaeufig`.
 """
 
+from umsatzprognose.clockodo.auslastung import AuslastungRepository
 from umsatzprognose.clockodo.bestand import BestandRepository
 from umsatzprognose.clockodo.client import ClockodoClient, ClockodoError
 from umsatzprognose.clockodo.config import ClockodoCredentials, MissingCredentialsError
@@ -22,6 +23,7 @@ from umsatzprognose.clockodo.umsatz import UmsatzRepository
 from umsatzprognose.clockodo.verbrauchsverlauf import VerbrauchsverlaufRepository
 
 __all__ = [
+    "AuslastungRepository",
     "BestandRepository",
     "ClockodoClient",
     "ClockodoCredentials",

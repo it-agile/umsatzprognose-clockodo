@@ -39,6 +39,11 @@ def tage(stunden: float) -> str:
     return f"{_deutsch(stunden / STUNDEN_JE_TAG, 1)} Tage"
 
 
+def prozent(anteil: float, *, nachkommastellen: int = 0) -> str:
+    """Etwa ``82 %`` - ``anteil`` als Bruch (0,82), nicht bereits mit 100 multipliziert."""
+    return f"{_deutsch(anteil * 100, nachkommastellen)} %"
+
+
 def euro_parsen(text: str) -> float:
     """``"12.345,67 €"`` -> ``12345.67``; leer oder ohne Ziffern -> ``0.0``."""
     bereinigt = _UNERLAUBTE_ZEICHEN.sub("", text).replace(".", "").replace(",", ".")

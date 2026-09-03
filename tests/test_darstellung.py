@@ -10,6 +10,7 @@ from __future__ import annotations
 from datetime import date
 
 import numpy as np
+import pytest
 
 from umsatzprognose.darstellung import Dashboard, diagramme, tabellen
 from umsatzprognose.darstellung.gestaltung import (
@@ -22,6 +23,7 @@ from umsatzprognose.darstellung.gestaltung import (
     SERIE_HELL,
 )
 from umsatzprognose.domaene import (
+    Auslastungsmonat,
     Bestand,
     Erfasst,
     Gesamtbudget,
@@ -120,6 +122,100 @@ def test_kapazitaet_je_projekt_zeigt_null_bei_pauschalprojekt():
 
     assert list(balken.x) == [0.0, 10.0]
     assert list(balken.text) == ["0,0 Tage", "10,0 Tage"]
+
+
+def test_gewinn_verlust_monatlich_faerbt_nach_vorzeichen():
+    monate = [Monatsumsatz(2026, 7, 50000.0), Monatsumsatz(2026, 8, 30000.0)]
+    fig = diagramme.gewinn_verlust_monatlich(monate, [40000.0, 40000.0])
+    balken = fig.data[0]
+
+    assert list(balken.x) == ["Jul 2026", "Aug 2026"]
+    assert list(balken.y) == [10000.0, -10000.0]
+    assert list(balken.marker.color) == [ERGEBNIS_POSITIV, ERGEBNIS_NEGATIV]
+
+
+def test_gewinn_verlust_kumuliert_summiert_ueber_die_monate():
+    monate = [Monatsumsatz(2026, 7, 50000.0), Monatsumsatz(2026, 8, 10000.0)]
+    fig = diagramme.gewinn_verlust_kumuliert(monate, [40000.0, 40000.0])
+    linie = fig.data[0]
+
+    assert list(linie.y) == [10000.0, -20000.0]
+    # Am Ende im Minus - die Linie ist deshalb rot statt gruen.
+    assert linie.line.color == ERGEBNIS_NEGATIV
+
+
+def test_gewinn_verlust_monatlich_haengt_prognosehorizont_gedaempft_an():
+    historie, prognose = _historie_und_prognose_mit_horizont()
+    monate = historie.abgeschlossene()  # nur August - September ist der laufende Monat
+    fig = diagramme.gewinn_verlust_monatlich(
+        monate,
+        [40000.0],
+        prognose=prognose,
+        horizont_kosten=[15000.0, 12000.0],
+        verbrauch_laufender_monat=historie.laufender,
+    )
+    balken = fig.data[0]
+    median = prognose.monatswerte()[0.50]
+
+    assert list(balken.x) == ["Aug 2026", "Sep 2026", "Okt 2026"]
+    # September (erster Horizontmonat) traegt zusaetzlich das vor dem Stichtag bereits
+    # realisierte historie.laufender.umsatz - dieselbe Rechnung wie im Umsatzverlauf.
+    erwartetes_ergebnis = [
+        100000.0 - 40000.0,
+        (historie.laufender.umsatz + median[0]) - 15000.0,
+        median[1] - 12000.0,
+    ]
+    assert list(balken.y) == pytest.approx(erwartetes_ergebnis)
+    assert list(balken.marker.opacity) == [1.0, PROGNOSE_DECKKRAFT, PROGNOSE_DECKKRAFT]
+
+
+def test_gewinn_verlust_monatlich_ohne_prognose_bleibt_wie_zuvor():
+    monate = [Monatsumsatz(2026, 7, 50000.0)]
+    fig = diagramme.gewinn_verlust_monatlich(monate, [40000.0])
+    assert list(fig.data[0].marker.opacity) == [1.0]
+
+
+def test_gewinn_verlust_kumuliert_setzt_prognose_gestrichelt_und_bruchlos_fort():
+    historie, prognose = _historie_und_prognose_mit_horizont()
+    monate = historie.abgeschlossene()
+    fig = diagramme.gewinn_verlust_kumuliert(
+        monate,
+        [40000.0],
+        prognose=prognose,
+        horizont_kosten=[15000.0, 12000.0],
+        verbrauch_laufender_monat=historie.laufender,
+    )
+    ist_spur, prognose_spur = fig.data[0], fig.data[1]
+
+    assert list(ist_spur.x) == ["Aug 2026"]
+    assert ist_spur.line.dash is None
+    # Die Prognose-Spur beginnt am letzten Ist-Punkt, damit die Linie ohne Bruch
+    # weiterlaeuft, und ist gestrichelt.
+    assert list(prognose_spur.x) == ["Aug 2026", "Sep 2026", "Okt 2026"]
+    assert prognose_spur.y[0] == ist_spur.y[-1]
+    assert prognose_spur.line.dash == "dot"
+
+
+def test_auslastung_je_mitarbeiter_zeigt_prozent_und_laesst_none_weg():
+    vollzeit = Wochenarbeitszeit(
+        stunden_je_wochentag=(8.0, 8.0, 8.0, 8.0, 8.0, 0.0, 0.0), gueltig_ab=date(2020, 1, 1)
+    )
+    anna = Mitarbeiter(id=1, name="Anna", aktiv=True, arbeitszeiten=(vollzeit,))
+    bert = Mitarbeiter(id=2, name="Bert", aktiv=True, arbeitszeiten=(vollzeit,))
+    ohne_kapazitaet = Mitarbeiter(id=3, name="Clara", aktiv=True)
+    auslastungen = [
+        Auslastungsmonat(mitarbeiter=anna, jahr=2026, monat=9, abrechenbare_stunden=80.0),
+        Auslastungsmonat(mitarbeiter=bert, jahr=2026, monat=9, abrechenbare_stunden=160.0),
+        Auslastungsmonat(mitarbeiter=ohne_kapazitaet, jahr=2026, monat=9),
+    ]
+    fig = diagramme.auslastung_je_mitarbeiter(auslastungen)
+    balken = fig.data[0]
+
+    # Clara hat keine verfuegbare Kapazitaet (keine Arbeitszeit hinterlegt) und faellt
+    # deshalb heraus, statt mit einer irrefuehrenden 0%-Auslastung zu erscheinen.
+    # Kleinster Wert unten (Position 0): Anna (80/176 ≈ 45 %) vor Bert (160/176 ≈ 91 %).
+    assert len(balken.x) == 2
+    assert list(balken.text) == ["45 %", "91 %"]
 
 
 def test_umsatzverlauf_ohne_prognose_zeigt_nur_die_historie_balken():
@@ -618,6 +714,88 @@ def test_dashboard_kapazitaet_je_mitarbeiter_nutzt_den_stichtagsmonat():
     fig = dashboard.kapazitaet_je_mitarbeiter()
     assert len(fig.data[0].x) == 1
     assert fig.data[0].x[0] > 0
+
+
+def test_dashboard_gewinn_verlust_monatlich_nutzt_kostenplan():
+    historie = Umsatzhistorie.zum_stichtag(
+        [Monatsumsatz(2026, 7, 50000.0), Monatsumsatz(2026, 8, 30000.0)], STICHTAG, abgeschlossene=1
+    )
+    bestand = Bestand(stichtag=STICHTAG, umsatzhistorie=historie)
+    kostenplan = Kostenplan(posten=(Kostenposten(2026, 7, 40000.0),))
+    dashboard = Dashboard(bestand, SCHULUNGSPLAN, kostenplan)
+
+    fig = dashboard.gewinn_verlust_monatlich(monate=1)
+    # abgeschlossene(1) liefert nur Juli (August ist der laufende Monat).
+    assert list(fig.data[0].x) == ["Jul 2026"]
+    assert list(fig.data[0].y) == [10000.0]  # 50.000 - 40.000, Kostenplan ohne August-Posten
+
+
+def test_dashboard_gewinn_verlust_kumuliert_nutzt_kostenplan():
+    historie = Umsatzhistorie.zum_stichtag(
+        [
+            Monatsumsatz(2026, 6, 50000.0),
+            Monatsumsatz(2026, 7, 10000.0),
+            Monatsumsatz(2026, 8, 0.0),
+        ],
+        STICHTAG,
+        abgeschlossene=2,
+    )
+    bestand = Bestand(stichtag=STICHTAG, umsatzhistorie=historie)
+    kostenplan = Kostenplan(posten=(Kostenposten(2026, 6, 40000.0), Kostenposten(2026, 7, 40000.0)))
+    dashboard = Dashboard(bestand, SCHULUNGSPLAN, kostenplan)
+
+    fig = dashboard.gewinn_verlust_kumuliert(monate=2)
+    assert list(fig.data[0].y) == [10000.0, -20000.0]
+
+
+def test_dashboard_gewinn_verlust_monatlich_haengt_vorausschau_an_wenn_simuliert():
+    historie, prognose = _historie_und_prognose_mit_horizont()
+    bestand = Bestand(stichtag=historie.stichtag, umsatzhistorie=historie)
+    kostenplan = Kostenplan(
+        posten=(
+            Kostenposten(2026, 8, 40000.0),
+            Kostenposten(2026, 9, 15000.0),
+            Kostenposten(2026, 10, 12000.0),
+        )
+    )
+    dashboard = Dashboard(bestand, SCHULUNGSPLAN, kostenplan)
+    dashboard.prognose = prognose
+
+    fig = dashboard.gewinn_verlust_monatlich(monate=1)
+    assert list(fig.data[0].x) == ["Aug 2026", "Sep 2026", "Okt 2026"]
+
+
+def test_dashboard_gewinn_verlust_kumuliert_ohne_simulation_bleibt_bei_der_historie():
+    historie = Umsatzhistorie.zum_stichtag(
+        [Monatsumsatz(2026, 7, 50000.0), Monatsumsatz(2026, 8, 30000.0)], STICHTAG, abgeschlossene=1
+    )
+    bestand = Bestand(stichtag=STICHTAG, umsatzhistorie=historie)
+    dashboard = Dashboard(bestand, SCHULUNGSPLAN, KOSTENPLAN)
+
+    fig = dashboard.gewinn_verlust_kumuliert(monate=1)
+    assert len(fig.data) == 1  # keine zweite (Prognose-)Spur ohne dashboard.simuliere()
+
+
+def test_dashboard_auslastung_je_mitarbeiter_filtert_den_gewuenschten_monat():
+    vollzeit = Wochenarbeitszeit(
+        stunden_je_wochentag=(8.0, 8.0, 8.0, 8.0, 8.0, 0.0, 0.0), gueltig_ab=date(2020, 1, 1)
+    )
+    anna = Mitarbeiter(id=1, name="Anna", aktiv=True, arbeitszeiten=(vollzeit,))
+    bestand = Bestand(stichtag=STICHTAG, mitarbeiter=(anna,))
+    auslastung = (
+        Auslastungsmonat(mitarbeiter=anna, jahr=2026, monat=8, abrechenbare_stunden=80.0),
+        Auslastungsmonat(mitarbeiter=anna, jahr=2026, monat=9, abrechenbare_stunden=999.0),
+    )
+    dashboard = Dashboard(bestand, SCHULUNGSPLAN, KOSTENPLAN, auslastung)
+
+    fig = dashboard.auslastung_je_mitarbeiter()  # Default: Stichtagsmonat (August)
+    assert len(fig.data[0].x) == 1
+
+
+def test_dashboard_ohne_auslastung_bleibt_leer():
+    dashboard = Dashboard(BESTAND, SCHULUNGSPLAN, KOSTENPLAN)
+    assert dashboard.auslastung == ()
+    assert list(dashboard.auslastung_je_mitarbeiter().data[0].x) == []
 
 
 def test_dashboard_kapazitaet_je_projekt_ohne_simulation_ist_leer():

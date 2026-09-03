@@ -343,6 +343,7 @@ class ClockodoClient:
         *,
         time_since: str = HISTORIE_VON,
         time_until: str | None = None,
+        billable: int | None = None,
     ) -> list[EntryGroupV2]:
         """Aggregierte Eintraege aus ``/v2/entrygroups``.
 
@@ -354,18 +355,21 @@ class ClockodoClient:
                 heutige Tag (:func:`verbrauch_bis`), aufgeloest **hier** und nicht als
                 Default: eine Modulkonstante oder ein Default-Parameter wird beim
                 Import einmal berechnet und friert ein.
+            billable: ``filter[billable]``, ohne Angabe ungefiltert. Gueltige Werte
+                laut ``BillableDistinct`` der API: 0 nicht abrechenbar, 1 abrechenbar,
+                2 bereits fakturiert.
 
         Returns:
             Die ``groups``-Liste.
         """
-        payload = await self.get(
-            "/v2/entrygroups",
-            {
-                "time_since": time_since,
-                "time_until": time_until or verbrauch_bis(),
-                "grouping[]": list(grouping),
-            },
-        )
+        params: dict[str, Any] = {
+            "time_since": time_since,
+            "time_until": time_until or verbrauch_bis(),
+            "grouping[]": list(grouping),
+        }
+        if billable is not None:
+            params["filter[billable]"] = billable
+        payload = await self.get("/v2/entrygroups", params)
         return cast("list[EntryGroupV2]", payload["groups"])
 
     async def entrygroups_je_projekt_und_person(
@@ -403,6 +407,21 @@ class ClockodoClient:
         """Umsatz je Kalendermonat - alle Buchungen, auch die ohne Projektbezug."""
         return await self.entrygroups(
             [GRUPPIERUNG_MONAT], time_since=time_since, time_until=time_until
+        )
+
+    async def entrygroups_je_person_und_monat(
+        self, *, billable: int, time_since: str, time_until: str
+    ) -> list[EntryGroupV2]:
+        """Zeit je Person, darunter die Monate, gefiltert auf einen Billable-Status.
+
+        Fuer ein explizit gewaehltes Zeitfenster gedacht (beide Zeitgrenzen deshalb
+        Pflicht, wie bei :meth:`entrygroups_je_monat`), nicht fuer die volle Historie.
+        """
+        return await self.entrygroups(
+            [GRUPPIERUNG_PERSON, GRUPPIERUNG_MONAT],
+            time_since=time_since,
+            time_until=time_until,
+            billable=billable,
         )
 
     async def absences(self, year: int) -> list[AbsenceV4]:

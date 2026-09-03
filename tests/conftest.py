@@ -332,6 +332,62 @@ def projekt_monats_antwort() -> dict:
 
 
 @pytest.fixture
+def person_monat_abrechenbar_antwort() -> dict:
+    """Verbrauch je Person mit Monats-Untergruppen, ``filter[billable]=1`` (abrechenbar)."""
+    return {
+        "groups": [
+            {
+                "group": "301",
+                "name": "Beispielperson",
+                "duration": 144000,
+                "revenue": 4000.0,
+                "grouped_by": "users_id",
+                "sub_groups": [
+                    {"group": "202609", "name": "202609", "duration": 144000,
+                     "revenue": 4000.0, "grouped_by": "month"},
+                ],
+            },
+        ]
+    }  # fmt: skip
+
+
+@pytest.fixture
+def person_monat_fakturiert_antwort() -> dict:
+    """Dieselbe Doppelgruppierung, ``filter[billable]=2`` (bereits fakturiert).
+
+    Enthaelt zusaetzlich eine Person (999), die nicht in den geladenen Stammdaten
+    steckt - sie muss beim Abbilden uebersprungen werden, analog zu
+    :class:`~umsatzprognose.clockodo.verbrauchsverlauf.VerbrauchsverlaufRepository`.
+    """
+    return {
+        "groups": [
+            {
+                "group": "301",
+                "name": "Beispielperson",
+                "duration": 72000,
+                "revenue": 2000.0,
+                "grouped_by": "users_id",
+                "sub_groups": [
+                    {"group": "202609", "name": "202609", "duration": 72000,
+                     "revenue": 2000.0, "grouped_by": "month"},
+                ],
+            },
+            {
+                "group": "999",
+                "name": "Ohne Stammdatensatz",
+                "duration": 36000,
+                "revenue": 1000.0,
+                "grouped_by": "users_id",
+                "sub_groups": [
+                    {"group": "202609", "name": "202609", "duration": 36000,
+                     "revenue": 1000.0, "grouped_by": "month"},
+                ],
+            },
+        ]
+    }  # fmt: skip
+
+
+@pytest.fixture
 def monats_antwort() -> dict:
     """Zwei Monate; der dazwischenliegende fehlt und muss aufgefuellt werden."""
     return {

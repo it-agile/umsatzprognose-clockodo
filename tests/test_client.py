@@ -94,6 +94,30 @@ def test_doppelgruppierung_nach_projekt_und_monat():
     assert params["time_until"] == "2026-10-31T23:59:59Z"
 
 
+def test_billable_filter_wird_nur_bei_angabe_gesetzt():
+    client, requests = client_mit(lambda _: httpx.Response(200, json={"groups": []}))
+    synchron(client.entrygroups(["users_id"]))
+    synchron(client.entrygroups(["users_id"], billable=1))
+
+    assert "filter[billable]" not in requests[0].url.params
+    assert requests[1].url.params["filter[billable]"] == "1"
+
+
+def test_entrygroups_je_person_und_monat_filtert_und_gruppiert_doppelt():
+    client, requests = client_mit(lambda _: httpx.Response(200, json={"groups": []}))
+    synchron(
+        client.entrygroups_je_person_und_monat(
+            billable=2, time_since="2026-01-01T00:00:00Z", time_until="2026-09-30T23:59:59Z"
+        )
+    )
+
+    params = requests[0].url.params
+    assert params.get_list("grouping[]") == ["users_id", "month"]
+    assert params["filter[billable]"] == "2"
+    assert params["time_since"] == "2026-01-01T00:00:00Z"
+    assert params["time_until"] == "2026-09-30T23:59:59Z"
+
+
 def test_horizontende_ist_die_dritte_obere_zeitgrenze():
     """der Horizont beginnt mit dem laufenden Monat.
 

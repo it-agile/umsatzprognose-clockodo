@@ -11,6 +11,7 @@ from datetime import date
 
 from conftest import client_mit_routen
 from umsatzprognose.clockodo import (
+    AuslastungRepository,
     BestandRepository,
     KundenRepository,
     MitarbeiterRepository,
@@ -19,6 +20,7 @@ from umsatzprognose.clockodo import (
     VerbrauchsverlaufRepository,
 )
 from umsatzprognose.clockodo.projekte import budget, projekt_id
+from umsatzprognose.domaene.mitarbeiter import Mitarbeiter
 from umsatzprognose.domaene.projekt import auftragsvolumen, sonderfall
 
 STICHTAG = date(2026, 8, 24)
@@ -276,6 +278,31 @@ def test_monatsverbrauch_ohne_projekt_in_den_stammdaten_wird_ausgelassen(projekt
     client, _ = client_mit_routen({"/v2/entrygroups": projekt_monats_antwort})
 
     assert VerbrauchsverlaufRepository(client).laden([], stichtag=STICHTAG) == ()
+
+
+def test_auslastung_summiert_abrechenbar_und_fakturiert_und_ueberspringt_unbekannte(
+    person_monat_abrechenbar_antwort, person_monat_fakturiert_antwort
+):
+    def entrygroups(request):
+        billable = request.url.params["filter[billable]"]
+        return {"1": person_monat_abrechenbar_antwort, "2": person_monat_fakturiert_antwort}[
+            billable
+        ]
+
+    client, requests = client_mit_routen({"/v2/entrygroups": entrygroups})
+    anna = Mitarbeiter(id=301, name="Anna", aktiv=True)
+    auslastungen = AuslastungRepository(client).laden(
+        {301: anna}, stichtag=date(2026, 9, 24), monate=2
+    )
+
+    # Zwei Abrufe (abrechenbar, fakturiert), zwei angefragte Monate, eine bekannte Person.
+    assert len(requests) == 2
+    september = next(a for a in auslastungen if (a.jahr, a.monat) == (2026, 9))
+    august = next(a for a in auslastungen if (a.jahr, a.monat) == (2026, 8))
+    assert september.abrechenbare_stunden == 60.0  # 40h abrechenbar + 20h fakturiert
+    assert august.abrechenbare_stunden == 0.0  # kein Monat ohne Buchung fehlt
+    assert {a.mitarbeiter.id for a in auslastungen} == {301}  # Person 999 uebersprungen
+    assert requests[0].url.params["time_since"] == "2026-08-01T00:00:00Z"
 
 
 def test_bestand_setzt_alles_zusammen(

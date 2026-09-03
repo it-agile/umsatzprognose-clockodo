@@ -8,6 +8,7 @@ pruefbar bleibt - und dass Clockodos Eigenarten nicht in die Fachbegriffe sicker
 """
 
 from umsatzprognose.domaene.abrufquote import Abrufquote, Abrufquotenverteilung
+from umsatzprognose.domaene.auslastung import Auslastungsmonat
 from umsatzprognose.domaene.bestand import Bestand
 from umsatzprognose.domaene.hinweis import Hinweis
 from umsatzprognose.domaene.kosten import Erfasst, Geschaetzt, Kostenplan, Kostenposten
@@ -35,6 +36,7 @@ __all__ = [
     "OHNE_BUDGET",
     "Abrufquote",
     "Abrufquotenverteilung",
+    "Auslastungsmonat",
     "Bestand",
     "Budget",
     "Erfasst",

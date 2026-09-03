@@ -16,6 +16,7 @@ if TYPE_CHECKING:
     from collections.abc import Sequence
 
     from umsatzprognose.domaene import (
+        Auslastungsmonat,
         Kostenplan,
         Mitarbeiter,
         Monatsumsatz,
@@ -30,6 +31,7 @@ from dataclasses import dataclass
 import plotly.graph_objects as go
 
 from umsatzprognose.darstellung.gestaltung import (
+    ACHSE,
     ERGEBNIS_NEGATIV,
     ERGEBNIS_POSITIV,
     KOSTEN,
@@ -45,7 +47,7 @@ from umsatzprognose.darstellung.gestaltung import (
     figur,
 )
 from umsatzprognose.domaene.umsatzhistorie import MONATSNAMEN
-from umsatzprognose.domaene.zahlen import STUNDEN_JE_TAG, euro, tage, tausend_euro
+from umsatzprognose.domaene.zahlen import STUNDEN_JE_TAG, euro, prozent, tage, tausend_euro
 
 # Getrennte Laengen fuer Kunde und Projekt: der Kundenname ist oft der laengere Teil,
 # unterscheidet aber die Zeilen eines Kunden nicht. Wird alles gemeinsam am Ende
@@ -285,6 +287,43 @@ def _kosten_und_ergebnis(
     )
 
 
+def _horizont_gesamtumsatz(
+    prognose: Prognose,
+    *,
+    verbrauch_laufender_monat: Monatsumsatz | None = None,
+    schulungsplan: Schulungsplan | None = None,
+) -> dict[tuple[int, int], float]:
+    """Gesamtumsatz je Horizontmonat - bereits Realisiertes/Gebuchtes plus Median-Prognose.
+
+    Reine Berechnung ohne Zeichnen, im Unterschied zu :func:`_prognosehorizont`, die
+    dieselbe Zahl als Nebenprodukt des Balkenaufbaus zurueckgibt - fuer Aufrufer wie
+    :func:`gewinn_verlust_monatlich`, die den Prognosehorizont brauchen, ohne selbst
+    einen Umsatzverlauf zu zeichnen.
+
+    Der erste Horizontmonat ist der laufende: er addiert das vor dem Stichtag bereits
+    realisierte ``verbrauch_laufender_monat`` zum simulierten Rest-des-Monats-Umsatz.
+    Fuer die folgenden Monate deckt der Median bereits den vollen Monat ab - das Modell
+    rechnet einen bereits gebuchten Betrag als Untergrenze ein
+    (``Monatsumsatz = max(simulierter Umsatz, bereits gebuchter Umsatz)``, siehe
+    :mod:`umsatzprognose.domaene.simulation`); nur ``schulungsplan`` kommt additiv fuer
+    jeden Monat hinzu, weil er ausserhalb der Simulation steht.
+    """
+    horizont = prognose.horizontmonate()
+    if not horizont:
+        return {}
+    median = prognose.monatswerte()[0.50]
+    schulung = (
+        list(schulungsplan.umsatz_je_monat(horizont))
+        if schulungsplan is not None
+        else [0.0] * len(horizont)
+    )
+    basis0 = verbrauch_laufender_monat.umsatz if verbrauch_laufender_monat else 0.0
+    gesamt = [basis0 + median[0] + schulung[0]] + [
+        m + s for m, s in zip(median[1:], schulung[1:], strict=True)
+    ]
+    return dict(zip(horizont, gesamt, strict=True))
+
+
 def _prognosehorizont(
     fig: go.Figure,
     prognose: Prognose,
@@ -386,8 +425,9 @@ def _prognosehorizont(
         name="Prognostiziert",
     )
 
-    gesamt_median = [s + p for s, p in zip(sockel, prognostiziert, strict=True)]
-    return dict(zip(horizont, gesamt_median, strict=True))
+    return _horizont_gesamtumsatz(
+        prognose, verbrauch_laufender_monat=verbrauch_laufender_monat, schulungsplan=schulungsplan
+    )
 
 
 def _keine_prognose_hinweis(fig: go.Figure, prognose: Prognose) -> None:
@@ -403,6 +443,170 @@ def _keine_prognose_hinweis(fig: go.Figure, prognose: Prognose) -> None:
         align="right",
         font={"color": TINTE_ZWEITRANGIG, "size": 11},
     )
+
+
+def _historie_und_horizont_ergebnis(
+    monate: Sequence[Monatsumsatz],
+    kosten: Sequence[float],
+    prognose: Prognose | None,
+    horizont_kosten: Sequence[float],
+    schulungsplan: Schulungsplan | None,
+    verbrauch_laufender_monat: Monatsumsatz | None,
+) -> tuple[list[str], list[float], list[float]]:
+    """Ergebnis (Umsatz minus Kosten) je Monat, Historie gefolgt vom Prognosehorizont.
+
+    Gemeinsame Grundlage fuer :func:`gewinn_verlust_monatlich` und
+    :func:`gewinn_verlust_kumuliert`.
+
+    Returns:
+        Beschriftungen, Ergebnis je Monat und eine parallele Deckkraft-Liste (1.0 fuer
+        die Historie, :data:`~umsatzprognose.darstellung.gestaltung.PROGNOSE_DECKKRAFT`
+        fuer den Prognosehorizont) - dieselbe Konvention wie bei
+        :func:`_prognosehorizont`: Sicherheit einer Zahl zeigt sich ueber die
+        Deckkraft, nicht ueber eine eigene Farbe.
+    """
+    beschriftungen = [m.beschriftung for m in monate]
+    ergebnis = [m.umsatz - k for m, k in zip(monate, kosten, strict=True)]
+    deckkraft = [1.0] * len(monate)
+
+    if prognose is not None and prognose.vorhanden:
+        horizont = prognose.horizontmonate()
+        gesamtumsatz = _horizont_gesamtumsatz(
+            prognose,
+            verbrauch_laufender_monat=verbrauch_laufender_monat,
+            schulungsplan=schulungsplan,
+        )
+        beschriftungen += [_monatsbeschriftung(jahr, monat) for jahr, monat in horizont]
+        ergebnis += [
+            gesamtumsatz[schluessel] - k
+            for schluessel, k in zip(horizont, horizont_kosten, strict=True)
+        ]
+        deckkraft += [PROGNOSE_DECKKRAFT] * len(horizont)
+
+    return beschriftungen, ergebnis, deckkraft
+
+
+def gewinn_verlust_monatlich(
+    monate: Sequence[Monatsumsatz],
+    kosten: Sequence[float],
+    *,
+    prognose: Prognose | None = None,
+    horizont_kosten: Sequence[float] = (),
+    schulungsplan: Schulungsplan | None = None,
+    verbrauch_laufender_monat: Monatsumsatz | None = None,
+    hoehe: int = 380,
+) -> go.Figure:
+    """Gewinn/Verlust je Monat als Balken - gruen bei Gewinn, rot bei Verlust.
+
+    ``kosten`` steht parallel zu ``monate`` (siehe
+    :meth:`~umsatzprognose.domaene.kosten.Kostenplan.kosten_je_monat`). Anders als
+    :func:`_kosten_und_ergebnis` zeigt diese Funktion nur das Ergebnis selbst, ohne
+    Umsatz- und Kostenbalken daneben - fuer einen reinen Gewinn/Verlust-Rueckblick ueber
+    mehrere Monate statt eines Ausschnitts aus dem Umsatzverlauf.
+
+    Mit ``prognose`` haengt sich, additiv an die Historie, eine Vorausschau fuer den
+    Prognosehorizont an (``horizont_kosten`` parallel zu ``prognose.horizontmonate()``)
+    - gedaempfte Balken statt einer eigenen Farbe, dieselbe Konvention wie beim
+    Umsatzverlauf. ``verbrauch_laufender_monat`` liefert das vor dem Stichtag bereits
+    Realisierte des laufenden Monats, ``schulungsplan`` zusaetzlich additiven Umsatz aus
+    bereits geplanten Schulungsterminen - siehe :func:`_horizont_gesamtumsatz`.
+    """
+    beschriftungen, ergebnis, deckkraft = _historie_und_horizont_ergebnis(
+        monate, kosten, prognose, horizont_kosten, schulungsplan, verbrauch_laufender_monat
+    )
+    gesamt = sum(ergebnis)
+
+    untertitel = f"Summe über {len(monate)} Monate: {euro(gesamt, nachkommastellen=0)}"
+    if prognose is not None and prognose.vorhanden and prognose.horizontmonate():
+        untertitel += " (gedämpfte Balken: Vorausschau)"
+    fig = figur("Gewinn/Verlust je Monat", untertitel=untertitel, hoehe=hoehe)
+    fig.add_bar(
+        x=beschriftungen,
+        y=ergebnis,
+        marker={
+            "color": [ERGEBNIS_POSITIV if e >= 0 else ERGEBNIS_NEGATIV for e in ergebnis],
+            "opacity": deckkraft,
+        },
+        customdata=[[euro(betrag)] for betrag in ergebnis],
+        hovertemplate="<b>%{x}</b><br>%{customdata[0]}<extra></extra>",
+        showlegend=False,
+    )
+    if prognose is not None and not prognose.vorhanden:
+        _keine_prognose_hinweis(fig, prognose)
+    achsen(fig)
+    fig.update_layout(bargap=0.3, barcornerradius=4)
+    fig.update_yaxes(tickformat=",.0f", ticksuffix=" €")
+    fig.update_xaxes(tickangle=0)
+    return fig
+
+
+def gewinn_verlust_kumuliert(
+    monate: Sequence[Monatsumsatz],
+    kosten: Sequence[float],
+    *,
+    prognose: Prognose | None = None,
+    horizont_kosten: Sequence[float] = (),
+    schulungsplan: Schulungsplan | None = None,
+    verbrauch_laufender_monat: Monatsumsatz | None = None,
+    hoehe: int = 380,
+) -> go.Figure:
+    """Die ueber die Monate aufsummierte Gewinn/Verlust-Linie, mit Null-Referenzlinie.
+
+    Zeigt, seit wann und wie deutlich ein Gesamtminus (oder -plus) ueber den
+    betrachteten Zeitraum besteht - anders als :func:`gewinn_verlust_monatlich`, das
+    nur den einzelnen Monat zeigt. Die Null-Referenzlinie ist hier bewusst gesetzt,
+    obwohl :func:`~umsatzprognose.darstellung.gestaltung.achsen` sonst keine zeichnet:
+    das Ueber-/Unterschreiten der Nulllinie ist hier die Kernaussage.
+
+    Mit ``prognose`` (siehe :func:`gewinn_verlust_monatlich` fuer die uebrigen
+    Parameter) setzt sich die Linie ueber den Prognosehorizont fort - gestrichelt und
+    gedaempft ab dem letzten Ist-Monat, damit Ist und Vorausschau auf einen Blick
+    unterscheidbar bleiben, aber ohne Bruch ineinander uebergehen.
+    """
+    beschriftungen, ergebnis, _deckkraft = _historie_und_horizont_ergebnis(
+        monate, kosten, prognose, horizont_kosten, schulungsplan, verbrauch_laufender_monat
+    )
+    kumuliert: list[float] = []
+    laufend = 0.0
+    for betrag in ergebnis:
+        laufend += betrag
+        kumuliert.append(laufend)
+
+    anzahl_ist = len(monate)
+    farbe = ERGEBNIS_POSITIV if kumuliert[-1] >= 0 else ERGEBNIS_NEGATIV
+
+    fig = figur("Kumulierter Gewinn/Verlust", hoehe=hoehe)
+    fig.add_scatter(
+        x=beschriftungen[:anzahl_ist],
+        y=kumuliert[:anzahl_ist],
+        mode="lines+markers",
+        line={"color": farbe, "width": 2},
+        marker={"size": 6},
+        customdata=[[euro(betrag)] for betrag in kumuliert[:anzahl_ist]],
+        hovertemplate="<b>%{x}</b><br>%{customdata[0]}<extra></extra>",
+        showlegend=False,
+        name="Ist",
+    )
+    # Beginnt am letzten Ist-Punkt, damit die Linie ohne Bruch weiterlaeuft.
+    if len(beschriftungen) > anzahl_ist:
+        start = max(anzahl_ist - 1, 0)
+        fig.add_scatter(
+            x=beschriftungen[start:],
+            y=kumuliert[start:],
+            mode="lines+markers",
+            line={"color": farbe, "width": 2, "dash": "dot"},
+            marker={"size": 6, "opacity": PROGNOSE_DECKKRAFT},
+            opacity=PROGNOSE_DECKKRAFT,
+            customdata=[[euro(betrag)] for betrag in kumuliert[start:]],
+            hovertemplate="<b>%{x}</b><br>%{customdata[0]} (Vorausschau)<extra></extra>",
+            showlegend=False,
+            name="Vorausschau",
+        )
+    fig.add_hline(y=0, line={"color": ACHSE, "width": 1})
+    achsen(fig)
+    fig.update_yaxes(tickformat=",.0f", ticksuffix=" €")
+    fig.update_xaxes(tickangle=0)
+    return fig
 
 
 def restvolumen_je_projekt(
@@ -502,6 +706,54 @@ def kapazitaet_je_mitarbeiter(
         tickmode="array",
         tickvals=list(range(len(gezeigt))),
         ticktext=[_gekuerzt(str(m), MAXIMALE_PROJEKTLAENGE) for m, _ in reversed(gezeigt)],
+        tickfont={"color": TINTE, "size": 12},
+        automargin=True,
+    )
+    return fig
+
+
+def auslastung_je_mitarbeiter(
+    auslastungen: Sequence[Auslastungsmonat], *, top: int = 15, hoehe: int | None = None
+) -> go.Figure:
+    """Anteil abrechenbarer Stunden an der verfuegbaren Kapazitaet, liegende Balken in Prozent.
+
+    Personen ohne verfuegbare Kapazitaet in diesem Monat (``quote is None``, siehe
+    :attr:`~umsatzprognose.domaene.auslastung.Auslastungsmonat.quote`) werden
+    weggelassen, statt sie mit einer irrefuehrenden 0%-Auslastung zu zeigen.
+    """
+    mit_quote = [(a, a.quote) for a in auslastungen if a.quote is not None]
+    mit_quote.sort(key=lambda paar: paar[1], reverse=True)
+    gezeigt = mit_quote[:top]
+    hoehe = hoehe or max(260, 70 + 30 * len(gezeigt))
+    rest = len(mit_quote) - len(gezeigt)
+
+    untertitel = f"{len(mit_quote)} Personen mit hinterlegter Kapazität"
+    if rest > 0:
+        untertitel += f", gezeigt sind die {len(gezeigt)} größten und {rest} weitere folgen"
+
+    fig = figur("Auslastung je Person", untertitel=untertitel, hoehe=hoehe)
+    fig.add_bar(
+        x=[quote for _, quote in reversed(gezeigt)],
+        y=list(range(len(gezeigt))),
+        orientation="h",
+        marker={"color": SERIE},
+        text=[prozent(quote) for _, quote in reversed(gezeigt)],
+        textposition="outside",
+        textfont={"color": TINTE_ZWEITRANGIG, "size": 12},
+        cliponaxis=False,
+        hovertemplate="<b>%{y}</b><br>%{text}<extra></extra>",
+        showlegend=False,
+    )
+    achsen(fig, gitter_x=True, gitter_y=False)
+    fig.update_layout(bargap=0.4, barcornerradius=4)
+    groesste = max((quote for _, quote in gezeigt), default=0.0)
+    fig.update_xaxes(visible=False, range=[0, groesste * 1.18])
+    fig.update_yaxes(
+        tickmode="array",
+        tickvals=list(range(len(gezeigt))),
+        ticktext=[
+            _gekuerzt(str(a.mitarbeiter), MAXIMALE_PROJEKTLAENGE) for a, _ in reversed(gezeigt)
+        ],
         tickfont={"color": TINTE, "size": 12},
         automargin=True,
     )
