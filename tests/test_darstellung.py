@@ -16,6 +16,7 @@ from umsatzprognose.darstellung.gestaltung import (
     ERGEBNIS_NEGATIV,
     ERGEBNIS_POSITIV,
     KOSTEN,
+    KOSTEN_HELL,
     PROGNOSE_DECKKRAFT,
     SCHULUNG,
     SERIE_HELL,
@@ -266,7 +267,8 @@ def test_umsatzverlauf_mit_kostenplan_zeigt_balken_fuer_historie_und_horizont():
     assert kosten_spur.type == "bar"
     assert list(kosten_spur.x) == ["Aug 2026", "Sep 2026", "Okt 2026"]
     assert list(kosten_spur.y) == [40000.0, 15000.0, 12000.0]
-    assert kosten_spur.marker.color == KOSTEN
+    # Keiner der Posten hat eine Kostenerfassung -> ueberall die helle Pauschale-Farbe.
+    assert list(kosten_spur.marker.color) == [KOSTEN_HELL, KOSTEN_HELL, KOSTEN_HELL]
 
     median = prognose.monatswerte()[0.50]
     erwartetes_ergebnis = [
@@ -286,10 +288,30 @@ def test_umsatzverlauf_mit_kostenplan_zeigt_balken_fuer_historie_und_horizont():
         "Abgerechnet",
         "Nicht abgerechnet",
         "Prognostiziert",
-        "Kosten",
+        "Kosten (Pauschale)",
         "Ergebnis (positiv)",
         "Ergebnis (negativ)",
     }
+
+
+def test_umsatzverlauf_mit_kostenerfassung_zeigt_satteres_rot_und_eigene_legende():
+    historie, prognose = _historie_und_prognose_mit_horizont()
+    kostenplan = Kostenplan(
+        posten=(
+            Kostenposten(2026, 8, pauschale=40000.0, allgemeinkosten=10000.0, erfasst=12000.0),
+            Kostenposten(2026, 9, 15000.0),
+            Kostenposten(2026, 10, 12000.0),
+        )
+    )
+
+    fig = diagramme.umsatzverlauf(historie, prognose, None, kostenplan)
+    kosten_spur = next(s for s in fig.data if s.name == "Kosten")
+    # Nur der August hat eine Kostenerfassung -> satte Farbe nur dort, sonst hell.
+    assert list(kosten_spur.marker.color) == [KOSTEN, KOSTEN_HELL, KOSTEN_HELL]
+
+    legende = {spur.name for spur in fig.data if spur.showlegend}
+    assert "Kosten (erfasst)" in legende
+    assert "Kosten (Pauschale)" in legende
 
 
 def test_umsatzverlauf_ohne_kostenplan_zeigt_keine_kosten_und_ergebnis_balken():

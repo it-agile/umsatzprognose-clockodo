@@ -18,7 +18,8 @@ from umsatzprognose.kosten.kosten import (
     _zeilen_zu_posten,
 )
 
-KOPFZEILE = ["Monat", "Reisekosten", "Personalkosten", "Sonstiges", "Gesamtkosten"]
+KOPFZEILE = ["Monat", "Gehälter", "Spesen", "Allgemeinkosten", "Gesamtkosten"]
+KOPFZEILE_MIT_ERFASSUNG = [*KOPFZEILE, "Kostenerfassung"]
 
 
 class FakeClient:
@@ -60,6 +61,29 @@ def test_zeilen_zu_posten_findet_spalten_ueber_die_kopfzeile() -> None:
         (2026, 1, 950.0),
         (2026, 2, 800.0),
     ]
+
+
+def test_zeilen_zu_posten_ersetzt_nur_den_allgemeinkosten_anteil_bei_erfassung() -> None:
+    zeilen = [
+        KOPFZEILE_MIT_ERFASSUNG,
+        # Gehälter, Spesen, Allgemeinkosten, Gesamtkosten, Kostenerfassung
+        ["Januar", "100,00 €", "800,00 €", "50,00 €", "950,00 €", "120,00 €"],
+        ["Februar", "0,00 €", "800,00 €", "0,00 €", "800,00 €", ""],
+    ]
+    posten = _zeilen_zu_posten(zeilen, 2026)
+    assert [(p.pauschale, p.allgemeinkosten, p.erfasst, p.kosten) for p in posten] == [
+        (950.0, 50.0, 120.0, 1020.0),  # 950 - 50 + 120
+        (800.0, 0.0, None, 800.0),
+    ]
+
+
+def test_zeilen_zu_posten_ohne_kostenerfassung_spalte_faellt_immer_auf_die_pauschale_zurueck() -> (
+    None
+):
+    zeilen = [KOPFZEILE, ["Januar", "100,00 €", "800,00 €", "50,00 €", "950,00 €"]]
+    posten = _zeilen_zu_posten(zeilen, 2026)
+    assert posten[0].erfasst is None
+    assert posten[0].kosten == 950.0
 
 
 def test_zeilen_zu_posten_ueberspringt_zeilen_ohne_erkennbaren_monat() -> None:

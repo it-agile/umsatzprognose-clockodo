@@ -30,11 +30,29 @@ Monat = tuple[int, int]  # (jahr, monat)
 
 @dataclass(frozen=True)
 class Kostenposten:
-    """Die Gesamtkosten eines Kalendermonats laut Kostenplanungstabelle."""
+    """Die Kosten eines Kalendermonats laut Kostenplanungstabelle.
+
+    ``pauschale`` ist die von Anfang an geplante Kostenpauschale (Gehälter + Spesen +
+    Allgemeinkosten, meist), ``allgemeinkosten`` deren Allgemeinkosten-Anteil, den die
+    Erfassung ersetzt, und ``erfasst`` die tatsächlich erfassten Allgemeinkosten -
+    anfangs ``None``, weil die Erfassung erst mit Zeitverzug aus den
+    ``AB {Monat}``-Reitern nachgezogen wird. Sobald erfasst wird, ersetzt der erfasste
+    Betrag ausschliesslich den Allgemeinkosten-Anteil der Pauschale; Gehälter und
+    Spesen bleiben unveraendert Teil der Pauschale.
+    """
 
     jahr: int
     monat: int
-    kosten: float
+    pauschale: float
+    allgemeinkosten: float = 0.0
+    erfasst: float | None = None
+
+    @property
+    def kosten(self) -> float:
+        """Pauschale, mit erfassten Allgemeinkosten statt der geschaetzten, sobald vorhanden."""
+        if self.erfasst is None:
+            return self.pauschale
+        return self.pauschale - self.allgemeinkosten + self.erfasst
 
     @property
     def schluessel(self) -> Monat:
@@ -63,6 +81,13 @@ class Kostenplan:
 
     def summe(self, monate: Sequence[Monat]) -> float:
         return sum(self.kosten_je_monat(monate))
+
+    def hat_erfassung_je_monat(self, monate: Sequence[Monat]) -> list[bool]:
+        """Ob fuer den Monat eine tatsaechliche Kostenerfassung vorliegt statt nur
+        der geschaetzten Pauschale - Grundlage fuer die Darstellung (siehe
+        :mod:`umsatzprognose.darstellung.diagramme`)."""
+        erfasst = {p.schluessel for p in self.posten if p.erfasst is not None}
+        return [monat in erfasst for monat in monate]
 
     def hinweise(self, monate: Sequence[Monat]) -> tuple[Hinweis, ...]:
         """Befunde aus der Abbildung, plus fehlende Monate.

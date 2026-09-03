@@ -31,27 +31,50 @@ in einer externen Planungstabelle bereits fest.
 
 | Zweck | Zugriff | Relevanter Bereich |
 |---|---|---|
-| Gesamtkosten je Monat | Google Sheets API (dieselben Zugangsdaten wie Schulungsanmeldungen, siehe `spec-schulungsanmeldungen.md` Abschnitt 5.3), Tabellenblatt `Kosten {jahr}` | Zellbereich `L3:R15`, Spalten `Monat` und `Gesamtkosten` |
+| Gesamtkosten je Monat | Google Sheets API (dieselben Zugangsdaten wie Schulungsanmeldungen, siehe `spec-schulungsanmeldungen.md` Abschnitt 5.3), Tabellenblatt `Kosten {jahr}` | Zellbereich `L3:R15`, Spalten `Monat`, `Gesamtkosten`, `Allgemeinkosten` und `Kostenerfassung` |
 
 - Zeile 3 des Bereichs ist die Kopfzeile, Zeile 4–15 sind die zwölf Monate des Jahres.
   Spalten werden wie bei den Schulungsanmeldungen **über die Kopfzeile namentlich**
   zugeordnet, nicht über die Position – robust gegenüber der Reihenfolge der Spalten
-  innerhalb L:R (weitere, hier ungenutzte Spalten wie Reisekosten oder
-  Personalkosten liegen dazwischen).
+  innerhalb L:R (weitere, hier ungenutzte Spalten wie Gehälter, Spesen oder BWA Kosten
+  liegen dazwischen).
 - `Monat` steht als ausgeschriebener deutscher Monatsname (`Januar`…`Dezember`),
   anders als bei den Schulungsanmeldungen, wo `Monat` eine Zahl ist.
-- `Gesamtkosten` steht im selben deutschen Zahlenformat mit Euro-Zeichen wie `Umsatz
-  gesamt` bei den Schulungsanmeldungen und wird mit derselben Logik geparst
+- `Gesamtkosten` (die Kostenpauschale, meist Gehälter + Spesen + Allgemeinkosten),
+  `Allgemeinkosten` (deren geschätzter Anteil daran) und `Kostenerfassung` (die
+  tatsächlichen Allgemeinkosten, händisch mit Zeitverzug aus den `AB {Monat}`-Reitern
+  nachgetragen) stehen im selben deutschen Zahlenformat mit Euro-Zeichen wie `Umsatz
+  gesamt` bei den Schulungsanmeldungen und werden mit derselben Logik geparst
   (`domaene.zahlen.euro_parsen()`).
+- `Kostenerfassung` ist keine Pflichtspalte: fehlt sie im Tabellenblatt eines Jahrgangs
+  oder ist die Zelle für einen Monat (noch) leer, gilt dafür ausschließlich die
+  Pauschale aus `Gesamtkosten` – siehe 5.1. `Allgemeinkosten` dagegen ist Pflichtspalte,
+  weil sie für die Ersetzung in 5.1 gebraucht wird, sobald eine Erfassung vorliegt.
 
 ## 5. Modell
 
 ### 5.1 Aggregation je Monat
 
+`Kostenerfassung` enthält nur den tatsächlichen Allgemeinkosten-Anteil, nicht die
+gesamten Ist-Kosten des Monats – Gehälter und Spesen sind in der Pauschale bereits
+korrekt und unabhängig von der Erfassung. Liegt eine Erfassung vor, ersetzt sie deshalb
+nur den geschätzten Allgemeinkosten-Anteil innerhalb der Pauschale, nicht die Pauschale
+als Ganzes:
+
 ```
-Kosten(Jahr, Monat) = Gesamtkosten der Zeile mit passendem Monat im Tabellenblatt
+Kosten(Jahr, Monat) = Gesamtkosten - Allgemeinkosten + Kostenerfassung,
+                       falls für den Monat eine Kostenerfassung eingetragen ist;
+                       sonst Gesamtkosten (Kostenpauschale)
+                       - jeweils der Zeile mit passendem Monat im Tabellenblatt
                        Kosten {Jahr}
 ```
+
+Die Kostenpauschale steht von Anfang an fest; die tatsächlichen Allgemeinkosten aus
+`Kostenerfassung` werden mit Zeitverzug aus den monatlichen Ausgabenbuch-Reitern
+(`AB {Monat}`) nachgezogen und ersetzen den Allgemeinkosten-Anteil der Pauschale,
+sobald sie vorliegen. Ein bewusst eingetragener Wert von 0 € gilt als vorliegende
+Erfassung, nicht als fehlender Wert – unterschieden wird über das Vorhandensein eines
+Eintrags in der Zelle, nicht über den Betrag.
 
 ### 5.2 Zeitfenster – Unterschied zu den Schulungsanmeldungen
 

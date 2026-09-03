@@ -31,6 +31,7 @@ from umsatzprognose.darstellung.gestaltung import (
     ERGEBNIS_NEGATIV,
     ERGEBNIS_POSITIV,
     KOSTEN,
+    KOSTEN_HELL,
     PROGNOSE_DECKKRAFT,
     SCHULUNG,
     SERIE,
@@ -80,12 +81,16 @@ def umsatzverlauf(
     eigene Unsicherheit.
 
     Mit ``kostenplan`` kommen je Monat zwei weitere, eigenstaendige Balken neben dem
-    Umsatzbalken hinzu (Historie und Prognosehorizont): "Kosten" in der Kosten-Farbe
-    und "Ergebnis" (Umsatz minus Kosten, dieselbe Zahl wie die Spalte "Gewinn" in
+    Umsatzbalken hinzu (Historie und Prognosehorizont): "Kosten" und "Ergebnis" (Umsatz
+    minus Kosten, dieselbe Zahl wie die Spalte "Gewinn" in
     :func:`~umsatzprognose.darstellung.tabellen.umsatztabelle`) - gruen bei einem
-    positiven, rot (ein anderer Farbton als "Kosten") bei einem negativen Ergebnis.
-    Anders als der Umsatz ohne eigene Bandbreite, der Wert steht in der externen
-    Kostenplanung schon fest.
+    positiven, rot (ein anderer Farbton als "Kosten") bei einem negativen Ergebnis. Der
+    Kostenbalken selbst zeigt zwei Saettigungen derselben Farbe, analog zu
+    "Abgerechnet"/"Nicht abgerechnet" beim Umsatz: satt fuer Monate mit einer
+    tatsaechlich erfassten Kostenerfassung, hell fuer Monate, die noch auf der
+    geschaetzten Kostenpauschale beruhen (siehe
+    :meth:`~umsatzprognose.domaene.kosten.Kostenposten.kosten`). Anders als der Umsatz
+    ohne eigene Bandbreite, der Wert steht in der externen Kostenplanung schon fest.
 
     Der erste Horizontmonat ist derselbe Kalendermonat wie der laufende - beide teilen
     dieselbe Balkenbeschriftung und stapeln sich deshalb an derselben Stelle
@@ -141,9 +146,11 @@ def umsatzverlauf(
         if prognose is not None and prognose.vorhanden and schulungsplan is not None
         else []
     )
-    zeigt_kosten = kostenplan is not None and _kosten_und_ergebnis(
-        fig, monate, prognose, kostenplan, horizont_gesamtumsatz
-    )
+    zeigt_kosten = hat_pauschale = hat_erfassung = False
+    if kostenplan is not None:
+        zeigt_kosten, hat_pauschale, hat_erfassung = _kosten_und_ergebnis(
+            fig, monate, prognose, kostenplan, horizont_gesamtumsatz
+        )
     _legendeintrag(fig, "Abgerechnet", SERIE)
     if laufender or any(horizont_gebucht):
         _legendeintrag(fig, "Nicht abgerechnet", SERIE_HELL)
@@ -152,7 +159,10 @@ def umsatzverlauf(
     if any(horizont_schulung):
         _legendeintrag(fig, "Schulungsanmeldungen", SCHULUNG)
     if zeigt_kosten:
-        _legendeintrag(fig, "Kosten", KOSTEN)
+        if hat_erfassung:
+            _legendeintrag(fig, "Kosten (erfasst)", KOSTEN)
+        if hat_pauschale:
+            _legendeintrag(fig, "Kosten (Pauschale)", KOSTEN_HELL)
         _legendeintrag(fig, "Ergebnis (positiv)", ERGEBNIS_POSITIV)
         _legendeintrag(fig, "Ergebnis (negativ)", ERGEBNIS_NEGATIV)
     fig.update_layout(
@@ -210,23 +220,28 @@ def _kosten_und_ergebnis(
     prognose: Prognose | None,
     kostenplan: Kostenplan,
     horizont_gesamtumsatz: dict[tuple[int, int], float],
-) -> bool:
+) -> tuple[bool, bool, bool]:
     """Kosten- und Ergebnis-Balken ueber die volle Breite - Historie und Prognosehorizont.
 
     Je Monat zwei eigene Balken neben dem Umsatzbalken (eigenes ``offsetgroup``, siehe
-    ``barmode="group"`` in :func:`umsatzverlauf`): "Kosten" in der Kosten-Farbe und
-    "Ergebnis" (Umsatz minus Kosten - der Umsatz kommt fuer die Historie aus
-    ``monate``, fuer den Prognosehorizont aus ``horizont_gesamtumsatz``, siehe
-    :func:`_prognosehorizont`), gruen bei positivem, rot bei negativem Vorzeichen.
+    ``barmode="group"`` in :func:`umsatzverlauf`): "Kosten" und "Ergebnis" (Umsatz minus
+    Kosten - der Umsatz kommt fuer die Historie aus ``monate``, fuer den
+    Prognosehorizont aus ``horizont_gesamtumsatz``, siehe :func:`_prognosehorizont`),
+    gruen bei positivem, rot bei negativem Vorzeichen. Der Kostenbalken zeigt je Monat
+    eine von zwei Saettigungen derselben Farbe, je nachdem ob fuer den Monat eine
+    Kostenerfassung vorliegt (siehe :meth:`Kostenplan.hat_erfassung_je_monat`).
 
     Returns:
-        Ob Balken gezeichnet wurden (mindestens ein Monat mit Kosten > 0) - dient dem
-        Aufrufer als Grundlage fuer die Legendeneintraege.
+        Ob Balken gezeichnet wurden (mindestens ein Monat mit Kosten > 0), ob darunter
+        mindestens ein Monat mit der geschaetzten Pauschale und ob mindestens ein Monat
+        mit einer tatsaechlichen Kostenerfassung ist - dient dem Aufrufer als Grundlage
+        fuer die Legendeneintraege.
     """
     schluessel = _alle_monatsschluessel(monate, prognose)
     kosten = kostenplan.kosten_je_monat(schluessel)
     if not any(kosten):
-        return False
+        return False, False, False
+    hat_erfassung = kostenplan.hat_erfassung_je_monat(schluessel)
     gesamtumsatz = {m.schluessel: m.umsatz for m in monate} | horizont_gesamtumsatz
     ergebnis = [gesamtumsatz.get(s, 0.0) - k for s, k in zip(schluessel, kosten, strict=True)]
     beschriftungen = [_monatsbeschriftung(jahr, monat) for jahr, monat in schluessel]
@@ -234,7 +249,7 @@ def _kosten_und_ergebnis(
         x=beschriftungen,
         y=kosten,
         offsetgroup="kosten",
-        marker={"color": KOSTEN},
+        marker={"color": [KOSTEN if e else KOSTEN_HELL for e in hat_erfassung]},
         customdata=[[euro(betrag)] for betrag in kosten],
         hovertemplate="<b>%{x}</b><br>Kosten: %{customdata[0]}<extra></extra>",
         name="Kosten",
@@ -250,7 +265,7 @@ def _kosten_und_ergebnis(
         name="Ergebnis",
         showlegend=False,
     )
-    return True
+    return True, not all(hat_erfassung), any(hat_erfassung)
 
 
 def _prognosehorizont(

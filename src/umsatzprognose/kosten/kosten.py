@@ -7,9 +7,16 @@ Zeile 4-15 die zwoelf Monate des Jahres). Wie bei den Schulungsanmeldungen besti
 Kopfzeile die Spaltenzuordnung **namentlich**, robust gegenueber der Reihenfolge der
 Spalten innerhalb L:R.
 
-``Gesamtkosten`` steht, wie ``Umsatz gesamt`` bei den Schulungsanmeldungen, im
-deutschen Zahlenformat mit Euro-Zeichen und wird mit derselben
-:func:`~umsatzprognose.domaene.zahlen.euro_parsen` geparst.
+``Gesamtkosten`` (die Kostenpauschale), ``Allgemeinkosten`` (deren geschaetzter Anteil
+darin) und ``Kostenerfassung`` (die mit Zeitverzug aus den ``AB {Monat}``-Reitern
+nachgezogenen tatsaechlichen Allgemeinkosten) stehen, wie ``Umsatz gesamt`` bei den
+Schulungsanmeldungen, im deutschen Zahlenformat mit Euro-Zeichen und werden mit
+derselben :func:`~umsatzprognose.domaene.zahlen.euro_parsen` geparst.
+``Kostenerfassung`` ist keine Pflichtspalte und je Monat oft noch leer - erst
+:attr:`~umsatzprognose.domaene.kosten.Kostenposten.kosten` entscheidet, ob und wie sie
+den Allgemeinkosten-Anteil der Pauschale ersetzt (siehe dort). ``Allgemeinkosten``
+selbst ist Pflichtspalte, weil sie fuer diese Ersetzung gebraucht wird, sobald eine
+Erfassung vorliegt.
 
 **Anders als bei den Schulungsanmeldungen gelten die Kosten auch fuer bereits
 vergangene Monate** (siehe Moduldocstring von :mod:`umsatzprognose.domaene.kosten`) -
@@ -40,6 +47,8 @@ KOSTEN_BEREICH_VORLAGE = "Kosten {jahr}!L3:R15"
 
 SPALTE_MONAT = "Monat"
 SPALTE_GESAMTKOSTEN = "Gesamtkosten"
+SPALTE_ALLGEMEINKOSTEN = "Allgemeinkosten"
+SPALTE_KOSTENERFASSUNG = "Kostenerfassung"
 
 MONATSNAMEN_LANG = (
     "Januar", "Februar", "März", "April", "Mai", "Juni",
@@ -61,13 +70,15 @@ def _zeilen_zu_posten(zeilen: list[list[str]], jahr: int) -> list[Kostenposten]:
     # workaround für fehlende Monatsspalten-Bezeichnung
     index["Monat"] = 0
 
-    fehlend = {SPALTE_MONAT, SPALTE_GESAMTKOSTEN} - index.keys()
+    fehlend = {SPALTE_MONAT, SPALTE_GESAMTKOSTEN, SPALTE_ALLGEMEINKOSTEN} - index.keys()
     if fehlend:
         raise ValueError(f"Spalten fehlen im Tabellenblatt: {sorted(fehlend)}")
 
     def zelle(zeile: list[str], name: str) -> str:
         position = index[name]
         return zeile[position] if position < len(zeile) else ""
+
+    hat_erfassung = SPALTE_KOSTENERFASSUNG in index
 
     posten = []
     for zeile in zeilen[1:]:
@@ -77,9 +88,14 @@ def _zeilen_zu_posten(zeilen: list[list[str]], jahr: int) -> list[Kostenposten]:
         monat = _monat_parsen(monat_text)
         if monat is None:
             continue
+        erfassung_text = zelle(zeile, SPALTE_KOSTENERFASSUNG).strip() if hat_erfassung else ""
         posten.append(
             Kostenposten(
-                jahr=jahr, monat=monat, kosten=euro_parsen(zelle(zeile, SPALTE_GESAMTKOSTEN))
+                jahr=jahr,
+                monat=monat,
+                pauschale=euro_parsen(zelle(zeile, SPALTE_GESAMTKOSTEN)),
+                allgemeinkosten=euro_parsen(zelle(zeile, SPALTE_ALLGEMEINKOSTEN)),
+                erfasst=euro_parsen(erfassung_text) if erfassung_text else None,
             )
         )
     return posten
