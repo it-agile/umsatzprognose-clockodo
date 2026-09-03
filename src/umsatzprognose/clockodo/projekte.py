@@ -63,7 +63,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from typing import Any
 
-    from .client import ClockodoClient
+    from .client import ClockodoClient, EntryGroupV2, ProjectV4
 
 from collections.abc import Mapping
 from datetime import date
@@ -143,8 +143,8 @@ class ProjektRepository:
 
     def abbilden(
         self,
-        projekte: list[dict[str, Any]],
-        gruppen: list[dict[str, Any]],
+        projekte: list[ProjectV4],
+        gruppen: list[EntryGroupV2],
         *,
         mit_anteilen: bool = True,
     ) -> tuple[Projekt, ...]:
@@ -166,7 +166,7 @@ class ProjektRepository:
 
     def _projekt(
         self,
-        rohprojekt: Mapping[str, Any],
+        rohprojekt: ProjectV4,
         verbrauch: Mapping[int, dict[str, Any]],
         *,
         mit_anteilen: bool,
@@ -204,7 +204,7 @@ class ProjektRepository:
         return tuple(anteile)
 
     @staticmethod
-    def _verbrauch(gruppen: list[dict[str, Any]]) -> dict[int, dict[str, Any]]:
+    def _verbrauch(gruppen: list[EntryGroupV2]) -> dict[int, dict[str, Any]]:
         """``projects_id`` -> Umsatz, Stunden und Untergruppen; ohne ``group == 0``."""
         verbrauch: dict[int, dict[str, Any]] = {}
         for gruppe in gruppen:
@@ -221,7 +221,7 @@ class ProjektRepository:
             eintrag["sub_groups"].extend(gruppe.get("sub_groups") or [])
         return verbrauch
 
-    def _melde_verbrauch_ohne_projekt(self, gruppen: list[dict[str, Any]]) -> None:
+    def _melde_verbrauch_ohne_projekt(self, gruppen: list[EntryGroupV2]) -> None:
         ohne_projekt = [g for g in gruppen if int(g["group"]) == 0]
         umsatz = sum(float(g.get("revenue") or 0.0) for g in ohne_projekt)
         zeit = sum(float(g.get("duration") or 0.0) for g in ohne_projekt) / SEKUNDEN_JE_STUNDE
@@ -261,7 +261,7 @@ def projekt_id(rohprojekt: Mapping[str, Any]) -> int:
     raise KeyError(f"Keine Projekt-ID gefunden, vorhandene Keys: {sorted(rohprojekt)}")
 
 
-def budget(rohprojekt: Mapping[str, Any]) -> Budget:
+def budget(rohprojekt: ProjectV4) -> Budget:
     """Das Budget eines Projekts - auch wenn ``budget`` ``null`` ist.
 
     Nimmt wie :func:`projekt_id` das Projekt und nicht das Teilobjekt: beide gehoeren
@@ -276,9 +276,10 @@ def budget(rohprojekt: Mapping[str, Any]) -> Budget:
     rohbudget = rohprojekt.get("budget")
     if not isinstance(rohbudget, Mapping):
         return KeinBudget()
-    betrag = None if rohbudget.get("amount") is None else float(rohbudget["amount"])
-    if betrag is None:
+    amount = rohbudget.get("amount")
+    if amount is None:
         return KeinBudget()
+    betrag = float(amount)
     if rohbudget.get("monetary") is False:
         return StundenBudget(stunden=betrag)
     intervall = rohbudget.get("interval")
@@ -289,7 +290,7 @@ def budget(rohprojekt: Mapping[str, Any]) -> Budget:
     return Gesamtbudget(betrag=betrag, hart=bool(rohbudget.get("hard")))
 
 
-def automatischer_abschluss(rohprojekt: Mapping[str, Any]) -> date | None:
+def automatischer_abschluss(rohprojekt: ProjectV4) -> date | None:
     """``deadline`` nur, wenn ``automatic_completion`` gesetzt ist - siehe Moduldocstring."""
     rohe_deadline = rohprojekt.get("deadline")
     if not rohe_deadline or not rohprojekt.get("automatic_completion"):
@@ -302,7 +303,7 @@ async def rohdaten(
     *,
     time_since: str = HISTORIE_VON,
     time_until: str | None = None,
-) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+) -> tuple[list[ProjectV4], list[EntryGroupV2]]:
     """Die beiden Antworten, aus denen ein Projekt entsteht.
 
     ``/v4/projects`` traegt das Auftragsvolumen, ``/v2/entrygroups`` den Verbrauch; sie

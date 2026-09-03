@@ -9,9 +9,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from typing import Any
-
-    from .client import ClockodoClient
+    from .client import ClockodoClient, CustomerV3
 
 from umsatzprognose.domaene import Kunde
 
@@ -34,7 +32,7 @@ class KundenRepository:
         return abbilden(daten)
 
 
-def abbilden(daten: list[dict[str, Any]]) -> dict[int, Kunde]:
+def abbilden(daten: list[CustomerV3]) -> dict[int, Kunde]:
     """Eine ``/v3/customers``-Antwort als Kunden nach ID."""
     return {
         int(eintrag["id"]): Kunde(id=int(eintrag["id"]), name=_name(eintrag))
@@ -43,6 +41,6 @@ def abbilden(daten: list[dict[str, Any]]) -> dict[int, Kunde]:
     }
 
 
-def _name(eintrag: dict) -> str | None:
+def _name(eintrag: CustomerV3) -> str | None:
     name = eintrag.get("name")
     return str(name) if name else None

@@ -14,6 +14,11 @@ hier gefaechert und die Abbildung danach der Reihe nach.
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .client import EntryGroupV2
+
 from datetime import date
 
 from umsatzprognose.domaene.bestand import Bestand
@@ -130,7 +135,7 @@ class BestandRepository:
 
     async def _monatsgruppen(
         self, stichtag: date, *, horizont_monate: int, geladen: bool
-    ) -> list[dict]:
+    ) -> list[EntryGroupV2]:
         """Der siebte Abruf - oder nichts, wenn er abgeschaltet ist.
 
         Als Coroutine und nicht als ``if`` um den ``gleichzeitig``-Aufruf herum: sonst

@@ -64,7 +64,7 @@ und verwirft genau diese Information, deshalb :class:`ClockodoError`.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, NotRequired, TypedDict, cast
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
@@ -90,6 +90,112 @@ HISTORIE_VON = "2021-01-01T00:00:00Z"
 GRUPPIERUNG_PROJEKT = "projects_id"
 GRUPPIERUNG_PERSON = "users_id"
 GRUPPIERUNG_MONAT = "month"
+
+
+class BudgetV4(TypedDict):
+    """``budget``-Teilobjekt eines ``/v4/projects``-Eintrags, ``null`` moeglich.
+
+    ``interval`` ist ein Integer-Enum (0 wochenweise, 1 monatlich, 2 quartalsweise,
+    3 jaehrlich) - siehe :class:`~umsatzprognose.domaene.projekt.IntervallBudget`.
+    """
+
+    amount: float | None
+    monetary: NotRequired[bool]
+    interval: NotRequired[int | None]
+    from_subprojects: NotRequired[bool]
+    hard: NotRequired[bool]
+
+
+class ProjectV4(TypedDict):
+    """Ein Eintrag aus ``/v4/projects`` - nur die hier verwendeten Felder."""
+
+    id: int
+    customers_id: int | None
+    name: str | None
+    active: bool
+    completed: bool
+    budget: BudgetV4 | None
+    deadline: NotRequired[str | None]
+    automatic_completion: NotRequired[bool]
+
+
+class CustomerV3(TypedDict):
+    """Ein Eintrag aus ``/v3/customers``."""
+
+    id: int
+    name: str | None
+
+
+class UserV3(TypedDict):
+    """Ein Eintrag aus ``/v3/users``."""
+
+    id: int
+    name: str | None
+    active: bool
+
+
+class TargetHourV1(TypedDict):
+    """Eine Zeile aus dem unversionierten ``/targethours``, ``type == "weekly"``.
+
+    Die Wochentagsfelder sind hier als optional deklariert, weil nur dieser Typ
+    gedeutet wird (siehe Moduldocstring von :mod:`.mitarbeiter`) und ein anderer
+    ``type`` (z. B. ``"monthly"``) sie gar nicht traegt.
+    """
+
+    users_id: int
+    type: str
+    date_since: str
+    date_until: str | None
+    monday: NotRequired[float]
+    tuesday: NotRequired[float]
+    wednesday: NotRequired[float]
+    thursday: NotRequired[float]
+    friday: NotRequired[float]
+    saturday: NotRequired[float]
+    sunday: NotRequired[float]
+
+
+class AbsenceV4(TypedDict):
+    """Ein Eintrag aus ``/v4/absences``."""
+
+    users_id: int
+    date_since: str
+    date_until: str
+    type: int
+    status: int
+
+
+class NonbusinessDayV2(TypedDict):
+    """Ein Feiertag innerhalb ``UsersNonbusinessDayV2.days``."""
+
+    evaluated_date: str
+    half_day: bool
+    name: str | None
+
+
+class UsersNonbusinessDayV2(TypedDict):
+    """Ein Eintrag aus ``/v2/usersNonbusinessDays`` - die Feiertage einer Person."""
+
+    users_id: int
+    days: list[NonbusinessDayV2]
+
+
+class EntryGroupV2(TypedDict):
+    """Eine Gruppe aus ``/v2/entrygroups``, rekursiv ueber ``sub_groups``.
+
+    ``group`` ist trotz spec-deklariertem ``string`` teils eine Zahl (``group == 0``
+    fuer Buchungen ohne Projekt), ``revenue`` trotz deklariertem ``integer`` ein
+    Float - siehe die Modul-Docstrings von :mod:`.projekte` und
+    :mod:`.verbrauchsverlauf` fuer die fachlichen Konsequenzen.
+    """
+
+    group: str | int
+    name: str
+    duration: int
+    revenue: float
+    grouped_by: str
+    hourly_rate: NotRequired[float | None]
+    sub_groups: NotRequired[list[EntryGroupV2]]
 
 
 def verbrauch_bis(stichtag: date | None = None) -> str:
@@ -207,26 +313,29 @@ class ClockodoClient:
             paging = payload.get("paging") or paging
         return alle, paging
 
-    async def projects(self) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    async def projects(self) -> tuple[list[ProjectV4], dict[str, Any]]:
         """Alle Projekte aus ``/v4/projects``, ueber alle Seiten."""
-        return await self.get_paged("/v4/projects")
+        daten, paging = await self.get_paged("/v4/projects")
+        return cast("list[ProjectV4]", daten), paging
 
-    async def customers(self) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    async def customers(self) -> tuple[list[CustomerV3], dict[str, Any]]:
         """Alle Kunden aus ``/v3/customers``, ueber alle Seiten."""
-        return await self.get_paged("/v3/customers")
+        daten, paging = await self.get_paged("/v3/customers")
+        return cast("list[CustomerV3]", daten), paging
 
-    async def users(self) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    async def users(self) -> tuple[list[UserV3], dict[str, Any]]:
         """Alle Personen aus ``/v3/users``, ueber alle Seiten."""
-        return await self.get_paged("/v3/users")
+        daten, paging = await self.get_paged("/v3/users")
+        return cast("list[UserV3]", daten), paging
 
-    async def targethours(self) -> list[dict[str, Any]]:
+    async def targethours(self) -> list[TargetHourV1]:
         """Sollarbeitszeiten aus dem unversionierten ``/targethours``.
 
         Envelope-Key ist ``targethours``, es gibt kein ``paging``. Die
         Version ist keine freie Wahl: ``/v2/targethours`` und ``/v3/targethours``
         antworten mit 404 ``RouteNotFound``.
         """
-        return (await self.get("/targethours"))["targethours"]
+        return cast("list[TargetHourV1]", (await self.get("/targethours"))["targethours"])
 
     async def entrygroups(
         self,
@@ -234,7 +343,7 @@ class ClockodoClient:
         *,
         time_since: str = HISTORIE_VON,
         time_until: str | None = None,
-    ) -> list[dict[str, Any]]:
+    ) -> list[EntryGroupV2]:
         """Aggregierte Eintraege aus ``/v2/entrygroups``.
 
         Args:
@@ -257,11 +366,11 @@ class ClockodoClient:
                 "grouping[]": list(grouping),
             },
         )
-        return payload["groups"]
+        return cast("list[EntryGroupV2]", payload["groups"])
 
     async def entrygroups_je_projekt_und_person(
         self, *, time_since: str = HISTORIE_VON, time_until: str | None = None
-    ) -> list[dict[str, Any]]:
+    ) -> list[EntryGroupV2]:
         """Verbrauch je Projekt, darunter die Anteile je Person.
 
         Ein Abruf statt zweier: die Projektsummen dieser Antwort sind mit denen der
@@ -276,7 +385,7 @@ class ClockodoClient:
 
     async def entrygroups_je_projekt_und_monat(
         self, *, time_since: str = HISTORIE_VON, time_until: str | None = None
-    ) -> list[dict[str, Any]]:
+    ) -> list[EntryGroupV2]:
         """Verbrauch je Projekt, darunter die Monate.
 
         Achutng: ``group`` der Untergruppe ist der Monat als String
@@ -290,22 +399,20 @@ class ClockodoClient:
             time_until=time_until,
         )
 
-    async def entrygroups_je_monat(
-        self, *, time_since: str, time_until: str
-    ) -> list[dict[str, Any]]:
+    async def entrygroups_je_monat(self, *, time_since: str, time_until: str) -> list[EntryGroupV2]:
         """Umsatz je Kalendermonat - alle Buchungen, auch die ohne Projektbezug."""
         return await self.entrygroups(
             [GRUPPIERUNG_MONAT], time_since=time_since, time_until=time_until
         )
 
-    async def absences(self, year: int) -> list[dict[str, Any]]:
+    async def absences(self, year: int) -> list[AbsenceV4]:
         """Abwesenheiten eines Jahres aus ``/v4/absences``."""
         payload = await self.get("/v4/absences", {"filter[year]": year})
-        return payload["data"]
+        return cast("list[AbsenceV4]", payload["data"])
 
     async def users_nonbusiness_days(
         self, year: int
-    ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    ) -> tuple[list[UsersNonbusinessDayV2], dict[str, Any]]:
         """Feiertage eines Jahres, fertig je Person zugeordnet.
 
         ``/v2/usersNonbusinessDays`` erspart die eigene Zuordnung ueber die
@@ -322,4 +429,5 @@ class ClockodoClient:
             Je Seite zusammengefuegt: ``{"users_id": …, "days": [...]}`` - die
             ``days`` je Eintrag sind die Feiertage dieser Person in diesem Jahr.
         """
-        return await self.get_paged("/v2/usersNonbusinessDays", {"year": year})
+        daten, paging = await self.get_paged("/v2/usersNonbusinessDays", {"year": year})
+        return cast("list[UsersNonbusinessDayV2]", daten), paging

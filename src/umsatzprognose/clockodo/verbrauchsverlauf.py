@@ -40,11 +40,10 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping
-    from typing import Any
 
     from umsatzprognose.domaene import Projekt
 
-    from .client import ClockodoClient
+    from .client import ClockodoClient, EntryGroupV2
 
 from datetime import date
 
@@ -107,7 +106,7 @@ class VerbrauchsverlaufRepository:
 
     @staticmethod
     def abbilden(
-        gruppen: list[dict[str, Any]], projekte: Iterable[Projekt]
+        gruppen: list[EntryGroupV2], projekte: Iterable[Projekt]
     ) -> tuple[Verbrauchsverlauf, ...]:
         """Die Antwort auf die Projekte verteilen - groesster Verbrauch zuerst.
 
@@ -117,7 +116,7 @@ class VerbrauchsverlaufRepository:
         aus, das nichts abgerufen hat.
         """
         nach_id: Mapping[int, Projekt] = {projekt.id: projekt for projekt in projekte}
-        untergruppen: dict[int, list[dict[str, Any]]] = {}
+        untergruppen: dict[int, list[EntryGroupV2]] = {}
         for gruppe in gruppen:
             projects_id = int(gruppe["group"])
             # group == 0 sind Buchungen auf einen Kunden ohne Projekt: kein Budget, kein
@@ -142,7 +141,7 @@ async def rohdaten(
     stichtag: date | None = None,
     horizont_monate: int = 3,
     time_since: str = HISTORIE_VON,
-) -> list[dict[str, Any]]:
+) -> list[EntryGroupV2]:
     """Nur die Antwort - damit der Abruf neben den anderen laufen kann.
 
     Getrennt von :meth:`VerbrauchsverlaufRepository.abbilden`, weil die Verlaeufe die

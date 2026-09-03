@@ -25,9 +25,8 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from datetime import date
-    from typing import Any
 
-    from .client import ClockodoClient
+    from .client import ClockodoClient, EntryGroupV2
 
 from umsatzprognose.domaene import Monatsumsatz, Umsatzhistorie
 
@@ -66,7 +65,7 @@ class UmsatzRepository:
         )
 
 
-def monatsumsatz(gruppe: dict[str, Any]) -> Monatsumsatz:
+def monatsumsatz(gruppe: EntryGroupV2) -> Monatsumsatz:
     """Eine Monatsgruppe als :class:`Monatsumsatz`."""
     schluessel = str(gruppe["group"])
     return Monatsumsatz(

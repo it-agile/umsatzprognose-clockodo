@@ -33,13 +33,19 @@ dagegen ein einfaches ``year``.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
-    from typing import Any
 
-    from .client import ClockodoClient
+    from .client import (
+        AbsenceV4,
+        ClockodoClient,
+        NonbusinessDayV2,
+        TargetHourV1,
+        UsersNonbusinessDayV2,
+        UserV3,
+    )
 
 from collections import defaultdict
 from datetime import date
@@ -100,10 +106,10 @@ class MitarbeiterRepository:
 
     def abbilden(
         self,
-        personen: list[dict[str, Any]],
-        sollzeiten: list[dict[str, Any]],
-        abwesenheiten: list[dict[str, Any]] | None = None,
-        feiertage: list[dict[str, Any]] | None = None,
+        personen: list[UserV3],
+        sollzeiten: list[TargetHourV1],
+        abwesenheiten: list[AbsenceV4] | None = None,
+        feiertage: list[UsersNonbusinessDayV2] | None = None,
     ) -> dict[int, Mitarbeiter]:
         """Alle vier Antworten zu Personen nach ID - setzt :attr:`hinweise`."""
         if abwesenheiten is None:
@@ -127,9 +133,7 @@ class MitarbeiterRepository:
             if person.get("id") is not None
         }
 
-    def _arbeitszeiten(
-        self, sollzeiten: list[dict[str, Any]]
-    ) -> dict[int, list[Wochenarbeitszeit]]:
+    def _arbeitszeiten(self, sollzeiten: list[TargetHourV1]) -> dict[int, list[Wochenarbeitszeit]]:
         je_person: dict[int, list[Wochenarbeitszeit]] = defaultdict(list)
         andere_typen: list[int] = []
 
@@ -138,10 +142,13 @@ class MitarbeiterRepository:
             if eintrag.get("type") != TYP_WOECHENTLICH:
                 andere_typen.append(users_id)
                 continue
+            # Wochentagsfelder sind ueber WOCHENTAG_FELDER dynamisch benannt - fuer
+            # TypedDict nur ueber einen Cast auf ein generisches Mapping erreichbar.
+            tage = cast("dict[str, float]", eintrag)
             je_person[users_id].append(
                 Wochenarbeitszeit(
                     stunden_je_wochentag=tuple(
-                        float(eintrag.get(tag) or 0.0) for tag in WOCHENTAG_FELDER
+                        float(tage.get(tag) or 0.0) for tag in WOCHENTAG_FELDER
                     ),
                     gueltig_ab=date.fromisoformat(eintrag["date_since"]),
                     gueltig_bis=_datum(eintrag.get("date_until")),
@@ -158,7 +165,7 @@ class MitarbeiterRepository:
             )
         return je_person
 
-    def _abwesenheiten(self, abwesenheiten: list[dict[str, Any]]) -> dict[int, list[Abwesenheit]]:
+    def _abwesenheiten(self, abwesenheiten: list[AbsenceV4]) -> dict[int, list[Abwesenheit]]:
         """Rohe Abwesenheiten zu Personen - ungefiltert nach Typ und Status."""
         je_person: dict[int, list[Abwesenheit]] = defaultdict(list)
         for eintrag in abwesenheiten:
@@ -174,7 +181,7 @@ class MitarbeiterRepository:
             )
         return je_person
 
-    def _feiertage(self, eintraege: list[dict[str, Any]]) -> dict[int, list[Feiertag]]:
+    def _feiertage(self, eintraege: list[UsersNonbusinessDayV2]) -> dict[int, list[Feiertag]]:
         """Feiertage zu Personen - je Eintrag schon eine Person mit ihren Tagen.
 
         Ein Eintrag je Person und Jahr (``users_id`` und ``days``); ueber mehrere Jahre
@@ -183,7 +190,8 @@ class MitarbeiterRepository:
         je_person: dict[int, list[Feiertag]] = defaultdict(list)
         for eintrag in eintraege:
             users_id = int(eintrag["users_id"])
-            for tag in eintrag.get("days") or ():
+            tage: list[NonbusinessDayV2] = eintrag.get("days") or []
+            for tag in tage:
                 je_person[users_id].append(
                     Feiertag(
                         datum=date.fromisoformat(tag["evaluated_date"]),
