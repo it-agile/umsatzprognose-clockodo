@@ -71,6 +71,28 @@ uvx tox -e jupyter             # Notebooks starten (wie uv run jupyter lab, mit 
 uvx tox -r -e jupyter -- execute notebooks/01_dashboard.ipynb --output tmp.ipynb # Notebook ausführen und Output in tmp.ipynb schreiben
 ```
 
+## Automatisierung: wöchentlicher Slack-Bericht
+
+`.github/workflows/wochenbericht.yml` postet montags die Dashboard-Diagramme
+(`scripts/wochenbericht.py`, Bilder gerendert über `kaleido`) in einen Slack-Kanal,
+über einen Slack-Bot (`chat:write`, `files:write`). Die Zeit im Workflow steht in UTC.
+
+Als Repository-Secrets (Settings → Secrets and variables → Actions) hinterlegen:
+
+- `CLOCKODO_API_USER`, `CLOCKODO_API_KEY`, `CLOCKODO_APP_NAME`, `CLOCKODO_APP_EMAIL` –
+  wie in `.env`.
+- `GOOGLE_OAUTH_CLIENT_JSON`, `KOSTEN_SHEET_IDS` – wie in `.env`.
+- `GOOGLE_OAUTH_TOKEN_JSON` – der Inhalt der lokal einmalig erzeugten
+  `.google_oauth_token.json` (siehe Setup). Ohne sie versucht der Runner einen
+  interaktiven Browser-Login, der dort nicht funktioniert; mit ihr erneuert der
+  bestehende Code das Token automatisch. Voraussetzung: Der OAuth-Consent-Screen in
+  der Google-Cloud-Konsole steht auf „In production“, nicht „Testing“ – sonst läuft
+  das Refresh-Token nach 7 Tagen ab.
+- `SLACK_BOT_TOKEN`, `SLACK_CHANNEL_ID` – Token eines Slack-Bots mit `chat:write` und
+  `files:write` in dem Kanal, ID über „Kanalname → Details → Kanal-ID“.
+
+Manuell auslösen: Actions → „Wochenbericht nach Slack“ → „Run workflow“.
+
 ## Aufbau
 
 Vier Pakete, `clockodo/` und `schulungen/` als zwei gleichrangige Quellschichten:

@@ -2238,6 +2238,15 @@ wheels = [
 ]
 
 [[package]]
+name = "slack-sdk"
+version = "3.44.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/9e/37/348cf58274caaa15f6fbe9c727977af6fda76b8e194105b41200f1d0c35f/slack_sdk-3.44.0.tar.gz", hash = "sha256:e872acaf4e76ef22e9544af390b6e3896ce7198ad6bb26b3ce2630f3422f2ca3", size = 256646, upload-time = "2026-08-27T07:08:50.227Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/a7/45/b21535155335b2112e24887b81b8d0124abf1ac1b362d70db6ec906cdfb6/slack_sdk-3.44.0-py2.py3-none-any.whl", hash = "sha256:3d0b5997acafacece907299fb387852233c3c0635762de1c2343ad6ebff2f911", size = 319883, upload-time = "2026-08-27T07:08:48.511Z" },
+]
+
+[[package]]
 name = "soupsieve"
 version = "2.9.2"
 source = { registry = "https://pypi.org/simple" }
@@ -2349,6 +2358,10 @@ dependencies = [
 ]
 
 [package.optional-dependencies]
+bericht = [
+    { name = "kaleido" },
+    { name = "slack-sdk" },
+]
 coverage = [
     { name = "coverage" },
     { name = "pytest" },
@@ -2376,6 +2389,7 @@ requires-dist = [
     { name = "httpx", specifier = ">=0.28" },
     { name = "ipykernel", marker = "extra == 'notebook'", specifier = ">=6.29" },
     { name = "jupyterlab", marker = "extra == 'notebook'", specifier = ">=4.2" },
+    { name = "kaleido", marker = "extra == 'bericht'", specifier = ">=0.2" },
     { name = "kaleido", marker = "extra == 'dev'", specifier = ">=0.2" },
     { name = "nbformat", marker = "extra == 'notebook'", specifier = ">=4.2" },
     { name = "numpy", marker = "python_full_version < '3.14'", specifier = ">=2.0,<2.3" },
@@ -2388,8 +2402,9 @@ requires-dist = [
     { name = "python-dotenv", specifier = ">=1.0" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.8" },
     { name = "ruff", marker = "extra == 'ruff'", specifier = ">=0.8" },
+    { name = "slack-sdk", marker = "extra == 'bericht'", specifier = ">=3.27" },
 ]
-provides-extras = ["notebook", "dev", "ruff", "coverage"]
+provides-extras = ["notebook", "dev", "bericht", "ruff", "coverage"]
 
 [[package]]
 name = "uri-template"
