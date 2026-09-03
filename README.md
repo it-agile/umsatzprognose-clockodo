@@ -54,7 +54,7 @@ dashboard.umsatzverlauf()
 Zielwerkzeug ist laut Spezifikation ein Notebook in Google Colab:
 
 - `notebooks/01_dashboard.ipynb` – für Fachexperten, ein Aufruf je Zelle.
-- `notebooks/02_technik_restvolumen.ipynb` – für die Entwicklung.
+- `notebooks/02_technik_pruefung.ipynb` – für die Entwicklung.
 
 Beide beginnen mit einer nur in Colab wirksamen Installationszelle, die das Paket direkt
 aus GitHub installiert. Die Zugangsdaten liegen dort als Colab-Secrets, lokal in `.env`.

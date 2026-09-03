@@ -134,9 +134,9 @@ Paket, nicht ins Notebook.
 
 - `notebooks/01_dashboard.ipynb` – für Fachexperten. Je Zelle ein Aufruf auf
   `Dashboard`, Fachsprache, keine Endpunkte, keine IDs, keine technischen Marker.
-- `notebooks/02_technik_restvolumen.ipynb` – für die Entwicklung. Prüfsummen,
-  Aufteilungsschlüssel, Sollarbeitszeiten und offene fachliche Fragen
-  (`ENTSCHEIDEN`-Abschnitte).
+- `notebooks/02_technik_pruefung.ipynb` – für die Entwicklung. Prüfsummen,
+  Aufteilungsschlüssel, Sollarbeitszeiten, Kapazität je Person und je Projekt und
+  offene fachliche Fragen (`ENTSCHEIDEN`-Abschnitte).
 
 ## Keine gelesenen Werte im Repository
 
