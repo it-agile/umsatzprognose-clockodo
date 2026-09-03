@@ -36,11 +36,12 @@ if TYPE_CHECKING:
 
     from umsatzprognose.domaene import Mitarbeiter
 
-    from .client import ClockodoClient, EntryGroupV2
+    from .client import EntryGroupV2
 
 from umsatzprognose.domaene import Auslastungsmonat
 
-from .client import verbrauch_bis
+from .client import ClockodoClient, verbrauch_bis
+from .config import ClockodoCredentials
 from .nebenlaeufig import gleichzeitig, synchron
 
 BILLABLE_ABRECHENBAR = 1
@@ -54,6 +55,11 @@ class AuslastungRepository:
 
     def __init__(self, client: ClockodoClient) -> None:
         self._client = client
+
+    @classmethod
+    def mit_automatischen_zugangsdaten(cls) -> AuslastungRepository:
+        """Zugangsdaten aus Colab-Secrets oder ``.env``, je nach Umgebung."""
+        return cls(ClockodoClient(ClockodoCredentials.automatisch()))
 
     def laden(
         self, mitarbeiter: Mapping[int, Mitarbeiter], *, stichtag: date, monate: int = 12

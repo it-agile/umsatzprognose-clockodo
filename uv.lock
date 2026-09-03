@@ -836,6 +836,15 @@ wheels = [
 ]
 
 [[package]]
+name = "humanize"
+version = "4.16.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/0a/ea/13a1ef3c12d12662905801495283530251918b70d62d368f1d2e0272c70d/humanize-4.16.0.tar.gz", hash = "sha256:7dc2244a2f84a4bfb1d36c37bac80cd78e35cdc5c119206d87b018e1445f3a3f", size = 89515 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/b0/aa/0b7365d30fed43e7a3449aba1fe20a0a7174d9cf13e282af4e69ac825441/humanize-4.16.0-py3-none-any.whl", hash = "sha256:353eb2f34c09d098b2880eee8bef21832eae6d174f48c5762fff7e5fcb74d01d", size = 137209 },
+]
+
+[[package]]
 name = "idna"
 version = "3.19"
 source = { registry = "https://pypi.org/simple" }
@@ -2677,6 +2686,7 @@ dependencies = [
     { name = "google-auth" },
     { name = "google-auth-oauthlib" },
     { name = "httpx" },
+    { name = "humanize" },
     { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.14'" },
     { name = "numpy", version = "2.5.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.14'" },
     { name = "pandas", version = "2.3.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.14'" },
@@ -2721,6 +2731,7 @@ requires-dist = [
     { name = "google-auth", specifier = ">=2.30" },
     { name = "google-auth-oauthlib", specifier = ">=1.2" },
     { name = "httpx", specifier = ">=0.28" },
+    { name = "humanize", specifier = ">=4.11" },
     { name = "ipykernel", marker = "extra == 'notebook'", specifier = ">=6.29" },
     { name = "jupyterlab", marker = "extra == 'notebook'", specifier = ">=4.2" },
     { name = "kaleido", marker = "extra == 'bericht'", specifier = ">=0.2" },

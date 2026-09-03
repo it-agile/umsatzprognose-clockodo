@@ -7,12 +7,12 @@ und dass gleichnamige Projekte nicht zu einem Balken verschmelzen.
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, timedelta
 
 import numpy as np
 import pytest
 
-from umsatzprognose.darstellung import Dashboard, diagramme, tabellen
+from umsatzprognose.darstellung import Dashboard, Ladedauern, diagramme, tabellen
 from umsatzprognose.darstellung.gestaltung import (
     ERGEBNIS_NEGATIV,
     ERGEBNIS_POSITIV,
@@ -776,26 +776,83 @@ def test_dashboard_gewinn_verlust_kumuliert_ohne_simulation_bleibt_bei_der_histo
     assert len(fig.data) == 1  # keine zweite (Prognose-)Spur ohne dashboard.simuliere()
 
 
-def test_dashboard_auslastung_je_mitarbeiter_filtert_den_gewuenschten_monat():
+def test_dashboard_auslastung_je_mitarbeiter_schliesst_laufenden_monat_aus():
+    vollzeit = Wochenarbeitszeit(
+        stunden_je_wochentag=(8.0, 8.0, 8.0, 8.0, 8.0, 0.0, 0.0), gueltig_ab=date(2020, 1, 1)
+    )
+    anna = Mitarbeiter(id=1, name="Anna", aktiv=True, arbeitszeiten=(vollzeit,))
+    bestand = Bestand(stichtag=STICHTAG, mitarbeiter=(anna,))  # STICHTAG: 24.08.2026
+    auslastung = (
+        Auslastungsmonat(mitarbeiter=anna, jahr=2026, monat=7, abrechenbare_stunden=80.0),
+        # August ist der laufende (Stichtags-)Monat und faellt heraus, egal wie hoch.
+        Auslastungsmonat(mitarbeiter=anna, jahr=2026, monat=8, abrechenbare_stunden=999.0),
+    )
+    dashboard = Dashboard(bestand, SCHULUNGSPLAN, KOSTENPLAN, auslastung)
+
+    fig = dashboard.auslastung_je_mitarbeiter()
+
+    verfuegbar_juli = anna.verfuegbare_kapazitaet(2026, 7)
+    assert fig.data[0].x[0] == pytest.approx(80.0 / verfuegbar_juli)
+
+
+def test_dashboard_auslastung_je_mitarbeiter_summiert_abgeschlossene_monate():
     vollzeit = Wochenarbeitszeit(
         stunden_je_wochentag=(8.0, 8.0, 8.0, 8.0, 8.0, 0.0, 0.0), gueltig_ab=date(2020, 1, 1)
     )
     anna = Mitarbeiter(id=1, name="Anna", aktiv=True, arbeitszeiten=(vollzeit,))
     bestand = Bestand(stichtag=STICHTAG, mitarbeiter=(anna,))
     auslastung = (
-        Auslastungsmonat(mitarbeiter=anna, jahr=2026, monat=8, abrechenbare_stunden=80.0),
-        Auslastungsmonat(mitarbeiter=anna, jahr=2026, monat=9, abrechenbare_stunden=999.0),
+        Auslastungsmonat(mitarbeiter=anna, jahr=2026, monat=6, abrechenbare_stunden=100.0),
+        Auslastungsmonat(mitarbeiter=anna, jahr=2026, monat=7, abrechenbare_stunden=80.0),
+        Auslastungsmonat(mitarbeiter=anna, jahr=2026, monat=8, abrechenbare_stunden=999.0),
     )
     dashboard = Dashboard(bestand, SCHULUNGSPLAN, KOSTENPLAN, auslastung)
 
-    fig = dashboard.auslastung_je_mitarbeiter()  # Default: Stichtagsmonat (August)
-    assert len(fig.data[0].x) == 1
+    fig = dashboard.auslastung_je_mitarbeiter()
+
+    verfuegbar = anna.verfuegbare_kapazitaet(2026, 6) + anna.verfuegbare_kapazitaet(2026, 7)
+    assert fig.data[0].x[0] == pytest.approx((100.0 + 80.0) / verfuegbar)
 
 
 def test_dashboard_ohne_auslastung_bleibt_leer():
     dashboard = Dashboard(BESTAND, SCHULUNGSPLAN, KOSTENPLAN)
     assert dashboard.auslastung == ()
     assert list(dashboard.auslastung_je_mitarbeiter().data[0].x) == []
+
+
+def test_dashboard_ladebericht_zeigt_stand_und_umfang_ohne_ladedauern():
+    dashboard = Dashboard(BESTAND, SCHULUNGSPLAN, KOSTENPLAN)
+    bericht = dashboard.ladebericht()
+    assert "24.08.2026" in bericht
+    assert "0 Schulung(en) geladen" in bericht
+    assert "0 Monat(e) mit Kostenprognose geladen" in bericht
+    assert "0 Auslastungsmonat(e) geladen" in bericht
+    assert bericht.count("unbekannter Dauer") == 4
+
+
+def test_dashboard_ladebericht_zeigt_gemessene_ladedauer_je_repository():
+    ladedauern = Ladedauern(
+        bestand=timedelta(seconds=95),
+        schulungsplan=timedelta(seconds=2),
+        kostenplan=timedelta(seconds=1),
+        auslastung=timedelta(seconds=3),
+    )
+    dashboard = Dashboard(BESTAND, SCHULUNGSPLAN, KOSTENPLAN, ladedauern=ladedauern)
+    bericht = dashboard.ladebericht()
+    assert "Bestand geladen (in 2 Minuten)" in bericht
+    assert "Schulung(en) geladen (in 2 Sekunden)" in bericht
+    assert "Kostenprognose geladen (in eine Sekunde)" in bericht
+    assert "Auslastungsmonat(e) geladen (in 3 Sekunden)" in bericht
+
+
+def test_dashboard_bestandsbericht_zeigt_zahlen_und_ladezeit_je_repository():
+    ladedauern = Ladedauern(kostenplan=timedelta(seconds=1), auslastung=timedelta(seconds=3))
+    dashboard = Dashboard(BESTAND, SCHULUNGSPLAN, KOSTENPLAN, ladedauern=ladedauern)
+    bericht = dashboard.bestandsbericht()
+    assert f"Projekte gesamt:    {len(PROJEKTE)}  (Bestand geladen in unbekannter Dauer)" in bericht
+    assert "Kunden mit Projekt: 1" in bericht
+    assert "Kostenmonate:       0  (Kostenplan geladen in eine Sekunde)" in bericht
+    assert "Auslastungsmonate:  0  (Auslastung geladen in 3 Sekunden)" in bericht
 
 
 def test_dashboard_kapazitaet_je_projekt_ohne_simulation_ist_leer():

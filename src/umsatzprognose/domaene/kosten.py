@@ -63,7 +63,7 @@ class Kostenposten:
     monat: int
     pauschale: float
     allgemeinkosten: float = 0.0
-    erfassung: Kostenerfassung = Geschaetzt()
+    erfassung: Kostenerfassung = field(default_factory=Geschaetzt)
 
     @property
     def kosten(self) -> float:

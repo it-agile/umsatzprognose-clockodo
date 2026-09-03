@@ -6,6 +6,6 @@ Haengt von der Domaene ab, nie umgekehrt. Hier - und nur hier - stehen plotly
 Bibliotheksabhaengigkeit und ohne Netzzugriff pruefbar.
 """
 
-from umsatzprognose.darstellung.dashboard import Dashboard
+from umsatzprognose.darstellung.dashboard import Dashboard, Ladedauern
 
-__all__ = ["Dashboard"]
+__all__ = ["Dashboard", "Ladedauern"]

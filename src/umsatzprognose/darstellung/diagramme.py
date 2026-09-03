@@ -17,6 +17,7 @@ if TYPE_CHECKING:
 
     from umsatzprognose.domaene import (
         Auslastungsmonat,
+        Auslastungssumme,
         Kostenplan,
         Mitarbeiter,
         Monatsumsatz,
@@ -713,12 +714,16 @@ def kapazitaet_je_mitarbeiter(
 
 
 def auslastung_je_mitarbeiter(
-    auslastungen: Sequence[Auslastungsmonat], *, top: int = 15, hoehe: int | None = None
+    auslastungen: Sequence[Auslastungsmonat] | Sequence[Auslastungssumme],
+    *,
+    top: int = 15,
+    hoehe: int | None = None,
 ) -> go.Figure:
     """Anteil abrechenbarer Stunden an der verfuegbaren Kapazitaet, liegende Balken in Prozent.
 
-    Personen ohne verfuegbare Kapazitaet in diesem Monat (``quote is None``, siehe
-    :attr:`~umsatzprognose.domaene.auslastung.Auslastungsmonat.quote`) werden
+    Personen ohne verfuegbare Kapazitaet im dargestellten Zeitraum (``quote is None``,
+    siehe :attr:`~umsatzprognose.domaene.auslastung.Auslastungsmonat.quote` bzw.
+    :attr:`~umsatzprognose.domaene.auslastung.Auslastungssumme.quote`) werden
     weggelassen, statt sie mit einer irrefuehrenden 0%-Auslastung zu zeigen.
     """
     mit_quote = [(a, a.quote) for a in auslastungen if a.quote is not None]

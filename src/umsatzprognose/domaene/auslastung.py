@@ -14,6 +14,8 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from collections.abc import Iterable
+
     from .mitarbeiter import Mitarbeiter
 
 from dataclasses import dataclass
@@ -41,3 +43,49 @@ class Auslastungsmonat:
         """
         verfuegbar = self.verfuegbare_stunden
         return None if verfuegbar <= 0 else self.abrechenbare_stunden / verfuegbar
+
+
+@dataclass(frozen=True)
+class Auslastungssumme:
+    """Abrechenbare und verfuegbare Stunden einer Person, aufsummiert ueber mehrere Monate.
+
+    Der einzelne Kalendermonat einer :class:`Auslastungsmonat`-Reihe ist fuer einen
+    verlaesslichen Blick auf die Auslastung zu kurz - der laufende Monat etwa ist immer
+    unvollstaendig gebucht. :meth:`je_mitarbeiter` fasst deshalb ein ganzes Fenster
+    abgeschlossener Monate je Person zu einer Gesamtquote zusammen.
+    """
+
+    mitarbeiter: Mitarbeiter
+    abrechenbare_stunden: float
+    verfuegbare_stunden: float
+
+    @property
+    def quote(self) -> float | None:
+        """Anteil abrechenbarer an verfuegbaren Stunden ueber den gesamten Zeitraum.
+
+        ``None`` ohne verfuegbare Kapazitaet im Zeitraum, statt einer Division durch 0.
+        """
+        return (
+            None
+            if self.verfuegbare_stunden <= 0
+            else self.abrechenbare_stunden / self.verfuegbare_stunden
+        )
+
+    @staticmethod
+    def je_mitarbeiter(auslastungen: Iterable[Auslastungsmonat]) -> tuple[Auslastungssumme, ...]:
+        """Fasst beliebig viele Monate je Person zu einer Gesamtquote zusammen.
+
+        Reihenfolge und Anzahl der Monate je Person sind egal - typischerweise die
+        abgeschlossenen Monate eines Beobachtungsfensters, ohne den laufenden Monat.
+        """
+        gruppen: dict[int, list[Auslastungsmonat]] = {}
+        for eintrag in auslastungen:
+            gruppen.setdefault(eintrag.mitarbeiter.id, []).append(eintrag)
+        return tuple(
+            Auslastungssumme(
+                mitarbeiter=eintraege[0].mitarbeiter,
+                abrechenbare_stunden=sum(e.abrechenbare_stunden for e in eintraege),
+                verfuegbare_stunden=sum(e.verfuegbare_stunden for e in eintraege),
+            )
+            for eintraege in gruppen.values()
+        )
