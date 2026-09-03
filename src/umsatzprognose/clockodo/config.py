@@ -100,7 +100,7 @@ def _umgebungsvariable(name: str) -> str:
 
 def _colab_secret(name: str) -> str:
     """Ein Colab-Secret lesen und im Fehlerfall sagen, was zu tun ist."""
-    from google.colab import userdata  # type: ignore[import-not-found]
+    from google.colab import userdata
 
     try:
         value = userdata.get(name)

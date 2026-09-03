@@ -9,15 +9,10 @@ gelesenen Zeilen auf Fachobjekte abgebildet werden, entscheidet jeder Aufrufer s
 """
 
 from umsatzprognose.google_sheets.client import GoogleSheetsClient
-from umsatzprognose.google_sheets.config import (
-    GoogleSheetsConfig,
-    MissingCredentialsError,
-    in_colab,
-)
+from umsatzprognose.google_sheets.config import GoogleSheetsConfig, MissingCredentialsError
 
 __all__ = [
     "GoogleSheetsClient",
     "GoogleSheetsConfig",
     "MissingCredentialsError",
-    "in_colab",
 ]

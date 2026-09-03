@@ -29,7 +29,9 @@ if TYPE_CHECKING:
 
 from googleapiclient.discovery import build
 
-from .config import OAUTH_CLIENT_VAR, MissingCredentialsError, in_colab
+from umsatzprognose.util import in_colab
+
+from .config import OAUTH_CLIENT_VAR, MissingCredentialsError
 
 SCOPES = ("https://www.googleapis.com/auth/spreadsheets.readonly",)
 TOKEN_PFAD = Path(".google_oauth_token.json")
@@ -74,7 +76,7 @@ def _colab_credentials() -> CredentialsBase:
     import os
 
     import google.auth
-    from google.colab import auth  # type: ignore[import-not-found]
+    from google.colab import auth
 
     os.environ["USE_AUTH_EPHEM"] = "0"
     auth.authenticate_user()
