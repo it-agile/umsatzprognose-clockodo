@@ -66,7 +66,7 @@ darstellung  ──►  domaene  ◄──  clockodo
 - `src/umsatzprognose/google_sheets/` – **der gemeinsame Google-Sheets-Zugriff, den
   `schulungen/` und `kosten/` beide nutzen.** `config.py` (`GoogleSheetsConfig`,
   dieselben benannten Konstruktoren wie bei `ClockodoCredentials`, liest u. a.
-  `TRAINING_SHEET_ID`), `client.py` (`GoogleSheetsClient`: Google-Sheets-API über
+  `KOSTEN_SHEET_IDS`), `client.py` (`GoogleSheetsClient`: Google-Sheets-API über
   OAuth-Client-ID statt Service-Account, synchron, `werte()` nimmt Spreadsheet-ID und
   Zellbereich entgegen – kennt selbst keinen bestimmten Reiter). Kennt weder
   `schulungen/` noch `kosten/`.
@@ -326,14 +326,11 @@ Zugriff liegt in `google_sheets/`, gemeinsam genutzt von `schulungen/` und `kost
 (siehe Aufbau) – **welcher Reiter/Zellbereich gelesen wird, weiß nur der jeweilige
 Aufrufer**, nicht `google_sheets.client.GoogleSheetsClient`.
 
-`TRAINING_SHEET_ID` (JSON-Objekt Jahr → Spreadsheet-ID) wird in beiden Umgebungen und
+`KOSTEN_SHEET_IDS` (JSON-Objekt Jahr → Spreadsheet-ID) wird in beiden Umgebungen und
 von beiden Bausteinen gebraucht, gelesen über `google_sheets.config.GoogleSheetsConfig`
 – dieselben drei benannten Konstruktoren wie bei `ClockodoCredentials`, aber ohne
 Abhängigkeit zu `clockodo/` (bewusste kleine Dopplung von
-`in_colab()`/`MissingCredentialsError`). Der Name ist historisch (erste Nutzung war
-Schulungsanmeldungen) und bleibt bewusst unverändert – dieselbe Datei je Jahr trägt
-inzwischen auch das Kosten-Tabellenblatt, ein anderer Name wäre nur
-Migrationsaufwand. Der Zugriff läuft über `google-api-python-client`, synchron und ohne
+`in_colab()`/`MissingCredentialsError`). Der Zugriff läuft über `google-api-python-client`, synchron und ohne
 `nebenlaeufig()` – bei ein bis zwei Dateien im Horizont lohnt sich eigene
 Nebenläufigkeit nicht.
 
@@ -353,7 +350,7 @@ Schulungsanmeldungen. `Gesamtkosten` wird mit derselben `euro_parsen()` geparst.
 den Prognosehorizont ab, sondern auch die bereits geladene Umsatzhistorie (Parameter
 `historie_monate`) – siehe Moduldocstring von `domaene.kosten`.
 
-Ein für ein Jahr fehlender Eintrag in `TRAINING_SHEET_ID` oder eine nicht lesbare Datei
+Ein für ein Jahr fehlender Eintrag in `KOSTEN_SHEET_IDS` oder eine nicht lesbare Datei
 führt **nicht** zu einem Fehler (anders als bei Clockodo), sondern zu einem `Hinweis` an
 `Schulungsplan.abbildungshinweise` bzw. `Kostenplan.abbildungshinweise` – Spec-Vorgabe
 (Abschnitt 6 der jeweiligen Spec).

@@ -55,5 +55,5 @@ def test_jahre_zu_dateien_wandelt_schluessel_in_int():
 
 
 def test_jahre_zu_dateien_lehnt_ungueltiges_json_ab():
-    with pytest.raises(MissingCredentialsError, match="TRAINING_SHEET_ID"):
+    with pytest.raises(MissingCredentialsError, match="KOSTEN_SHEET_IDS"):
         _jahre_zu_dateien("kein-json")

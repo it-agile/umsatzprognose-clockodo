@@ -101,7 +101,7 @@ def test_laden_meldet_nicht_konfiguriertes_jahr_als_hinweis() -> None:
 
     assert len(plan.abbildungshinweise) == 1
     assert "2026" in plan.abbildungshinweise[0].text
-    assert "TRAINING_SHEET_ID" in plan.abbildungshinweise[0].text
+    assert "KOSTEN_SHEET_IDS" in plan.abbildungshinweise[0].text
 
 
 def test_laden_meldet_lesefehler_als_hinweis_statt_absturz() -> None:

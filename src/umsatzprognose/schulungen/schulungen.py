@@ -100,7 +100,7 @@ class SchulungenRepository:
             spreadsheet_id = self._jahre_zu_dateien.get(jahr)
             if spreadsheet_id is None:
                 hinweise.append(
-                    Hinweis(f"Für {jahr} ist in TRAINING_SHEET_ID keine Schulungs-Datei hinterlegt")
+                    Hinweis(f"Für {jahr} ist in KOSTEN_SHEET_IDS keine Schulungs-Datei hinterlegt")
                 )
                 continue
             try:

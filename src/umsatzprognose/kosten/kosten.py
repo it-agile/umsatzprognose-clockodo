@@ -1,7 +1,7 @@
 """Abbildung der Google-Sheets-Antwort auf :class:`~umsatzprognose.domaene.kosten.Kostenplan`.
 
 Ein Tabellenblatt je Jahr in derselben jaehrlichen Datei wie die Schulungsanmeldungen
-(``TRAINING_SHEET_ID``, siehe :mod:`umsatzprognose.google_sheets.config`), aber ein
+(``KOSTEN_SHEET_IDS``, siehe :mod:`umsatzprognose.google_sheets.config`), aber ein
 anderer Reiter: ``"Kosten {jahr}"``, fester Zellbereich ``L3:R15`` (Zeile 3 Kopfzeile,
 Zeile 4-15 die zwoelf Monate des Jahres). Wie bei den Schulungsanmeldungen bestimmt die
 Kopfzeile die Spaltenzuordnung **namentlich**, robust gegenueber der Reihenfolge der
@@ -129,7 +129,7 @@ class KostenRepository:
             spreadsheet_id = self._jahre_zu_dateien.get(jahr)
             if spreadsheet_id is None:
                 hinweise.append(
-                    Hinweis(f"Für {jahr} ist in TRAINING_SHEET_ID keine Kosten-Datei hinterlegt")
+                    Hinweis(f"Für {jahr} ist in KOSTEN_SHEET_IDS keine Kosten-Datei hinterlegt")
                 )
                 continue
             try:

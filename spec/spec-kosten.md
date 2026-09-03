@@ -24,7 +24,7 @@ in einer externen Planungstabelle bereits fest.
 - **Kostenposten:** eine Zeile der Quelltabelle – die Gesamtkosten eines
   Kalendermonats.
 - **Quelle:** dieselbe jährliche Google-Sheets-Datei wie beim Baustein
-  Schulungsanmeldungen (`TRAINING_SHEET_ID`), aber ein anderes Tabellenblatt:
+  Schulungsanmeldungen (`KOSTEN_SHEET_IDS`), aber ein anderes Tabellenblatt:
   `Kosten {jahr}`.
 
 ## 4. Datenmodell aus dem Google Sheet
@@ -70,7 +70,7 @@ Umsatzhistorie als auch den Prognosehorizont ab (Parameter `historie_monate` bzw
 ### 5.3 Mehrere Quelldateien
 
 Wie bei den Schulungsanmeldungen (`spec-schulungsanmeldungen.md` Abschnitt 5.3): die
-Spreadsheet-ID kommt aus `TRAINING_SHEET_ID`, eine Datei je Jahr. Reichen die
+Spreadsheet-ID kommt aus `KOSTEN_SHEET_IDS`, eine Datei je Jahr. Reichen die
 benötigten Monate (Historie und/oder Prognosehorizont) über einen Jahreswechsel,
 werden die Dateien mehrerer Jahrgänge gelesen und ihre Kostenposten vor der
 Aggregation zusammengeführt.

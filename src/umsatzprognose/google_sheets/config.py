@@ -24,12 +24,11 @@ Anlage keine Service-Account-Keys aus, sondern eine OAuth-Client-ID
 
 Eine zweite Umgebungsvariable/ein Colab-Secret in beiden Umgebungen:
 
-``TRAINING_SHEET_ID``
+``KOSTEN_SHEET_IDS``
     Ein JSON-Objekt Jahr -> Spreadsheet-ID, z. B. ``{"2026": "…", "2027": "…"}`` - eine
-    Datei je Jahr. Der Name ist historisch (die erste Nutzung war die
-    Schulungsanmeldungen-Tabelle) und bleibt bewusst unveraendert, weil dieselbe Datei
-    inzwischen auch fuer die Kostenprognose verwendet wird - ein anderer Name waere nur
-    Migrationsaufwand ohne fachlichen Nutzen.
+    Datei je Jahr. Dieselbe Datei traegt sowohl das Tabellenblatt der
+    Schulungsanmeldungen als auch das der Kostenprognose (siehe
+    :mod:`umsatzprognose.schulungen` und :mod:`umsatzprognose.kosten`).
 """
 
 from __future__ import annotations
@@ -43,7 +42,7 @@ from dotenv import load_dotenv
 from umsatzprognose.util import in_colab
 
 OAUTH_CLIENT_VAR = "GOOGLE_OAUTH_CLIENT_JSON"
-SHEET_ID_VAR = "TRAINING_SHEET_ID"
+SHEET_ID_VAR = "KOSTEN_SHEET_IDS"
 
 
 class MissingCredentialsError(RuntimeError):

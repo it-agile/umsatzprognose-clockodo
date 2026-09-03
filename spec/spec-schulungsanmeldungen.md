@@ -71,7 +71,7 @@ Ist-Umsatz erfasst; sie hier zusätzlich einzubeziehen, würde Umsatz doppelt au
 
 ### 5.3 Mehrere Quelldateien
 
-Die Spreadsheet-ID ist **kein fester Wert im Code**, sondern wird aus Colab Secrets bzw. .env (TRAINING_SHEET_ID als dict zum Beispie: {2026: %SHEET_ID%, 2027: %SHEET_ID%}) gelesen
+Die Spreadsheet-ID ist **kein fester Wert im Code**, sondern wird aus Colab Secrets bzw. .env (KOSTEN_SHEET_IDS als dict zum Beispie: {2026: %SHEET_ID%, 2027: %SHEET_ID%}) gelesen
  – weil jedes Jahr eine neue Datei angelegt wird. Reicht der Prognosehorizont
 über einen Jahreswechsel (z. B. 6-Monats-Prognose im November), werden die entsprechenden Dateien
 mehrerer Jahrgänge übergeben; ihre Schulungstermine werden vor der Aggregation
