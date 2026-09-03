@@ -101,6 +101,8 @@ def test_einfacher_lauf_ohne_kapazitaetsdeckel():
         assert werte == [pytest.approx(4000.0)], niveau
     assert prognose.summe() == {niveau: pytest.approx(4000.0) for niveau in prognose.summe()}
     assert prognose.kapazitaet_limitierend_anteil() == 0.0
+    # 4000 Euro bei 50 Euro/h effektivem Satz sind 80 gelieferte Stunden.
+    assert prognose.kapazitaet_je_projekt() == {1: pytest.approx(80.0)}
 
 
 def test_kapazitaetsdeckel_kuerzt_anteilig_ueber_alle_projekte_einer_person():
@@ -141,6 +143,11 @@ def test_kapazitaetsdeckel_kuerzt_anteilig_ueber_alle_projekte_einer_person():
     for werte in prognose.monatswerte().values():
         assert werte == [pytest.approx(erwarteter_umsatz)]
     assert prognose.kapazitaet_limitierend_anteil() == 1.0
+    # Beide Projekte wollen gleich viel, der Deckel kuerzt sie deshalb gleich stark -
+    # zusammen genau Annas verfuegbare Kapazitaet, je zur Haelfte.
+    kapazitaet_je_projekt = prognose.kapazitaet_je_projekt()
+    assert kapazitaet_je_projekt[1] == pytest.approx(kapazitaet_je_projekt[2])
+    assert kapazitaet_je_projekt[1] + kapazitaet_je_projekt[2] == pytest.approx(kapazitaet)
 
 
 def test_projekt_ohne_stundensatz_verbraucht_keine_kapazitaet():
@@ -165,6 +172,9 @@ def test_projekt_ohne_stundensatz_verbraucht_keine_kapazitaet():
     for werte in prognose.monatswerte().values():
         assert werte == [pytest.approx(2000.0)]
     assert prognose.kapazitaet_limitierend_anteil() == 0.0
+    # Ohne ableitbaren Stundensatz kein Stundenbedarf - die Kapazitaetsverteilung
+    # zeigt fuer dieses Projekt 0, obwohl es Umsatz liefert.
+    assert prognose.kapazitaet_je_projekt() == {1: 0.0}
 
 
 def test_gezogene_quote_wird_auf_restvolumen_gekappt_und_folgemonat_liefert_nichts():

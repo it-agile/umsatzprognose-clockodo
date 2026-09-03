@@ -147,6 +147,24 @@ class Dashboard:
         """Das offene Auftragsvolumen der groessten Projekte."""
         return diagramme.restvolumen_je_projekt(self.bestand.im_prognose_scope, top=top)
 
+    def kapazitaet_je_mitarbeiter(self, top: int = STANDARD_TOP) -> go.Figure:
+        """Wer im anstehenden Monat noch Kapazitaet hat."""
+        jahr, monat = self.bestand.stichtag.year, self.bestand.stichtag.month
+        return diagramme.kapazitaet_je_mitarbeiter(
+            self.bestand.mitarbeiter_kapazitaet(jahr, monat), top=top
+        )
+
+    def kapazitaet_je_projekt(self, top: int = STANDARD_TOP) -> go.Figure:
+        """Wie sich die simulierte Kapazitaet auf die Projekte im Scope verteilt."""
+        projekte = {p.id: p for p in self.bestand.im_prognose_scope}
+        kapazitaet = self.prognose.kapazitaet_je_projekt() if self.prognose is not None else {}
+        kapazitaeten = sorted(
+            ((projekte[pid], stunden) for pid, stunden in kapazitaet.items() if pid in projekte),
+            key=lambda paar: paar[1],
+            reverse=True,
+        )
+        return diagramme.kapazitaet_je_projekt(kapazitaeten, top=top)
+
     def umsatztabelle(self) -> pd.DataFrame:
         """Dieselben Monate wie im Verlaufsdiagramm, zum Nachlesen - inklusive Prognose."""
         return tabellen.umsatztabelle(

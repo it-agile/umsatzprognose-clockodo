@@ -17,6 +17,7 @@ if TYPE_CHECKING:
 
     from umsatzprognose.domaene import (
         Kostenplan,
+        Mitarbeiter,
         Monatsumsatz,
         Prognose,
         Projekt,
@@ -41,7 +42,7 @@ from umsatzprognose.darstellung.gestaltung import (
     figur,
 )
 from umsatzprognose.domaene.umsatzhistorie import MONATSNAMEN
-from umsatzprognose.domaene.zahlen import euro, tausend_euro
+from umsatzprognose.domaene.zahlen import STUNDEN_JE_TAG, euro, tage, tausend_euro
 
 # Getrennte Laengen fuer Kunde und Projekt: der Kundenname ist oft der laengere Teil,
 # unterscheidet aber die Zeilen eines Kunden nicht. Wird alles gemeinsam am Ende
@@ -422,6 +423,102 @@ def restvolumen_je_projekt(
         tickmode="array",
         tickvals=list(range(len(gezeigt))),
         ticktext=[_achsenbeschriftung(p) for p in reversed(gezeigt)],
+        tickfont={"color": TINTE, "size": 12},
+        automargin=True,
+    )
+    return fig
+
+
+def kapazitaet_je_mitarbeiter(
+    kapazitaeten: Sequence[tuple[Mitarbeiter, float]], *, top: int = 15, hoehe: int | None = None
+) -> go.Figure:
+    """Verfuegbare Kapazitaet je Person fuer einen Monat, als liegende Balken in Tagen.
+
+    ``kapazitaeten`` kommt bereits absteigend sortiert (siehe
+    :meth:`~umsatzprognose.domaene.bestand.Bestand.mitarbeiter_kapazitaet`), analog zu
+    :func:`restvolumen_je_projekt`. Angezeigt wird in Personentagen à
+    :data:`~umsatzprognose.domaene.zahlen.STUNDEN_JE_TAG` Stunden statt in Stunden -
+    die griffigere Einheit fuer "wer hat noch Luft".
+    """
+    gezeigt = list(kapazitaeten[:top])
+    hoehe = hoehe or max(260, 70 + 30 * len(gezeigt))
+    gesamt = sum(stunden for _, stunden in kapazitaeten)
+    rest = len(kapazitaeten) - len(gezeigt)
+
+    untertitel = f"{len(kapazitaeten)} Personen mit zusammen {tage(gesamt)}"
+    if rest > 0:
+        untertitel += f", gezeigt sind die {len(gezeigt)} größten und {rest} weitere folgen"
+
+    fig = figur("Verfügbare Kapazität je Person", untertitel=untertitel, hoehe=hoehe)
+    fig.add_bar(
+        x=[stunden / STUNDEN_JE_TAG for _, stunden in reversed(gezeigt)],
+        y=list(range(len(gezeigt))),
+        orientation="h",
+        marker={"color": SERIE},
+        text=[tage(stunden) for _, stunden in reversed(gezeigt)],
+        textposition="outside",
+        textfont={"color": TINTE_ZWEITRANGIG, "size": 12},
+        cliponaxis=False,
+        hovertemplate="<b>%{y}</b><br>%{text}<extra></extra>",
+        showlegend=False,
+    )
+    achsen(fig, gitter_x=True, gitter_y=False)
+    fig.update_layout(bargap=0.4, barcornerradius=4)
+    groesster = max((stunden for _, stunden in gezeigt), default=0.0) / STUNDEN_JE_TAG
+    fig.update_xaxes(visible=False, range=[0, groesster * 1.18])
+    fig.update_yaxes(
+        tickmode="array",
+        tickvals=list(range(len(gezeigt))),
+        ticktext=[_gekuerzt(str(m), MAXIMALE_PROJEKTLAENGE) for m, _ in reversed(gezeigt)],
+        tickfont={"color": TINTE, "size": 12},
+        automargin=True,
+    )
+    return fig
+
+
+def kapazitaet_je_projekt(
+    kapazitaeten: Sequence[tuple[Projekt, float]], *, top: int = 15, hoehe: int | None = None
+) -> go.Figure:
+    """Simulierte Kapazitaet je Projekt, als liegende Balken in Tagen.
+
+    Zeigt, wie sich die in der Monte-Carlo-Simulation ueber den Prognosehorizont
+    tatsaechlich verbrauchte Kapazitaet auf die Projekte im Scope verteilt (Median der
+    gelieferten Stunden ueber alle Laeufe, siehe
+    :meth:`~umsatzprognose.domaene.prognose.Prognose.kapazitaet_je_projekt`).
+    Pauschalprojekte ohne ableitbaren Stundensatz zeigen dabei bewusst 0 Tage - sie
+    verbrauchen keine Personenkapazitaet, obwohl sie Umsatz liefern.
+    """
+    gezeigt = list(kapazitaeten[:top])
+    hoehe = hoehe or max(260, 70 + 30 * len(gezeigt))
+    gesamt = sum(stunden for _, stunden in kapazitaeten)
+    rest = len(kapazitaeten) - len(gezeigt)
+
+    untertitel = f"{len(kapazitaeten)} Projekte mit zusammen {tage(gesamt)}"
+    if rest > 0:
+        untertitel += f", gezeigt sind die {len(gezeigt)} größten und {rest} weitere folgen"
+
+    fig = figur("Simulierte Kapazität je Projekt", untertitel=untertitel, hoehe=hoehe)
+    fig.add_bar(
+        x=[stunden / STUNDEN_JE_TAG for _, stunden in reversed(gezeigt)],
+        y=list(range(len(gezeigt))),
+        orientation="h",
+        marker={"color": SERIE},
+        text=[tage(stunden) for _, stunden in reversed(gezeigt)],
+        textposition="outside",
+        textfont={"color": TINTE_ZWEITRANGIG, "size": 12},
+        cliponaxis=False,
+        customdata=[[p.bezeichnung] for p, _ in reversed(gezeigt)],
+        hovertemplate="<b>%{customdata[0]}</b><br>%{text}<extra></extra>",
+        showlegend=False,
+    )
+    achsen(fig, gitter_x=True, gitter_y=False)
+    fig.update_layout(bargap=0.4, barcornerradius=4)
+    groesster = max((stunden for _, stunden in gezeigt), default=0.0) / STUNDEN_JE_TAG
+    fig.update_xaxes(visible=False, range=[0, groesster * 1.18])
+    fig.update_yaxes(
+        tickmode="array",
+        tickvals=list(range(len(gezeigt))),
+        ticktext=[_achsenbeschriftung(p) for p, _ in reversed(gezeigt)],
         tickfont={"color": TINTE, "size": 12},
         automargin=True,
     )

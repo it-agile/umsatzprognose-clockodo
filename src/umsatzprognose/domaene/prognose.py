@@ -62,6 +62,16 @@ class Prognose(ABC):
         ein geforderter Output, nicht ein Nebenprodukt.
         """
 
+    @abstractmethod
+    def kapazitaet_je_projekt(self) -> dict[int, float]:
+        """Median der ueber den Horizont gelieferten Stunden je Projekt-ID.
+
+        Zeigt, wie sich die in der Simulation tatsaechlich verbrauchte Kapazitaet auf
+        die Projekte im Prognose-Scope verteilt - Projekte ohne ableitbaren
+        Stundensatz (Pauschalleistungen) tragen 0 bei, weil fuer sie kein
+        Stundenbedarf ableitbar ist.
+        """
+
 
 @dataclass(frozen=True)
 class NochKeinePrognose(Prognose):
@@ -95,3 +105,6 @@ class NochKeinePrognose(Prognose):
 
     def kapazitaet_limitierend_anteil(self) -> float:
         return 0.0
+
+    def kapazitaet_je_projekt(self) -> dict[int, float]:
+        return {}

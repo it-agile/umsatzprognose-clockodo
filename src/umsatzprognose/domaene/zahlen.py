@@ -11,6 +11,8 @@ import re
 _PLATZHALTER = "\x00"
 _UNERLAUBTE_ZEICHEN = re.compile(r"[^\d,.]")
 
+STUNDEN_JE_TAG = 7.0
+
 
 def _deutsch(wert: float, nachkommastellen: int) -> str:
     englisch = f"{wert:,.{nachkommastellen}f}"
@@ -30,6 +32,11 @@ def tausend_euro(betrag: float) -> str:
 def stunden(wert: float) -> str:
     """Etwa ``3.699,5 h``."""
     return f"{_deutsch(wert, 1)} h"
+
+
+def tage(stunden: float) -> str:
+    """Etwa ``12,5 Tage`` - Kapazitaet als Personentage a :data:`STUNDEN_JE_TAG` Stunden."""
+    return f"{_deutsch(stunden / STUNDEN_JE_TAG, 1)} Tage"
 
 
 def euro_parsen(text: str) -> float:

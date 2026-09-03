@@ -12,6 +12,7 @@ from umsatzprognose.domaene import (
     Mitarbeiter,
     Projekt,
     Projektanteil,
+    Wochenarbeitszeit,
 )
 
 STICHTAG = date(2026, 8, 24)
@@ -156,3 +157,23 @@ def test_simulation_ohne_abrufquotenverteilung_liefert_noch_keine_prognose():
     assert not prognose.vorhanden
     assert "Abrufquote" in prognose.begruendung
     assert prognose.monatswerte() == {}
+
+
+def test_mitarbeiter_kapazitaet_zeigt_nur_aktive_und_sortiert_absteigend():
+    viel = Wochenarbeitszeit(
+        stunden_je_wochentag=(8.0, 8.0, 8.0, 8.0, 8.0, 0.0, 0.0), gueltig_ab=date(2020, 1, 1)
+    )
+    wenig = Wochenarbeitszeit(
+        stunden_je_wochentag=(4.0, 4.0, 4.0, 4.0, 4.0, 0.0, 0.0), gueltig_ab=date(2020, 1, 1)
+    )
+    anna = Mitarbeiter(id=1, name="Anna", aktiv=True, arbeitszeiten=(wenig,))
+    bert = Mitarbeiter(id=2, name="Bert", aktiv=True, arbeitszeiten=(viel,))
+    clara = Mitarbeiter(id=3, name="Clara", aktiv=False, arbeitszeiten=(viel,))
+
+    b = Bestand(stichtag=STICHTAG, mitarbeiter=(anna, bert, clara))
+    kapazitaeten = b.mitarbeiter_kapazitaet(2026, 9)
+
+    assert [m.id for m, _ in kapazitaeten] == [2, 1]
+    bert_kapazitaet = next(k for m, k in kapazitaeten if m.id == 2)
+    anna_kapazitaet = next(k for m, k in kapazitaeten if m.id == 1)
+    assert bert_kapazitaet == anna_kapazitaet * 2

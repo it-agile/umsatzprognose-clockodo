@@ -97,6 +97,27 @@ def test_balkenlaenge_bleibt_im_bild():
     assert fig.layout.xaxis.range[1] > max(fig.data[0].x)
 
 
+def test_kapazitaet_je_mitarbeiter_zeigt_werte_in_tagen():
+    anna = Mitarbeiter(id=1, name="Anna", aktiv=True)
+    bert = Mitarbeiter(id=2, name="Bert", aktiv=True)
+    fig = diagramme.kapazitaet_je_mitarbeiter([(anna, 140.0), (bert, 70.0)])
+    balken = fig.data[0]
+
+    # Kleinster Wert unten (Position 0), groesster oben - wie bei restvolumen_je_projekt.
+    assert list(balken.x) == [10.0, 20.0]
+    assert list(balken.text) == ["10,0 Tage", "20,0 Tage"]
+
+
+def test_kapazitaet_je_projekt_zeigt_null_bei_pauschalprojekt():
+    zeitbasiert = Projekt(id=1, name="Zeitbasiert", aktiv=True, budget=Budget(betrag=1000.0))
+    pauschal = Projekt(id=2, name="Pauschale", aktiv=True, budget=Budget(betrag=1000.0))
+    fig = diagramme.kapazitaet_je_projekt([(zeitbasiert, 70.0), (pauschal, 0.0)])
+    balken = fig.data[0]
+
+    assert list(balken.x) == [0.0, 10.0]
+    assert list(balken.text) == ["0,0 Tage", "10,0 Tage"]
+
+
 def test_umsatzverlauf_ohne_prognose_zeigt_nur_die_historie_balken():
     fig = diagramme.umsatzverlauf(HISTORIE)
     balkenspuren = [spur for spur in fig.data if spur.type == "bar"]
@@ -554,3 +575,37 @@ def test_dashboard_liefert_alle_ansichten_zum_selben_stand():
     assert dashboard.restvolumen_je_projekt(top=1).data[0].x == (34000.0,)
     assert len(dashboard.projekttabelle()) == 2
     assert len(dashboard.umsatztabelle()) == 13
+
+
+def test_dashboard_kapazitaet_je_mitarbeiter_nutzt_den_stichtagsmonat():
+    viel = Wochenarbeitszeit(
+        stunden_je_wochentag=(8.0, 8.0, 8.0, 8.0, 8.0, 0.0, 0.0), gueltig_ab=date(2020, 1, 1)
+    )
+    anna = Mitarbeiter(id=1, name="Anna", aktiv=True, arbeitszeiten=(viel,))
+    inaktiv = Mitarbeiter(id=2, name="Clara", aktiv=False, arbeitszeiten=(viel,))
+    bestand = Bestand(stichtag=STICHTAG, mitarbeiter=(anna, inaktiv))
+    dashboard = Dashboard(bestand, SCHULUNGSPLAN, KOSTENPLAN)
+
+    fig = dashboard.kapazitaet_je_mitarbeiter()
+    assert len(fig.data[0].x) == 1
+    assert fig.data[0].x[0] > 0
+
+
+def test_dashboard_kapazitaet_je_projekt_ohne_simulation_ist_leer():
+    dashboard = Dashboard(BESTAND, SCHULUNGSPLAN, KOSTENPLAN)
+    assert list(dashboard.kapazitaet_je_projekt().data[0].x) == []
+
+
+def test_dashboard_kapazitaet_je_projekt_zeigt_werte_nach_simulation():
+    historie, prognose = _historie_und_prognose_mit_horizont()
+    projekt = next(p for p in prognose.kapazitaet_je_projekt())
+    bestand = Bestand(
+        stichtag=historie.stichtag,
+        projekte=(Projekt(id=projekt, name="Projekt", aktiv=True, budget=Budget(betrag=1.0)),),
+        umsatzhistorie=historie,
+    )
+    dashboard = Dashboard(bestand, SCHULUNGSPLAN, KOSTENPLAN)
+    dashboard.prognose = prognose
+
+    fig = dashboard.kapazitaet_je_projekt()
+    assert fig.data[0].x[0] == prognose.kapazitaet_je_projekt()[projekt] / 7.0

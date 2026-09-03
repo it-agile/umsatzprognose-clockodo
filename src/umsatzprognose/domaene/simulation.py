@@ -104,7 +104,11 @@ class MonteCarloPrognose(Prognose):
     """Das Ergebnis der Monte-Carlo-Simulation.
 
     Traegt nur fertig aggregierte Kennzahlen - die 10.000 Einzellaeufe selbst werden
-    nicht aufgehoben, sie waeren als Speicherlast ohne Gegenwert.
+    nicht aufgehoben, sie waeren als Speicherlast ohne Gegenwert. Eine dieser
+    Kennzahlen ist :meth:`kapazitaet_je_projekt`: der Median der ueber den Horizont
+    gelieferten Stunden je Projekt, ueber alle Laeufe - zeigt, wohin die verbrauchte
+    Kapazitaet tatsaechlich geht, nicht nur ob sie insgesamt knapp war (siehe
+    :meth:`kapazitaet_limitierend_anteil`).
     """
 
     _horizontmonate: tuple[Monat, ...]
@@ -113,6 +117,7 @@ class MonteCarloPrognose(Prognose):
     _summe: Mapping[float, float]
     _gebucht: tuple[float, ...]
     _kapazitaet_limitierend_anteil: float
+    _kapazitaet_je_projekt: Mapping[int, float]
 
     @property
     def vorhanden(self) -> bool:
@@ -139,6 +144,9 @@ class MonteCarloPrognose(Prognose):
 
     def kapazitaet_limitierend_anteil(self) -> float:
         return self._kapazitaet_limitierend_anteil
+
+    def kapazitaet_je_projekt(self) -> dict[int, float]:
+        return dict(self._kapazitaet_je_projekt)
 
 
 def simulieren(
@@ -238,6 +246,7 @@ def simulieren(
     restvolumen = np.tile(startvolumen, (laeufe, 1))
     monatssummen = np.zeros((len(horizont), laeufe))
     kapazitaet_limitiert_je_lauf = np.zeros(laeufe, dtype=bool)
+    stunden_je_projekt = np.zeros((laeufe, len(scope)))
 
     for index, _monat in enumerate(horizont):
         skalierung = skalierung_monat1 if index == 0 else 1.0
@@ -270,6 +279,11 @@ def simulieren(
         tatsaechlich = np.maximum(geliefert, gebucht[index])
         restvolumen = np.maximum(0.0, restvolumen - tatsaechlich)
         monatssummen[index] = tatsaechlich.sum(axis=1)
+        # Aus ``tatsaechlich`` zurueckgerechnet statt ``gelieferte_stunden`` verwendet:
+        # nur ``tatsaechlich`` kennt die Untergrenze aus bereits Gebuchtem
+        # (``gebucht[index]`` oben), damit bleiben Euro- und Stunden-Sicht auf
+        # demselben Betrag konsistent.
+        stunden_je_projekt += np.where(hat_satz, tatsaechlich / saetze_sicher, 0.0)
 
     laufsummen = monatssummen.sum(axis=0)
 
@@ -281,6 +295,9 @@ def simulieren(
     }
     summe = {niveau: float(np.quantile(laufsummen, 1.0 - niveau)) for niveau in KONFIDENZNIVEAUS}
     gebucht_je_monat = tuple(float(x) for x in gebucht.sum(axis=1))
+    kapazitaet_je_projekt = {
+        p.id: float(np.quantile(stunden_je_projekt[:, i], 0.5)) for i, p in enumerate(scope)
+    }
 
     return MonteCarloPrognose(
         _horizontmonate=horizont,
@@ -289,4 +306,5 @@ def simulieren(
         _summe=summe,
         _gebucht=gebucht_je_monat,
         _kapazitaet_limitierend_anteil=float(kapazitaet_limitiert_je_lauf.sum() / laeufe),
+        _kapazitaet_je_projekt=kapazitaet_je_projekt,
     )
