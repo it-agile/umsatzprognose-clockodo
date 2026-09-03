@@ -32,6 +32,7 @@ def test_laufender_monat_zaehlt_nicht_in_summe_und_durchschnitt():
     historie = Umsatzhistorie.zum_stichtag(
         [Monatsumsatz(2026, 7, 300000.0), Monatsumsatz(2026, 8, 150000.0)], STICHTAG
     )
+    assert historie.laufender is not None
     assert historie.laufender.schluessel == (2026, 8)
     assert historie.summe() == 300000.0
     assert historie.durchschnitt() == 25000.0

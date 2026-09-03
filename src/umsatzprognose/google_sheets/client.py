@@ -22,7 +22,7 @@ Aufrufer (:mod:`umsatzprognose.schulungen`, :mod:`umsatzprognose.kosten`, ...) s
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Protocol
 
 if TYPE_CHECKING:
     from google.auth.credentials import Credentials as CredentialsBase
@@ -35,6 +35,17 @@ from .config import OAUTH_CLIENT_VAR, MissingCredentialsError
 
 SCOPES = ("https://www.googleapis.com/auth/spreadsheets.readonly",)
 TOKEN_PFAD = Path(".google_oauth_token.json")
+
+
+class TabellenClient(Protocol):
+    """Das Interface, das ``schulungen/`` und ``kosten/`` vom Sheets-Zugriff brauchen.
+
+    Macht ``SchulungenRepository`` und ``KostenRepository`` unabhaengig von der
+    konkreten Implementierung :class:`GoogleSheetsClient` - Tests koennen einen
+    einfachen Fake ohne echte Google-Anbindung einsetzen.
+    """
+
+    def werte(self, spreadsheet_id: str, bereich: str) -> list[list[str]]: ...
 
 
 class GoogleSheetsClient:

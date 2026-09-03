@@ -41,7 +41,7 @@ if TYPE_CHECKING:
 
 from umsatzprognose.domaene import Erfasst, Geschaetzt, Hinweis, Kostenplan, Kostenposten
 from umsatzprognose.domaene.zahlen import euro_parsen
-from umsatzprognose.google_sheets import GoogleSheetsClient, GoogleSheetsConfig
+from umsatzprognose.google_sheets import GoogleSheetsClient, GoogleSheetsConfig, TabellenClient
 
 KOSTEN_BEREICH_VORLAGE = "Kosten {jahr}!L3:R15"
 
@@ -112,7 +112,7 @@ def _monatsfolge(stichtag: date, horizont_monate: int) -> list[Monat]:
 class KostenRepository:
     """Laedt die Kostenprognose aus den konfigurierten Google-Sheets-Dateien."""
 
-    def __init__(self, client: GoogleSheetsClient, jahre_zu_dateien: Mapping[int, str]) -> None:
+    def __init__(self, client: TabellenClient, jahre_zu_dateien: Mapping[int, str]) -> None:
         self._client = client
         self._jahre_zu_dateien = dict(jahre_zu_dateien)
 

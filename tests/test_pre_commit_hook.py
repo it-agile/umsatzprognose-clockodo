@@ -20,6 +20,7 @@ HOOK_PFAD = Path(__file__).resolve().parent.parent / ".githooks" / "pre-commit"
 # Loader explizit statt der ueblichen Suffix-Erkennung von spec_from_file_location.
 _loader = SourceFileLoader("pre_commit_hook", str(HOOK_PFAD))
 _spec = importlib.util.spec_from_loader(_loader.name, _loader)
+assert _spec is not None, f"Kein Modul-Spec fuer {HOOK_PFAD}"
 _hook = importlib.util.module_from_spec(_spec)
 _loader.exec_module(_hook)
 

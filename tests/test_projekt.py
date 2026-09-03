@@ -35,7 +35,9 @@ def test_stundenbudget_wird_nicht_als_euro_gelesen():
     # waere das ein stiller Faktor-Fehler.
     stunden = StundenBudget(stunden=48.0)
     assert auftragsvolumen(stunden) is None
-    assert "Stunden" in sonderfall(stunden)
+    grund = sonderfall(stunden)
+    assert grund is not None
+    assert "Stunden" in grund
 
 
 def test_intervallbudget_und_teilprojektbudget_bleiben_unbenutzt():

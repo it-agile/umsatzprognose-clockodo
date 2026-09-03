@@ -10,12 +10,18 @@ sie so, wie die API sie liefert.
 
 from __future__ import annotations
 
+from collections.abc import Coroutine
 from typing import TYPE_CHECKING
+
+import httpx
 
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-import httpx
+    # Ein Handler darf synchron oder eine Coroutine-Funktion sein - wie
+    # httpx._transports.mock.SyncHandler | AsyncHandler, aber nicht oeffentlich exportiert.
+    Handler = Callable[[httpx.Request], "httpx.Response | Coroutine[None, None, httpx.Response]"]
+
 import pytest
 
 from umsatzprognose.clockodo import ClockodoClient, ClockodoCredentials
@@ -28,13 +34,19 @@ CREDS = ClockodoCredentials(
 )
 
 
-def client_mit(handler: Callable[[httpx.Request], httpx.Response]):
-    """Ein Client, der statt der API einen Handler befragt; sammelt die Requests."""
+def client_mit(handler: Handler):
+    """Ein Client, der statt der API einen Handler befragt; sammelt die Requests.
+
+    Der Wrapper ist bewusst eine Coroutine-Funktion und nicht synchron: nur so ist er
+    ein einheitlicher ``AsyncHandler`` fuer ``httpx.MockTransport``, egal ob der
+    uebergebene ``handler`` selbst synchron ist oder eine Coroutine liefert.
+    """
     requests: list[httpx.Request] = []
 
-    def aufzeichnen(request: httpx.Request) -> httpx.Response:
+    async def aufzeichnen(request: httpx.Request) -> httpx.Response:
         requests.append(request)
-        return handler(request)
+        ergebnis = handler(request)
+        return await ergebnis if isinstance(ergebnis, Coroutine) else ergebnis
 
     return ClockodoClient(CREDS, transport=httpx.MockTransport(aufzeichnen)), requests
 

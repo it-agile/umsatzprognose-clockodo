@@ -27,7 +27,7 @@ from datetime import date
 
 from umsatzprognose.domaene import Hinweis, Schulungsplan, Schulungstermin
 from umsatzprognose.domaene.zahlen import euro_parsen
-from umsatzprognose.google_sheets import GoogleSheetsClient, GoogleSheetsConfig
+from umsatzprognose.google_sheets import GoogleSheetsClient, GoogleSheetsConfig, TabellenClient
 
 TABELLENBLATT = "Öffentliche Schulungen"
 
@@ -74,7 +74,7 @@ def _benoetigte_jahre(stichtag: date, horizont_monate: int) -> tuple[int, ...]:
 class SchulungenRepository:
     """Laedt die Schulungstermine aus den konfigurierten Google-Sheets-Dateien."""
 
-    def __init__(self, client: GoogleSheetsClient, jahre_zu_dateien: Mapping[int, str]) -> None:
+    def __init__(self, client: TabellenClient, jahre_zu_dateien: Mapping[int, str]) -> None:
         self._client = client
         self._jahre_zu_dateien = dict(jahre_zu_dateien)
 

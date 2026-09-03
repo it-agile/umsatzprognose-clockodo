@@ -581,7 +581,7 @@ def test_projekttabelle_zeigt_leere_zellen_statt_erfundener_nullen():
 
 
 def test_hinweistabelle_kuerzt_lange_id_listen():
-    hinweis = Hinweis("Viele Projekte", tuple(range(20)))
+    hinweis = Hinweis("Viele Projekte", tuple(str(i) for i in range(20)))
     zeile = tabellen.hinweistabelle([hinweis]).iloc[0]
     assert zeile["Betroffen"] == 20
     assert zeile["Projekte"].endswith("…")

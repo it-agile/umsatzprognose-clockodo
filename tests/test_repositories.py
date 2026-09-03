@@ -139,7 +139,9 @@ def test_projekt_id_und_budgetformen(projekt_antwort):
     assert auftragsvolumen(budget(daten[1])) is None
     # monetary=false: der Betrag sind Stunden, kein Euro-Wert.
     assert auftragsvolumen(budget(daten[2])) is None
-    assert "Stunden" in sonderfall(budget(daten[2]))
+    grund = sonderfall(budget(daten[2]))
+    assert grund is not None
+    assert "Stunden" in grund
 
 
 def test_projekte_bekommen_kunde_verbrauch_und_anteile(
@@ -314,6 +316,7 @@ def test_bestand_setzt_alles_zusammen(
     assert len(bestand.mitarbeiter) == 2
     assert [p.id for p in bestand.im_prognose_scope] == [101]
     assert bestand.restvolumen_prognosewirksam == 160000.0 - 60000.0
+    assert bestand.umsatzhistorie is not None
     assert bestand.umsatzhistorie.summe() == 300000.0
     # Der Horizont ab STICHTAG (drei Monate) bleibt im selben Jahr - je ein Abruf auf
     # /v4/absences und /v2/usersNonbusinessDays statt zwei.
