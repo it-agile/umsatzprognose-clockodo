@@ -13,9 +13,10 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Sequence
+    from collections.abc import Callable, Mapping, Sequence
 
     from umsatzprognose.domaene import (
+        Anmeldungsverlauf,
         Auslastungsmonat,
         Auslastungssumme,
         Kostenplan,
@@ -45,6 +46,7 @@ from umsatzprognose.darstellung.gestaltung import (
     TINTE,
     TINTE_GEDAEMPFT,
     TINTE_ZWEITRANGIG,
+    TREND,
     VORLAEUFIG_DECKKRAFT,
     achsen,
     figur,
@@ -987,6 +989,100 @@ def _umgebrochen(text: str, breite: int = 80) -> str:
             zeile = f"{zeile} {wort}".strip()
     zeilen.append(zeile)
     return "<br>".join(zeilen)
+
+
+def _linearer_trend(werte: Sequence[float]) -> list[float]:
+    """Ausgleichsgerade (kleinste Quadrate) ueber den Monatsindex 0..n-1.
+
+    Eine Gerade statt einer geglaetteten Kurve, weil sie die Richtung des Verlaufs ueber
+    den ganzen Betrachtungszeitraum in einer Steigung zusammenfasst. Bei weniger als
+    zwei Werten ist eine Gerade nicht definiert - ``werte`` unveraendert zurueckgegeben.
+    """
+    n = len(werte)
+    if n < 2:
+        return list(werte)
+    summe_x = n * (n - 1) / 2
+    summe_x2 = sum(x * x for x in range(n))
+    summe_y = sum(werte)
+    summe_xy = sum(x * y for x, y in enumerate(werte))
+    nenner = n * summe_x2 - summe_x * summe_x
+    steigung = (n * summe_xy - summe_x * summe_y) / nenner
+    achsenabschnitt = (summe_y - steigung * summe_x) / n
+    return [achsenabschnitt + steigung * x for x in range(n)]
+
+
+def anmeldungsverlauf(
+    verlauf: Anmeldungsverlauf, kategorien: Mapping[str, Sequence[str]], *, hoehe: int = 420
+) -> go.Figure:
+    """Teilnehmerzahl oeffentlicher Schulungen je Monat - wie in der internen
+    ZDF-Praesentation ("Anmeldungen bleiben auf niedrigem Niveau"): eine Linie mit
+    Datenpunkten je Kategorie, dazu eine "Gesamt"-Linie und eine lineare Trendlinie
+    (Ausgleichsgerade) derselben Gesamtsumme (siehe :func:`_linearer_trend`).
+
+    ``kategorien`` bildet Kategoriename auf die zugehoerigen Schulungstypen ab (siehe
+    Moduldocstring von :mod:`umsatzprognose.domaene.anmeldung`) - typischerweise eine im
+    Notebook gepflegte, frei aenderbare Zuordnung, keine Konstante dieser Funktion. Ein
+    Schulungstyp ohne Kategorie landet unter
+    :data:`~umsatzprognose.domaene.anmeldung.KATEGORIE_SONSTIGE`.
+
+    Anders als :func:`umsatzverlauf` keine Umsatzgroesse, sondern die Teilnehmerzahl aus
+    der Spalte ``TN Zahl`` (siehe Moduldocstring von
+    :mod:`umsatzprognose.domaene.anmeldung`). ``verlauf`` liefert bereits den
+    gewuenschten Betrachtungszeitraum (etwa ueber
+    :meth:`~umsatzprognose.domaene.anmeldung.Anmeldungsverlauf.letzte` fuer ein
+    konfigurierbares Fenster wie die letzten 13 Monate) - diese Funktion zeigt ihn
+    unveraendert, ohne selbst ein Zeitfenster anzuwenden.
+    """
+    monate = verlauf.monate
+    fig = figur(
+        "Anmeldungen je Monat",
+        untertitel="Teilnehmerzahl öffentlicher Schulungen je Kategorie, mit Trend",
+        hoehe=hoehe,
+    )
+    if not monate:
+        fig.add_annotation(
+            text="Keine Anmeldedaten für den gewählten Zeitraum geladen.",
+            showarrow=False,
+            font={"color": TINTE_ZWEITRANGIG, "size": 13},
+        )
+        return fig
+
+    beschriftungen = [f"{MONATSNAMEN[monat - 1]} {jahr}" for jahr, monat in monate]
+    gesamt = [0] * len(monate)
+    for i, (kategorie, je_monat) in enumerate(verlauf.je_monat_und_kategorie(kategorien).items()):
+        werte = [je_monat.get(m, 0) for m in monate]
+        gesamt = [g + w for g, w in zip(gesamt, werte, strict=True)]
+        farbe = JAHRESFARBEN[i % len(JAHRESFARBEN)]
+        fig.add_scatter(
+            x=beschriftungen,
+            y=werte,
+            mode="lines+markers",
+            name=kategorie,
+            line={"color": farbe, "width": 2},
+            marker={"size": 6, "color": farbe},
+        )
+
+    fig.add_scatter(
+        x=beschriftungen,
+        y=gesamt,
+        mode="lines+markers",
+        name="Gesamt",
+        line={"color": TINTE, "width": 2},
+        marker={"size": 5, "color": TINTE},
+    )
+    fig.add_scatter(
+        x=beschriftungen,
+        y=_linearer_trend(gesamt),
+        mode="lines",
+        name="Trend",
+        line={"color": TREND, "width": 2, "dash": "dash"},
+    )
+
+    _horizontale_legende(fig)
+    achsen(fig)
+    fig.update_yaxes(rangemode="tozero")
+    fig.update_xaxes(tickangle=0)
+    return fig
 
 
 def kennzahlen(eintraege: Sequence[tuple[str, float, str]], *, hoehe: int = 150) -> go.Figure:

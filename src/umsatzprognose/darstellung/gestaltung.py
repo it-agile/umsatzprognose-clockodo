@@ -30,6 +30,11 @@ KOSTEN_HELL = "#d9a09f"
 # damit beide Balken nebeneinander unterscheidbar bleiben.
 ERGEBNIS_POSITIV = "#3f7d54"
 ERGEBNIS_NEGATIV = "#8c2f2f"
+# Trendlinie (lineare Ausgleichsgerade): dunkelrot wie die Trendlinie der internen
+# ZDF-Praesentation (dort exponentiell geglaettet, hier linear - Farbe unveraendert
+# uebernommen). Ein eigener Farbton statt ERGEBNIS_NEGATIV, weil die Bedeutung eine
+# andere ist - Trend, nicht das Vorzeichen eines Ergebnisses.
+TREND = "#7a1f1f"
 FLAECHE = "#fcfcfb"
 TINTE = "#0b0b0b"
 TINTE_ZWEITRANGIG = "#52514e"

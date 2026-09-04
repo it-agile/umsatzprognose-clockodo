@@ -41,6 +41,16 @@ diverse Rabattstufen-Spalten (`TN`/`Umsatz` je Rabattart), `Kostenfreie TN`,
 `Präsenz/Online`, `Bemerkungen`, sowie eine zweite Spaltengruppe `TN Zahl`, `Max Zahl`,
 `Restplätze`, `Auslastung`.
 
+- **Die Kopfzeile steht nicht zuverlässig in Zeile 1.** Der eigentlichen Tabelle kann im
+  selben Tabellenblatt noch etwas anderes vorausgehen, das nicht alle Pflichtspalten
+  trägt. Die Spaltenzuordnung wird deshalb wie beim Baustein Kosten **inhaltsbasiert**
+  ermittelt (erste Zeile, die alle Pflichtspalten enthält), nicht positionsbasiert als
+  erste Zeile angenommen.
+- **Die Kopfzeile der `Jahr`-Spalte ist nicht verlässlich.** Verifiziert am Jahrgang
+  2024: dort steht statt `"Jahr"` ein Vertipper (`"x^"`) in der Kopfzeile. `Jahr` zählt
+  deshalb nicht zu den bei der Kopfzeilensuche verlangten Pflichtspalten; ohne eine
+  Spalte namens `Jahr` gilt stattdessen **positionsbasiert die erste Spalte des
+  Blatts** - dort steht das Jahr unabhängig von ihrer Beschriftung.
 - `Jahr` und `Monat` sind getrennte Spalten, nicht kombiniert.
 - `Umsatz gesamt` steht im deutschen Zahlenformat mit Euro-Zeichen, uneinheitlich
   formatiert (z. B. `12.345,67 €` oder `1.234,56€`, mit/ohne Leerzeichen vorm
@@ -121,4 +131,51 @@ Google-Sheets-Infrastruktur in `google_sheets/` (`GoogleSheetsConfig`,
 `GoogleSheetsClient`, seit dem Baustein Kosten geteilt mit `kosten/`, siehe
 `spec-kosten.md`) (4, 5.3), sowie die additive Darstellung in
 `diagramme.umsatzverlauf()`, `tabellen.umsatztabelle()` und `Dashboard.schulungen_laden()`
-(6).
+(6). Die inhaltsbasierte Kopfzeilensuche `schulungen._kopfzeile_finden()` und der
+positionsbasierte Rückfall `schulungen._jahr_spalte_ermitteln()` für die `Jahr`-Spalte
+(4) decken sowohl `_zeilen_zu_terminen()` als auch `_zeilen_zu_anmeldungen()` (Abschnitt
+9) ab.
+
+## 9. Zusatzauswertung: Anmeldungsverlauf (Teilnehmerzahl)
+
+Eine zweite, von der Umsatzprognose unabhängige Auswertung derselben Quelle (Abschnitt
+3): nicht der Umsatz, sondern die **Teilnehmerzahl je Schulungstyp und Monat** - Grundlage
+für den intern bekannten Verlauf "Anmeldungen bleiben auf niedrigem Niveau". Diese
+Auswertung hebt die Nicht-Ziele aus Abschnitt 2 nicht auf; sie ergänzt sie um einen
+eigenständigen, rein diagnostischen Blick auf dieselbe Tabelle, ohne dass Umsatz,
+Restvolumen, Abrufquote oder Kapazitätsdeckel davon berührt werden.
+
+- **Spalten:** `Jahr` (positionsbasiert, siehe Abschnitt 4), `Monat`, `Schulung`
+  (Schulungstyp) und `TN Zahl`. Die Kopfzeile trägt `TN Zahl` laut Abschnitt 4 zweimal -
+  einmal als Gesamtsumme direkt vor `Umsatz gesamt`, einmal in der Gruppe mit `Max
+  Zahl`/`Restplätze`/`Auslastung`; verifiziert am Jahrgang 2024 tragen beide denselben
+  Wert. Gelesen wird die **zuletzt (am weitesten rechts) stehende** Spalte dieses Namens.
+- **Zeitfenster:** anders als Abschnitt 5.2 **nicht auf den Prognosehorizont
+  beschränkt**, sondern über mehrere zurückliegende Kalenderjahre (Aufruf mit einer
+  Jahresliste). Eine Teilnehmerzahl ist kein Umsatz und dupliziert daher nichts aus
+  Clockodo - das Doppelzählungsrisiko aus Abschnitt 5.2 entfällt hier.
+- **Aggregation:** Summe der Teilnehmerzahl je Monat, wahlweise gesamt, je einzelnem
+  Schulungstyp oder je Kategorie (siehe unten).
+- **Kategorisierung:** frei konfigurierbar, keine Konstante im Paket - eine
+  `dict[str, list[str]]` (Kategoriename -> zugehörige Schulungstypen), die im Notebook
+  gepflegt wird (`notebooks/03_schulungsanmeldungen.ipynb`, Zelle "Kategorien
+  konfigurieren"; Standardbelegung dort wie in der internen ZDF-Präsentation:
+  **Scrum** und **Kanban**). Eine von Hand gepflegte Liste einzelner Schulungstypen,
+  keine Stichwortsuche: Zertifizierungen laufen überwiegend über Kürzel (`CSM`, `KSD`,
+  `SBK` = "Scrum better with Kanban", ...), nicht über die ausgeschriebenen Wörter
+  "Scrum"/"Kanban". Ein Schulungstyp, der in keiner konfigurierten Kategorie auftaucht,
+  fällt auf `Sonstige` zurück (`domaene.anmeldung.KATEGORIE_SONSTIGE`).
+- **Betrachtungszeitraum:** konfigurierbar, standardmäßig die letzten 13 Kalendermonate
+  bis einschließlich des Stichtagsmonats (`Anmeldungsverlauf.letzte(monate=...,
+  stichtag=...)` - `monate` keyword-only, damit an der Aufrufstelle lesbar bleibt, was
+  die Zahl bedeutet) - unabhängig von der vollständig geladenen, mehrjährigen Historie.
+- **Ausgabe:** eine Linie mit Datenpunkten je Kategorie, zusätzlich eine "Gesamt"-Linie
+  (Summe aller Kategorien je Monat) und eine lineare Trendlinie (Ausgleichsgerade)
+  derselben Gesamtsumme - in derselben dunkelroten Farbe wie die Trendlinie beim
+  Kontostand-Chart der Präsentation (dort exponentiell geglättet, hier linear). In
+  einem eigenen Notebook, unabhängig vom `Dashboard` der Umsatzprognose.
+
+Umgesetzt: `domaene.anmeldung.Anmeldung`/`Anmeldungsverlauf` (inkl. `letzte()`,
+`je_monat_und_kategorie()`, `_kategorie_zuordnung()`), `SchulungenRepository.anmeldungsverlauf_laden()`,
+`diagramme.anmeldungsverlauf()` (inkl. `_linearer_trend()`),
+`notebooks/setup.anmeldungsverlauf()` und `notebooks/03_schulungsanmeldungen.ipynb`.

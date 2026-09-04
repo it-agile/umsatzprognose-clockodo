@@ -18,7 +18,7 @@ uv run ruff format .           # Formatierung
 uv run jupyter lab             # Notebooks lokal
 uvx tox                        # Tests unter Python 3.12-3.14 + Coverage + Lint, ein Kommando
 uvx tox -e jupyter             # Notebooks starten (wie uv run jupyter lab, mit --autoreload)
-uv sync --extra bericht && uv run python scripts/diagramme_exportieren.py     # Dashboard-Diagramme als PNG exportieren (--help für Optionen)
+uv sync --extra bericht && uv run python scripts/diagramme_exportieren.py     # Diagramme als PNG exportieren, inkl. Anmeldungsverlauf (--help für Optionen)
 ```
 
 `tox` ist nicht Projektabhängigkeit, sondern läuft über `uvx` (`[tool.tox]` in
