@@ -31,15 +31,20 @@ in einer externen Planungstabelle bereits fest.
 
 | Zweck | Zugriff | Relevanter Bereich |
 |---|---|---|
-| Gesamtkosten je Monat | Google Sheets API (dieselben Zugangsdaten wie Schulungsanmeldungen, siehe `spec-schulungsanmeldungen.md` Abschnitt 5.3), Tabellenblatt `Kosten {jahr}` | Zellbereich `L3:R15`, Spalten `Monat`, `Gesamtkosten`, `Allgemeinkosten` und `Kostenerfassung` |
+| Gesamtkosten je Monat | Google Sheets API (dieselben Zugangsdaten wie Schulungsanmeldungen, siehe `spec-schulungsanmeldungen.md` Abschnitt 5.3), Tabellenblatt `Kosten {jahr}` | Zeilen `3:15`, ohne festen Spaltenbereich; Spalten `Monat`, `Gesamtkosten`, `Allgemeinkosten` und `Kostenerfassung` |
 
 - Zeile 3 des Bereichs ist die Kopfzeile, Zeile 4–15 sind die zwölf Monate des Jahres.
   Spalten werden wie bei den Schulungsanmeldungen **über die Kopfzeile namentlich**
   zugeordnet, nicht über die Position – robust gegenüber der Reihenfolge der Spalten
-  innerhalb L:R (weitere, hier ungenutzte Spalten wie Gehälter, Spesen oder BWA Kosten
-  liegen dazwischen).
+  (weitere, hier ungenutzte Spalten wie Gehälter, Spesen oder BWA Kosten liegen
+  dazwischen). Gelesen wird deshalb die **gesamte Zeilenbreite**, kein fester
+  Spaltenbereich: die tatsächliche Spaltenlage unterscheidet sich zwischen Jahrgängen
+  (verifiziert am Jahrgang 2022).
 - `Monat` steht als ausgeschriebener deutscher Monatsname (`Januar`…`Dezember`),
-  anders als bei den Schulungsanmeldungen, wo `Monat` eine Zahl ist.
+  anders als bei den Schulungsanmeldungen, wo `Monat` eine Zahl ist. Nicht jeder
+  Jahrgang beschriftet diese Spalte in der Kopfzeile; ohne eine Spalte namens `Monat`
+  gilt stattdessen die Spalte, deren Zellen sich überwiegend als deutscher Monatsname
+  erkennen lassen – inhalts- statt positionsbasiert, aus demselben Grund wie oben.
 - `Gesamtkosten` (die Kostenpauschale, meist Gehälter + Spesen + Allgemeinkosten),
   `Allgemeinkosten` (deren geschätzter Anteil daran) und `Kostenerfassung` (die
   tatsächlichen Allgemeinkosten, händisch mit Zeitverzug aus den `AB {Monat}`-Reitern

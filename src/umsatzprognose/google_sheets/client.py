@@ -62,7 +62,9 @@ class GoogleSheetsClient:
 
         ``bereich`` ist ein A1-Bereich, meist ein Tabellenblattname (z. B.
         ``"Öffentliche Schulungen"``) oder ein Tabellenblattname mit Zellbereich (z. B.
-        ``"Kosten 2026!L3:R15"``). Ob die erste Zeile eine Kopfzeile ist und wie die
+        ``"Kosten 2026!3:15"`` fuer einen Zeilenbereich ohne Spaltenbegrenzung, oder
+        ``"Kosten 2026!L3:R15"`` mit fester Spaltenbegrenzung). Ob die erste Zeile eine
+        Kopfzeile ist und wie die
         Zuordnung auf Spaltennamen erfolgt, entscheidet der Aufrufer, nicht dieser
         Client.
         """

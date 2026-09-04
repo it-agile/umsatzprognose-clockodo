@@ -15,6 +15,7 @@ from umsatzprognose.domaene.kosten import Erfasst, Geschaetzt
 from umsatzprognose.kosten.kosten import (
     KostenRepository,
     _monat_parsen,
+    _monat_spalte_ermitteln,
     _monatsfolge,
     _zeilen_zu_posten,
 )
@@ -90,6 +91,56 @@ def test_zeilen_zu_posten_ohne_kostenerfassung_spalte_faellt_immer_auf_die_pausc
 def test_zeilen_zu_posten_ueberspringt_zeilen_ohne_erkennbaren_monat() -> None:
     zeilen = [KOPFZEILE, ["", "", "", "", "0,00 €"], ["Irgendwas", "", "", "", "0,00 €"]]
     assert _zeilen_zu_posten(zeilen, 2026) == []
+
+
+def test_zeilen_zu_posten_findet_monatsspalte_ohne_kopfzeilen_bezeichnung() -> None:
+    # Kopfzeile ohne Bezeichnung fuer die erste Spalte - wie bei manchen Jahrgaengen.
+    zeilen = [
+        ["", "Gehälter", "Spesen", "Allgemeinkosten", "Gesamtkosten"],
+        ["Januar", "", "", "50,00 €", "950,00 €"],
+        ["Februar", "", "", "0,00 €", "800,00 €"],
+    ]
+    posten = _zeilen_zu_posten(zeilen, 2022)
+    assert [(p.jahr, p.monat, p.kosten) for p in posten] == [
+        (2022, 1, 950.0),
+        (2022, 2, 800.0),
+    ]
+
+
+def test_zeilen_zu_posten_findet_monatsspalte_an_verschobener_position() -> None:
+    # Der Bereich kann jahrgangsweise leicht verschoben sein - die Monatsspalte muss
+    # nicht an Position 0 stehen, auch nicht ohne eigene Kopfzeilen-Bezeichnung.
+    zeilen = [
+        ["Notiz", "", "Allgemeinkosten", "Gesamtkosten"],
+        ["frei", "Januar", "50,00 €", "950,00 €"],
+        ["frei", "Februar", "0,00 €", "800,00 €"],
+    ]
+    posten = _zeilen_zu_posten(zeilen, 2022)
+    assert [(p.jahr, p.monat, p.kosten) for p in posten] == [
+        (2022, 1, 950.0),
+        (2022, 2, 800.0),
+    ]
+
+
+def test_monat_spalte_ermitteln_bevorzugt_die_kopfzeile() -> None:
+    zeilen = [["Allgemeinkosten", "Monat"], ["50,00 €", "Januar"]]
+    index = {"Allgemeinkosten": 0, "Monat": 1}
+    assert _monat_spalte_ermitteln(zeilen, index) == 1
+
+
+def test_monat_spalte_ermitteln_waehlt_die_spalte_mit_den_meisten_treffern() -> None:
+    zeilen = [
+        ["Notiz", "x"],
+        ["Januar", "kein Monat"],
+        ["Februar", "Marz"],  # nur ein Treffer in Spalte 1 ("Marz" ist kein gueltiger Monatsname)
+    ]
+    assert _monat_spalte_ermitteln(zeilen, index={}) == 0
+
+
+def test_monat_spalte_ermitteln_ohne_treffer_wirft() -> None:
+    zeilen = [["Notiz"], ["nichts hier"], ["auch nicht"]]
+    with pytest.raises(ValueError, match="Monatsnamen"):
+        _monat_spalte_ermitteln(zeilen, index={})
 
 
 def test_zeilen_zu_posten_ohne_zeilen_ist_leer() -> None:

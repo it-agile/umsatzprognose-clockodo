@@ -78,9 +78,10 @@ darstellung  ──►  domaene  ◄──  clockodo
   `clockodo/` oder `kosten/`.
 - `src/umsatzprognose/kosten/` – **alles, was vom Tabellenblatt der Kostenprognose
   weiß, weiß nur dieses Paket** (Baustein Kosten, siehe unten). `kosten.py`
-  (`KostenRepository` – fester Zellbereich `Kosten {jahr}!L3:R15`, Header-basiertes
-  Spalten-Mapping wie bei `schulungen/`, Monatsname ausgeschrieben statt Zahl). Keine
-  Abhängigkeit zu `clockodo/` oder `schulungen/`.
+  (`KostenRepository` – Zeilen 3–15 ohne festen Spaltenbereich (die Spaltenlage
+  unterscheidet sich je Jahrgang, siehe unten), Header-basiertes Spalten-Mapping wie
+  bei `schulungen/`, Monatsname ausgeschrieben statt Zahl). Keine Abhängigkeit zu
+  `clockodo/` oder `schulungen/`.
 - `src/umsatzprognose/darstellung/` – der einzige Ort mit plotly (`diagramme.py`,
   `gestaltung.py`) und pandas (`tabellen.py`), dazu `dashboard.py` mit der Fassade
   `Dashboard`, die die Notebooks benutzen.
@@ -204,7 +205,7 @@ verändert weder Restvolumen noch Abrufquote noch Kapazitätsdeckel.
 Der **Baustein Kosten** (`spec/spec-kosten.md`, `domaene.kosten.Kostenplan`, `kosten/`)
 stellt der Umsatzseite eine Kostenprognose gegenüber: die Gesamtkosten je Monat aus
 derselben jährlichen Google-Sheets-Datei wie die Schulungsanmeldungen, aber einem
-eigenen Tabellenblatt (`Kosten {jahr}`, fester Zellbereich `L3:R15`). Wie bei den
+eigenen Tabellenblatt (`Kosten {jahr}`, Zeilen 3–15 ohne festen Spaltenbereich). Wie bei den
 Schulungsanmeldungen steht der Betrag schon fest – keine Simulation, keine Bandbreite.
 **Anders als die Schulungsanmeldungen gilt die Kostenprognose auch für bereits
 vergangene Monate**, nicht nur für den Prognosehorizont: Clockodo liefert keine
@@ -360,11 +361,16 @@ uneinheitlich formatiertes deutsches Zahlenformat mit Euro-Zeichen, geparst übe
 `domaene.zahlen.euro_parsen()` (entfernt alles außer Ziffern/Punkt/Komma, dann den
 Tausenderpunkt, dann Komma → Punkt).
 
-**Kosten:** Tabellenblatt `Kosten {jahr}`, fester Zellbereich `L3:R15` (Zeile 3
-Kopfzeile, Zeile 4–15 die zwölf Monate des Jahres), Spalten ebenfalls über die
-Kopfzeile zugeordnet (`Monat`, `Gesamtkosten`). `Monat` steht als ausgeschriebener
-deutscher Monatsname (`Januar`…`Dezember`), nicht als Zahl wie bei den
-Schulungsanmeldungen. `Gesamtkosten` wird mit derselben `euro_parsen()` geparst.
+**Kosten:** Tabellenblatt `Kosten {jahr}`, Zeile 3 Kopfzeile, Zeile 4–15 die zwölf
+Monate des Jahres – **ohne festen Spaltenbereich**: gelesen wird die ganze Zeilenbreite
+(`3:15`), weil die Spaltenlage jahrgangsweise leicht verschoben sein kann (verifiziert
+am Jahrgang 2022). Spalten werden über die Kopfzeile zugeordnet (`Monat`,
+`Gesamtkosten`); `Monat` hat aber nicht in jedem Jahrgang eine eigene Kopfzeilen-
+Bezeichnung – ohne sie ermittelt `_monat_spalte_ermitteln()` die Monatsspalte anhand
+ihres Inhalts (die Spalte mit den meisten als deutscher Monatsname erkannten Zellen)
+statt über eine feste Position. `Monat` steht als ausgeschriebener deutscher
+Monatsname (`Januar`…`Dezember`), nicht als Zahl wie bei den Schulungsanmeldungen.
+`Gesamtkosten` wird mit derselben `euro_parsen()` geparst.
 `KostenRepository.laden()` deckt anders als `SchulungenRepository.laden()` nicht nur
 den Prognosehorizont ab, sondern auch die bereits geladene Umsatzhistorie (Parameter
 `historie_monate`) – siehe Moduldocstring von `domaene.kosten`.

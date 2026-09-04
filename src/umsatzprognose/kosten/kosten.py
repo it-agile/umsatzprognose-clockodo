@@ -2,10 +2,19 @@
 
 Ein Tabellenblatt je Jahr in derselben jaehrlichen Datei wie die Schulungsanmeldungen
 (``KOSTEN_SHEET_IDS``, siehe :mod:`umsatzprognose.google_sheets.config`), aber ein
-anderer Reiter: ``"Kosten {jahr}"``, fester Zellbereich ``L3:R15`` (Zeile 3 Kopfzeile,
-Zeile 4-15 die zwoelf Monate des Jahres). Wie bei den Schulungsanmeldungen bestimmt die
-Kopfzeile die Spaltenzuordnung **namentlich**, robust gegenueber der Reihenfolge der
-Spalten innerhalb L:R.
+anderer Reiter: ``"Kosten {jahr}"``, Zeilen 3-15 (Zeile 3 Kopfzeile, Zeile 4-15 die
+zwoelf Monate des Jahres), **ohne festen Spaltenbereich** - der Zellbereich je Jahrgang
+liegt in der Praxis leicht verschoben (verifiziert am Jahrgang 2022, dessen Bereich
+nicht mit spaeteren Jahren uebereinstimmt), deshalb wird die ganze Zeilenbreite gelesen
+statt eines festen ``L:R``-Fensters. Wie bei den Schulungsanmeldungen bestimmt die
+Kopfzeile die Spaltenzuordnung **namentlich**, robust gegenueber der Reihenfolge und
+Position der Spalten.
+
+``Monat`` traegt nicht in jedem Jahrgang eine eigene Kopfzeilen-Bezeichnung. Ohne eine
+Spalte namens ``Monat`` faellt :func:`_monat_spalte_ermitteln` deshalb auf die Spalte
+zurueck, deren Zellen sich ueberwiegend als deutscher Monatsname parsen lassen (siehe
+:func:`_monat_parsen`) - inhaltsbasiert statt positionsbasiert, weil auch die Position
+zwischen den Jahrgaengen nicht verlaesslich gleich ist.
 
 ``Gesamtkosten`` (die Kostenpauschale), ``Allgemeinkosten`` (deren geschaetzter Anteil
 darin) und ``Kostenerfassung`` (die mit Zeitverzug aus den ``AB {Monat}``-Reitern
@@ -43,7 +52,7 @@ from umsatzprognose.domaene import Erfasst, Geschaetzt, Hinweis, Kostenplan, Kos
 from umsatzprognose.domaene.zahlen import euro_parsen
 from umsatzprognose.google_sheets import GoogleSheetsClient, GoogleSheetsConfig, TabellenClient
 
-KOSTEN_BEREICH_VORLAGE = "Kosten {jahr}!L3:R15"
+KOSTEN_BEREICH_VORLAGE = "Kosten {jahr}!3:15"
 
 SPALTE_MONAT = "Monat"
 SPALTE_GESAMTKOSTEN = "Gesamtkosten"
@@ -74,27 +83,56 @@ def _monat_parsen(text: str) -> int | None:
     return _MONAT_NUMMER.get(text.strip().capitalize())
 
 
+def _monat_spalte_ermitteln(zeilen: list[list[str]], index: dict[str, int]) -> int:
+    """Ermittelt die Spalte mit den Monatsnamen - per Kopfzeile oder sonst per Inhalt.
+
+    Traegt die Kopfzeile eine Spalte namens ``Monat``, gilt deren Position. Manche
+    Jahrgaenge haben dort aber gar keine Bezeichnung; als Rueckfall zaehlt dann je
+    Spalte, wie viele ihrer Zellen sich als deutscher Monatsname parsen lassen (siehe
+    :func:`_monat_parsen`), und es gewinnt die Spalte mit den meisten Treffern -
+    inhaltsbasiert, weil auch die Position zwischen Jahrgaengen nicht verlaesslich
+    gleich ist (siehe Moduldocstring).
+
+    Raises:
+        ValueError: keine Spalte enthaelt auch nur einen erkennbaren Monatsnamen.
+    """
+    if SPALTE_MONAT in index:
+        return index[SPALTE_MONAT]
+
+    datenzeilen = zeilen[1:]
+    anzahl_spalten = max((len(zeile) for zeile in datenzeilen), default=0)
+    treffer_je_spalte = [
+        sum(1 for zeile in datenzeilen if spalte < len(zeile) and _monat_parsen(zeile[spalte]))
+        for spalte in range(anzahl_spalten)
+    ]
+    beste_spalte = max(range(anzahl_spalten), default=None, key=treffer_je_spalte.__getitem__)
+    if beste_spalte is None or treffer_je_spalte[beste_spalte] == 0:
+        raise ValueError("Keine Spalte mit erkennbaren Monatsnamen gefunden")
+    return beste_spalte
+
+
 def _zeilen_zu_posten(zeilen: list[list[str]], jahr: int) -> list[Kostenposten]:
     if not zeilen:
         return []
     kopf = zeilen[0]
-    index = {name.strip(): i for i, name in enumerate(kopf)}
-    # workaround für fehlende Monatsspalten-Bezeichnung
-    index["Monat"] = 0
+    index = {name.strip(): i for i, name in enumerate(kopf) if name.strip()}
 
-    fehlend = {SPALTE_MONAT, SPALTE_GESAMTKOSTEN, SPALTE_ALLGEMEINKOSTEN} - index.keys()
+    fehlend = {SPALTE_GESAMTKOSTEN, SPALTE_ALLGEMEINKOSTEN} - index.keys()
     if fehlend:
         raise ValueError(f"Spalten fehlen im Tabellenblatt: {sorted(fehlend)}")
+    monat_spalte = _monat_spalte_ermitteln(zeilen, index)
+
+    def zelle_an(zeile: list[str], spalte: int) -> str:
+        return zeile[spalte] if spalte < len(zeile) else ""
 
     def zelle(zeile: list[str], name: str) -> str:
-        position = index[name]
-        return zeile[position] if position < len(zeile) else ""
+        return zelle_an(zeile, index[name])
 
     hat_erfassung = SPALTE_KOSTENERFASSUNG in index
 
     posten = []
     for zeile in zeilen[1:]:
-        monat_text = zelle(zeile, SPALTE_MONAT).strip()
+        monat_text = zelle_an(zeile, monat_spalte).strip()
         if not monat_text:
             continue
         monat = _monat_parsen(monat_text)

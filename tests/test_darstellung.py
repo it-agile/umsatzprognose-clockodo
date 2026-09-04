@@ -23,6 +23,7 @@ from umsatzprognose.darstellung.gestaltung import (
     PROGNOSE_DECKKRAFT,
     SCHULUNG,
     SERIE_HELL,
+    VORLAEUFIG_DECKKRAFT,
 )
 from umsatzprognose.domaene import (
     Auslastungsmonat,
@@ -172,13 +173,35 @@ def test_gewinn_verlust_monatlich_haengt_prognosehorizont_gedaempft_an():
         median[1] - 12000.0,
     ]
     assert list(balken.y) == pytest.approx(erwartetes_ergebnis)
-    assert list(balken.marker.opacity) == [1.0, PROGNOSE_DECKKRAFT, PROGNOSE_DECKKRAFT]
+    # September ist der laufende Monat (erster Horizontmonat) - vorlaeufig, nicht rein
+    # simuliert wie Oktober.
+    assert list(balken.marker.opacity) == [1.0, VORLAEUFIG_DECKKRAFT, PROGNOSE_DECKKRAFT]
 
 
 def test_gewinn_verlust_monatlich_ohne_prognose_bleibt_wie_zuvor():
     monate = [Monatsumsatz(2026, 7, 50000.0)]
     fig = diagramme.gewinn_verlust_monatlich(monate, [40000.0])
     assert list(fig.data[0].marker.opacity) == [1.0]
+    # Ohne Prognose gibt es nichts zu unterscheiden - keine Sicherheits-Legende.
+    assert not any(spur.name == "Daten" for spur in fig.data)
+
+
+def test_gewinn_verlust_monatlich_zeigt_datensicherheits_legende_mit_prognose():
+    historie, prognose = _historie_und_prognose_mit_horizont()
+    monate = historie.abgeschlossene()
+    fig = diagramme.gewinn_verlust_monatlich(
+        monate,
+        [40000.0],
+        prognose=prognose,
+        horizont_kosten=[15000.0, 12000.0],
+        verbrauch_laufender_monat=historie.laufender,
+    )
+    legende = {spur.name: spur.marker.opacity for spur in fig.data if spur.showlegend}
+    assert legende == {
+        "Daten": 1.0,
+        "Vorläufig": VORLAEUFIG_DECKKRAFT,
+        "Prognose": PROGNOSE_DECKKRAFT,
+    }
 
 
 def test_gewinn_verlust_je_jahr_setzt_prognose_gestrichelt_und_bruchlos_fort():
@@ -191,17 +214,33 @@ def test_gewinn_verlust_je_jahr_setzt_prognose_gestrichelt_und_bruchlos_fort():
         horizont_kosten=[15000.0, 12000.0],
         verbrauch_laufender_monat=historie.laufender,
     )
-    ist_spur, prognose_spur = fig.data[0], fig.data[1]
+    # September (erster Horizontmonat) ist derselbe Kalendermonat wie der laufende -
+    # vorlaeufig statt rein simuliert, deshalb eine dritte Spur zwischen Ist und
+    # Prognose (Oktober).
+    ist_spur, vorlaeufig_spur, prognose_spur = fig.data[0], fig.data[1], fig.data[2]
 
     assert list(ist_spur.x) == ["Aug"]
     assert ist_spur.line.dash is None
-    # Die Prognose-Spur beginnt am letzten Ist-Punkt, damit die Linie ohne Bruch
-    # weiterlaeuft, und ist gestrichelt.
-    assert list(prognose_spur.x) == ["Aug", "Sep", "Okt"]
-    assert prognose_spur.y[0] == ist_spur.y[-1]
+    assert ist_spur.opacity == 1.0
+
+    # Die Vorlaeufig-Spur beginnt am letzten Ist-Punkt, damit die Linie ohne Bruch
+    # weiterlaeuft - durchgezogen wie die Ist-Spur, aber mit mittlerer Deckkraft.
+    assert list(vorlaeufig_spur.x) == ["Aug", "Sep"]
+    assert vorlaeufig_spur.y[0] == ist_spur.y[-1]
+    assert vorlaeufig_spur.line.dash is None
+    assert vorlaeufig_spur.opacity == VORLAEUFIG_DECKKRAFT
+
+    # Die Prognose-Spur beginnt entsprechend am Vorlaeufig-Punkt und ist gestrichelt.
+    assert list(prognose_spur.x) == ["Sep", "Okt"]
+    assert prognose_spur.y[0] == vorlaeufig_spur.y[-1]
     assert prognose_spur.line.dash == "dot"
-    # Beide Spuren gehoeren zum selben Jahr - eine gemeinsame Legende, kein zweiter Eintrag.
-    assert ist_spur.name == prognose_spur.name == "2026"
+    assert prognose_spur.opacity == PROGNOSE_DECKKRAFT
+
+    # Alle drei Spuren gehoeren zum selben Jahr - eine gemeinsame Legende, kein
+    # weiterer Eintrag fuer Vorlaeufig/Prognose.
+    assert ist_spur.name == vorlaeufig_spur.name == prognose_spur.name == "2026"
+    assert ist_spur.showlegend is True
+    assert vorlaeufig_spur.showlegend is False
     assert prognose_spur.showlegend is False
 
 
@@ -257,12 +296,64 @@ def test_gewinn_verlust_je_jahr_prognose_in_neuem_jahr_startet_ohne_ist_abschnit
         horizont_kosten=[15000.0, 12000.0],
         verbrauch_laufender_monat=historie.laufender,
     )
-    # 2026: nur eine Ist-Spur (Nov), der Dezember-Horizontmonat wird zur Vorausschau.
-    # 2027: keine Ist-Spur, die einzige Spur ist von Anfang an gestrichelt.
-    namen_und_dash = [(spur.name, spur.line.dash) for spur in fig.data]
-    assert namen_und_dash == [("2026", None), ("2026", "dot"), ("2027", "dot")]
-    assert fig.data[0].showlegend is not False
-    assert fig.data[2].showlegend is not False  # 2027 braucht trotzdem einen Legendeneintrag
+    # 2026: Ist (November) plus vorlaeufiger Dezember - beide durchgezogen, per
+    # Deckkraft unterschieden, keiner davon gestrichelt (Dezember ist derselbe
+    # Kalendermonat wie der laufende, kein reines Simulationsergebnis). 2027 (nur
+    # Januar) ist rein simuliert und komplett gestrichelt, ohne eigenen Ist-Abschnitt.
+    # fig.data enthaelt danach noch unsichtbare Spuren fuer die Daten-Sicherheits-Legende
+    # (siehe _datensicherheit_legende) - hier interessieren nur die drei Jahreslinien.
+    jahresspuren = fig.data[:3]
+    namen_dash_deckkraft = [(spur.name, spur.line.dash, spur.opacity) for spur in jahresspuren]
+    assert namen_dash_deckkraft == [
+        ("2026", None, 1.0),
+        ("2026", None, VORLAEUFIG_DECKKRAFT),
+        ("2027", "dot", PROGNOSE_DECKKRAFT),
+    ]
+    assert jahresspuren[0].showlegend is True
+    assert jahresspuren[1].showlegend is False
+    assert jahresspuren[2].showlegend is True  # 2027 braucht trotzdem einen Legendeneintrag
+
+
+def test_gewinn_verlust_je_jahr_zeigt_datensicherheits_legende_mit_prognose():
+    historie, prognose = _historie_und_prognose_mit_horizont()
+    monate = historie.abgeschlossene()
+    fig = diagramme.gewinn_verlust_je_jahr(
+        monate,
+        [40000.0],
+        prognose=prognose,
+        horizont_kosten=[15000.0, 12000.0],
+        verbrauch_laufender_monat=historie.laufender,
+    )
+    legende = {spur.name: spur.marker.opacity for spur in fig.data if spur.name not in {"2026"}}
+    assert legende == {
+        "Daten": 1.0,
+        "Vorläufig": VORLAEUFIG_DECKKRAFT,
+        "Prognose": PROGNOSE_DECKKRAFT,
+    }
+
+
+def test_umsatzrendite_kumuliert_zeigt_datensicherheits_legende_mit_prognose():
+    historie, prognose = _historie_und_prognose_mit_horizont()
+    monate = historie.abgeschlossene()
+    fig = diagramme.umsatzrendite_kumuliert(
+        monate,
+        [40000.0],
+        prognose=prognose,
+        horizont_kosten=[15000.0, 12000.0],
+        verbrauch_laufender_monat=historie.laufender,
+    )
+    legende = {spur.name: spur.marker.opacity for spur in fig.data if spur.name not in {"2026"}}
+    assert legende == {
+        "Daten": 1.0,
+        "Vorläufig": VORLAEUFIG_DECKKRAFT,
+        "Prognose": PROGNOSE_DECKKRAFT,
+    }
+
+
+def test_gewinn_verlust_je_jahr_ohne_prognose_zeigt_keine_datensicherheits_legende():
+    monate = [Monatsumsatz(2026, 7, 50000.0)]
+    fig = diagramme.gewinn_verlust_je_jahr(monate, [40000.0])
+    assert not any(spur.name == "Daten" for spur in fig.data)
 
 
 def test_auslastung_je_mitarbeiter_zeigt_prozent_und_laesst_none_weg():

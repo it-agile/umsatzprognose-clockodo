@@ -45,6 +45,7 @@ from umsatzprognose.darstellung.gestaltung import (
     TINTE,
     TINTE_GEDAEMPFT,
     TINTE_ZWEITRANGIG,
+    VORLAEUFIG_DECKKRAFT,
     achsen,
     figur,
 )
@@ -171,19 +172,7 @@ def umsatzverlauf(
             _legendeintrag(fig, "Kosten (Pauschale)", KOSTEN_HELL)
         _legendeintrag(fig, "Ergebnis (positiv)", ERGEBNIS_POSITIV)
         _legendeintrag(fig, "Ergebnis (negativ)", ERGEBNIS_NEGATIV)
-    fig.update_layout(
-        showlegend=True,
-        legend={
-            "orientation": "h",
-            "yanchor": "top",
-            "y": -0.22,
-            "xanchor": "center",
-            "x": 0.5,
-            "font": {"size": 12, "color": TINTE_ZWEITRANGIG},
-            "bgcolor": "rgba(0,0,0,0)",
-        },
-        margin={"b": 60},
-    )
+    _horizontale_legende(fig)
 
     achsen(fig)
     fig.update_layout(bargap=0.3, bargroupgap=0.08, barcornerradius=4, barmode="group")
@@ -203,6 +192,40 @@ def _legendeintrag(fig: go.Figure, name: str, farbe: str, *, deckkraft: float = 
         showlegend=True,
         hoverinfo="skip",
     )
+
+
+def _horizontale_legende(fig: go.Figure) -> None:
+    """Legende unterhalb der Figur, wie in :func:`umsatzverlauf` - fuer Diagramme mit
+    mehreren Legendenkategorien nebeneinander statt der plotly-Standardlegende rechts."""
+    fig.update_layout(
+        showlegend=True,
+        legend={
+            "orientation": "h",
+            "yanchor": "top",
+            "y": -0.22,
+            "xanchor": "center",
+            "x": 0.5,
+            "font": {"size": 12, "color": TINTE_ZWEITRANGIG},
+            "bgcolor": "rgba(0,0,0,0)",
+        },
+        margin={"b": 60},
+    )
+
+
+def _datensicherheit_legende(fig: go.Figure, *, vorlaeufig: bool, prognose: bool) -> None:
+    """Legendeneintraege fuer die Deckkraft-Konvention: Daten, vorlaeufige Daten, Prognose.
+
+    Dieselbe Konvention wie in :func:`umsatzverlauf` (dort ueber "Abgerechnet"/"Nicht
+    abgerechnet"/"Prognostiziert" mit je eigener Farbe erklaert) - hier zeigt eine
+    einzelne neutrale Farbe in drei Deckkraeften dieselbe Sicherheit, weil Farbe in
+    diesen Diagrammen bereits etwas anderes bedeutet (Vorzeichen des Ergebnisses bzw.
+    Kalenderjahr).
+    """
+    _legendeintrag(fig, "Daten", TINTE_ZWEITRANGIG)
+    if vorlaeufig:
+        _legendeintrag(fig, "Vorläufig", TINTE_ZWEITRANGIG, deckkraft=VORLAEUFIG_DECKKRAFT)
+    if prognose:
+        _legendeintrag(fig, "Prognose", TINTE_ZWEITRANGIG, deckkraft=PROGNOSE_DECKKRAFT)
 
 
 def _monatsbeschriftung(jahr: int, monat: int) -> str:
@@ -462,11 +485,15 @@ def _historie_und_horizont_werte(
 
     Returns:
         Beschriftungen, Umsatz je Monat, Ergebnis je Monat und eine parallele
-        Deckkraft-Liste (1.0 fuer die Historie,
-        :data:`~umsatzprognose.darstellung.gestaltung.PROGNOSE_DECKKRAFT` fuer den
-        Prognosehorizont) - dieselbe Konvention wie bei :func:`_prognosehorizont`:
-        Sicherheit einer Zahl zeigt sich ueber die Deckkraft, nicht ueber eine eigene
-        Farbe.
+        Deckkraft-Liste: 1.0 fuer die Historie,
+        :data:`~umsatzprognose.darstellung.gestaltung.VORLAEUFIG_DECKKRAFT` fuer den
+        ersten Horizontmonat (derselbe Kalendermonat wie der laufende - eine Mischung
+        aus bereits gebuchtem Umsatz und simuliertem Rest, siehe
+        :func:`_horizont_gesamtumsatz`) und
+        :data:`~umsatzprognose.darstellung.gestaltung.PROGNOSE_DECKKRAFT` fuer die
+        uebrigen, rein simulierten Horizontmonate - dieselbe Konvention wie bei
+        :func:`_prognosehorizont`: Sicherheit einer Zahl zeigt sich ueber die
+        Deckkraft, nicht ueber eine eigene Farbe.
     """
     beschriftungen = [m.beschriftung for m in monate]
     umsatz = [m.umsatz for m in monate]
@@ -484,7 +511,10 @@ def _historie_und_horizont_werte(
         horizont_umsatz = [gesamtumsatz[schluessel] for schluessel in horizont]
         umsatz += horizont_umsatz
         ergebnis += [u - k for u, k in zip(horizont_umsatz, horizont_kosten, strict=True)]
-        deckkraft += [PROGNOSE_DECKKRAFT] * len(horizont)
+        # Der erste Horizontmonat ist derselbe Kalendermonat wie der laufende und
+        # deshalb kein reines Simulationsergebnis, sondern teils schon gebucht.
+        if horizont:
+            deckkraft += [VORLAEUFIG_DECKKRAFT] + [PROGNOSE_DECKKRAFT] * (len(horizont) - 1)
 
     return beschriftungen, umsatz, ergebnis, deckkraft
 
@@ -512,6 +542,16 @@ def _je_jahr(
     return jahre
 
 
+# Je Abschnitt: Deckkraft, Strichart (None = durchgezogen) und Hover-Zusatz - dieselbe
+# Reihenfolge wie die Deckkraft-Werte aus :func:`_historie_und_horizont_werte` (Daten,
+# dann hoechstens ein Punkt mit VORLAEUFIG_DECKKRAFT, dann PROGNOSE_DECKKRAFT).
+_LINIENABSCHNITTE = (
+    (1.0, None, ""),
+    (VORLAEUFIG_DECKKRAFT, None, " (vorläufig)"),
+    (PROGNOSE_DECKKRAFT, "dot", " (Vorausschau)"),
+)
+
+
 def _jahreslinien(
     fig: go.Figure,
     jahre: dict[int, list[tuple[int, float, float, float]]],
@@ -519,53 +559,48 @@ def _jahreslinien(
     werte: Callable[[list[tuple[int, float, float, float]]], list[float]],
     formatieren: Callable[[float], str],
 ) -> None:
-    """Zeichnet fuer jedes Jahr eine Ist-Linie, mit gedaempft-gestrichelter Vorausschau.
+    """Zeichnet fuer jedes Jahr eine Linie in bis zu drei Abschnitten (siehe
+    :data:`_LINIENABSCHNITTE`): Daten (durchgezogen, volle Deckkraft), vorlaeufige
+    Daten des laufenden Monats (durchgezogen, mittlere Deckkraft) und simulierte
+    Prognose (gestrichelt, gedaempft).
 
     ``werte`` errechnet aus den Punkten eines Jahres (``monat, umsatz, ergebnis,
-    deckkraft``) die y-Werte, ``formatieren`` die Hover-Beschriftung je Wert. Faellt
-    der Prognosehorizont in ein neues Kalenderjahr, beginnt dessen Linie direkt
-    gestrichelt, ohne eigenen Ist-Abschnitt.
+    deckkraft``) die y-Werte, ``formatieren`` die Hover-Beschriftung je Wert. Jeder
+    Abschnitt beginnt am letzten Punkt des vorigen, damit die Linie ohne Bruch
+    weiterlaeuft; fehlt ein Abschnitt fuer ein Jahr (z. B. kein Vorlaeufig-Punkt, weil
+    kein Prognosehorizont in dieses Jahr faellt), entfaellt er einfach.
     """
     for index, jahr in enumerate(sorted(jahre)):
         punkte = jahre[jahr]
         farbe = JAHRESFARBEN[index % len(JAHRESFARBEN)]
         beschriftungen = [MONATSNAMEN[monat - 1] for monat, *_rest in punkte]
         y = werte(punkte)
-        # Erster Index mit gedaempfter Deckkraft - alles davor ist Ist, ab dort
-        # Vorausschau. Ohne Vorausschau in diesem Jahr: len(punkte), also nur Ist.
-        ist_grenze = next((i for i, (*_rest, deck) in enumerate(punkte) if deck < 1.0), len(punkte))
+        deckkraft_folge = [deck for *_rest, deck in punkte]
 
-        if ist_grenze > 0:
+        ende = 0
+        jahr_hat_legende = False
+        for deckkraft, dash, hinweis in _LINIENABSCHNITTE:
+            start = max(ende - 1, 0)
+            neues_ende = ende
+            while neues_ende < len(punkte) and deckkraft_folge[neues_ende] == deckkraft:
+                neues_ende += 1
+            if neues_ende == ende:
+                continue
             fig.add_scatter(
-                x=beschriftungen[:ist_grenze],
-                y=y[:ist_grenze],
+                x=beschriftungen[start:neues_ende],
+                y=y[start:neues_ende],
                 mode="lines+markers",
-                line={"color": farbe, "width": 2},
-                marker={"size": 6},
-                customdata=[[formatieren(wert)] for wert in y[:ist_grenze]],
-                hovertemplate=f"<b>{jahr} %{{x}}</b><br>%{{customdata[0]}}<extra></extra>",
+                line={"color": farbe, "width": 2, "dash": dash},
+                marker={"size": 6, "opacity": deckkraft},
+                opacity=deckkraft,
+                customdata=[[formatieren(wert)] for wert in y[start:neues_ende]],
+                hovertemplate=f"<b>{jahr} %{{x}}</b><br>%{{customdata[0]}}{hinweis}<extra></extra>",
                 name=str(jahr),
                 legendgroup=str(jahr),
+                showlegend=not jahr_hat_legende,
             )
-        if ist_grenze < len(punkte):
-            # Beginnt am letzten Ist-Punkt (oder, ohne einen, direkt beim ersten Wert),
-            # damit die Linie ohne Bruch weiterlaeuft.
-            start = max(ist_grenze - 1, 0)
-            fig.add_scatter(
-                x=beschriftungen[start:],
-                y=y[start:],
-                mode="lines+markers",
-                line={"color": farbe, "width": 2, "dash": "dot"},
-                marker={"size": 6, "opacity": PROGNOSE_DECKKRAFT},
-                opacity=PROGNOSE_DECKKRAFT,
-                customdata=[[formatieren(wert)] for wert in y[start:]],
-                hovertemplate=(
-                    f"<b>{jahr} %{{x}}</b><br>%{{customdata[0]}} (Vorausschau)<extra></extra>"
-                ),
-                name=str(jahr),
-                legendgroup=str(jahr),
-                showlegend=(ist_grenze == 0),
-            )
+            jahr_hat_legende = True
+            ende = neues_ende
 
 
 def gewinn_verlust_monatlich(
@@ -589,18 +624,21 @@ def gewinn_verlust_monatlich(
     Mit ``prognose`` haengt sich, additiv an die Historie, eine Vorausschau fuer den
     Prognosehorizont an (``horizont_kosten`` parallel zu ``prognose.horizontmonate()``)
     - gedaempfte Balken statt einer eigenen Farbe, dieselbe Konvention wie beim
-    Umsatzverlauf. ``verbrauch_laufender_monat`` liefert das vor dem Stichtag bereits
-    Realisierte des laufenden Monats, ``schulungsplan`` zusaetzlich additiven Umsatz aus
-    bereits geplanten Schulungsterminen - siehe :func:`_horizont_gesamtumsatz`.
+    Umsatzverlauf; der erste Horizontmonat (derselbe Kalendermonat wie der laufende)
+    bekommt dabei eine eigene Zwischenstufe, siehe
+    :data:`~umsatzprognose.darstellung.gestaltung.VORLAEUFIG_DECKKRAFT`. Eine Legende
+    erklaert die drei Stufen, siehe :func:`_datensicherheit_legende`.
+    ``verbrauch_laufender_monat`` liefert das vor dem Stichtag bereits Realisierte des
+    laufenden Monats, ``schulungsplan`` zusaetzlich additiven Umsatz aus bereits
+    geplanten Schulungsterminen - siehe :func:`_horizont_gesamtumsatz`.
     """
     beschriftungen, _umsatz, ergebnis, deckkraft = _historie_und_horizont_werte(
         monate, kosten, prognose, horizont_kosten, schulungsplan, verbrauch_laufender_monat
     )
     gesamt = sum(ergebnis)
+    horizont = prognose.horizontmonate() if prognose is not None and prognose.vorhanden else ()
 
     untertitel = f"Summe über {len(monate)} Monate: {euro(gesamt, nachkommastellen=0)}"
-    if prognose is not None and prognose.vorhanden and prognose.horizontmonate():
-        untertitel += " (gedämpfte Balken: Vorausschau)"
     fig = figur("Gewinn/Verlust je Monat", untertitel=untertitel, hoehe=hoehe)
     fig.add_bar(
         x=beschriftungen,
@@ -615,6 +653,9 @@ def gewinn_verlust_monatlich(
     )
     if prognose is not None and not prognose.vorhanden:
         _keine_prognose_hinweis(fig, prognose)
+    if horizont:
+        _datensicherheit_legende(fig, vorlaeufig=True, prognose=len(horizont) > 1)
+        _horizontale_legende(fig)
     achsen(fig)
     fig.update_layout(bargap=0.3, barcornerradius=4)
     fig.update_yaxes(tickformat=",.0f", ticksuffix=" €")
@@ -661,8 +702,14 @@ def gewinn_verlust_je_jahr(
         formatieren=euro,
     )
     fig.add_hline(y=0, line={"color": ACHSE, "width": 1})
+    if VORLAEUFIG_DECKKRAFT in deckkraft or PROGNOSE_DECKKRAFT in deckkraft:
+        _datensicherheit_legende(
+            fig,
+            vorlaeufig=VORLAEUFIG_DECKKRAFT in deckkraft,
+            prognose=PROGNOSE_DECKKRAFT in deckkraft,
+        )
+    _horizontale_legende(fig)
     achsen(fig)
-    fig.update_layout(showlegend=True)
     fig.update_yaxes(tickformat=",.0f", ticksuffix=" €")
     fig.update_xaxes(categoryorder="array", categoryarray=list(MONATSNAMEN), tickangle=0)
     return fig
@@ -711,8 +758,14 @@ def umsatzrendite_kumuliert(
         formatieren=lambda prozentpunkte: prozent(prozentpunkte / 100, nachkommastellen=1),
     )
     fig.add_hline(y=0, line={"color": ACHSE, "width": 1})
+    if VORLAEUFIG_DECKKRAFT in deckkraft or PROGNOSE_DECKKRAFT in deckkraft:
+        _datensicherheit_legende(
+            fig,
+            vorlaeufig=VORLAEUFIG_DECKKRAFT in deckkraft,
+            prognose=PROGNOSE_DECKKRAFT in deckkraft,
+        )
+    _horizontale_legende(fig)
     achsen(fig)
-    fig.update_layout(showlegend=True)
     fig.update_yaxes(tickformat=",.1f", ticksuffix=" %")
     fig.update_xaxes(categoryorder="array", categoryarray=list(MONATSNAMEN), tickangle=0)
     return fig

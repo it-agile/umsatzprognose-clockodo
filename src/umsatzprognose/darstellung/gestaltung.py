@@ -41,6 +41,11 @@ ACHSE = "#c3c2b7"
 # aber gedaempft - Sicherheit einer Zahl druecken wir ueber die Deckkraft aus, nicht ueber
 # eine zweite Farbe (siehe Moduldocstring).
 PROGNOSE_DECKKRAFT = 0.4
+# Zwischenstufe fuer den laufenden Monat in den Gewinn/Verlust-Ansichten: weder voll
+# abgeschlossene Daten noch reine Simulation, sondern eine Mischung aus bereits
+# gebuchtem Umsatz und dem simulierten Rest des Monats - liegt deshalb zwischen 1.0
+# und PROGNOSE_DECKKRAFT.
+VORLAEUFIG_DECKKRAFT = 0.7
 
 # Kategoriale Palette fuer den Gewinn/Verlust-Jahresvergleich: eine Farbe je Kalenderjahr,
 # statt Vorzeichen wie beim einzelnen Ergebnis-Balken. Feste Reihenfolge, zugewiesen nach
