@@ -20,6 +20,10 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
+from notebook_ausgaben import zellausgaben_entfernen
 
 
 def staged_notebooks() -> list[str]:
@@ -32,38 +36,6 @@ def staged_notebooks() -> list[str]:
     return [zeile for zeile in ergebnis.stdout.splitlines() if zeile.endswith(".ipynb")]
 
 
-def zellausgaben_entfernen(pfad: str) -> bool:
-    """Entfernt Ausgaben und Ausführungszähler aus einer Notebook-Datei.
-
-    Returns:
-        Ob die Datei dabei verändert wurde.
-    """
-    with open(pfad, encoding="utf-8") as datei:
-        notebook = json.load(datei)
-
-    veraendert = False
-    for zelle in notebook.get("cells", []):
-        if zelle.get("cell_type") != "code":
-            continue
-        if zelle.get("outputs"):
-            zelle["outputs"] = []
-            veraendert = True
-        if zelle.get("execution_count") is not None:
-            zelle["execution_count"] = None
-            veraendert = True
-        # Manche Jupyter-Versionen haengen hier Ausfuehrungszeiten an - kein Wert
-        # fuers Repository, siehe Moduldocstring.
-        if zelle.get("metadata", {}).pop("execution", None) is not None:
-            veraendert = True
-
-    if veraendert:
-        with open(pfad, "w", encoding="utf-8") as datei:
-            json.dump(notebook, datei, indent=1, ensure_ascii=False)
-            datei.write("\n")
-
-    return veraendert
-
-
 def main() -> int:
     notebooks = staged_notebooks()
     if not notebooks:
@@ -72,7 +44,7 @@ def main() -> int:
     bereinigt = []
     for pfad in notebooks:
         try:
-            if zellausgaben_entfernen(pfad):
+            if zellausgaben_entfernen(Path(pfad)):
                 bereinigt.append(pfad)
         except (OSError, json.JSONDecodeError) as fehler:
             print(f"pre-commit: {pfad} konnte nicht geprüft werden ({fehler})", file=sys.stderr)
