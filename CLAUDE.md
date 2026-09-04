@@ -216,7 +216,8 @@ verändert weder Restvolumen noch Abrufquote noch Kapazitätsdeckel.
 Der **Baustein Kosten** (`spec/spec-kosten.md`, `domaene.kosten.Kostenplan`, `kosten/`)
 stellt der Umsatzseite eine Kostenprognose gegenüber: die Gesamtkosten je Monat aus
 derselben jährlichen Google-Sheets-Datei wie die Schulungsanmeldungen, aber einem
-eigenen Tabellenblatt (`Kosten {jahr}`, Zeilen 3–15 ohne festen Spaltenbereich). Wie bei den
+eigenen Tabellenblatt (`Kosten {jahr}`, gelesen wird Zeile 1–20 ohne festen Zeilen- oder
+Spaltenbereich, Kopfzeile inhaltsbasiert ermittelt – siehe unten). Wie bei den
 Schulungsanmeldungen steht der Betrag schon fest – keine Simulation, keine Bandbreite.
 **Anders als die Schulungsanmeldungen gilt die Kostenprognose auch für bereits
 vergangene Monate**, nicht nur für den Prognosehorizont: Clockodo liefert keine
@@ -372,12 +373,15 @@ uneinheitlich formatiertes deutsches Zahlenformat mit Euro-Zeichen, geparst übe
 `domaene.zahlen.euro_parsen()` (entfernt alles außer Ziffern/Punkt/Komma, dann den
 Tausenderpunkt, dann Komma → Punkt).
 
-**Kosten:** Tabellenblatt `Kosten {jahr}`, Zeile 3 Kopfzeile, Zeile 4–15 die zwölf
-Monate des Jahres – **ohne festen Spaltenbereich**: gelesen wird die ganze Zeilenbreite
-(`3:15`), weil die Spaltenlage jahrgangsweise leicht verschoben sein kann (verifiziert
-am Jahrgang 2022). Spalten werden über die Kopfzeile zugeordnet (`Monat`,
-`Gesamtkosten`); `Monat` hat aber nicht in jedem Jahrgang eine eigene Kopfzeilen-
-Bezeichnung – ohne sie ermittelt `_monat_spalte_ermitteln()` die Monatsspalte anhand
+**Kosten:** Tabellenblatt `Kosten {jahr}` – **ohne festen Zeilen- oder Spaltenbereich**:
+gelesen wird pauschal `1:20`, weder Kopfzeilen-Zeile noch Spaltenlage stimmen
+jahrgangsweise verlässlich überein (verifiziert am Jahrgang 2022, wo der eigentlichen
+Monatsübersicht im selben Zeilenbereich noch eine andere Tabelle vorausgeht, etwa eine
+Mitarbeiteraufstellung mit eigener, ähnlicher aber nicht identischer Kopfzeile).
+`_kopfzeile_finden()` sucht deshalb inhaltsbasiert die erste Zeile, die sowohl
+`Gesamtkosten` als auch `Allgemeinkosten` trägt. `Monat` hat aber nicht in jedem
+Jahrgang eine eigene Kopfzeilen-Bezeichnung – ohne sie ermittelt
+`_monat_spalte_ermitteln()` die Monatsspalte anhand
 ihres Inhalts (die Spalte mit den meisten als deutscher Monatsname erkannten Zellen)
 statt über eine feste Position. `Monat` steht als ausgeschriebener deutscher
 Monatsname (`Januar`…`Dezember`), nicht als Zahl wie bei den Schulungsanmeldungen.

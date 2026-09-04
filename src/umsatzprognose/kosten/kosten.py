@@ -2,19 +2,21 @@
 
 Ein Tabellenblatt je Jahr in derselben jaehrlichen Datei wie die Schulungsanmeldungen
 (``KOSTEN_SHEET_IDS``, siehe :mod:`umsatzprognose.google_sheets.config`), aber ein
-anderer Reiter: ``"Kosten {jahr}"``, Zeilen 3-15 (Zeile 3 Kopfzeile, Zeile 4-15 die
-zwoelf Monate des Jahres), **ohne festen Spaltenbereich** - der Zellbereich je Jahrgang
-liegt in der Praxis leicht verschoben (verifiziert am Jahrgang 2022, dessen Bereich
-nicht mit spaeteren Jahren uebereinstimmt), deshalb wird die ganze Zeilenbreite gelesen
-statt eines festen ``L:R``-Fensters. Wie bei den Schulungsanmeldungen bestimmt die
-Kopfzeile die Spaltenzuordnung **namentlich**, robust gegenueber der Reihenfolge und
-Position der Spalten.
+anderer Reiter: ``"Kosten {jahr}"``. Gelesen wird pauschal Zeile 1-20 (**ohne festen
+Zeilen- oder Spaltenbereich**): weder Kopfzeilen-Zeile noch Spaltenlage stimmen
+zwischen den Jahrgaengen verlaesslich ueberein (verifiziert am Jahrgang 2022, wo der
+eigentlichen Monatsuebersicht im selben Zeilenbereich noch eine andere Tabelle
+vorausgeht, z. B. eine Mitarbeiteraufstellung mit eigener, aehnlicher aber nicht
+identischer Kopfzeile). Kopfzeile und Spaltenzuordnung werden deshalb **inhaltsbasiert**
+ermittelt: :func:`_kopfzeile_finden` sucht die erste Zeile, die sowohl ``Gesamtkosten``
+als auch ``Allgemeinkosten`` traegt, und bestimmt darueber gleichzeitig die
+Spaltenposition jeder Kopfzeilen-Bezeichnung.
 
 ``Monat`` traegt nicht in jedem Jahrgang eine eigene Kopfzeilen-Bezeichnung. Ohne eine
 Spalte namens ``Monat`` faellt :func:`_monat_spalte_ermitteln` deshalb auf die Spalte
 zurueck, deren Zellen sich ueberwiegend als deutscher Monatsname parsen lassen (siehe
-:func:`_monat_parsen`) - inhaltsbasiert statt positionsbasiert, weil auch die Position
-zwischen den Jahrgaengen nicht verlaesslich gleich ist.
+:func:`_monat_parsen`) - inhaltsbasiert statt positionsbasiert, aus demselben Grund wie
+bei der Kopfzeile selbst.
 
 ``Gesamtkosten`` (die Kostenpauschale), ``Allgemeinkosten`` (deren geschaetzter Anteil
 darin) und ``Kostenerfassung`` (die mit Zeitverzug aus den ``AB {Monat}``-Reitern
@@ -58,7 +60,7 @@ from umsatzprognose.google_sheets import (
 )
 from umsatzprognose.util import monatsfolge
 
-KOSTEN_BEREICH_VORLAGE = "Kosten {jahr}!3:15"
+KOSTEN_BEREICH_VORLAGE = "Kosten {jahr}!1:20"
 
 SPALTE_MONAT = "Monat"
 SPALTE_GESAMTKOSTEN = "Gesamtkosten"
@@ -105,16 +107,32 @@ def _monat_spalte_ermitteln(zeilen: list[list[str]], index: dict[str, int]) -> i
     return beste_spalte
 
 
+def _kopfzeile_finden(zeilen: list[list[str]]) -> tuple[int, dict[str, int]]:
+    """Findet die Zeile mit den Pflichtspalten ``Gesamtkosten`` und ``Allgemeinkosten``.
+
+    Manchen Jahrgaengen (etwa 2022) geht der Monatsuebersicht im selben Zeilenbereich
+    eine andere Tabelle voraus (z. B. eine Mitarbeiteraufstellung) - deren Kopfzeile
+    traegt teils aehnliche, aber nicht beide Pflichtspalten. Deshalb wird nicht die
+    erste Zeile als Kopfzeile angenommen, sondern inhaltsbasiert die erste Zeile
+    gesucht, die beide Pflichtspalten enthaelt - robust gegenueber zusaetzlichen Zeilen
+    davor, analog zu :func:`_monat_spalte_ermitteln` fuer die Monatsspalte.
+
+    Raises:
+        ValueError: keine Zeile enthaelt beide Pflichtspalten.
+    """
+    pflicht = {SPALTE_GESAMTKOSTEN, SPALTE_ALLGEMEINKOSTEN}
+    for i, zeile in enumerate(zeilen):
+        index = {name.strip(): j for j, name in enumerate(zeile) if name.strip()}
+        if pflicht <= index.keys():
+            return i, index
+    raise ValueError(f"Spalten fehlen im Tabellenblatt: {sorted(pflicht)}")
+
+
 def _zeilen_zu_posten(zeilen: list[list[str]], jahr: int) -> list[Kostenposten]:
     if not zeilen:
         return []
-    kopf = zeilen[0]
-    index = {name.strip(): i for i, name in enumerate(kopf) if name.strip()}
-
-    fehlend = {SPALTE_GESAMTKOSTEN, SPALTE_ALLGEMEINKOSTEN} - index.keys()
-    if fehlend:
-        raise ValueError(f"Spalten fehlen im Tabellenblatt: {sorted(fehlend)}")
-    monat_spalte = _monat_spalte_ermitteln(zeilen, index)
+    kopf_zeile, index = _kopfzeile_finden(zeilen)
+    monat_spalte = _monat_spalte_ermitteln(zeilen[kopf_zeile:], index)
 
     def zelle_an(zeile: list[str], spalte: int) -> str:
         return zeile[spalte] if spalte < len(zeile) else ""
@@ -125,7 +143,7 @@ def _zeilen_zu_posten(zeilen: list[list[str]], jahr: int) -> list[Kostenposten]:
     hat_erfassung = SPALTE_KOSTENERFASSUNG in index
 
     posten = []
-    for zeile in zeilen[1:]:
+    for zeile in zeilen[kopf_zeile + 1 :]:
         monat_text = zelle_an(zeile, monat_spalte).strip()
         if not monat_text:
             continue

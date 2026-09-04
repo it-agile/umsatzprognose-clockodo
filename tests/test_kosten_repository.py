@@ -14,6 +14,7 @@ import pytest
 from umsatzprognose.domaene.kosten import Erfasst, Geschaetzt
 from umsatzprognose.kosten.kosten import (
     KostenRepository,
+    _kopfzeile_finden,
     _monat_parsen,
     _monat_spalte_ermitteln,
     _monatsfolge,
@@ -120,6 +121,38 @@ def test_zeilen_zu_posten_findet_monatsspalte_an_verschobener_position() -> None
         (2022, 1, 950.0),
         (2022, 2, 800.0),
     ]
+
+
+def test_kopfzeile_finden_ueberspringt_vorausgehende_tabelle() -> None:
+    # Manche Jahrgaenge (z.B. 2022) haben im selben Zeilenbereich vor der eigentlichen
+    # Monatsuebersicht noch eine andere Tabelle - deren Kopfzeile traegt teils
+    # aehnliche, aber nicht beide Pflichtspalten (hier: "Allgemeinkosten" ohne
+    # "Gesamtkosten").
+    zeilen = [
+        ["Jahr", "Mitarbeiter", "Allgemeinkosten", "Bemerkungen"],
+        ["2022", "", "0,00 €", ""],
+        ["2022", "", "0,00 €", ""],
+        KOPFZEILE,
+    ]
+    zeile_index, index = _kopfzeile_finden(zeilen)
+    assert zeile_index == 3
+    assert index["Gesamtkosten"] == KOPFZEILE.index("Gesamtkosten")
+
+
+def test_kopfzeile_finden_ohne_treffer_wirft() -> None:
+    with pytest.raises(ValueError, match="Gesamtkosten"):
+        _kopfzeile_finden([["Monat", "Reisekosten"]])
+
+
+def test_zeilen_zu_posten_findet_kopfzeile_nach_vorausgehender_tabelle() -> None:
+    zeilen = [
+        ["Jahr", "Mitarbeiter", "Allgemeinkosten", "Bemerkungen"],
+        ["2022", "", "0,00 €", ""],
+        KOPFZEILE,
+        ["Januar", "", "800,00 €", "50,00 €", "950,00 €"],
+    ]
+    posten = _zeilen_zu_posten(zeilen, 2022)
+    assert [(p.jahr, p.monat, p.kosten) for p in posten] == [(2022, 1, 950.0)]
 
 
 def test_monat_spalte_ermitteln_bevorzugt_die_kopfzeile() -> None:
