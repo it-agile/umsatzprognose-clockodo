@@ -20,3 +20,6 @@ htmlcov/
 # Notebooks
 .ipynb_checkpoints/
 tmp.ipynb
+
+# Export
+/diagramme/

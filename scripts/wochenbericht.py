@@ -17,6 +17,7 @@ import os
 import tempfile
 from pathlib import Path
 
+import plotly.io as pio
 from slack_sdk import WebClient
 
 from umsatzprognose import Dashboard
@@ -41,9 +42,15 @@ def posten(client: WebClient, kanal: str, dashboard: Dashboard, verzeichnis: Pat
         channel=kanal,
         text=f"Wochenbericht Umsatzprognose - Stand {dashboard.stichtag:%d.%m.%Y}",
     )
-    for titel, figur in diagramme(dashboard):
-        bild = verzeichnis / f"{titel}.png"
-        figur.write_image(bild, width=1400, height=800, scale=2)
+    titel_figuren = diagramme(dashboard)
+    bilder = [verzeichnis / f"{titel}.png" for titel, _figur in titel_figuren]
+    # Ein Batch-Aufruf statt figur.write_image() je Bild: kaleido (>=1.0) startet sonst
+    # fuer jedes Bild eine eigene Chromium-Instanz neu - siehe
+    # scripts/diagramme_exportieren.py fuer denselben Fix mit Zeitmessung.
+    pio.write_images(
+        fig=[figur for _titel, figur in titel_figuren], file=bilder, width=1400, height=800, scale=2
+    )
+    for (titel, _figur), bild in zip(titel_figuren, bilder, strict=True):
         client.files_upload_v2(
             channel=kanal,
             thread_ts=einstieg["ts"],
