@@ -398,11 +398,24 @@ class Dashboard:
         return diagramme.restvolumen_je_projekt(self.bestand.im_prognose_scope, top=top)
 
     def kapazitaet_je_mitarbeiter(self, top: int = STANDARD_TOP) -> go.Figure:
-        """Wer im anstehenden Monat noch Kapazitaet hat."""
-        jahr, monat = self.bestand.stichtag.year, self.bestand.stichtag.month
-        return diagramme.kapazitaet_je_mitarbeiter(
-            self.bestand.mitarbeiter_kapazitaet(jahr, monat), top=top
+        """Wer ueber die abgeschlossenen Monate des Fensters am meisten Kapazitaet hatte.
+
+        Der laufende (Stichtags-)Monat ist unvollstaendig und wuerde einen falschen
+        Eindruck erwecken - er faellt deshalb heraus, genau wie bei
+        :meth:`auslastung_je_mitarbeiter`. Massgeblich sind dieselben abgeschlossenen
+        Monate aus dem beim Laden angefragten Fenster (``auslastung_monate``).
+        """
+        stichtagsmonat = (self.bestand.stichtag.year, self.bestand.stichtag.month)
+        abgeschlossen = [a for a in self.auslastung if (a.jahr, a.monat) != stichtagsmonat]
+        kapazitaeten = sorted(
+            (
+                (summe.mitarbeiter, summe.verfuegbare_stunden)
+                for summe in Auslastungssumme.je_mitarbeiter(abgeschlossen)
+            ),
+            key=lambda paar: paar[1],
+            reverse=True,
         )
+        return diagramme.kapazitaet_je_mitarbeiter(kapazitaeten, top=top)
 
     def kapazitaet_je_projekt(self, top: int = STANDARD_TOP) -> go.Figure:
         """Wie sich die simulierte Kapazitaet auf die Projekte im Scope verteilt."""

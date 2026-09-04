@@ -87,14 +87,6 @@ class Bestand:
         """Summe des noch abrufbaren Volumens - die Ausgangsgroesse der Simulation."""
         return sum(p.restvolumen_prognosewirksam or 0.0 for p in self.im_prognose_scope)
 
-    def mitarbeiter_kapazitaet(
-        self, jahr: int, monat: int
-    ) -> tuple[tuple[Mitarbeiter, float], ...]:
-        """Aktive Personen mit ihrer verfuegbaren Kapazitaet in diesem Monat, groesste zuerst."""
-        aktive = [m for m in self.mitarbeiter if m.aktiv]
-        kapazitaeten = [(m, m.verfuegbare_kapazitaet(jahr, monat)) for m in aktive]
-        return tuple(sorted(kapazitaeten, key=lambda paar: paar[1], reverse=True))
-
     def projekte_von_kunde(self, kunde: Kunde) -> tuple[Projekt, ...]:
         return tuple(p for p in self.projekte if p.kunde and p.kunde.id == kunde.id)
 

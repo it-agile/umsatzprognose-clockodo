@@ -870,11 +870,11 @@ def restvolumen_je_projekt(
 def kapazitaet_je_mitarbeiter(
     kapazitaeten: Sequence[tuple[Mitarbeiter, float]], *, top: int = 15, hoehe: int | None = None
 ) -> go.Figure:
-    """Verfuegbare Kapazitaet je Person fuer einen Monat, als liegende Balken in Tagen.
+    """Verfuegbare Kapazitaet je Person, aufsummiert ueber mehrere Monate, in Tagen.
 
     ``kapazitaeten`` kommt bereits absteigend sortiert (siehe
-    :meth:`~umsatzprognose.domaene.bestand.Bestand.mitarbeiter_kapazitaet`), analog zu
-    :func:`restvolumen_je_projekt`. Angezeigt wird in Personentagen à
+    :meth:`~umsatzprognose.darstellung.dashboard.Dashboard.kapazitaet_je_mitarbeiter`),
+    analog zu :func:`restvolumen_je_projekt`. Angezeigt wird in Personentagen à
     :data:`~umsatzprognose.domaene.zahlen.STUNDEN_JE_TAG` Stunden statt in Stunden -
     die griffigere Einheit fuer "wer hat noch Luft".
     """

@@ -51,7 +51,7 @@ from umsatzprognose.domaene import (
     Wochenarbeitszeit,
 )
 from umsatzprognose.domaene.projekt import OHNE_BUDGET
-from umsatzprognose.domaene.zahlen import euro
+from umsatzprognose.domaene.zahlen import STUNDEN_JE_TAG, euro
 from umsatzprognose.kosten import KostenRepository
 from umsatzprognose.schulungen import SchulungenRepository
 
@@ -870,18 +870,23 @@ def test_dashboard_liefert_alle_ansichten_zum_selben_stand():
     assert len(dashboard.umsatztabelle()) == 13
 
 
-def test_dashboard_kapazitaet_je_mitarbeiter_nutzt_den_stichtagsmonat():
-    viel = Wochenarbeitszeit(
+def test_dashboard_kapazitaet_je_mitarbeiter_schliesst_laufenden_monat_aus():
+    vollzeit = Wochenarbeitszeit(
         stunden_je_wochentag=(8.0, 8.0, 8.0, 8.0, 8.0, 0.0, 0.0), gueltig_ab=date(2020, 1, 1)
     )
-    anna = Mitarbeiter(id=1, name="Anna", aktiv=True, arbeitszeiten=(viel,))
-    inaktiv = Mitarbeiter(id=2, name="Clara", aktiv=False, arbeitszeiten=(viel,))
-    bestand = Bestand(stichtag=STICHTAG, mitarbeiter=(anna, inaktiv))
-    dashboard = Dashboard(bestand, SCHULUNGSPLAN, KOSTENPLAN)
+    anna = Mitarbeiter(id=1, name="Anna", aktiv=True, arbeitszeiten=(vollzeit,))
+    bestand = Bestand(stichtag=STICHTAG, mitarbeiter=(anna,))  # STICHTAG: 24.08.2026
+    auslastung = (
+        Auslastungsmonat(mitarbeiter=anna, jahr=2026, monat=7, abrechenbare_stunden=80.0),
+        # August ist der laufende (Stichtags-)Monat und faellt heraus.
+        Auslastungsmonat(mitarbeiter=anna, jahr=2026, monat=8, abrechenbare_stunden=999.0),
+    )
+    dashboard = Dashboard(bestand, SCHULUNGSPLAN, KOSTENPLAN, auslastung)
 
     fig = dashboard.kapazitaet_je_mitarbeiter()
-    assert len(fig.data[0].x) == 1
-    assert fig.data[0].x[0] > 0
+
+    verfuegbar_juli = anna.verfuegbare_kapazitaet(2026, 7)
+    assert fig.data[0].x[0] == pytest.approx(verfuegbar_juli / STUNDEN_JE_TAG)
 
 
 @pytest.mark.parametrize(
