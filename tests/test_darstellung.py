@@ -12,8 +12,14 @@ from datetime import date, timedelta
 import numpy as np
 import pytest
 
+from umsatzprognose.clockodo import AuslastungRepository, BestandRepository
 from umsatzprognose.darstellung import Dashboard, Ladedauern, diagramme, tabellen
-from umsatzprognose.darstellung.dashboard import _abgeschlossene_monate
+from umsatzprognose.darstellung.dashboard import (
+    _abgeschlossene_monate,
+    _aktive_mitarbeiter,
+    _historie_monate,
+    _Stoppuhr,
+)
 from umsatzprognose.darstellung.gestaltung import (
     ERGEBNIS_NEGATIV,
     ERGEBNIS_POSITIV,
@@ -46,6 +52,8 @@ from umsatzprognose.domaene import (
 )
 from umsatzprognose.domaene.projekt import OHNE_BUDGET
 from umsatzprognose.domaene.zahlen import euro
+from umsatzprognose.kosten import KostenRepository
+from umsatzprognose.schulungen import SchulungenRepository
 
 STICHTAG = date(2026, 8, 24)
 KUNDE = Kunde(id=7, name="Union Asset Management Holding AG")
@@ -1118,3 +1126,94 @@ def test_dashboard_kapazitaet_je_projekt_zeigt_werte_nach_simulation():
 
     fig = dashboard.kapazitaet_je_projekt()
     assert fig.data[0].x[0] == prognose.kapazitaet_je_projekt()[projekt] / 7.0
+
+
+def test_historie_monate_ohne_umsatzhistorie_ist_leer():
+    ohne_historie = Bestand(stichtag=STICHTAG)
+    assert _historie_monate(ohne_historie) == ()
+
+
+def test_aktive_mitarbeiter_filtert_inaktive():
+    aktiv = Mitarbeiter(id=1, name="Aktiv", aktiv=True)
+    inaktiv = Mitarbeiter(id=2, name="Inaktiv", aktiv=False)
+    bestand = Bestand(stichtag=STICHTAG, mitarbeiter=(aktiv, inaktiv))
+
+    assert _aktive_mitarbeiter(bestand) == {1: aktiv}
+
+
+def test_stoppuhr_misst_eine_dauer():
+    with _Stoppuhr() as t:
+        pass
+    assert t.dauer >= timedelta(0)
+
+
+def test_dashboard_kennzahlen_ohne_umsatzhistorie_wirft():
+    ohne_historie = Dashboard(Bestand(stichtag=STICHTAG), SCHULUNGSPLAN, KOSTENPLAN)
+    with pytest.raises(ValueError, match="Umsatzhistorie"):
+        ohne_historie.kennzahlen()
+
+
+def test_dashboard_stundensatz_uebersteuern_wirkt_auf_folgende_ansichten():
+    projekt = Projekt(id=1, name="Pauschale", kunde=KUNDE, aktiv=True,
+                       budget=Gesamtbudget(betrag=50000.0),
+                       verbrauchtes_volumen=20000.0, verbrauchte_stunden=0.0)  # fmt: skip
+    bestand = Bestand(stichtag=STICHTAG, projekte=(projekt,), umsatzhistorie=HISTORIE)
+    dashboard = Dashboard(bestand, SCHULUNGSPLAN, KOSTENPLAN)
+    assert dashboard.bestand.projekte[0].effektiver_stundensatz is None
+
+    dashboard.stundensatz_uebersteuern({"Pauschale": 95.0})
+
+    assert dashboard.bestand.projekte[0].effektiver_stundensatz == 95.0
+
+
+def test_dashboard_laden_verdrahtet_alle_vier_repositories(monkeypatch):
+    """Regressionstest fuer ``Dashboard.laden()`` als ``synchron()`` um ``laden_async()``.
+
+    Alle vier ``mit_automatischen_zugangsdaten()``-Einstiege werden durch Stubs
+    ersetzt - kein Netzzugriff, aber echte Ausfuehrung von ``laden()``/``laden_async()``
+    inklusive der ``synchron()``-Bruecke zwischen ihnen.
+    """
+
+    class _StubBestandRepository:
+        def laden(self, **kwargs):
+            raise AssertionError("laden() soll fuer Dashboard.laden() nicht aufgerufen werden")
+
+        async def laden_async(self, **kwargs):
+            return BESTAND
+
+    class _StubSchulungenRepository:
+        def laden(self, **kwargs):
+            return SCHULUNGSPLAN
+
+    class _StubKostenRepository:
+        fruehestes_konfiguriertes_jahr = None
+
+        def laden(self, **kwargs):
+            return KOSTENPLAN
+
+    class _StubAuslastungRepository:
+        def laden(self, *args, **kwargs):
+            raise AssertionError("laden() soll fuer Dashboard.laden() nicht aufgerufen werden")
+
+        async def laden_async(self, *args, **kwargs):
+            return ()
+
+    monkeypatch.setattr(
+        BestandRepository, "mit_automatischen_zugangsdaten", lambda: _StubBestandRepository()
+    )
+    monkeypatch.setattr(
+        SchulungenRepository, "mit_automatischen_zugangsdaten", lambda: _StubSchulungenRepository()
+    )
+    monkeypatch.setattr(
+        KostenRepository, "mit_automatischen_zugangsdaten", lambda: _StubKostenRepository()
+    )
+    monkeypatch.setattr(
+        AuslastungRepository, "mit_automatischen_zugangsdaten", lambda: _StubAuslastungRepository()
+    )
+
+    dashboard = Dashboard.laden(stichtag=STICHTAG)
+
+    assert dashboard.bestand is BESTAND
+    assert dashboard.schulungsplan is SCHULUNGSPLAN
+    assert dashboard.kostenplan is KOSTENPLAN
+    assert dashboard.auslastung == ()
