@@ -144,6 +144,7 @@ source_pkgs = [
 ]
 
 [tool.coverage.report]
+fail_under = 90
 omit = [
     ".githooks/*",
     "tests/*",
