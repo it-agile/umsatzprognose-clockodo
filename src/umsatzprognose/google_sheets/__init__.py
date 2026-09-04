@@ -8,7 +8,7 @@ Zugangsdaten (:class:`GoogleSheetsConfig`) und den rohen Lesezugriff
 gelesenen Zeilen auf Fachobjekte abgebildet werden, entscheidet jeder Aufrufer selbst.
 """
 
-from umsatzprognose.google_sheets.client import GoogleSheetsClient, TabellenClient
+from umsatzprognose.google_sheets.client import GoogleSheetsClient, TabellenClient, jahre_laden
 from umsatzprognose.google_sheets.config import GoogleSheetsConfig, MissingCredentialsError
 
 __all__ = [
@@ -16,4 +16,5 @@ __all__ = [
     "GoogleSheetsConfig",
     "MissingCredentialsError",
     "TabellenClient",
+    "jahre_laden",
 ]

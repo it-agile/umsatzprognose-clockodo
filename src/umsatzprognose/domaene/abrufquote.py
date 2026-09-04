@@ -12,7 +12,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable
+    from collections.abc import Callable, Iterable
 
     from .projekt import Projekt
 
@@ -149,6 +149,11 @@ class Abrufquotenverteilung:
         werte = self._werte
         return sum(werte) / len(werte) if werte else None
 
+    def _anteil(self, zaehlt: Callable[[float], bool]) -> float:
+        if not self.quoten:
+            return 0.0
+        return sum(1 for wert in self._werte if zaehlt(wert)) / self.anzahl
+
     @property
     def anteil_ohne_abruf(self) -> float:
         """Anteil der Projekt-Monate, in denen nichts abgerufen wurde.
@@ -157,16 +162,12 @@ class Abrufquotenverteilung:
         die Simulation einen Monat ohne Umsatz zieht, und damit ueber die Breite der
         Bandbreite nach unten.
         """
-        if not self.quoten:
-            return 0.0
-        return sum(1 for wert in self._werte if wert == 0.0) / self.anzahl
+        return self._anteil(lambda wert: wert == 0.0)
 
     @property
     def anteil_ueber_budget(self) -> float:
         """Anteil der Beobachtungen mit einer Quote ueber 1 - weiche Budgets."""
-        if not self.quoten:
-            return 0.0
-        return sum(1 for wert in self._werte if wert > 1.0) / self.anzahl
+        return self._anteil(lambda wert: wert > 1.0)
 
     def hoechste(self, anzahl: int = 5) -> tuple[Abrufquote, ...]:
         """Die auffaelligsten Beobachtungen - fuer die Kalibrierung."""

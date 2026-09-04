@@ -132,69 +132,43 @@ class Bestand:
         return self.abbildungshinweise + self._fachliche_hinweise()
 
     def _fachliche_hinweise(self) -> tuple[Hinweis, ...]:
-        gefunden: list[Hinweis] = []
-
-        ohne_budget = [p for p in self.aktive_projekte if not verwertbar(p.budget)]
-        if ohne_budget:
-            gefunden.append(
-                Hinweis(
+        gefunden = [
+            hinweis
+            for hinweis in (
+                _hinweis_wenn(
+                    (p for p in self.aktive_projekte if not verwertbar(p.budget)),
                     "Aktive Projekte ohne bezifferbares Auftragsvolumen - sie gehen "
                     "nicht in die Prognose ein",
-                    tuple(p.name if p.name else str(p.id) for p in ohne_budget),
-                )
-            )
-
-        ueberschritten = [p for p in self.aktive_projekte if p.budget_ueberschritten]
-        if ueberschritten:
-            gefunden.append(
-                Hinweis(
+                ),
+                _hinweis_wenn(
+                    (p for p in self.aktive_projekte if p.budget_ueberschritten),
                     "Aktive Projekte mit überschrittenem Budget - sie tragen 0 zur Prognose bei",
-                    tuple(p.name if p.name else str(p.id) for p in ueberschritten),
-                )
-            )
-
-        beendet = [p for p in self.aktive_projekte if p.abgeschlossen]
-        if beendet:
-            gefunden.append(
-                Hinweis(
+                ),
+                _hinweis_wenn(
+                    (p for p in self.aktive_projekte if p.abgeschlossen),
                     "Projekte, die als abgeschlossen markiert und trotzdem aktiv sind - "
                     "sie gehen nicht in die Prognose ein",
-                    tuple(p.name if p.name else str(p.id) for p in beendet),
-                )
-            )
-
-        ohne_satz = [p for p in self.im_prognose_scope if p.effektiver_stundensatz is None]
-        if ohne_satz:
-            gefunden.append(
-                Hinweis(
+                ),
+                _hinweis_wenn(
+                    (p for p in self.im_prognose_scope if p.effektiver_stundensatz is None),
                     "Projekte im Prognose-Scope ohne erfasste Zeit - für sie lässt sich "
                     "kein Stundensatz ableiten",
-                    tuple(p.name if p.name else str(p.id) for p in ohne_satz),
-                )
-            )
-
-        stundensatz_null = [p for p in self.im_prognose_scope if p.effektiver_stundensatz == 0.0]
-        if stundensatz_null:
-            gefunden.append(
-                Hinweis(
+                ),
+                _hinweis_wenn(
+                    (p for p in self.im_prognose_scope if p.effektiver_stundensatz == 0.0),
                     "Projekte im Prognose-Scope mit Stundensatz 0 - gebuchte Zeit ohne "
                     "Umsatz; ohne Korrektur würde die Simulation dort durch null "
                     "teilen. Mit Dashboard.stundensatz_uebersteuern() lässt sich für "
                     "diese Projekte von Hand ein Stundensatz hinterlegen",
-                    tuple(p.name if p.name else str(p.id) for p in stundensatz_null),
-                )
-            )
-
-        ohne_beteiligte = [p for p in self.im_prognose_scope if not p.anteile]
-        if ohne_beteiligte:
-            gefunden.append(
-                Hinweis(
+                ),
+                _hinweis_wenn(
+                    (p for p in self.im_prognose_scope if not p.anteile),
                     "Projekte im Prognose-Scope, auf die im Betrachtungszeitraum "
                     "niemand gebucht hat",
-                    tuple(p.name if p.name else str(p.id) for p in ohne_beteiligte),
-                )
+                ),
             )
-
+            if hinweis is not None
+        ]
         gefunden.extend(self._hinweise_zur_abrufquote())
         return tuple(gefunden)
 
@@ -292,3 +266,9 @@ class Bestand:
             for p in self.aktive_projekte
             if not verwertbar(p.budget) and not any(f in p.bezeichnung for f in filter)
         ]
+
+
+def _hinweis_wenn(betroffene_projekte: Iterable[Projekt], text: str) -> Hinweis | None:
+    """Ein :class:`Hinweis` fuer ``betroffene_projekte``, ``None`` wenn die Liste leer ist."""
+    betroffene = tuple(p.name if p.name else str(p.id) for p in betroffene_projekte)
+    return Hinweis(text, betroffene) if betroffene else None

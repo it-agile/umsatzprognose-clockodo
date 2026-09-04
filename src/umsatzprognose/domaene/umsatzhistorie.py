@@ -20,10 +20,14 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable
+    from collections.abc import Iterable, Sequence
     from datetime import date
 
 from dataclasses import dataclass
+
+from umsatzprognose.util import Monat, vormonat
+
+from .hinweis import Hinweis
 
 MONATSNAMEN = (
     "Jan", "Feb", "Mär", "Apr", "Mai", "Jun",
@@ -31,8 +35,21 @@ MONATSNAMEN = (
 )  # fmt: skip
 
 
-def _vormonat(jahr: int, monat: int) -> tuple[int, int]:
-    return (jahr - 1, 12) if monat == 1 else (jahr, monat - 1)
+def fehlende_monate_hinweis(
+    text: str, monate: Sequence[Monat], vorhanden: Iterable[Monat]
+) -> tuple[Hinweis, ...]:
+    """Ein :class:`Hinweis` fuer die Monate aus ``monate``, die nicht in ``vorhanden`` stehen.
+
+    Gemeinsames Muster von :class:`~umsatzprognose.domaene.kosten.Kostenplan` und
+    :class:`~umsatzprognose.domaene.schulung.Schulungsplan`: ob ein Monat fehlt, weil
+    die Quelle nicht geladen wurde oder weil sie geladen ist, aber keinen Eintrag fuer
+    diesen Monat enthaelt, sieht fuer den Leser gleich aus - beides ist keine
+    Fehlermeldung, sondern eine Datenluecke, die sich in 0 niederschlaegt.
+    """
+    fehlend = [monat for monat in monate if monat not in set(vorhanden)]
+    if not fehlend:
+        return ()
+    return (Hinweis(text, tuple(f"{MONATSNAMEN[monat - 1]} {jahr}" for jahr, monat in fehlend)),)
 
 
 @dataclass(frozen=True)
@@ -92,7 +109,7 @@ class Umsatzhistorie:
         jahr, monat = stichtag.year, stichtag.month
         for _ in range(abgeschlossene + 1):
             reihe.append(vorhanden.get((jahr, monat), Monatsumsatz(jahr, monat)))
-            jahr, monat = _vormonat(jahr, monat)
+            jahr, monat = vormonat(jahr, monat)
         return cls(stichtag=stichtag, monate=tuple(reversed(reihe)))
 
     @property

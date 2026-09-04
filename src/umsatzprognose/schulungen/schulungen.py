@@ -27,25 +27,19 @@ from datetime import date
 
 from umsatzprognose.domaene import Hinweis, Schulungsplan, Schulungstermin
 from umsatzprognose.domaene.zahlen import euro_parsen
-from umsatzprognose.google_sheets import GoogleSheetsClient, GoogleSheetsConfig, TabellenClient
+from umsatzprognose.google_sheets import (
+    GoogleSheetsClient,
+    GoogleSheetsConfig,
+    TabellenClient,
+    jahre_laden,
+)
+from umsatzprognose.util import aus_ordnung, ordnung
 
 TABELLENBLATT = "Öffentliche Schulungen"
 
 SPALTE_JAHR = "Jahr"
 SPALTE_MONAT = "Monat"
 SPALTE_UMSATZ = "Umsatz gesamt"
-
-
-def _fehlerdetail(fehler: Exception) -> str:
-    """Exceptiontyp, plus Meldung sofern vorhanden - fuer Hinweise beim Ladefehler.
-
-    Nur der Typname allein (etwa ``ValueError``) sagt beim Diagnostizieren nichts
-    darueber, *warum* eine Datei nicht gelesen werden konnte - z. B. welche Spalten
-    unten als fehlend erkannt wurden. Die Meldung beschreibt nur Struktur
-    (Spaltennamen, Fehlerart), keine gelesenen Werte.
-    """
-    text = str(fehler)
-    return f"{type(fehler).__name__}: {text}" if text else type(fehler).__name__
 
 
 def _zeilen_zu_terminen(zeilen: list[list[str]]) -> list[Schulungstermin]:
@@ -79,8 +73,8 @@ def _zeilen_zu_terminen(zeilen: list[list[str]]) -> list[Schulungstermin]:
 
 def _benoetigte_jahre(stichtag: date, horizont_monate: int) -> tuple[int, ...]:
     """Stichtagsjahr, und - falls der Horizont die Jahresgrenze ueberschreitet - das Folgejahr."""
-    ordnung_ende = stichtag.year * 12 + (stichtag.month - 1) + (horizont_monate - 1)
-    return tuple(sorted({stichtag.year, ordnung_ende // 12}))
+    ende = ordnung(stichtag.year, stichtag.month) + (horizont_monate - 1)
+    return tuple(sorted({stichtag.year, aus_ordnung(ende)[0]}))
 
 
 class SchulungenRepository:
@@ -106,25 +100,17 @@ class SchulungenRepository:
         """
         stichtag = stichtag or date.today()
 
-        termine: list[Schulungstermin] = []
-        hinweise: list[Hinweis] = []
-        for jahr in _benoetigte_jahre(stichtag, horizont_monate):
-            spreadsheet_id = self._jahre_zu_dateien.get(jahr)
-            if spreadsheet_id is None:
-                hinweise.append(
-                    Hinweis(f"Für {jahr} ist in KOSTEN_SHEET_IDS keine Schulungs-Datei hinterlegt")
-                )
-                continue
-            try:
-                zeilen = self._client.werte(spreadsheet_id, TABELLENBLATT)
-                termine.extend(_zeilen_zu_terminen(zeilen))
-            except Exception as fehler:
-                hinweise.append(
-                    Hinweis(
-                        f"Die Schulungs-Datei für {jahr} konnte nicht gelesen werden "
-                        f"({_fehlerdetail(fehler)})"
-                    )
-                )
+        termine, meldungen = jahre_laden(
+            self._client,
+            self._jahre_zu_dateien,
+            _benoetigte_jahre(stichtag, horizont_monate),
+            bereich=lambda _jahr: TABELLENBLATT,
+            abbilden=lambda zeilen, _jahr: _zeilen_zu_terminen(zeilen),
+            fehlt_meldung="Für {jahr} ist in KOSTEN_SHEET_IDS keine Schulungs-Datei hinterlegt",
+            fehler_meldung="Die Schulungs-Datei für {jahr} konnte nicht gelesen werden ({detail})",
+        )
         return Schulungsplan(
-            stichtag=stichtag, termine=tuple(termine), abbildungshinweise=tuple(hinweise)
+            stichtag=stichtag,
+            termine=tuple(termine),
+            abbildungshinweise=tuple(Hinweis(m) for m in meldungen),
         )

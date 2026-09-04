@@ -25,6 +25,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Protocol
 
 if TYPE_CHECKING:
+    from collections.abc import Callable, Iterable, Mapping
+
     from google.auth.credentials import Credentials as CredentialsBase
 
 from googleapiclient.discovery import build
@@ -46,6 +48,52 @@ class TabellenClient(Protocol):
     """
 
     def werte(self, spreadsheet_id: str, bereich: str) -> list[list[str]]: ...
+
+
+def jahre_laden[T](
+    client: TabellenClient,
+    jahre_zu_dateien: Mapping[int, str],
+    jahre: Iterable[int],
+    *,
+    bereich: Callable[[int], str],
+    abbilden: Callable[[list[list[str]], int], list[T]],
+    fehlt_meldung: str,
+    fehler_meldung: str,
+) -> tuple[list[T], list[str]]:
+    """Je Jahr eine Datei lesen und abbilden - gemeinsamer Ablauf von ``schulungen/`` und
+    ``kosten/``, die beide dieselbe jaehrliche Google-Sheets-Datei ueber
+    ``KOSTEN_SHEET_IDS`` referenzieren.
+
+    Ein fehlendes oder nicht lesbares Jahr ist bei beiden kein Fehler, sondern eine
+    Meldung (Text statt :class:`~umsatzprognose.domaene.hinweis.Hinweis`, damit dieses
+    Modul unabhaengig von ``domaene`` bleibt - der Aufrufer macht daraus einen
+    ``Hinweis``). ``fehlt_meldung``/``fehler_meldung`` sind Format-Vorlagen mit den
+    Platzhaltern ``{jahr}`` bzw. zusaetzlich ``{detail}``.
+    """
+    objekte: list[T] = []
+    meldungen: list[str] = []
+    for jahr in jahre:
+        spreadsheet_id = jahre_zu_dateien.get(jahr)
+        if spreadsheet_id is None:
+            meldungen.append(fehlt_meldung.format(jahr=jahr))
+            continue
+        try:
+            zeilen = client.werte(spreadsheet_id, bereich(jahr))
+            objekte.extend(abbilden(zeilen, jahr))
+        except Exception as fehler:
+            meldungen.append(fehler_meldung.format(jahr=jahr, detail=_fehlerdetail(fehler)))
+    return objekte, meldungen
+
+
+def _fehlerdetail(fehler: Exception) -> str:
+    """Exceptiontyp, plus Meldung sofern vorhanden - fuer Meldungen bei Ladefehlern.
+
+    Nur der Typname allein (etwa ``ValueError``) sagt beim Diagnostizieren nichts
+    darueber, *warum* eine Datei nicht gelesen werden konnte. Die Meldung beschreibt nur
+    Struktur (Spaltennamen, Fehlerart), keine gelesenen Werte.
+    """
+    text = str(fehler)
+    return f"{type(fehler).__name__}: {text}" if text else type(fehler).__name__
 
 
 class GoogleSheetsClient:

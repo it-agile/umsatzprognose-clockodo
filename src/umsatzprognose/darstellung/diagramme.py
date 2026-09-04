@@ -771,6 +771,62 @@ def umsatzrendite_kumuliert(
     return fig
 
 
+def _rangliste_hoehe(anzahl: int) -> int:
+    return max(260, 70 + 30 * anzahl)
+
+
+def _rangliste_untertitel(gesamt: int, gezeigt: int, mitte: str) -> str:
+    """``"{gesamt} {mitte}"``, ergaenzt um den Rest-Hinweis, wenn nicht alle gezeigt werden."""
+    rest = gesamt - gezeigt
+    untertitel = f"{gesamt} {mitte}"
+    if rest > 0:
+        untertitel += f", gezeigt sind die {gezeigt} größten und {rest} weitere folgen"
+    return untertitel
+
+
+def _liegende_rangliste(
+    fig: go.Figure,
+    *,
+    werte: Sequence[float],
+    text: Sequence[str],
+    ticktext: Sequence[str],
+    hovertemplate: str,
+    customdata: Sequence[object] | None = None,
+) -> None:
+    """Die liegenden Balken einer bereits auf ``top`` gekuerzten und umgekehrten Rangliste.
+
+    Gemeinsamer Kern von :func:`restvolumen_je_projekt`, :func:`kapazitaet_je_mitarbeiter`,
+    :func:`auslastung_je_mitarbeiter` und :func:`kapazitaet_je_projekt` - die Werte
+    selbst, ihre Beschriftung und der Hovertext unterscheiden sich, Balkenaufbau und
+    Achsen nicht.
+    """
+    fig.add_bar(
+        x=list(werte),
+        y=list(range(len(werte))),
+        orientation="h",
+        marker={"color": SERIE},
+        text=list(text),
+        textposition="outside",
+        textfont={"color": TINTE_ZWEITRANGIG, "size": 12},
+        cliponaxis=False,
+        customdata=customdata,
+        hovertemplate=hovertemplate,
+        showlegend=False,
+    )
+    achsen(fig, gitter_x=True, gitter_y=False)
+    fig.update_layout(bargap=0.4, barcornerradius=4)
+    groesster = max(werte, default=0.0)
+    # Luft rechts, sonst schneidet der Rand die Beschriftung des laengsten Balkens ab.
+    fig.update_xaxes(visible=False, range=[0, groesster * 1.18])
+    fig.update_yaxes(
+        tickmode="array",
+        tickvals=list(range(len(werte))),
+        ticktext=list(ticktext),
+        tickfont={"color": TINTE, "size": 12},
+        automargin=True,
+    )
+
+
 def restvolumen_je_projekt(
     projekte: Sequence[Projekt], *, top: int = 15, hoehe: int | None = None
 ) -> go.Figure:
@@ -781,48 +837,32 @@ def restvolumen_je_projekt(
     ruhiger als eine zusaetzliche Achse.
     """
     gezeigt = list(projekte[:top])
-    hoehe = hoehe or max(260, 70 + 30 * len(gezeigt))
     gesamt = sum(p.restvolumen_prognosewirksam or 0.0 for p in projekte)
-    rest = len(projekte) - len(gezeigt)
-
-    untertitel = f"{len(projekte)} Projekte mit zusammen {euro(gesamt, nachkommastellen=0)}"
-    if rest > 0:
-        untertitel += f", gezeigt sind die {len(gezeigt)} größten und {rest} weitere folgen"
-
-    fig = figur("Offenes Auftragsvolumen je Projekt", untertitel=untertitel, hoehe=hoehe)
+    untertitel = _rangliste_untertitel(
+        len(projekte), len(gezeigt), f"Projekte mit zusammen {euro(gesamt, nachkommastellen=0)}"
+    )
+    fig = figur(
+        "Offenes Auftragsvolumen je Projekt",
+        untertitel=untertitel,
+        hoehe=hoehe or _rangliste_hoehe(len(gezeigt)),
+    )
     # Die Kategorie ist die Position, nicht die Beschriftung: zwei Projekte koennen
     # denselben Namen tragen oder auf denselben gekuerzten Namen fallen, und plotly
     # wuerde sie dann zu einem Balken addieren - eine still falsche Zahl.
-    fig.add_bar(
-        x=[p.restvolumen_prognosewirksam or 0.0 for p in reversed(gezeigt)],
-        y=list(range(len(gezeigt))),
-        orientation="h",
-        marker={"color": SERIE},
-        text=[tausend_euro(p.restvolumen_prognosewirksam or 0.0) for p in reversed(gezeigt)],
-        textposition="outside",
-        textfont={"color": TINTE_ZWEITRANGIG, "size": 12},
-        cliponaxis=False,
+    umgekehrt = list(reversed(gezeigt))
+    _liegende_rangliste(
+        fig,
+        werte=[p.restvolumen_prognosewirksam or 0.0 for p in umgekehrt],
+        text=[tausend_euro(p.restvolumen_prognosewirksam or 0.0) for p in umgekehrt],
+        ticktext=[_achsenbeschriftung(p) for p in umgekehrt],
         customdata=[
             [p.bezeichnung, euro(p.auftragsvolumen or 0.0), euro(p.verbrauchtes_volumen)]
-            for p in reversed(gezeigt)
+            for p in umgekehrt
         ],
         hovertemplate=(
             "<b>%{customdata[0]}</b><br>Offen: %{x:,.0f} €<br>"
             "Beauftragt: %{customdata[1]}<br>Verbraucht: %{customdata[2]}<extra></extra>"
         ),
-        showlegend=False,
-    )
-    achsen(fig, gitter_x=True, gitter_y=False)
-    fig.update_layout(bargap=0.4, barcornerradius=4)
-    groesster = max((p.restvolumen_prognosewirksam or 0.0 for p in gezeigt), default=0.0)
-    # Luft rechts, sonst schneidet der Rand die Beschriftung des laengsten Balkens ab.
-    fig.update_xaxes(visible=False, range=[0, groesster * 1.18])
-    fig.update_yaxes(
-        tickmode="array",
-        tickvals=list(range(len(gezeigt))),
-        ticktext=[_achsenbeschriftung(p) for p in reversed(gezeigt)],
-        tickfont={"color": TINTE, "size": 12},
-        automargin=True,
     )
     return fig
 
@@ -839,37 +879,22 @@ def kapazitaet_je_mitarbeiter(
     die griffigere Einheit fuer "wer hat noch Luft".
     """
     gezeigt = list(kapazitaeten[:top])
-    hoehe = hoehe or max(260, 70 + 30 * len(gezeigt))
     gesamt = sum(stunden for _, stunden in kapazitaeten)
-    rest = len(kapazitaeten) - len(gezeigt)
-
-    untertitel = f"{len(kapazitaeten)} Personen mit zusammen {tage(gesamt)}"
-    if rest > 0:
-        untertitel += f", gezeigt sind die {len(gezeigt)} größten und {rest} weitere folgen"
-
-    fig = figur("Verfügbare Kapazität je Person", untertitel=untertitel, hoehe=hoehe)
-    fig.add_bar(
-        x=[stunden / STUNDEN_JE_TAG for _, stunden in reversed(gezeigt)],
-        y=list(range(len(gezeigt))),
-        orientation="h",
-        marker={"color": SERIE},
-        text=[tage(stunden) for _, stunden in reversed(gezeigt)],
-        textposition="outside",
-        textfont={"color": TINTE_ZWEITRANGIG, "size": 12},
-        cliponaxis=False,
-        hovertemplate="<b>%{y}</b><br>%{text}<extra></extra>",
-        showlegend=False,
+    untertitel = _rangliste_untertitel(
+        len(kapazitaeten), len(gezeigt), f"Personen mit zusammen {tage(gesamt)}"
     )
-    achsen(fig, gitter_x=True, gitter_y=False)
-    fig.update_layout(bargap=0.4, barcornerradius=4)
-    groesster = max((stunden for _, stunden in gezeigt), default=0.0) / STUNDEN_JE_TAG
-    fig.update_xaxes(visible=False, range=[0, groesster * 1.18])
-    fig.update_yaxes(
-        tickmode="array",
-        tickvals=list(range(len(gezeigt))),
-        ticktext=[_gekuerzt(str(m), MAXIMALE_PROJEKTLAENGE) for m, _ in reversed(gezeigt)],
-        tickfont={"color": TINTE, "size": 12},
-        automargin=True,
+    fig = figur(
+        "Verfügbare Kapazität je Person",
+        untertitel=untertitel,
+        hoehe=hoehe or _rangliste_hoehe(len(gezeigt)),
+    )
+    umgekehrt = list(reversed(gezeigt))
+    _liegende_rangliste(
+        fig,
+        werte=[stunden / STUNDEN_JE_TAG for _, stunden in umgekehrt],
+        text=[tage(stunden) for _, stunden in umgekehrt],
+        ticktext=[_gekuerzt(str(m), MAXIMALE_PROJEKTLAENGE) for m, _ in umgekehrt],
+        hovertemplate="<b>%{y}</b><br>%{text}<extra></extra>",
     )
     return fig
 
@@ -890,38 +915,19 @@ def auslastung_je_mitarbeiter(
     mit_quote = [(a, a.quote) for a in auslastungen if a.quote is not None]
     mit_quote.sort(key=lambda paar: paar[1], reverse=True)
     gezeigt = mit_quote[:top]
-    hoehe = hoehe or max(260, 70 + 30 * len(gezeigt))
-    rest = len(mit_quote) - len(gezeigt)
-
-    untertitel = f"{len(mit_quote)} Personen mit hinterlegter Kapazität"
-    if rest > 0:
-        untertitel += f", gezeigt sind die {len(gezeigt)} größten und {rest} weitere folgen"
-
-    fig = figur("Auslastung je Person", untertitel=untertitel, hoehe=hoehe)
-    fig.add_bar(
-        x=[quote for _, quote in reversed(gezeigt)],
-        y=list(range(len(gezeigt))),
-        orientation="h",
-        marker={"color": SERIE},
-        text=[prozent(quote) for _, quote in reversed(gezeigt)],
-        textposition="outside",
-        textfont={"color": TINTE_ZWEITRANGIG, "size": 12},
-        cliponaxis=False,
-        hovertemplate="<b>%{y}</b><br>%{text}<extra></extra>",
-        showlegend=False,
+    untertitel = _rangliste_untertitel(
+        len(mit_quote), len(gezeigt), "Personen mit hinterlegter Kapazität"
     )
-    achsen(fig, gitter_x=True, gitter_y=False)
-    fig.update_layout(bargap=0.4, barcornerradius=4)
-    groesste = max((quote for _, quote in gezeigt), default=0.0)
-    fig.update_xaxes(visible=False, range=[0, groesste * 1.18])
-    fig.update_yaxes(
-        tickmode="array",
-        tickvals=list(range(len(gezeigt))),
-        ticktext=[
-            _gekuerzt(str(a.mitarbeiter), MAXIMALE_PROJEKTLAENGE) for a, _ in reversed(gezeigt)
-        ],
-        tickfont={"color": TINTE, "size": 12},
-        automargin=True,
+    fig = figur(
+        "Auslastung je Person", untertitel=untertitel, hoehe=hoehe or _rangliste_hoehe(len(gezeigt))
+    )
+    umgekehrt = list(reversed(gezeigt))
+    _liegende_rangliste(
+        fig,
+        werte=[quote for _, quote in umgekehrt],
+        text=[prozent(quote) for _, quote in umgekehrt],
+        ticktext=[_gekuerzt(str(a.mitarbeiter), MAXIMALE_PROJEKTLAENGE) for a, _ in umgekehrt],
+        hovertemplate="<b>%{y}</b><br>%{text}<extra></extra>",
     )
     return fig
 
@@ -939,38 +945,23 @@ def kapazitaet_je_projekt(
     verbrauchen keine Personenkapazitaet, obwohl sie Umsatz liefern.
     """
     gezeigt = list(kapazitaeten[:top])
-    hoehe = hoehe or max(260, 70 + 30 * len(gezeigt))
     gesamt = sum(stunden for _, stunden in kapazitaeten)
-    rest = len(kapazitaeten) - len(gezeigt)
-
-    untertitel = f"{len(kapazitaeten)} Projekte mit zusammen {tage(gesamt)}"
-    if rest > 0:
-        untertitel += f", gezeigt sind die {len(gezeigt)} größten und {rest} weitere folgen"
-
-    fig = figur("Simulierte Kapazität je Projekt", untertitel=untertitel, hoehe=hoehe)
-    fig.add_bar(
-        x=[stunden / STUNDEN_JE_TAG for _, stunden in reversed(gezeigt)],
-        y=list(range(len(gezeigt))),
-        orientation="h",
-        marker={"color": SERIE},
-        text=[tage(stunden) for _, stunden in reversed(gezeigt)],
-        textposition="outside",
-        textfont={"color": TINTE_ZWEITRANGIG, "size": 12},
-        cliponaxis=False,
-        customdata=[[p.bezeichnung] for p, _ in reversed(gezeigt)],
-        hovertemplate="<b>%{customdata[0]}</b><br>%{text}<extra></extra>",
-        showlegend=False,
+    untertitel = _rangliste_untertitel(
+        len(kapazitaeten), len(gezeigt), f"Projekte mit zusammen {tage(gesamt)}"
     )
-    achsen(fig, gitter_x=True, gitter_y=False)
-    fig.update_layout(bargap=0.4, barcornerradius=4)
-    groesster = max((stunden for _, stunden in gezeigt), default=0.0) / STUNDEN_JE_TAG
-    fig.update_xaxes(visible=False, range=[0, groesster * 1.18])
-    fig.update_yaxes(
-        tickmode="array",
-        tickvals=list(range(len(gezeigt))),
-        ticktext=[_achsenbeschriftung(p) for p, _ in reversed(gezeigt)],
-        tickfont={"color": TINTE, "size": 12},
-        automargin=True,
+    fig = figur(
+        "Simulierte Kapazität je Projekt",
+        untertitel=untertitel,
+        hoehe=hoehe or _rangliste_hoehe(len(gezeigt)),
+    )
+    umgekehrt = list(reversed(gezeigt))
+    _liegende_rangliste(
+        fig,
+        werte=[stunden / STUNDEN_JE_TAG for _, stunden in umgekehrt],
+        text=[tage(stunden) for _, stunden in umgekehrt],
+        ticktext=[_achsenbeschriftung(p) for p, _ in umgekehrt],
+        customdata=[[p.bezeichnung] for p, _ in umgekehrt],
+        hovertemplate="<b>%{customdata[0]}</b><br>%{text}<extra></extra>",
     )
     return fig
 

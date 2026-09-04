@@ -29,6 +29,13 @@ from umsatzprognose.domaene.zahlen import euro
 # Diese Tabellen sind zum Lesen gedacht - kein abgeschnittener Hinweistext.
 pd.set_option("display.max_colwidth", None)
 
+
+def _ohne_index(tabelle: pd.DataFrame) -> pd.DataFrame:
+    """Leere Zeilennummern statt des numerischen Standardindex - fuers Lesen, nicht Rechnen."""
+    tabelle.index = [""] * len(tabelle)
+    return tabelle
+
+
 PROJEKTSPALTEN = ["Kunde", "Projekt", "Beauftragt", "Verbraucht", "Offen", "Budget überschritten"]
 UMSATZSPALTEN = [
     "Monat",
@@ -160,39 +167,37 @@ def umsatztabelle(
                     }
                 )
 
-    tabelle = pd.DataFrame(zeilen, columns=UMSATZSPALTEN)
-    tabelle.index = [""] * len(tabelle)
-    return tabelle
+    return _ohne_index(pd.DataFrame(zeilen, columns=UMSATZSPALTEN))
 
 
 def hinweistabelle(hinweise: Sequence[Hinweis], *, max_anzahl_betroffen: int = 10) -> pd.DataFrame:
     """Die Befunde zur Datenlage, mit den betroffenen Projekten in der letzten Spalte."""
-    tabelle = pd.DataFrame(
-        [
-            {
-                "Hinweis": hinweis.text,
-                "Betroffen": hinweis.anzahl or "",
-                "Projekte": ", ".join(str(i) for i in hinweis.betroffene[:max_anzahl_betroffen])
-                + (" …" if hinweis.anzahl > max_anzahl_betroffen else ""),
-            }
-            for hinweis in hinweise
-        ],
-        columns=HINWEISSPALTEN,
+    return _ohne_index(
+        pd.DataFrame(
+            [
+                {
+                    "Hinweis": hinweis.text,
+                    "Betroffen": hinweis.anzahl or "",
+                    "Projekte": ", ".join(str(i) for i in hinweis.betroffene[:max_anzahl_betroffen])
+                    + (" …" if hinweis.anzahl > max_anzahl_betroffen else ""),
+                }
+                for hinweis in hinweise
+            ],
+            columns=HINWEISSPALTEN,
+        )
     )
-    tabelle.index = [""] * len(tabelle)
-    return tabelle
 
 
 def projekte_ohne_budget(projekte: Iterable[tuple[str, str]]) -> pd.DataFrame:
-    tabelle = pd.DataFrame(
-        [
-            {
-                "Projekt": projekt[0],
-                "Grund": projekt[1],
-            }
-            for projekt in projekte
-        ],
-        columns=PROJEKT_OHNE_BUDGET_SPALTEN,
+    return _ohne_index(
+        pd.DataFrame(
+            [
+                {
+                    "Projekt": projekt[0],
+                    "Grund": projekt[1],
+                }
+                for projekt in projekte
+            ],
+            columns=PROJEKT_OHNE_BUDGET_SPALTEN,
+        )
     )
-    tabelle.index = [""] * len(tabelle)
-    return tabelle

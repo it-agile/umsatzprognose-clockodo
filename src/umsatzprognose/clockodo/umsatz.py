@@ -29,11 +29,10 @@ if TYPE_CHECKING:
     from .client import ClockodoClient, EntryGroupV2
 
 from umsatzprognose.domaene import Monatsumsatz, Umsatzhistorie
+from umsatzprognose.util import aus_ordnung, ordnung
 
-from .client import monatsende
+from .client import SEKUNDEN_JE_STUNDE, monatsende
 from .nebenlaeufig import synchron
-
-SEKUNDEN_JE_STUNDE = 3600.0
 
 
 class UmsatzRepository:
@@ -77,6 +76,5 @@ def monatsumsatz(gruppe: EntryGroupV2) -> Monatsumsatz:
 
 
 def _monatsanfang(stichtag: date, *, minus: int = 0) -> str:
-    jahr, monat = stichtag.year, stichtag.month
-    monate_gesamt = jahr * 12 + (monat - 1) - minus
-    return f"{monate_gesamt // 12:04d}-{monate_gesamt % 12 + 1:02d}-01T00:00:00Z"
+    jahr, monat = aus_ordnung(ordnung(stichtag.year, stichtag.month) - minus)
+    return f"{jahr:04d}-{monat:02d}-01T00:00:00Z"

@@ -34,7 +34,7 @@ if TYPE_CHECKING:
         Schulungsplan,
     )
 
-from umsatzprognose.clockodo import AuslastungRepository, BestandRepository
+from umsatzprognose.clockodo import AuslastungRepository, BestandRepository, synchron
 from umsatzprognose.domaene.auslastung import Auslastungssumme
 from umsatzprognose.domaene.projekt import sonderfall
 from umsatzprognose.kosten import KostenRepository
@@ -178,50 +178,21 @@ class Dashboard:
         (siehe :data:`STANDARD_HISTORIE_MONATE`). Bestand, Schulungsplan und
         Kostenplan werden gleichzeitig geladen; die Auslastung erst danach, weil sie die
         Personen des geladenen Bestands braucht.
-        """
-        stichtag = stichtag or date.today()
-        kosten_repo = KostenRepository.mit_automatischen_zugangsdaten()
-        abgeschlossene_monate = _abgeschlossene_monate(
-            stichtag, kosten_repo.fruehestes_konfiguriertes_jahr
-        )
 
-        with _Stoppuhr() as t:
-            bestand = BestandRepository.mit_automatischen_zugangsdaten().laden(
+        Legt ``synchron()`` um :meth:`laden_async`, wie die ``laden``-Methoden der
+        Repositories um ihre eigene ``laden_async``-Coroutine (siehe
+        :mod:`umsatzprognose.clockodo.nebenlaeufig`) - fuer den Aufruf ausserhalb eines
+        Event-Loops.
+        """
+        return synchron(
+            cls.laden_async(
                 stichtag=stichtag,
                 mit_anteilen=mit_anteilen,
                 mit_verbrauchsverlauf=mit_verbrauchsverlauf,
-                abgeschlossene_monate=abgeschlossene_monate,
                 horizont_monate=horizont_monate,
+                auslastung_monate=auslastung_monate,
             )
-        bestand_dauer = t.dauer
-
-        with _Stoppuhr() as t:
-            schulungsplan = SchulungenRepository.mit_automatischen_zugangsdaten().laden(
-                stichtag=stichtag, horizont_monate=horizont_monate
-            )
-        schulungsplan_dauer = t.dauer
-
-        with _Stoppuhr() as t:
-            kostenplan = kosten_repo.laden(
-                stichtag=bestand.stichtag,
-                horizont_monate=horizont_monate,
-                historie_monate=_historie_monate(bestand, anzahl=None),
-            )
-        kostenplan_dauer = t.dauer
-
-        with _Stoppuhr() as t:
-            auslastung = AuslastungRepository.mit_automatischen_zugangsdaten().laden(
-                _aktive_mitarbeiter(bestand), stichtag=bestand.stichtag, monate=auslastung_monate
-            )
-        auslastung_dauer = t.dauer
-
-        ladedauern = Ladedauern(
-            bestand=bestand_dauer,
-            schulungsplan=schulungsplan_dauer,
-            kostenplan=kostenplan_dauer,
-            auslastung=auslastung_dauer,
         )
-        return cls(bestand, schulungsplan, kostenplan, auslastung, ladedauern)
 
     @classmethod
     async def laden_async(

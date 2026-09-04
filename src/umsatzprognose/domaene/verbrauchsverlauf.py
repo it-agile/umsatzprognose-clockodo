@@ -26,17 +26,10 @@ if TYPE_CHECKING:
 
 from dataclasses import dataclass
 
+from umsatzprognose.util import aus_ordnung, ordnung
+
 from .abrufquote import Abrufquote
 from .umsatzhistorie import Monatsumsatz
-
-
-def _ordnung(jahr: int, monat: int) -> int:
-    """Monate seit Jahr 0 - macht Vergleich und Fortzaehlung ueber Jahresgrenzen trivial."""
-    return jahr * 12 + (monat - 1)
-
-
-def _aus_ordnung(ordnung: int) -> tuple[int, int]:
-    return (ordnung // 12, ordnung % 12 + 1)
 
 
 @dataclass(frozen=True)
@@ -103,9 +96,9 @@ class Verbrauchsverlauf:
 
     def verbrauch_vor(self, jahr: int, monat: int) -> float:
         """Summierter Verbrauch aller Monate **vor** diesem - der Blick auf Monatsbeginn."""
-        grenze = _ordnung(jahr, monat)
+        grenze = ordnung(jahr, monat)
         return sum(
-            eintrag.umsatz for eintrag in self.monate if _ordnung(*eintrag.schluessel) < grenze
+            eintrag.umsatz for eintrag in self.monate if ordnung(*eintrag.schluessel) < grenze
         )
 
     def restvolumen_zu_monatsbeginn(self, jahr: int, monat: int) -> float | None:
@@ -134,12 +127,12 @@ class Verbrauchsverlauf:
         # Der Stichtagsmonat ist angebrochen und zaehlt nie mit; ein beendetes Projekt
         # endet zusaetzlich mit seiner letzten Buchung. Buchungen nach dem Stichtag
         # gehoeren zum Horizont und nicht zur Historie - deshalb das Minimum.
-        letzter_vollstaendiger = _ordnung(stichtag.year, stichtag.month) - 1
+        letzter_vollstaendiger = ordnung(stichtag.year, stichtag.month) - 1
         ende = letzter_vollstaendiger
         if not self.projekt.im_prognose_scope and self.letzter_monat is not None:
-            ende = min(ende, _ordnung(*self.letzter_monat))
+            ende = min(ende, ordnung(*self.letzter_monat))
 
-        return tuple(_aus_ordnung(o) for o in range(_ordnung(*beginn), ende + 1))
+        return tuple(aus_ordnung(o) for o in range(ordnung(*beginn), ende + 1))
 
     def abrufquoten(self, stichtag: date) -> tuple[Abrufquote, ...]:
         """Die Beobachtungen dieses Projekts fuer die Verteilung.

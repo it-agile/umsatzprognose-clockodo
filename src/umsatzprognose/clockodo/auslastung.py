@@ -39,15 +39,14 @@ if TYPE_CHECKING:
     from .client import EntryGroupV2
 
 from umsatzprognose.domaene import Auslastungsmonat
+from umsatzprognose.util import Monat, aus_ordnung, monatsfolge, ordnung
 
-from .client import ClockodoClient, verbrauch_bis
+from .client import SEKUNDEN_JE_STUNDE, ClockodoClient, verbrauch_bis
 from .config import ClockodoCredentials
 from .nebenlaeufig import gleichzeitig, synchron
 
 BILLABLE_ABRECHENBAR = 1
 BILLABLE_FAKTURIERT = 2
-
-Monat = tuple[int, int]  # (jahr, monat)
 
 
 class AuslastungRepository:
@@ -115,7 +114,7 @@ class AuslastungRepository:
                     monat: Monat = (int(schluessel[:4]), int(schluessel[4:6]))
                     stunden[(mitarbeiter_id, monat)] = (
                         stunden.get((mitarbeiter_id, monat), 0.0)
-                        + float(monatsgruppe.get("duration") or 0.0) / 3600.0
+                        + float(monatsgruppe.get("duration") or 0.0) / SEKUNDEN_JE_STUNDE
                     )
 
         return tuple(
@@ -132,9 +131,5 @@ class AuslastungRepository:
 
 def _letzte_monate(stichtag: date, anzahl: int) -> list[Monat]:
     """``anzahl`` Monate bis einschliesslich des Stichtagsmonats, aelteste zuerst."""
-    jahr, monat = stichtag.year, stichtag.month
-    reihe: list[Monat] = []
-    for _ in range(anzahl):
-        reihe.append((jahr, monat))
-        jahr, monat = (jahr - 1, 12) if monat == 1 else (jahr, monat - 1)
-    return list(reversed(reihe))
+    start = aus_ordnung(ordnung(stichtag.year, stichtag.month) - anzahl + 1)
+    return monatsfolge(start, anzahl)

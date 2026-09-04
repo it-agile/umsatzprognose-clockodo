@@ -83,10 +83,8 @@ from umsatzprognose.domaene import (
 )
 from umsatzprognose.domaene.zahlen import euro, stunden
 
-from .client import HISTORIE_VON
+from .client import HISTORIE_VON, SEKUNDEN_JE_STUNDE
 from .nebenlaeufig import gleichzeitig, synchron
-
-SEKUNDEN_JE_STUNDE = 3600.0
 
 
 class ProjektRepository:

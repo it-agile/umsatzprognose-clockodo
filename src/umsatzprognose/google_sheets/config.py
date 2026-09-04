@@ -34,12 +34,12 @@ Eine zweite Umgebungsvariable/ein Colab-Secret in beiden Umgebungen:
 from __future__ import annotations
 
 import json
-import os
 from dataclasses import dataclass
+from functools import partial
 
 from dotenv import load_dotenv
 
-from umsatzprognose.util import in_colab
+from umsatzprognose.util import colab_secret, in_colab, umgebungsvariable
 
 OAUTH_CLIENT_VAR = "GOOGLE_OAUTH_CLIENT_JSON"
 SHEET_ID_VAR = "KOSTEN_SHEET_IDS"
@@ -47,6 +47,10 @@ SHEET_ID_VAR = "KOSTEN_SHEET_IDS"
 
 class MissingCredentialsError(RuntimeError):
     """Eine benoetigte Umgebungsvariable oder ein Colab-Secret fehlt oder ist ungueltig."""
+
+
+_umgebungsvariable = partial(umgebungsvariable, fehlerklasse=MissingCredentialsError)
+_colab_secret = partial(colab_secret, fehlerklasse=MissingCredentialsError)
 
 
 @dataclass(frozen=True)
@@ -115,32 +119,3 @@ def _jahre_zu_dateien(roh: str) -> dict[int, str]:
         raise MissingCredentialsError(
             f"{SHEET_ID_VAR} hat keine Jahreszahlen als Schluessel."
         ) from fehler
-
-
-def _umgebungsvariable(name: str) -> str:
-    value = os.environ.get(name, "").strip()
-    if not value:
-        raise MissingCredentialsError(
-            f"Umgebungsvariable {name} ist nicht gesetzt. "
-            "Siehe .env.sample; lokal in eine .env eintragen, in Colab ueber "
-            "die Secrets-Verwaltung bereitstellen."
-        )
-    return value
-
-
-def _colab_secret(name: str) -> str:
-    """Ein Colab-Secret lesen und im Fehlerfall sagen, was zu tun ist."""
-    from google.colab import userdata
-
-    try:
-        value = userdata.get(name)
-    except Exception as fehler:
-        raise MissingCredentialsError(
-            f"Colab-Secret '{name}' nicht nutzbar ({type(fehler).__name__}).\n"
-            "Anlegen: linke Seitenleiste, Schluessel-Symbol -> 'Neues Secret'.\n"
-            "Danach den Schalter 'Notebook-Zugriff' fuer dieses Notebook aktivieren - "
-            "ohne ihn existiert das Secret, ist aber gesperrt."
-        ) from fehler
-    if not (value or "").strip():
-        raise MissingCredentialsError(f"Colab-Secret '{name}' ist leer.")
-    return value.strip()

@@ -46,11 +46,17 @@ if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
     from datetime import date
 
-    from umsatzprognose.domaene.kosten import Monat
+    from umsatzprognose.util import Monat
 
 from umsatzprognose.domaene import Erfasst, Geschaetzt, Hinweis, Kostenplan, Kostenposten
 from umsatzprognose.domaene.zahlen import euro_parsen
-from umsatzprognose.google_sheets import GoogleSheetsClient, GoogleSheetsConfig, TabellenClient
+from umsatzprognose.google_sheets import (
+    GoogleSheetsClient,
+    GoogleSheetsConfig,
+    TabellenClient,
+    jahre_laden,
+)
+from umsatzprognose.util import monatsfolge
 
 KOSTEN_BEREICH_VORLAGE = "Kosten {jahr}!3:15"
 
@@ -64,18 +70,6 @@ MONATSNAMEN_LANG = (
     "Juli", "August", "September", "Oktober", "November", "Dezember",
 )  # fmt: skip
 _MONAT_NUMMER = {name: nummer for nummer, name in enumerate(MONATSNAMEN_LANG, start=1)}
-
-
-def _fehlerdetail(fehler: Exception) -> str:
-    """Exceptiontyp, plus Meldung sofern vorhanden - fuer Hinweise beim Ladefehler.
-
-    Nur der Typname allein (etwa ``ValueError``) sagt beim Diagnostizieren nichts
-    darueber, *warum* eine Datei nicht gelesen werden konnte - z. B. welche Spalten in
-    :func:`_zeilen_zu_posten` als fehlend erkannt wurden. Die Meldung beschreibt nur
-    Struktur (Spaltennamen, Fehlerart), keine gelesenen Werte.
-    """
-    text = str(fehler)
-    return f"{type(fehler).__name__}: {text}" if text else type(fehler).__name__
 
 
 def _monat_parsen(text: str) -> int | None:
@@ -153,10 +147,7 @@ def _zeilen_zu_posten(zeilen: list[list[str]], jahr: int) -> list[Kostenposten]:
 
 def _monatsfolge(stichtag: date, horizont_monate: int) -> list[Monat]:
     """``horizont_monate`` aufeinanderfolgende Monate, beginnend beim Stichtagsmonat."""
-    ordnung_start = stichtag.year * 12 + (stichtag.month - 1)
-    return [
-        ((ordnung_start + i) // 12, (ordnung_start + i) % 12 + 1) for i in range(horizont_monate)
-    ]
+    return monatsfolge((stichtag.year, stichtag.month), horizont_monate)
 
 
 class KostenRepository:
@@ -199,24 +190,15 @@ class KostenRepository:
         monate = list(historie_monate) + [m for m in horizont if m not in historie_monate]
         jahre = sorted({jahr for jahr, _ in monate})
 
-        posten: list[Kostenposten] = []
-        hinweise: list[Hinweis] = []
-        for jahr in jahre:
-            spreadsheet_id = self._jahre_zu_dateien.get(jahr)
-            if spreadsheet_id is None:
-                hinweise.append(
-                    Hinweis(f"Für {jahr} ist in KOSTEN_SHEET_IDS keine Kosten-Datei hinterlegt")
-                )
-                continue
-            try:
-                bereich = KOSTEN_BEREICH_VORLAGE.format(jahr=jahr)
-                zeilen = self._client.werte(spreadsheet_id, bereich)
-                posten.extend(_zeilen_zu_posten(zeilen, jahr))
-            except Exception as fehler:
-                hinweise.append(
-                    Hinweis(
-                        f"Die Kosten-Datei für {jahr} konnte nicht gelesen werden "
-                        f"({_fehlerdetail(fehler)})"
-                    )
-                )
-        return Kostenplan(posten=tuple(posten), abbildungshinweise=tuple(hinweise))
+        posten, meldungen = jahre_laden(
+            self._client,
+            self._jahre_zu_dateien,
+            jahre,
+            bereich=lambda jahr: KOSTEN_BEREICH_VORLAGE.format(jahr=jahr),
+            abbilden=_zeilen_zu_posten,
+            fehlt_meldung="Für {jahr} ist in KOSTEN_SHEET_IDS keine Kosten-Datei hinterlegt",
+            fehler_meldung="Die Kosten-Datei für {jahr} konnte nicht gelesen werden ({detail})",
+        )
+        return Kostenplan(
+            posten=tuple(posten), abbildungshinweise=tuple(Hinweis(m) for m in meldungen)
+        )

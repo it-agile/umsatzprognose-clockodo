@@ -16,12 +16,13 @@ if TYPE_CHECKING:
     from collections.abc import Sequence
     from datetime import date
 
+    from umsatzprognose.util import Monat
+
+    from .hinweis import Hinweis
+
 from dataclasses import dataclass, field
 
-from .hinweis import Hinweis
-from .umsatzhistorie import MONATSNAMEN
-
-Monat = tuple[int, int]  # (jahr, monat)
+from .umsatzhistorie import fehlende_monate_hinweis
 
 
 @dataclass(frozen=True)
@@ -80,16 +81,10 @@ class Schulungsplan:
         niederschlaegt.
         """
         vorhanden = {t.schluessel for t in self._relevante_termine()}
-        fehlend = [monat for monat in horizontmonate if monat not in vorhanden]
-        fachlich = (
-            (
-                Hinweis(
-                    "Für diese Monate liegt keine Schulungsanmeldung vor - der Umsatz "
-                    "aus Schulungsanmeldungen wird mit 0 angenommen",
-                    tuple(f"{MONATSNAMEN[monat - 1]} {jahr}" for jahr, monat in fehlend),
-                ),
-            )
-            if fehlend
-            else ()
+        fachlich = fehlende_monate_hinweis(
+            "Für diese Monate liegt keine Schulungsanmeldung vor - der Umsatz aus "
+            "Schulungsanmeldungen wird mit 0 angenommen",
+            horizontmonate,
+            vorhanden,
         )
         return self.abbildungshinweise + fachlich

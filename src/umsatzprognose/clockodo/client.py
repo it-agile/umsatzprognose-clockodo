@@ -77,10 +77,14 @@ from datetime import date
 
 import httpx
 
+from umsatzprognose.util import aus_ordnung, ordnung
+
 from .config import BASE_URL
 from .nebenlaeufig import gleichzeitig
 
 DEFAULT_TIMEOUT = 60.0
+
+SEKUNDEN_JE_STUNDE = 3600.0
 
 # Untere Grenze des Verbrauchsfensters. ``revenue_kumuliert`` ist der
 # Gesamtverbrauch eines Projekts, nicht der eines Monats - die Grenze muss deshalb vor
@@ -235,8 +239,8 @@ def horizontende(stichtag: date, monate: int = 3) -> str:
     """
     if monate < 1:
         raise ValueError(f"Ein Horizont umfasst mindestens einen Monat, nicht {monate}")
-    ordnung = stichtag.year * 12 + (stichtag.month - 1) + (monate - 1)
-    return monatsende(date(ordnung // 12, ordnung % 12 + 1, 1))
+    letzter_monat = aus_ordnung(ordnung(stichtag.year, stichtag.month) + monate - 1)
+    return monatsende(date(*letzter_monat, 1))
 
 
 class ClockodoError(RuntimeError):

@@ -43,8 +43,18 @@ darstellung  ──►  domaene  ◄──  clockodo
           └──────►  google_sheets  ◄──────┘
 ```
 
+Dazu `src/umsatzprognose/util/` als siebtes, aber unsichtbares Paket: keine der obigen
+Bibliotheksabhängigkeiten, keine Kenntnis von einem der sechs Bausteine, deshalb nicht
+im Diagramm – nur Umgebungserkennung (`in_colab()`), das gemeinsame Lesen von
+Umgebungsvariablen/Colab-Secrets (`umgebungsvariable()`, `colab_secret()`, siehe
+`clockodo/config.py` und `google_sheets/config.py`) und die Monat-als-Zahlenpaar-
+Arithmetik (`Monat`, `ordnung()`, `aus_ordnung()`, `monatsfolge()`), die an mehreren
+Stellen in `domaene/`, `clockodo/`, `schulungen/` und `kosten/` gebraucht wird. Jedes
+der sechs Pakete darf `util/` importieren.
+
 - `src/umsatzprognose/domaene/` – die Fachobjekte, unveränderlich (`frozen=True`) und
-  ohne jede Bibliotheksabhängigkeit außer `numpy` (nur in `simulation.py`). `projekt.py`
+  ohne jede Bibliotheksabhängigkeit außer `numpy` (nur in `simulation.py`) und dem
+  abhängigkeitsfreien `util/`. `projekt.py`
   (`Projekt`, `Budget` – Restvolumen roh und prognosewirksam, effektiver Stundensatz,
   Prognose-Scope, `anteil_je_mitarbeiter()`), `kunde.py`, `mitarbeiter.py`
   (`Mitarbeiter.verfuegbare_kapazitaet()`, `Wochenarbeitszeit`, `Abwesenheit`,

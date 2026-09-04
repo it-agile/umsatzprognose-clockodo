@@ -8,12 +8,12 @@ im Format ``name;email`` mit maximal 50 Zeichen Gesamtlaenge.
 
 from __future__ import annotations
 
-import os
 from dataclasses import dataclass
+from functools import partial
 
 from dotenv import load_dotenv
 
-from umsatzprognose.util import in_colab
+from umsatzprognose.util import colab_secret, in_colab, umgebungsvariable
 
 BASE_URL = "https://my.clockodo.com/api"
 
@@ -23,6 +23,10 @@ EXTERNAL_APPLICATION_MAX_LENGTH = 50
 
 class MissingCredentialsError(RuntimeError):
     """Eine benoetigte Umgebungsvariable oder ein Colab-Secret fehlt."""
+
+
+_umgebungsvariable = partial(umgebungsvariable, fehlerklasse=MissingCredentialsError)
+_colab_secret = partial(colab_secret, fehlerklasse=MissingCredentialsError)
 
 
 @dataclass(frozen=True)
@@ -85,33 +89,3 @@ class ClockodoCredentials:
             "X-ClockodoApiKey": self.api_key,
             "X-Clockodo-External-Application": self.external_application,
         }
-
-
-def _umgebungsvariable(name: str) -> str:
-    value = os.environ.get(name, "").strip()
-    if not value:
-        raise MissingCredentialsError(
-            f"Umgebungsvariable {name} ist nicht gesetzt. "
-            "Siehe .env.sample; lokal in eine .env eintragen, in Colab ueber "
-            "die Secrets-Verwaltung bereitstellen."
-        )
-    return value
-
-
-def _colab_secret(name: str) -> str:
-    """Ein Colab-Secret lesen und im Fehlerfall sagen, was zu tun ist."""
-    from google.colab import userdata
-
-    try:
-        value = userdata.get(name)
-    except Exception as fehler:
-        raise MissingCredentialsError(
-            f"Colab-Secret '{name}' nicht nutzbar ({type(fehler).__name__}).\n"
-            "Anlegen: linke Seitenleiste, Schluessel-Symbol -> 'Neues Secret'.\n"
-            "Danach den Schalter 'Notebook-Zugriff' fuer dieses Notebook aktivieren - "
-            "ohne ihn existiert das Secret, ist aber gesperrt.\n"
-            "Details im README, Abschnitt 'Deployment (Google Colab)'."
-        ) from fehler
-    if not (value or "").strip():
-        raise MissingCredentialsError(f"Colab-Secret '{name}' ist leer.")
-    return value.strip()

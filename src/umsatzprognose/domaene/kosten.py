@@ -20,12 +20,13 @@ from typing import TYPE_CHECKING, assert_never
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
+    from umsatzprognose.util import Monat
+
+    from .hinweis import Hinweis
+
 from dataclasses import dataclass, field
 
-from .hinweis import Hinweis
-from .umsatzhistorie import MONATSNAMEN
-
-Monat = tuple[int, int]  # (jahr, monat)
+from .umsatzhistorie import fehlende_monate_hinweis
 
 
 @dataclass(frozen=True)
@@ -120,16 +121,9 @@ class Kostenplan:
         niederschlaegt.
         """
         vorhanden = {p.schluessel for p in self.posten}
-        fehlend = [monat for monat in monate if monat not in vorhanden]
-        fachlich = (
-            (
-                Hinweis(
-                    "Für diese Monate liegt keine Kostenprognose vor - die Kosten "
-                    "werden mit 0 angenommen",
-                    tuple(f"{MONATSNAMEN[monat - 1]} {jahr}" for jahr, monat in fehlend),
-                ),
-            )
-            if fehlend
-            else ()
+        fachlich = fehlende_monate_hinweis(
+            "Für diese Monate liegt keine Kostenprognose vor - die Kosten werden mit 0 angenommen",
+            monate,
+            vorhanden,
         )
         return self.abbildungshinweise + fachlich

@@ -51,24 +51,14 @@ from datetime import date
 
 import numpy as np
 
+from umsatzprognose.util import Monat, monatsfolge
+
 from .prognose import KONFIDENZNIVEAUS, NochKeinePrognose, Prognose
-
-Monat = tuple[int, int]  # (jahr, monat)
-
-
-def _ordnung(jahr: int, monat: int) -> int:
-    """Monate seit Jahr 0 - macht Fortzaehlung ueber Jahresgrenzen trivial."""
-    return jahr * 12 + (monat - 1)
-
-
-def _aus_ordnung(ordnung: int) -> Monat:
-    return (ordnung // 12, ordnung % 12 + 1)
 
 
 def _horizontmonate(stichtag: date, monate: int) -> tuple[Monat, ...]:
     """Die Horizontmonate, beginnend mit dem Monat des Stichtags."""
-    start = _ordnung(stichtag.year, stichtag.month)
-    return tuple(_aus_ordnung(start + i) for i in range(monate))
+    return tuple(monatsfolge((stichtag.year, stichtag.month), monate))
 
 
 def _anteil_verbleibender_arbeitstage(stichtag: date) -> float:
