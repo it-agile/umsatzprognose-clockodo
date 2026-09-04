@@ -42,6 +42,22 @@ ACHSE = "#c3c2b7"
 # eine zweite Farbe (siehe Moduldocstring).
 PROGNOSE_DECKKRAFT = 0.4
 
+# Kategoriale Palette fuer den Gewinn/Verlust-Jahresvergleich: eine Farbe je Kalenderjahr,
+# statt Vorzeichen wie beim einzelnen Ergebnis-Balken. Feste Reihenfolge, zugewiesen nach
+# aufsteigendem Jahr, nie neu gemischt - das ist die CVD-Sicherheit dieser acht Farbtoene
+# (naeheres siehe die Farbmethodik der dataviz-Skill-Referenz). Bei mehr als acht
+# gleichzeitig gezeigten Jahren beginnt die Zuordnung von vorn.
+JAHRESFARBEN = (
+    "#2a78d6",  # blau
+    "#eb6834",  # orange
+    "#1baf7a",  # tuerkis
+    "#eda100",  # gelb
+    "#e87ba4",  # magenta
+    "#008300",  # gruen
+    "#4a3aa7",  # violett
+    "#e34948",  # rot
+)
+
 SCHRIFT = 'system-ui, -apple-system, "Segoe UI", sans-serif'
 
 

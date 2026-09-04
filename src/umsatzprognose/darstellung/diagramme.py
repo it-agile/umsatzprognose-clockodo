@@ -13,7 +13,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Callable, Sequence
 
     from umsatzprognose.domaene import (
         Auslastungsmonat,
@@ -35,6 +35,7 @@ from umsatzprognose.darstellung.gestaltung import (
     ACHSE,
     ERGEBNIS_NEGATIV,
     ERGEBNIS_POSITIV,
+    JAHRESFARBEN,
     KOSTEN,
     KOSTEN_HELL,
     PROGNOSE_DECKKRAFT,
@@ -446,28 +447,30 @@ def _keine_prognose_hinweis(fig: go.Figure, prognose: Prognose) -> None:
     )
 
 
-def _historie_und_horizont_ergebnis(
+def _historie_und_horizont_werte(
     monate: Sequence[Monatsumsatz],
     kosten: Sequence[float],
     prognose: Prognose | None,
     horizont_kosten: Sequence[float],
     schulungsplan: Schulungsplan | None,
     verbrauch_laufender_monat: Monatsumsatz | None,
-) -> tuple[list[str], list[float], list[float]]:
-    """Ergebnis (Umsatz minus Kosten) je Monat, Historie gefolgt vom Prognosehorizont.
+) -> tuple[list[str], list[float], list[float], list[float]]:
+    """Umsatz und Ergebnis (Umsatz minus Kosten) je Monat, Historie gefolgt vom Horizont.
 
-    Gemeinsame Grundlage fuer :func:`gewinn_verlust_monatlich` und
-    :func:`gewinn_verlust_kumuliert`.
+    Gemeinsame Grundlage fuer :func:`gewinn_verlust_monatlich`, :func:`gewinn_verlust_je_jahr`
+    und :func:`umsatzrendite_kumuliert`.
 
     Returns:
-        Beschriftungen, Ergebnis je Monat und eine parallele Deckkraft-Liste (1.0 fuer
-        die Historie, :data:`~umsatzprognose.darstellung.gestaltung.PROGNOSE_DECKKRAFT`
-        fuer den Prognosehorizont) - dieselbe Konvention wie bei
-        :func:`_prognosehorizont`: Sicherheit einer Zahl zeigt sich ueber die
-        Deckkraft, nicht ueber eine eigene Farbe.
+        Beschriftungen, Umsatz je Monat, Ergebnis je Monat und eine parallele
+        Deckkraft-Liste (1.0 fuer die Historie,
+        :data:`~umsatzprognose.darstellung.gestaltung.PROGNOSE_DECKKRAFT` fuer den
+        Prognosehorizont) - dieselbe Konvention wie bei :func:`_prognosehorizont`:
+        Sicherheit einer Zahl zeigt sich ueber die Deckkraft, nicht ueber eine eigene
+        Farbe.
     """
     beschriftungen = [m.beschriftung for m in monate]
-    ergebnis = [m.umsatz - k for m, k in zip(monate, kosten, strict=True)]
+    umsatz = [m.umsatz for m in monate]
+    ergebnis = [u - k for u, k in zip(umsatz, kosten, strict=True)]
     deckkraft = [1.0] * len(monate)
 
     if prognose is not None and prognose.vorhanden:
@@ -478,13 +481,91 @@ def _historie_und_horizont_ergebnis(
             schulungsplan=schulungsplan,
         )
         beschriftungen += [_monatsbeschriftung(jahr, monat) for jahr, monat in horizont]
-        ergebnis += [
-            gesamtumsatz[schluessel] - k
-            for schluessel, k in zip(horizont, horizont_kosten, strict=True)
-        ]
+        horizont_umsatz = [gesamtumsatz[schluessel] for schluessel in horizont]
+        umsatz += horizont_umsatz
+        ergebnis += [u - k for u, k in zip(horizont_umsatz, horizont_kosten, strict=True)]
         deckkraft += [PROGNOSE_DECKKRAFT] * len(horizont)
 
-    return beschriftungen, ergebnis, deckkraft
+    return beschriftungen, umsatz, ergebnis, deckkraft
+
+
+def _je_jahr(
+    monate: Sequence[Monatsumsatz],
+    prognose: Prognose | None,
+    umsatz: Sequence[float],
+    ergebnis: Sequence[float],
+    deckkraft: Sequence[float],
+) -> dict[int, list[tuple[int, float, float, float]]]:
+    """Ordnet die parallelen Werte-Listen nach Kalenderjahr, je Jahr chronologisch.
+
+    Gemeinsame Grundlage fuer :func:`gewinn_verlust_je_jahr` und
+    :func:`umsatzrendite_kumuliert` - jeder Eintrag ist ``(monat, umsatz, ergebnis,
+    deckkraft)``.
+    """
+    schluessel = [m.schluessel for m in monate]
+    if prognose is not None and prognose.vorhanden:
+        schluessel += list(prognose.horizontmonate())
+
+    jahre: dict[int, list[tuple[int, float, float, float]]] = {}
+    for (jahr, monat), u, e, deck in zip(schluessel, umsatz, ergebnis, deckkraft, strict=True):
+        jahre.setdefault(jahr, []).append((monat, u, e, deck))
+    return jahre
+
+
+def _jahreslinien(
+    fig: go.Figure,
+    jahre: dict[int, list[tuple[int, float, float, float]]],
+    *,
+    werte: Callable[[list[tuple[int, float, float, float]]], list[float]],
+    formatieren: Callable[[float], str],
+) -> None:
+    """Zeichnet fuer jedes Jahr eine Ist-Linie, mit gedaempft-gestrichelter Vorausschau.
+
+    ``werte`` errechnet aus den Punkten eines Jahres (``monat, umsatz, ergebnis,
+    deckkraft``) die y-Werte, ``formatieren`` die Hover-Beschriftung je Wert. Faellt
+    der Prognosehorizont in ein neues Kalenderjahr, beginnt dessen Linie direkt
+    gestrichelt, ohne eigenen Ist-Abschnitt.
+    """
+    for index, jahr in enumerate(sorted(jahre)):
+        punkte = jahre[jahr]
+        farbe = JAHRESFARBEN[index % len(JAHRESFARBEN)]
+        beschriftungen = [MONATSNAMEN[monat - 1] for monat, *_rest in punkte]
+        y = werte(punkte)
+        # Erster Index mit gedaempfter Deckkraft - alles davor ist Ist, ab dort
+        # Vorausschau. Ohne Vorausschau in diesem Jahr: len(punkte), also nur Ist.
+        ist_grenze = next((i for i, (*_rest, deck) in enumerate(punkte) if deck < 1.0), len(punkte))
+
+        if ist_grenze > 0:
+            fig.add_scatter(
+                x=beschriftungen[:ist_grenze],
+                y=y[:ist_grenze],
+                mode="lines+markers",
+                line={"color": farbe, "width": 2},
+                marker={"size": 6},
+                customdata=[[formatieren(wert)] for wert in y[:ist_grenze]],
+                hovertemplate=f"<b>{jahr} %{{x}}</b><br>%{{customdata[0]}}<extra></extra>",
+                name=str(jahr),
+                legendgroup=str(jahr),
+            )
+        if ist_grenze < len(punkte):
+            # Beginnt am letzten Ist-Punkt (oder, ohne einen, direkt beim ersten Wert),
+            # damit die Linie ohne Bruch weiterlaeuft.
+            start = max(ist_grenze - 1, 0)
+            fig.add_scatter(
+                x=beschriftungen[start:],
+                y=y[start:],
+                mode="lines+markers",
+                line={"color": farbe, "width": 2, "dash": "dot"},
+                marker={"size": 6, "opacity": PROGNOSE_DECKKRAFT},
+                opacity=PROGNOSE_DECKKRAFT,
+                customdata=[[formatieren(wert)] for wert in y[start:]],
+                hovertemplate=(
+                    f"<b>{jahr} %{{x}}</b><br>%{{customdata[0]}} (Vorausschau)<extra></extra>"
+                ),
+                name=str(jahr),
+                legendgroup=str(jahr),
+                showlegend=(ist_grenze == 0),
+            )
 
 
 def gewinn_verlust_monatlich(
@@ -512,7 +593,7 @@ def gewinn_verlust_monatlich(
     Realisierte des laufenden Monats, ``schulungsplan`` zusaetzlich additiven Umsatz aus
     bereits geplanten Schulungsterminen - siehe :func:`_horizont_gesamtumsatz`.
     """
-    beschriftungen, ergebnis, deckkraft = _historie_und_horizont_ergebnis(
+    beschriftungen, _umsatz, ergebnis, deckkraft = _historie_und_horizont_werte(
         monate, kosten, prognose, horizont_kosten, schulungsplan, verbrauch_laufender_monat
     )
     gesamt = sum(ergebnis)
@@ -541,7 +622,7 @@ def gewinn_verlust_monatlich(
     return fig
 
 
-def gewinn_verlust_kumuliert(
+def gewinn_verlust_je_jahr(
     monate: Sequence[Monatsumsatz],
     kosten: Sequence[float],
     *,
@@ -551,62 +632,89 @@ def gewinn_verlust_kumuliert(
     verbrauch_laufender_monat: Monatsumsatz | None = None,
     hoehe: int = 380,
 ) -> go.Figure:
-    """Die ueber die Monate aufsummierte Gewinn/Verlust-Linie, mit Null-Referenzlinie.
+    """Fuer jedes Kalenderjahr in ``monate`` eine eigene Linie der monatlichen Werte.
 
-    Zeigt, seit wann und wie deutlich ein Gesamtminus (oder -plus) ueber den
-    betrachteten Zeitraum besteht - anders als :func:`gewinn_verlust_monatlich`, das
-    nur den einzelnen Monat zeigt. Die Null-Referenzlinie ist hier bewusst gesetzt,
-    obwohl :func:`~umsatzprognose.darstellung.gestaltung.achsen` sonst keine zeichnet:
-    das Ueber-/Unterschreiten der Nulllinie ist hier die Kernaussage.
+    Anders als :func:`gewinn_verlust_monatlich` ist das hier bewusst kein
+    zusammenhaengender Zeitraum, sondern ein Jahresvergleich auf einer gemeinsamen
+    Monatsachse (Jan bis Dez) - wie in der urspruenglichen Praesentation. Gezeigt wird
+    das Ergebnis je einzelnem Monat, nicht aufsummiert (fuer die kumulierte Sicht
+    siehe :func:`umsatzrendite_kumuliert`). ``monate`` traegt deshalb typischerweise
+    die gesamte geladene Historie, nicht nur ein Fenster wie die uebrigen Ansichten
+    (siehe :meth:`~umsatzprognose.darstellung.dashboard.Dashboard.gewinn_verlust_je_jahr`).
 
     Mit ``prognose`` (siehe :func:`gewinn_verlust_monatlich` fuer die uebrigen
-    Parameter) setzt sich die Linie ueber den Prognosehorizont fort - gestrichelt und
-    gedaempft ab dem letzten Ist-Monat, damit Ist und Vorausschau auf einen Blick
-    unterscheidbar bleiben, aber ohne Bruch ineinander uebergehen.
+    Parameter) haengt sich an das juengste Jahr die Vorausschau fuer den
+    Prognosehorizont an - gestrichelt und gedaempft ab dem letzten Ist-Monat, ohne
+    Bruch. Faellt der Horizont in ein neues Kalenderjahr, beginnt dessen Linie direkt
+    gestrichelt, ohne eigenen Ist-Abschnitt.
     """
-    beschriftungen, ergebnis, _deckkraft = _historie_und_horizont_ergebnis(
+    _beschriftungen, umsatz, ergebnis, deckkraft = _historie_und_horizont_werte(
         monate, kosten, prognose, horizont_kosten, schulungsplan, verbrauch_laufender_monat
     )
-    kumuliert: list[float] = []
-    laufend = 0.0
-    for betrag in ergebnis:
-        laufend += betrag
-        kumuliert.append(laufend)
+    jahre = _je_jahr(monate, prognose, umsatz, ergebnis, deckkraft)
 
-    anzahl_ist = len(monate)
-    farbe = ERGEBNIS_POSITIV if kumuliert[-1] >= 0 else ERGEBNIS_NEGATIV
-
-    fig = figur("Kumulierter Gewinn/Verlust", hoehe=hoehe)
-    fig.add_scatter(
-        x=beschriftungen[:anzahl_ist],
-        y=kumuliert[:anzahl_ist],
-        mode="lines+markers",
-        line={"color": farbe, "width": 2},
-        marker={"size": 6},
-        customdata=[[euro(betrag)] for betrag in kumuliert[:anzahl_ist]],
-        hovertemplate="<b>%{x}</b><br>%{customdata[0]}<extra></extra>",
-        showlegend=False,
-        name="Ist",
+    fig = figur("Gewinn/Verlust je Monat und Jahr", hoehe=hoehe)
+    _jahreslinien(
+        fig,
+        jahre,
+        werte=lambda punkte: [ergebnis for _monat, _umsatz, ergebnis, _deck in punkte],
+        formatieren=euro,
     )
-    # Beginnt am letzten Ist-Punkt, damit die Linie ohne Bruch weiterlaeuft.
-    if len(beschriftungen) > anzahl_ist:
-        start = max(anzahl_ist - 1, 0)
-        fig.add_scatter(
-            x=beschriftungen[start:],
-            y=kumuliert[start:],
-            mode="lines+markers",
-            line={"color": farbe, "width": 2, "dash": "dot"},
-            marker={"size": 6, "opacity": PROGNOSE_DECKKRAFT},
-            opacity=PROGNOSE_DECKKRAFT,
-            customdata=[[euro(betrag)] for betrag in kumuliert[start:]],
-            hovertemplate="<b>%{x}</b><br>%{customdata[0]} (Vorausschau)<extra></extra>",
-            showlegend=False,
-            name="Vorausschau",
-        )
     fig.add_hline(y=0, line={"color": ACHSE, "width": 1})
     achsen(fig)
+    fig.update_layout(showlegend=True)
     fig.update_yaxes(tickformat=",.0f", ticksuffix=" €")
-    fig.update_xaxes(tickangle=0)
+    fig.update_xaxes(categoryorder="array", categoryarray=list(MONATSNAMEN), tickangle=0)
+    return fig
+
+
+def umsatzrendite_kumuliert(
+    monate: Sequence[Monatsumsatz],
+    kosten: Sequence[float],
+    *,
+    prognose: Prognose | None = None,
+    horizont_kosten: Sequence[float] = (),
+    schulungsplan: Schulungsplan | None = None,
+    verbrauch_laufender_monat: Monatsumsatz | None = None,
+    hoehe: int = 380,
+) -> go.Figure:
+    """Fuer jedes Kalenderjahr die kumulierte Umsatzrendite (Gewinn/Umsatz) je Monat.
+
+    "Kumuliert" heisst hier: kumulierter Gewinn geteilt durch kumulierten Umsatz bis
+    zu diesem Monat (eine Year-to-Date-Marge) - nicht die Summe monatlicher
+    Prozentwerte, die von unterschiedlich grossen Monatsumsaetzen verzerrt waere.
+    Januar zeigt deshalb die Rendite des Monats selbst, Februar die der ersten beiden
+    Monate zusammen, und so weiter. Aufbau und Vorausschau-Konvention wie
+    :func:`gewinn_verlust_je_jahr`, dort auch die uebrigen Parameter erklaert. Ein
+    Monat ganz ohne Umsatz (weder Ist noch Vorausschau) zeigt 0 % statt eines Fehlers.
+    """
+    _beschriftungen, umsatz, ergebnis, deckkraft = _historie_und_horizont_werte(
+        monate, kosten, prognose, horizont_kosten, schulungsplan, verbrauch_laufender_monat
+    )
+    jahre = _je_jahr(monate, prognose, umsatz, ergebnis, deckkraft)
+
+    def rendite_je_monat(punkte: list[tuple[int, float, float, float]]) -> list[float]:
+        kumulierter_umsatz = kumuliertes_ergebnis = 0.0
+        werte = []
+        for _monat, monatsumsatz, monatsergebnis, _deck in punkte:
+            kumulierter_umsatz += monatsumsatz
+            kumuliertes_ergebnis += monatsergebnis
+            anteil = kumuliertes_ergebnis / kumulierter_umsatz if kumulierter_umsatz else 0.0
+            werte.append(anteil * 100)
+        return werte
+
+    fig = figur("Kumulierte Umsatzrendite je Jahr", hoehe=hoehe)
+    _jahreslinien(
+        fig,
+        jahre,
+        werte=rendite_je_monat,
+        formatieren=lambda prozentpunkte: prozent(prozentpunkte / 100, nachkommastellen=1),
+    )
+    fig.add_hline(y=0, line={"color": ACHSE, "width": 1})
+    achsen(fig)
+    fig.update_layout(showlegend=True)
+    fig.update_yaxes(tickformat=",.1f", ticksuffix=" %")
+    fig.update_xaxes(categoryorder="array", categoryarray=list(MONATSNAMEN), tickangle=0)
     return fig
 
 

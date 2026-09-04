@@ -13,9 +13,11 @@ import numpy as np
 import pytest
 
 from umsatzprognose.darstellung import Dashboard, Ladedauern, diagramme, tabellen
+from umsatzprognose.darstellung.dashboard import _abgeschlossene_monate
 from umsatzprognose.darstellung.gestaltung import (
     ERGEBNIS_NEGATIV,
     ERGEBNIS_POSITIV,
+    JAHRESFARBEN,
     KOSTEN,
     KOSTEN_HELL,
     PROGNOSE_DECKKRAFT,
@@ -134,14 +136,18 @@ def test_gewinn_verlust_monatlich_faerbt_nach_vorzeichen():
     assert list(balken.marker.color) == [ERGEBNIS_POSITIV, ERGEBNIS_NEGATIV]
 
 
-def test_gewinn_verlust_kumuliert_summiert_ueber_die_monate():
+def test_gewinn_verlust_je_jahr_zeigt_monatswerte_nicht_kumuliert():
     monate = [Monatsumsatz(2026, 7, 50000.0), Monatsumsatz(2026, 8, 10000.0)]
-    fig = diagramme.gewinn_verlust_kumuliert(monate, [40000.0, 40000.0])
+    fig = diagramme.gewinn_verlust_je_jahr(monate, [40000.0, 40000.0])
     linie = fig.data[0]
 
-    assert list(linie.y) == [10000.0, -20000.0]
-    # Am Ende im Minus - die Linie ist deshalb rot statt gruen.
-    assert linie.line.color == ERGEBNIS_NEGATIV
+    assert list(linie.x) == ["Jul", "Aug"]
+    # Das Ergebnis jedes Monats einzeln (50000-40000, 10000-40000) - keine Summenlinie.
+    assert list(linie.y) == [10000.0, -30000.0]
+    # Ein einzelnes Jahr bekommt die erste Farbe der Jahrespalette, nicht Gruen/Rot
+    # nach Vorzeichen - das gilt nur fuer den einzelnen Ergebnis-Balken.
+    assert linie.line.color == JAHRESFARBEN[0]
+    assert linie.name == "2026"
 
 
 def test_gewinn_verlust_monatlich_haengt_prognosehorizont_gedaempft_an():
@@ -175,10 +181,10 @@ def test_gewinn_verlust_monatlich_ohne_prognose_bleibt_wie_zuvor():
     assert list(fig.data[0].marker.opacity) == [1.0]
 
 
-def test_gewinn_verlust_kumuliert_setzt_prognose_gestrichelt_und_bruchlos_fort():
+def test_gewinn_verlust_je_jahr_setzt_prognose_gestrichelt_und_bruchlos_fort():
     historie, prognose = _historie_und_prognose_mit_horizont()
     monate = historie.abgeschlossene()
-    fig = diagramme.gewinn_verlust_kumuliert(
+    fig = diagramme.gewinn_verlust_je_jahr(
         monate,
         [40000.0],
         prognose=prognose,
@@ -187,13 +193,76 @@ def test_gewinn_verlust_kumuliert_setzt_prognose_gestrichelt_und_bruchlos_fort()
     )
     ist_spur, prognose_spur = fig.data[0], fig.data[1]
 
-    assert list(ist_spur.x) == ["Aug 2026"]
+    assert list(ist_spur.x) == ["Aug"]
     assert ist_spur.line.dash is None
     # Die Prognose-Spur beginnt am letzten Ist-Punkt, damit die Linie ohne Bruch
     # weiterlaeuft, und ist gestrichelt.
-    assert list(prognose_spur.x) == ["Aug 2026", "Sep 2026", "Okt 2026"]
+    assert list(prognose_spur.x) == ["Aug", "Sep", "Okt"]
     assert prognose_spur.y[0] == ist_spur.y[-1]
     assert prognose_spur.line.dash == "dot"
+    # Beide Spuren gehoeren zum selben Jahr - eine gemeinsame Legende, kein zweiter Eintrag.
+    assert ist_spur.name == prognose_spur.name == "2026"
+    assert prognose_spur.showlegend is False
+
+
+def test_gewinn_verlust_je_jahr_teilt_die_monate_nach_kalenderjahr():
+    monate = [
+        Monatsumsatz(2025, 11, 10000.0),
+        Monatsumsatz(2025, 12, 15000.0),
+        Monatsumsatz(2026, 1, 30000.0),
+        Monatsumsatz(2026, 2, 10000.0),
+    ]
+    fig = diagramme.gewinn_verlust_je_jahr(monate, [0.0, 0.0, 0.0, 0.0])
+    spur_2025, spur_2026 = fig.data[0], fig.data[1]
+
+    assert spur_2025.name == "2025"
+    assert list(spur_2025.x) == ["Nov", "Dez"]
+    assert list(spur_2025.y) == [10000.0, 15000.0]
+    assert spur_2025.line.color == JAHRESFARBEN[0]
+
+    # Eigene Serie ab Januar, unabhaengig von den Werten aus 2025 - kein durchgehendes Fenster.
+    assert spur_2026.name == "2026"
+    assert list(spur_2026.x) == ["Jan", "Feb"]
+    assert list(spur_2026.y) == [30000.0, 10000.0]
+    assert spur_2026.line.color == JAHRESFARBEN[1]
+
+
+def test_gewinn_verlust_je_jahr_prognose_in_neuem_jahr_startet_ohne_ist_abschnitt():
+    stichtag = date(2026, 12, 1)
+    historie = Umsatzhistorie.zum_stichtag(
+        [Monatsumsatz(2026, 11, 30000.0), Monatsumsatz(2026, 12, 5000.0)],
+        stichtag,
+        abgeschlossene=1,
+    )
+    monate = historie.abgeschlossene()
+    projekt = Projekt(
+        id=1, name="Projekt", kunde=KUNDE, aktiv=True,
+        budget=Gesamtbudget(betrag=220000.0),
+        verbrauchtes_volumen=20000.0, verbrauchte_stunden=200.0,
+    )  # fmt: skip
+    bestand = Bestand(
+        stichtag=stichtag,
+        projekte=(projekt,),
+        umsatzhistorie=historie,
+        verbrauchsverlaeufe=(_historie_fuer_abrufquote(0.2),),
+    )
+    prognose = bestand.simulieren(monate=2, laeufe=5, zufall=np.random.default_rng(1))
+    assert prognose.vorhanden
+    assert prognose.horizontmonate() == ((2026, 12), (2027, 1))
+
+    fig = diagramme.gewinn_verlust_je_jahr(
+        monate,
+        [40000.0],
+        prognose=prognose,
+        horizont_kosten=[15000.0, 12000.0],
+        verbrauch_laufender_monat=historie.laufender,
+    )
+    # 2026: nur eine Ist-Spur (Nov), der Dezember-Horizontmonat wird zur Vorausschau.
+    # 2027: keine Ist-Spur, die einzige Spur ist von Anfang an gestrichelt.
+    namen_und_dash = [(spur.name, spur.line.dash) for spur in fig.data]
+    assert namen_und_dash == [("2026", None), ("2026", "dot"), ("2027", "dot")]
+    assert fig.data[0].showlegend is not False
+    assert fig.data[2].showlegend is not False  # 2027 braucht trotzdem einen Legendeneintrag
 
 
 def test_auslastung_je_mitarbeiter_zeigt_prozent_und_laesst_none_weg():
@@ -716,6 +785,21 @@ def test_dashboard_kapazitaet_je_mitarbeiter_nutzt_den_stichtagsmonat():
     assert fig.data[0].x[0] > 0
 
 
+@pytest.mark.parametrize(
+    ("stichtag", "fruehestes_jahr", "erwartet"),
+    [
+        (date(2026, 9, 15), None, 12),  # keine Konfiguration -> Standardfenster
+        (date(2026, 9, 15), 2022, 56),  # Jan 2022 bis Aug 2026
+        (date(2026, 1, 15), 2026, 12),  # Untergrenze greift, sonst waeren es 0 Monate
+        (date(2026, 9, 15), 2027, 12),  # Jahr in der Zukunft faellt auf die Untergrenze zurueck
+    ],
+)
+def test_abgeschlossene_monate_reicht_bis_januar_des_fruehesten_kosten_jahres(
+    stichtag, fruehestes_jahr, erwartet
+):
+    assert _abgeschlossene_monate(stichtag, fruehestes_jahr) == erwartet
+
+
 def test_dashboard_gewinn_verlust_monatlich_nutzt_kostenplan():
     historie = Umsatzhistorie.zum_stichtag(
         [Monatsumsatz(2026, 7, 50000.0), Monatsumsatz(2026, 8, 30000.0)], STICHTAG, abgeschlossene=1
@@ -730,7 +814,7 @@ def test_dashboard_gewinn_verlust_monatlich_nutzt_kostenplan():
     assert list(fig.data[0].y) == [10000.0]  # 50.000 - 40.000, Kostenplan ohne August-Posten
 
 
-def test_dashboard_gewinn_verlust_kumuliert_nutzt_kostenplan():
+def test_dashboard_gewinn_verlust_je_jahr_nutzt_kostenplan():
     historie = Umsatzhistorie.zum_stichtag(
         [
             Monatsumsatz(2026, 6, 50000.0),
@@ -744,8 +828,76 @@ def test_dashboard_gewinn_verlust_kumuliert_nutzt_kostenplan():
     kostenplan = Kostenplan(posten=(Kostenposten(2026, 6, 40000.0), Kostenposten(2026, 7, 40000.0)))
     dashboard = Dashboard(bestand, SCHULUNGSPLAN, kostenplan)
 
-    fig = dashboard.gewinn_verlust_kumuliert(monate=2)
-    assert list(fig.data[0].y) == [10000.0, -20000.0]
+    fig = dashboard.gewinn_verlust_je_jahr()
+    assert list(fig.data[0].y) == [10000.0, -30000.0]
+
+
+def test_dashboard_umsatzrendite_kumuliert_nutzt_kostenplan():
+    historie = Umsatzhistorie.zum_stichtag(
+        [
+            Monatsumsatz(2026, 6, 50000.0),
+            Monatsumsatz(2026, 7, 50000.0),
+            Monatsumsatz(2026, 8, 0.0),
+        ],
+        STICHTAG,
+        abgeschlossene=2,
+    )
+    bestand = Bestand(stichtag=STICHTAG, umsatzhistorie=historie)
+    kostenplan = Kostenplan(posten=(Kostenposten(2026, 6, 40000.0), Kostenposten(2026, 7, 30000.0)))
+    dashboard = Dashboard(bestand, SCHULUNGSPLAN, kostenplan)
+
+    fig = dashboard.umsatzrendite_kumuliert()
+    # Juni: 10.000 / 50.000 = 20 %. Juli kumuliert: (10.000+20.000) / 100.000 = 30 %.
+    assert list(fig.data[0].y) == pytest.approx([20.0, 30.0])
+
+
+def test_dashboard_gewinn_verlust_je_jahr_laesst_jahr_ganz_ohne_kostenerfassung_weg():
+    historie = Umsatzhistorie(
+        stichtag=STICHTAG,
+        monate=(
+            Monatsumsatz(2025, 12, 50000.0),
+            Monatsumsatz(2026, 7, 60000.0),
+            Monatsumsatz(2026, 8, 0.0),
+        ),
+    )
+    bestand = Bestand(stichtag=STICHTAG, umsatzhistorie=historie)
+    # Nur 2026 hat ueberhaupt einen Kostenposten - 2025 bleibt vollstaendig ohne Quelle.
+    kostenplan = Kostenplan(posten=(Kostenposten(2026, 7, 40000.0),))
+    dashboard = Dashboard(bestand, SCHULUNGSPLAN, kostenplan)
+
+    fig = dashboard.gewinn_verlust_je_jahr()
+    assert [spur.name for spur in fig.data] == ["2026"]
+
+
+def test_dashboard_umsatzrendite_kumuliert_laesst_jahr_ganz_ohne_kostenerfassung_weg():
+    historie = Umsatzhistorie(
+        stichtag=STICHTAG,
+        monate=(
+            Monatsumsatz(2025, 12, 50000.0),
+            Monatsumsatz(2026, 7, 60000.0),
+            Monatsumsatz(2026, 8, 0.0),
+        ),
+    )
+    bestand = Bestand(stichtag=STICHTAG, umsatzhistorie=historie)
+    kostenplan = Kostenplan(posten=(Kostenposten(2026, 7, 40000.0),))
+    dashboard = Dashboard(bestand, SCHULUNGSPLAN, kostenplan)
+
+    fig = dashboard.umsatzrendite_kumuliert()
+    # Ohne den Filter waere 2025 (0 Kostenposten) als 100 % Rendite gezeigt worden.
+    assert [spur.name for spur in fig.data] == ["2026"]
+
+
+def test_dashboard_gewinn_verlust_je_jahr_ohne_jede_kostenquelle_zeigt_trotzdem_alles():
+    historie = Umsatzhistorie(
+        stichtag=STICHTAG,
+        monate=(Monatsumsatz(2025, 12, 50000.0), Monatsumsatz(2026, 8, 0.0)),
+    )
+    bestand = Bestand(stichtag=STICHTAG, umsatzhistorie=historie)
+    dashboard = Dashboard(bestand, SCHULUNGSPLAN, KOSTENPLAN)  # KOSTENPLAN: keine Posten
+
+    fig = dashboard.gewinn_verlust_je_jahr()
+    # Keine Kostenquelle ueberhaupt konfiguriert - Annahme 0 wie ueberall sonst, nicht wegfiltern.
+    assert [spur.name for spur in fig.data] == ["2025"]
 
 
 def test_dashboard_gewinn_verlust_monatlich_haengt_vorausschau_an_wenn_simuliert():
@@ -765,14 +917,14 @@ def test_dashboard_gewinn_verlust_monatlich_haengt_vorausschau_an_wenn_simuliert
     assert list(fig.data[0].x) == ["Aug 2026", "Sep 2026", "Okt 2026"]
 
 
-def test_dashboard_gewinn_verlust_kumuliert_ohne_simulation_bleibt_bei_der_historie():
+def test_dashboard_gewinn_verlust_je_jahr_ohne_simulation_bleibt_bei_der_historie():
     historie = Umsatzhistorie.zum_stichtag(
         [Monatsumsatz(2026, 7, 50000.0), Monatsumsatz(2026, 8, 30000.0)], STICHTAG, abgeschlossene=1
     )
     bestand = Bestand(stichtag=STICHTAG, umsatzhistorie=historie)
     dashboard = Dashboard(bestand, SCHULUNGSPLAN, KOSTENPLAN)
 
-    fig = dashboard.gewinn_verlust_kumuliert(monate=1)
+    fig = dashboard.gewinn_verlust_je_jahr()
     assert len(fig.data) == 1  # keine zweite (Prognose-)Spur ohne dashboard.simuliere()
 
 

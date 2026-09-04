@@ -57,6 +57,18 @@ MONATSNAMEN_LANG = (
 _MONAT_NUMMER = {name: nummer for nummer, name in enumerate(MONATSNAMEN_LANG, start=1)}
 
 
+def _fehlerdetail(fehler: Exception) -> str:
+    """Exceptiontyp, plus Meldung sofern vorhanden - fuer Hinweise beim Ladefehler.
+
+    Nur der Typname allein (etwa ``ValueError``) sagt beim Diagnostizieren nichts
+    darueber, *warum* eine Datei nicht gelesen werden konnte - z. B. welche Spalten in
+    :func:`_zeilen_zu_posten` als fehlend erkannt wurden. Die Meldung beschreibt nur
+    Struktur (Spaltennamen, Fehlerart), keine gelesenen Werte.
+    """
+    text = str(fehler)
+    return f"{type(fehler).__name__}: {text}" if text else type(fehler).__name__
+
+
 def _monat_parsen(text: str) -> int | None:
     """``"Januar"`` -> ``1``; unbekannter Text -> ``None`` statt Exception."""
     return _MONAT_NUMMER.get(text.strip().capitalize())
@@ -122,6 +134,16 @@ class KostenRepository:
         config = GoogleSheetsConfig.automatisch()
         return cls(GoogleSheetsClient(config.oauth_client_config), config.jahre_zu_dateien)
 
+    @property
+    def fruehestes_konfiguriertes_jahr(self) -> int | None:
+        """Das aelteste Jahr mit hinterlegter Kosten-Datei, ``None`` ohne jede Konfiguration.
+
+        Grundlage fuer :func:`~umsatzprognose.darstellung.dashboard.Dashboard.laden`, um
+        die Umsatzhistorie so weit zurueck zu laden, wie auch eine Kostenprognose dafuer
+        vorliegt - eine Gewinn/Verlust-Ansicht ohne Kosten waere ohnehin nur Umsatz.
+        """
+        return min(self._jahre_zu_dateien) if self._jahre_zu_dateien else None
+
     def laden(
         self, *, stichtag: date, horizont_monate: int = 3, historie_monate: Sequence[Monat] = ()
     ) -> Kostenplan:
@@ -156,7 +178,7 @@ class KostenRepository:
                 hinweise.append(
                     Hinweis(
                         f"Die Kosten-Datei für {jahr} konnte nicht gelesen werden "
-                        f"({type(fehler).__name__})"
+                        f"({_fehlerdetail(fehler)})"
                     )
                 )
         return Kostenplan(posten=tuple(posten), abbildungshinweise=tuple(hinweise))

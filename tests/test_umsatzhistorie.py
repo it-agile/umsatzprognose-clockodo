@@ -57,3 +57,20 @@ def test_beschriftung_ist_deutsch_und_ohne_locale():
 
 def test_durchschnitt_ohne_abgeschlossene_monate_ist_null():
     assert Umsatzhistorie(stichtag=STICHTAG).durchschnitt() == 0.0
+
+
+def test_letzte_ohne_anzahl_liefert_die_gesamte_historie():
+    historie = Umsatzhistorie.zum_stichtag([], STICHTAG)
+    assert historie.letzte() is historie
+
+
+def test_letzte_begrenzt_auf_abgeschlossene_plus_laufenden_monat():
+    historie = Umsatzhistorie.zum_stichtag([], STICHTAG)
+    gefenstert = historie.letzte(2)
+    assert [m.schluessel for m in gefenstert.monate] == [(2026, 6), (2026, 7), (2026, 8)]
+    assert gefenstert.stichtag == STICHTAG
+
+
+def test_letzte_ohne_laufenden_monat_bleibt_bei_den_abgeschlossenen():
+    historie = Umsatzhistorie(stichtag=STICHTAG, monate=(Monatsumsatz(2026, 6),))
+    assert historie.letzte(5).monate == historie.monate

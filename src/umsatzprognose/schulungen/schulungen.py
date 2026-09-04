@@ -36,6 +36,18 @@ SPALTE_MONAT = "Monat"
 SPALTE_UMSATZ = "Umsatz gesamt"
 
 
+def _fehlerdetail(fehler: Exception) -> str:
+    """Exceptiontyp, plus Meldung sofern vorhanden - fuer Hinweise beim Ladefehler.
+
+    Nur der Typname allein (etwa ``ValueError``) sagt beim Diagnostizieren nichts
+    darueber, *warum* eine Datei nicht gelesen werden konnte - z. B. welche Spalten
+    unten als fehlend erkannt wurden. Die Meldung beschreibt nur Struktur
+    (Spaltennamen, Fehlerart), keine gelesenen Werte.
+    """
+    text = str(fehler)
+    return f"{type(fehler).__name__}: {text}" if text else type(fehler).__name__
+
+
 def _zeilen_zu_terminen(zeilen: list[list[str]]) -> list[Schulungstermin]:
     if not zeilen:
         return []
@@ -110,7 +122,7 @@ class SchulungenRepository:
                 hinweise.append(
                     Hinweis(
                         f"Die Schulungs-Datei für {jahr} konnte nicht gelesen werden "
-                        f"({type(fehler).__name__})"
+                        f"({_fehlerdetail(fehler)})"
                     )
                 )
         return Schulungsplan(

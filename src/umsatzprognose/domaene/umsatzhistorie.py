@@ -108,6 +108,20 @@ class Umsatzhistorie:
         vollstaendig = tuple(m for m in self.monate if not m.enthaelt(self.stichtag))
         return vollstaendig[-anzahl:] if anzahl else vollstaendig
 
+    def letzte(self, anzahl: int | None = None) -> Umsatzhistorie:
+        """Die letzten ``anzahl`` abgeschlossenen Monate plus der laufende, als eigene Historie.
+
+        Ohne ``anzahl`` (``None``) unveraendert die gesamte Historie - Kurzform fuer
+        Ansichten, die bewusst nicht auf ein Fenster begrenzen, etwa den
+        Gewinn/Verlust-Jahresvergleich, der jedes geladene Jahr zeigen soll.
+        """
+        if anzahl is None:
+            return self
+        abgeschlossene = self.abgeschlossene(anzahl)
+        laufender = self.laufender
+        monate = (*abgeschlossene, laufender) if laufender is not None else abgeschlossene
+        return type(self)(stichtag=self.stichtag, monate=monate)
+
     def summe(self, anzahl: int | None = None) -> float:
         """Umsatz der abgeschlossenen Monate."""
         return sum(m.umsatz for m in self.abgeschlossene(anzahl))

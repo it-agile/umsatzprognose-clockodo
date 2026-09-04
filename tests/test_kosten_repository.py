@@ -150,6 +150,15 @@ def test_laden_meldet_nicht_konfiguriertes_jahr_als_hinweis() -> None:
     assert "KOSTEN_SHEET_IDS" in plan.abbildungshinweise[0].text
 
 
+def test_fruehestes_konfiguriertes_jahr_ist_das_minimum() -> None:
+    repository = KostenRepository(FakeClient({}), {2024: "x", 2022: "y", 2026: "z"})
+    assert repository.fruehestes_konfiguriertes_jahr == 2022
+
+
+def test_fruehestes_konfiguriertes_jahr_ohne_konfiguration_ist_none() -> None:
+    assert KostenRepository(FakeClient({}), {}).fruehestes_konfiguriertes_jahr is None
+
+
 def test_laden_meldet_lesefehler_als_hinweis_statt_absturz() -> None:
     client = FakeClient({"sheet-2026": RuntimeError("kein Zugriff")})
     repository = KostenRepository(client, {2026: "sheet-2026"})
@@ -158,3 +167,17 @@ def test_laden_meldet_lesefehler_als_hinweis_statt_absturz() -> None:
     assert plan.posten == ()
     assert len(plan.abbildungshinweise) == 1
     assert "2026" in plan.abbildungshinweise[0].text
+    # Nicht nur der Exceptiontyp, auch die Meldung - sonst bleibt die genaue Ursache
+    # (etwa welche Spalten in _zeilen_zu_posten fehlten) beim Diagnostizieren unsichtbar.
+    assert "RuntimeError: kein Zugriff" in plan.abbildungshinweise[0].text
+
+
+def test_laden_meldet_fehlende_spalten_mit_der_konkreten_meldung_als_hinweis() -> None:
+    client = FakeClient({"sheet-2022": [["Monat", "Gesamtkosten"]]})
+    repository = KostenRepository(client, {2022: "sheet-2022"})
+    plan = repository.laden(stichtag=date(2022, 9, 15), horizont_monate=1)
+
+    assert len(plan.abbildungshinweise) == 1
+    text = plan.abbildungshinweise[0].text
+    assert "2022" in text
+    assert "Allgemeinkosten" in text

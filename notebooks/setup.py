@@ -14,7 +14,6 @@ _dashboard: Dashboard | None = None
 def dashboard(
     *,
     stichtag: date | None = None,
-    abgeschlossene_monate: int = 12,
     horizont_monate: int = 3,
     auslastung_monate: int = 12,
 ) -> Dashboard:
@@ -23,7 +22,6 @@ def dashboard(
     if _dashboard is None:
         _dashboard = Dashboard.laden(
             stichtag=date.today() if stichtag is None else stichtag,
-            abgeschlossene_monate=abgeschlossene_monate,
             horizont_monate=horizont_monate,
             auslastung_monate=auslastung_monate,
         )

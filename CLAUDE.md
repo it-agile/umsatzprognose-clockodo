@@ -136,7 +136,7 @@ Paket, nicht ins Notebook.
 Die gemeinsame Ladelogik – `Dashboard.laden()` mit Cache – steckt in `notebooks/setup.py`
 statt dreifach dupliziert zu sein. Die drei fachlichen Notebooks importieren es in
 ihrer ersten Codezelle (`import setup`) und rufen `setup.dashboard(stichtag=…,
-abgeschlossene_monate=…, horizont_monate=…, auslastung_monate=…)` auf. In Colab holt
+horizont_monate=…, auslastung_monate=…)` auf. In Colab holt
 dieselbe Zelle vorher per `curl` von GitHub, weil dort außer dem per `pip install
 git+…` installierten Paket keine Repository-Dateien liegen; das `pip install` selbst
 bleibt in jedem Notebook, weil `setup.py` erst importierbar ist, nachdem
