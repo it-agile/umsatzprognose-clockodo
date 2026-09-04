@@ -112,6 +112,17 @@ def _dauer_text(dauer: timedelta | None) -> str:
     return humanize.naturaldelta(dauer) if dauer is not None else "unbekannter Dauer"
 
 
+class _Stoppuhr:
+    """Misst die Dauer eines ``with``-Blocks, danach als :attr:`dauer` verfuegbar."""
+
+    def __enter__(self) -> _Stoppuhr:
+        self._start = time.perf_counter()
+        return self
+
+    def __exit__(self, *exc_info: object) -> None:
+        self.dauer = timedelta(seconds=time.perf_counter() - self._start)
+
+
 @dataclass(frozen=True)
 class Ladedauern:
     """Wie lange der Abruf jedes einzelnen Repositories gedauert hat.
@@ -174,35 +185,35 @@ class Dashboard:
             stichtag, kosten_repo.fruehestes_konfiguriertes_jahr
         )
 
-        start = time.perf_counter()
-        bestand = BestandRepository.mit_automatischen_zugangsdaten().laden(
-            stichtag=stichtag,
-            mit_anteilen=mit_anteilen,
-            mit_verbrauchsverlauf=mit_verbrauchsverlauf,
-            abgeschlossene_monate=abgeschlossene_monate,
-            horizont_monate=horizont_monate,
-        )
-        bestand_dauer = timedelta(seconds=time.perf_counter() - start)
+        with _Stoppuhr() as t:
+            bestand = BestandRepository.mit_automatischen_zugangsdaten().laden(
+                stichtag=stichtag,
+                mit_anteilen=mit_anteilen,
+                mit_verbrauchsverlauf=mit_verbrauchsverlauf,
+                abgeschlossene_monate=abgeschlossene_monate,
+                horizont_monate=horizont_monate,
+            )
+        bestand_dauer = t.dauer
 
-        start = time.perf_counter()
-        schulungsplan = SchulungenRepository.mit_automatischen_zugangsdaten().laden(
-            stichtag=stichtag, horizont_monate=horizont_monate
-        )
-        schulungsplan_dauer = timedelta(seconds=time.perf_counter() - start)
+        with _Stoppuhr() as t:
+            schulungsplan = SchulungenRepository.mit_automatischen_zugangsdaten().laden(
+                stichtag=stichtag, horizont_monate=horizont_monate
+            )
+        schulungsplan_dauer = t.dauer
 
-        start = time.perf_counter()
-        kostenplan = kosten_repo.laden(
-            stichtag=bestand.stichtag,
-            horizont_monate=horizont_monate,
-            historie_monate=_historie_monate(bestand, anzahl=None),
-        )
-        kostenplan_dauer = timedelta(seconds=time.perf_counter() - start)
+        with _Stoppuhr() as t:
+            kostenplan = kosten_repo.laden(
+                stichtag=bestand.stichtag,
+                horizont_monate=horizont_monate,
+                historie_monate=_historie_monate(bestand, anzahl=None),
+            )
+        kostenplan_dauer = t.dauer
 
-        start = time.perf_counter()
-        auslastung = AuslastungRepository.mit_automatischen_zugangsdaten().laden(
-            _aktive_mitarbeiter(bestand), stichtag=bestand.stichtag, monate=auslastung_monate
-        )
-        auslastung_dauer = timedelta(seconds=time.perf_counter() - start)
+        with _Stoppuhr() as t:
+            auslastung = AuslastungRepository.mit_automatischen_zugangsdaten().laden(
+                _aktive_mitarbeiter(bestand), stichtag=bestand.stichtag, monate=auslastung_monate
+            )
+        auslastung_dauer = t.dauer
 
         ladedauern = Ladedauern(
             bestand=bestand_dauer,
@@ -229,35 +240,35 @@ class Dashboard:
             stichtag, kosten_repo.fruehestes_konfiguriertes_jahr
         )
 
-        start = time.perf_counter()
-        bestand = await BestandRepository.mit_automatischen_zugangsdaten().laden_async(
-            stichtag=stichtag,
-            mit_anteilen=mit_anteilen,
-            mit_verbrauchsverlauf=mit_verbrauchsverlauf,
-            abgeschlossene_monate=abgeschlossene_monate,
-            horizont_monate=horizont_monate,
-        )
-        bestand_dauer = timedelta(seconds=time.perf_counter() - start)
+        with _Stoppuhr() as t:
+            bestand = await BestandRepository.mit_automatischen_zugangsdaten().laden_async(
+                stichtag=stichtag,
+                mit_anteilen=mit_anteilen,
+                mit_verbrauchsverlauf=mit_verbrauchsverlauf,
+                abgeschlossene_monate=abgeschlossene_monate,
+                horizont_monate=horizont_monate,
+            )
+        bestand_dauer = t.dauer
 
-        start = time.perf_counter()
-        schulungsplan = SchulungenRepository.mit_automatischen_zugangsdaten().laden(
-            stichtag=stichtag, horizont_monate=horizont_monate
-        )
-        schulungsplan_dauer = timedelta(seconds=time.perf_counter() - start)
+        with _Stoppuhr() as t:
+            schulungsplan = SchulungenRepository.mit_automatischen_zugangsdaten().laden(
+                stichtag=stichtag, horizont_monate=horizont_monate
+            )
+        schulungsplan_dauer = t.dauer
 
-        start = time.perf_counter()
-        kostenplan = kosten_repo.laden(
-            stichtag=bestand.stichtag,
-            horizont_monate=horizont_monate,
-            historie_monate=_historie_monate(bestand, anzahl=None),
-        )
-        kostenplan_dauer = timedelta(seconds=time.perf_counter() - start)
+        with _Stoppuhr() as t:
+            kostenplan = kosten_repo.laden(
+                stichtag=bestand.stichtag,
+                horizont_monate=horizont_monate,
+                historie_monate=_historie_monate(bestand, anzahl=None),
+            )
+        kostenplan_dauer = t.dauer
 
-        start = time.perf_counter()
-        auslastung = await AuslastungRepository.mit_automatischen_zugangsdaten().laden_async(
-            _aktive_mitarbeiter(bestand), stichtag=bestand.stichtag, monate=auslastung_monate
-        )
-        auslastung_dauer = timedelta(seconds=time.perf_counter() - start)
+        with _Stoppuhr() as t:
+            auslastung = await AuslastungRepository.mit_automatischen_zugangsdaten().laden_async(
+                _aktive_mitarbeiter(bestand), stichtag=bestand.stichtag, monate=auslastung_monate
+            )
+        auslastung_dauer = t.dauer
 
         ladedauern = Ladedauern(
             bestand=bestand_dauer,
