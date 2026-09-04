@@ -86,7 +86,8 @@ darstellung  ──►  domaene  ◄──  clockodo
   `Dashboard`, die die Notebooks benutzen.
 - `tests/` – pytest. Die Antwortausschnitte in `conftest.py` sind gekürzte, aber echte
   Antworten samt ihrer Fallen.
-- `notebooks/` – zwei Notebooks mit verschiedenen Zielgruppen, siehe unten.
+- `notebooks/` – drei Notebooks mit verschiedenen Zielgruppen plus ein gemeinsames
+  Start-Notebook, siehe unten.
 - `spec/spec-umsatzprognose-clockodo-modul.md` – die Spezifikation des Bausteins Bestand.
 - `spec/spec-schulungsanmeldungen.md` – die Spezifikation des Bausteins
   Schulungsanmeldungen.
@@ -132,6 +133,24 @@ Zielwerkzeug ist ein Notebook in **Google Colab**; der Notebook-Layer bleibt dü
 beginnt mit einer nur in Colab greifenden Installationszelle. Rechenlogik gehört ins
 Paket, nicht ins Notebook.
 
+Die gemeinsame Ladelogik – `Dashboard.laden()` mit Cache – steckt in `notebooks/setup.py`
+statt dreifach dupliziert zu sein. Die drei fachlichen Notebooks importieren es in
+ihrer ersten Codezelle (`import setup`) und rufen `setup.dashboard(stichtag=…,
+abgeschlossene_monate=…, horizont_monate=…, auslastung_monate=…)` auf. In Colab holt
+dieselbe Zelle vorher per `curl` von GitHub, weil dort außer dem per `pip install
+git+…` installierten Paket keine Repository-Dateien liegen; das `pip install` selbst
+bleibt in jedem Notebook, weil `setup.py` erst importierbar ist, nachdem
+`umsatzprognose` installiert ist. `setup.dashboard()` merkt sich das geladene
+Dashboard in einer Modulvariable und liefert bei jedem weiteren Aufruf im selben
+Kernel dasselbe Objekt zurück, ohne neu zu laden – ein echter Neuabruf braucht einen
+Kernel-Neustart. Bewusst ein normales, importierbares `.py`-Modul und keine geteilte
+`.ipynb` mit `%run`: ruff und mypy sehen `import setup` und `dashboard =
+setup.dashboard(...)` als gewöhnlichen Code, eine IPython-Magic wie `%run -i` bliebe
+für die statische Analyse unsichtbar und ließe `dashboard` in jeder folgenden Zelle
+als undefiniert erscheinen. `setup.py` wird nicht eigenständig geöffnet.
+
+- `notebooks/00_datencheck.ipynb` – Umsatzprognose, Gewinn/Verlust und Auslastung im
+  Überblick, rein lesend.
 - `notebooks/01_dashboard.ipynb` – für Fachexperten. Je Zelle ein Aufruf auf
   `Dashboard`, Fachsprache, keine Endpunkte, keine IDs, keine technischen Marker.
 - `notebooks/02_technik_pruefung.ipynb` – für die Entwicklung. Prüfsummen,

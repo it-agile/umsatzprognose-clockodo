@@ -34,7 +34,6 @@ bericht = [
 ]
 ruff = [
     "ruff>=0.8",
-    "nbqa>=1.9",
 ]
 coverage = [
     "pytest>=8.3",
@@ -54,7 +53,7 @@ build-backend = "hatchling.build"
 packages = ["src/umsatzprognose"]
 
 [tool.tox]
-env_list = [ "py312", "py313", "py314", "coverage", "ruff", "ruff-notebooks", "mypy", "mypy-notebooks" ]
+env_list = [ "py312", "py313", "py314", "coverage", "ruff", "mypy", "mypy-notebooks" ]
 use_develop = true
 
 [tool.tox.env_run_base]
@@ -76,15 +75,7 @@ commands = [
 [tool.tox.env.ruff]
 extras = [ "ruff" ]
 allowlist_externals = [ "ruff" ]
-commands = [[ "ruff", "check", { replace = "posargs", default = ["src", "tests"], extend = true }]]
-
-[tool.tox.env.ruff-notebooks]
-extras = [ "ruff", "notebook" ]
-allowlist_externals = [ "nbqa" ]
-commands = [[
-    "nbqa", "ruff", { replace = "posargs", default = ["notebooks"], extend = true },
-    "--extend-ignore=E402",
-]]
+commands = [[ "ruff", "check", { replace = "posargs", default = ["src", "tests", "notebooks"], extend = true }]]
 
 [tool.tox.env.mypy]
 extras = [ "mypy" ]
@@ -110,9 +101,11 @@ select = ["C40", "E", "F", "I", "N", "UP", "B", "SIM", "TCH", "RUF"]
 ignore = []
 fixable = ["A", "B", "C", "D", "E", "F", "I"]
 unfixable = []
-per-file-ignores = {}
 dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
 mccabe.max-complexity = 10
+
+[tool.ruff.lint.per-file-ignores]
+"*.ipynb" = ["E402"]
 
 [tool.ruff.format]
 docstring-code-format = true

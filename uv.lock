@@ -2720,7 +2720,6 @@ notebook = [
     { name = "nbformat" },
 ]
 ruff = [
-    { name = "nbqa" },
     { name = "ruff" },
 ]
 
@@ -2739,7 +2738,6 @@ requires-dist = [
     { name = "mypy", marker = "extra == 'mypy'", specifier = ">=1.13" },
     { name = "nbformat", marker = "extra == 'notebook'", specifier = ">=4.2" },
     { name = "nbqa", marker = "extra == 'mypy'", specifier = ">=1.9" },
-    { name = "nbqa", marker = "extra == 'ruff'", specifier = ">=1.9" },
     { name = "numpy", marker = "python_full_version < '3.14'", specifier = ">=2.0,<2.3" },
     { name = "numpy", marker = "python_full_version >= '3.14'", specifier = ">=2.3" },
     { name = "pandas", specifier = ">=2.2" },
