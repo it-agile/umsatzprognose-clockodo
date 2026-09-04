@@ -21,7 +21,7 @@ if TYPE_CHECKING:
 
 from datetime import date
 
-from umsatzprognose.domaene.bestand import Bestand
+from umsatzprognose.domaene import Bestand
 
 from .client import ClockodoClient, horizontende, verbrauch_bis
 from .config import ClockodoCredentials

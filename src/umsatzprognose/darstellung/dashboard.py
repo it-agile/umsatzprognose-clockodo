@@ -35,7 +35,7 @@ if TYPE_CHECKING:
     )
 
 from umsatzprognose.clockodo import AuslastungRepository, BestandRepository, synchron
-from umsatzprognose.domaene.auslastung import Auslastungssumme
+from umsatzprognose.domaene import Auslastungssumme
 from umsatzprognose.domaene.projekt import sonderfall
 from umsatzprognose.kosten import KostenRepository
 from umsatzprognose.schulungen import SchulungenRepository
