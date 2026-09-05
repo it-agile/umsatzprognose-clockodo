@@ -4,14 +4,20 @@ Kein Teil des installierten Pakets: das Colab-`pip install` in den Notebooks mus
 zuerst laufen, sonst waere `umsatzprognose` beim Import dieses Moduls noch nicht da.
 """
 
-from datetime import date
+import time
+from datetime import date, timedelta
+
+import humanize
 
 from umsatzprognose import Dashboard
 from umsatzprognose.domaene import Anmeldungsverlauf
 from umsatzprognose.schulungen import SchulungenRepository
 
+humanize.i18n.activate("de_DE")
+
 _dashboard: Dashboard | None = None
 _anmeldungsverlauf: Anmeldungsverlauf | None = None
+_anmeldungsverlauf_dauer: timedelta | None = None
 
 
 def dashboard(
@@ -39,10 +45,26 @@ def anmeldungsverlauf(*, ab_jahr: int = 2022) -> Anmeldungsverlauf:
     direkt aus der Schulungsanmeldungen-Quelle, ab dem angegebenen Jahr bis zum
     aktuellen.
     """
-    global _anmeldungsverlauf
+    global _anmeldungsverlauf, _anmeldungsverlauf_dauer
     if _anmeldungsverlauf is None:
         jahre = range(ab_jahr, date.today().year + 1)
+        start = time.perf_counter()
         _anmeldungsverlauf = (
             SchulungenRepository.mit_automatischen_zugangsdaten().anmeldungsverlauf_laden(jahre)
         )
+        _anmeldungsverlauf_dauer = timedelta(seconds=time.perf_counter() - start)
     return _anmeldungsverlauf
+
+
+def anmeldungsverlauf_bericht() -> str:
+    """Kurzer Ladehinweis wie ``Dashboard.ladebericht()`` - Umfang und Dauer des Abrufs.
+
+    Setzt voraus, dass :func:`anmeldungsverlauf` bereits im selben Kernel gelaufen ist.
+    """
+    if _anmeldungsverlauf is None or _anmeldungsverlauf_dauer is None:
+        raise ValueError("Der Anmeldungsverlauf wurde noch nicht geladen.")
+    return (
+        f"{len(_anmeldungsverlauf.anmeldungen)} Anmeldungen aus "
+        f"{len(_anmeldungsverlauf.monate)} Monaten geladen"
+        f" (in {humanize.naturaldelta(_anmeldungsverlauf_dauer)})."
+    )
