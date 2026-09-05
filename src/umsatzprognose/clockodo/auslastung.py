@@ -19,7 +19,10 @@ Form::
   Abruf, deshalb zwei Abrufe statt eines mit einer Werteliste.
 * Aufbau der Antwort sonst wie bei der Projekt-x-Monat-Gruppierung
   (:mod:`.verbrauchsverlauf`): ``group`` der aeusseren Ebene ist hier die Personen-ID,
-  ``group`` der Untergruppe der Monat als String ``"JJJJMM"``.
+  ``group`` der Untergruppe der Monat als String ``"JJJJMM"``. Die Faltung zu Stunden
+  je (Personen-ID, Monat) steht deshalb allgemein in
+  :func:`~umsatzprognose.clockodo.client.stunden_je_person_und_monat` - fuer mehrere
+  Abrufe derselben Person-x-Monat-Gruppierung, die sich nur im Filter unterscheiden.
 * Eigenstaendiger, additiver Ladepfad, unabhaengig von
   :class:`~umsatzprognose.clockodo.bestand.BestandRepository` - Auslastung ist keiner
   der Bausteine, die die Umsatzprognose braucht, deshalb kein Teil von dessen sieben
@@ -41,7 +44,7 @@ if TYPE_CHECKING:
 from umsatzprognose.domaene import Auslastungsmonat
 from umsatzprognose.util import Monat, aus_ordnung, monatsfolge, ordnung
 
-from .client import SEKUNDEN_JE_STUNDE, ClockodoClient, verbrauch_bis
+from .client import ClockodoClient, stunden_je_person_und_monat, verbrauch_bis
 from .config import ClockodoCredentials
 from .nebenlaeufig import gleichzeitig, synchron
 
@@ -102,20 +105,7 @@ class AuslastungRepository:
         Monate ohne jede abrechenbare Buchung fehlen in der Antwort und werden hier mit
         0 aufgefuellt, damit jede Person fuer jeden angefragten Monat einen Wert traegt.
         """
-        stunden: dict[tuple[int, Monat], float] = {}
-        for gruppen in (abrechenbar, fakturiert):
-            for person_gruppe in gruppen:
-                try:
-                    mitarbeiter_id = int(person_gruppe["group"])
-                except (TypeError, ValueError):
-                    continue
-                for monatsgruppe in person_gruppe.get("sub_groups") or ():
-                    schluessel = str(monatsgruppe["group"])
-                    monat: Monat = (int(schluessel[:4]), int(schluessel[4:6]))
-                    stunden[(mitarbeiter_id, monat)] = (
-                        stunden.get((mitarbeiter_id, monat), 0.0)
-                        + float(monatsgruppe.get("duration") or 0.0) / SEKUNDEN_JE_STUNDE
-                    )
+        stunden = stunden_je_person_und_monat(abrechenbar, fakturiert)
 
         return tuple(
             Auslastungsmonat(

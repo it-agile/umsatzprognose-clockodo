@@ -50,6 +50,39 @@ class TabellenClient(Protocol):
     def werte(self, spreadsheet_id: str, bereich: str) -> list[list[str]]: ...
 
 
+def kopfzeile_finden(
+    zeilen: list[list[str]], pflichtspalten: set[str]
+) -> tuple[int, dict[str, int]]:
+    """Findet die erste Zeile, die alle ``pflichtspalten`` traegt, samt Spaltenposition.
+
+    Gemeinsame Logik von ``schulungen/`` und ``kosten/``: in beiden Tabellenblaettern
+    steht die Kopfzeile nicht zuverlaessig in Zeile 0 - manchen Jahrgaengen geht die
+    eigentliche Tabelle im selben Zeilenbereich noch etwas anderes voraus, das nicht
+    alle Pflichtspalten traegt (z. B. eine Mitarbeiteraufstellung mit aehnlicher, aber
+    nicht identischer Kopfzeile). Deshalb wird nicht ``zeilen[0]`` angenommen, sondern
+    inhaltsbasiert gesucht. Bei einem doppelten Spaltennamen gewinnt die zuletzt (am
+    weitesten rechts) stehende Spalte.
+
+    Raises:
+        ValueError: keine Zeile enthaelt alle ``pflichtspalten``.
+    """
+    for i, zeile in enumerate(zeilen):
+        index = {name.strip(): j for j, name in enumerate(zeile) if name.strip()}
+        if pflichtspalten <= index.keys():
+            return i, index
+    raise ValueError(f"Spalten fehlen im Tabellenblatt: {sorted(pflichtspalten)}")
+
+
+def zelle_an(zeile: list[str], spalte: int) -> str:
+    """Der Zellwert an ``spalte``, oder ``""`` wenn die Zeile dort schon endet."""
+    return zeile[spalte] if spalte < len(zeile) else ""
+
+
+def zelle(zeile: list[str], index: Mapping[str, int], name: str) -> str:
+    """Der Zellwert der Spalte ``name``, ueber ``index`` aus :func:`kopfzeile_finden`."""
+    return zelle_an(zeile, index[name])
+
+
 def jahre_laden[T](
     client: TabellenClient,
     jahre_zu_dateien: Mapping[int, str],

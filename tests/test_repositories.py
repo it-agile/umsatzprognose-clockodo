@@ -19,6 +19,7 @@ from umsatzprognose.clockodo import (
     UmsatzRepository,
     VerbrauchsverlaufRepository,
 )
+from umsatzprognose.clockodo.client import EntryGroupV2, stunden_je_person_und_monat
 from umsatzprognose.clockodo.projekte import budget, projekt_id
 from umsatzprognose.domaene.mitarbeiter import Mitarbeiter
 from umsatzprognose.domaene.projekt import auftragsvolumen, sonderfall
@@ -278,6 +279,25 @@ def test_monatsverbrauch_ohne_projekt_in_den_stammdaten_wird_ausgelassen(projekt
     client, _ = client_mit_routen({"/v2/entrygroups": projekt_monats_antwort})
 
     assert VerbrauchsverlaufRepository(client).laden([], stichtag=STICHTAG) == ()
+
+
+def test_stunden_je_person_und_monat_addiert_mehrere_gruppierungen_und_ueberspringt_unlesbare():
+    erste: list[EntryGroupV2] = [
+        {"group": "301", "name": "Anna", "duration": 3600, "revenue": 0.0, "grouped_by": "users_id",
+         "sub_groups": [{"group": "202609", "name": "202609", "duration": 3600,
+                         "revenue": 0.0, "grouped_by": "month"}]},
+        {"group": "keine-zahl", "name": "Unlesbar", "duration": 3600, "revenue": 0.0,
+         "grouped_by": "users_id", "sub_groups": []},
+    ]  # fmt: skip
+    zweite: list[EntryGroupV2] = [
+        {"group": "301", "name": "Anna", "duration": 1800, "revenue": 0.0, "grouped_by": "users_id",
+         "sub_groups": [{"group": "202609", "name": "202609", "duration": 1800,
+                         "revenue": 0.0, "grouped_by": "month"}]},
+    ]  # fmt: skip
+
+    stunden = stunden_je_person_und_monat(erste, zweite)
+
+    assert stunden == {(301, (2026, 9)): 1.5}  # 3600s + 1800s = 1.5h
 
 
 def test_auslastung_summiert_abrechenbar_und_fakturiert_und_ueberspringt_unbekannte(

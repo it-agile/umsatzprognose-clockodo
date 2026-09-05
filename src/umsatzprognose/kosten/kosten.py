@@ -8,9 +8,10 @@ zwischen den Jahrgaengen verlaesslich ueberein (verifiziert am Jahrgang 2022, wo
 eigentlichen Monatsuebersicht im selben Zeilenbereich noch eine andere Tabelle
 vorausgeht, z. B. eine Mitarbeiteraufstellung mit eigener, aehnlicher aber nicht
 identischer Kopfzeile). Kopfzeile und Spaltenzuordnung werden deshalb **inhaltsbasiert**
-ermittelt: :func:`_kopfzeile_finden` sucht die erste Zeile, die sowohl ``Gesamtkosten``
-als auch ``Allgemeinkosten`` traegt, und bestimmt darueber gleichzeitig die
-Spaltenposition jeder Kopfzeilen-Bezeichnung.
+ermittelt: :func:`~umsatzprognose.google_sheets.client.kopfzeile_finden` (geteilt mit
+:mod:`umsatzprognose.schulungen.schulungen`) sucht die erste Zeile, die sowohl
+``Gesamtkosten`` als auch ``Allgemeinkosten`` traegt, und bestimmt darueber gleichzeitig
+die Spaltenposition jeder Kopfzeilen-Bezeichnung.
 
 ``Monat`` traegt nicht in jedem Jahrgang eine eigene Kopfzeilen-Bezeichnung. Ohne eine
 Spalte namens ``Monat`` faellt :func:`_monat_spalte_ermitteln` deshalb auf die Spalte
@@ -57,6 +58,9 @@ from umsatzprognose.google_sheets import (
     GoogleSheetsConfig,
     TabellenClient,
     jahre_laden,
+    kopfzeile_finden,
+    zelle,
+    zelle_an,
 )
 from umsatzprognose.util import monatsfolge
 
@@ -107,38 +111,11 @@ def _monat_spalte_ermitteln(zeilen: list[list[str]], index: dict[str, int]) -> i
     return beste_spalte
 
 
-def _kopfzeile_finden(zeilen: list[list[str]]) -> tuple[int, dict[str, int]]:
-    """Findet die Zeile mit den Pflichtspalten ``Gesamtkosten`` und ``Allgemeinkosten``.
-
-    Manchen Jahrgaengen (etwa 2022) geht der Monatsuebersicht im selben Zeilenbereich
-    eine andere Tabelle voraus (z. B. eine Mitarbeiteraufstellung) - deren Kopfzeile
-    traegt teils aehnliche, aber nicht beide Pflichtspalten. Deshalb wird nicht die
-    erste Zeile als Kopfzeile angenommen, sondern inhaltsbasiert die erste Zeile
-    gesucht, die beide Pflichtspalten enthaelt - robust gegenueber zusaetzlichen Zeilen
-    davor, analog zu :func:`_monat_spalte_ermitteln` fuer die Monatsspalte.
-
-    Raises:
-        ValueError: keine Zeile enthaelt beide Pflichtspalten.
-    """
-    pflicht = {SPALTE_GESAMTKOSTEN, SPALTE_ALLGEMEINKOSTEN}
-    for i, zeile in enumerate(zeilen):
-        index = {name.strip(): j for j, name in enumerate(zeile) if name.strip()}
-        if pflicht <= index.keys():
-            return i, index
-    raise ValueError(f"Spalten fehlen im Tabellenblatt: {sorted(pflicht)}")
-
-
 def _zeilen_zu_posten(zeilen: list[list[str]], jahr: int) -> list[Kostenposten]:
     if not zeilen:
         return []
-    kopf_zeile, index = _kopfzeile_finden(zeilen)
+    kopf_zeile, index = kopfzeile_finden(zeilen, {SPALTE_GESAMTKOSTEN, SPALTE_ALLGEMEINKOSTEN})
     monat_spalte = _monat_spalte_ermitteln(zeilen[kopf_zeile:], index)
-
-    def zelle_an(zeile: list[str], spalte: int) -> str:
-        return zeile[spalte] if spalte < len(zeile) else ""
-
-    def zelle(zeile: list[str], name: str) -> str:
-        return zelle_an(zeile, index[name])
 
     hat_erfassung = SPALTE_KOSTENERFASSUNG in index
 
@@ -150,13 +127,15 @@ def _zeilen_zu_posten(zeilen: list[list[str]], jahr: int) -> list[Kostenposten]:
         monat = _monat_parsen(monat_text)
         if monat is None:
             continue
-        erfassung_text = zelle(zeile, SPALTE_KOSTENERFASSUNG).strip() if hat_erfassung else ""
+        erfassung_text = (
+            zelle(zeile, index, SPALTE_KOSTENERFASSUNG).strip() if hat_erfassung else ""
+        )
         posten.append(
             Kostenposten(
                 jahr=jahr,
                 monat=monat,
-                pauschale=euro_parsen(zelle(zeile, SPALTE_GESAMTKOSTEN)),
-                allgemeinkosten=euro_parsen(zelle(zeile, SPALTE_ALLGEMEINKOSTEN)),
+                pauschale=euro_parsen(zelle(zeile, index, SPALTE_GESAMTKOSTEN)),
+                allgemeinkosten=euro_parsen(zelle(zeile, index, SPALTE_ALLGEMEINKOSTEN)),
                 erfassung=Erfasst(euro_parsen(erfassung_text)) if erfassung_text else Geschaetzt(),
             )
         )

@@ -7,9 +7,10 @@ ueber die Position - robust gegenueber den vielen fuer die Prognose ungenutzten 
 **Die Kopfzeile steht nicht zuverlaessig in Zeile 0.** Analog zum Baustein Kosten
 (siehe Moduldocstring von :mod:`umsatzprognose.kosten.kosten`) geht der eigentlichen
 Tabelle in manchen Jahrgaengen noch etwas anderes voraus, das selbst wie eine Kopfzeile
-aussieht, aber nicht alle Pflichtspalten traegt. :func:`_kopfzeile_finden` sucht deshalb
-**inhaltsbasiert** die erste Zeile, die alle uebergebenen Pflichtspalten enthaelt, statt
-``zeilen[0]`` anzunehmen.
+aussieht, aber nicht alle Pflichtspalten traegt.
+:func:`~umsatzprognose.google_sheets.client.kopfzeile_finden` (geteilt mit
+:mod:`umsatzprognose.kosten.kosten`) sucht deshalb **inhaltsbasiert** die erste Zeile,
+die alle uebergebenen Pflichtspalten enthaelt, statt ``zeilen[0]`` anzunehmen.
 
 **Ausgerechnet die Jahr-Spalte ist von dieser namentlichen Zuordnung ausgenommen** -
 verifiziert am Jahrgang 2024, wo die Kopfzeile dort nicht ``"Jahr"``, sondern einen
@@ -64,6 +65,9 @@ from umsatzprognose.google_sheets import (
     GoogleSheetsConfig,
     TabellenClient,
     jahre_laden,
+    kopfzeile_finden,
+    zelle,
+    zelle_an,
 )
 from umsatzprognose.util import aus_ordnung, ordnung
 
@@ -74,27 +78,6 @@ SPALTE_MONAT = "Monat"
 SPALTE_UMSATZ = "Umsatz gesamt"
 SPALTE_SCHULUNGSTYP = "Schulung"
 SPALTE_TEILNEHMERZAHL = "TN Zahl"
-
-
-def _kopfzeile_finden(
-    zeilen: list[list[str]], pflichtspalten: set[str]
-) -> tuple[int, dict[str, int]]:
-    """Findet die erste Zeile, die alle ``pflichtspalten`` traegt, samt Spaltenposition.
-
-    Nicht ``zeilen[0]`` angenommen, sondern inhaltsbasiert gesucht - manchen Jahrgaengen
-    geht der eigentlichen Tabelle im selben Zeilenbereich noch etwas anderes voraus, das
-    nicht alle Pflichtspalten traegt (siehe Moduldocstring, analog zu
-    :func:`umsatzprognose.kosten.kosten._kopfzeile_finden`). Bei einem doppelten
-    Spaltennamen gewinnt die zuletzt (am weitesten rechts) stehende Spalte.
-
-    Raises:
-        ValueError: keine Zeile enthaelt alle Pflichtspalten.
-    """
-    for i, zeile in enumerate(zeilen):
-        index = {name.strip(): j for j, name in enumerate(zeile) if name.strip()}
-        if pflichtspalten <= index.keys():
-            return i, index
-    raise ValueError(f"Spalten fehlen im Tabellenblatt: {sorted(pflichtspalten)}")
 
 
 def _jahr_spalte_ermitteln(index: dict[str, int]) -> int:
@@ -111,26 +94,20 @@ def _jahr_spalte_ermitteln(index: dict[str, int]) -> int:
 def _zeilen_zu_terminen(zeilen: list[list[str]]) -> list[Schulungstermin]:
     if not zeilen:
         return []
-    kopf_zeile, index = _kopfzeile_finden(zeilen, {SPALTE_MONAT, SPALTE_UMSATZ})
+    kopf_zeile, index = kopfzeile_finden(zeilen, {SPALTE_MONAT, SPALTE_UMSATZ})
     jahr_spalte = _jahr_spalte_ermitteln(index)
-
-    def zelle_an(zeile: list[str], spalte: int) -> str:
-        return zeile[spalte] if spalte < len(zeile) else ""
-
-    def zelle(zeile: list[str], name: str) -> str:
-        return zelle_an(zeile, index[name])
 
     termine = []
     for zeile in zeilen[kopf_zeile + 1 :]:
         jahr_text = zelle_an(zeile, jahr_spalte).strip()
-        monat_text = zelle(zeile, SPALTE_MONAT).strip()
+        monat_text = zelle(zeile, index, SPALTE_MONAT).strip()
         if not jahr_text or not monat_text:
             continue
         termine.append(
             Schulungstermin(
                 jahr=int(jahr_text),
                 monat=int(monat_text),
-                umsatz=euro_parsen(zelle(zeile, SPALTE_UMSATZ)),
+                umsatz=euro_parsen(zelle(zeile, index, SPALTE_UMSATZ)),
             )
         )
     return termine
@@ -140,29 +117,23 @@ def _zeilen_zu_anmeldungen(zeilen: list[list[str]]) -> list[Anmeldung]:
     """Wie :func:`_zeilen_zu_terminen`, aber Teilnehmerzahl je Schulungstyp statt Umsatz."""
     if not zeilen:
         return []
-    kopf_zeile, index = _kopfzeile_finden(
+    kopf_zeile, index = kopfzeile_finden(
         zeilen, {SPALTE_MONAT, SPALTE_SCHULUNGSTYP, SPALTE_TEILNEHMERZAHL}
     )
     jahr_spalte = _jahr_spalte_ermitteln(index)
 
-    def zelle_an(zeile: list[str], spalte: int) -> str:
-        return zeile[spalte] if spalte < len(zeile) else ""
-
-    def zelle(zeile: list[str], name: str) -> str:
-        return zelle_an(zeile, index[name])
-
     anmeldungen = []
     for zeile in zeilen[kopf_zeile + 1 :]:
         jahr_text = zelle_an(zeile, jahr_spalte).strip()
-        monat_text = zelle(zeile, SPALTE_MONAT).strip()
-        teilnehmerzahl_text = zelle(zeile, SPALTE_TEILNEHMERZAHL).strip()
+        monat_text = zelle(zeile, index, SPALTE_MONAT).strip()
+        teilnehmerzahl_text = zelle(zeile, index, SPALTE_TEILNEHMERZAHL).strip()
         if not jahr_text or not monat_text or not teilnehmerzahl_text:
             continue
         anmeldungen.append(
             Anmeldung(
                 jahr=int(jahr_text),
                 monat=int(monat_text),
-                schulungstyp=zelle(zeile, SPALTE_SCHULUNGSTYP).strip() or "Unbekannt",
+                schulungstyp=zelle(zeile, index, SPALTE_SCHULUNGSTYP).strip() or "Unbekannt",
                 teilnehmerzahl=int(float(teilnehmerzahl_text.replace(",", "."))),
             )
         )

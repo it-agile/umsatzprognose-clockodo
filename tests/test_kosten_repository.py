@@ -12,14 +12,18 @@ from datetime import date
 import pytest
 
 from umsatzprognose.domaene.kosten import Erfasst, Geschaetzt
+from umsatzprognose.google_sheets import kopfzeile_finden
 from umsatzprognose.kosten.kosten import (
+    SPALTE_ALLGEMEINKOSTEN,
+    SPALTE_GESAMTKOSTEN,
     KostenRepository,
-    _kopfzeile_finden,
     _monat_parsen,
     _monat_spalte_ermitteln,
     _monatsfolge,
     _zeilen_zu_posten,
 )
+
+KOSTEN_PFLICHTSPALTEN = {SPALTE_GESAMTKOSTEN, SPALTE_ALLGEMEINKOSTEN}
 
 KOPFZEILE = ["Monat", "Gehälter", "Spesen", "Allgemeinkosten", "Gesamtkosten"]
 KOPFZEILE_MIT_ERFASSUNG = [*KOPFZEILE, "Kostenerfassung"]
@@ -134,14 +138,14 @@ def test_kopfzeile_finden_ueberspringt_vorausgehende_tabelle() -> None:
         ["2022", "", "0,00 €", ""],
         KOPFZEILE,
     ]
-    zeile_index, index = _kopfzeile_finden(zeilen)
+    zeile_index, index = kopfzeile_finden(zeilen, KOSTEN_PFLICHTSPALTEN)
     assert zeile_index == 3
     assert index["Gesamtkosten"] == KOPFZEILE.index("Gesamtkosten")
 
 
 def test_kopfzeile_finden_ohne_treffer_wirft() -> None:
     with pytest.raises(ValueError, match="Gesamtkosten"):
-        _kopfzeile_finden([["Monat", "Reisekosten"]])
+        kopfzeile_finden([["Monat", "Reisekosten"]], KOSTEN_PFLICHTSPALTEN)
 
 
 def test_zeilen_zu_posten_findet_kopfzeile_nach_vorausgehender_tabelle() -> None:

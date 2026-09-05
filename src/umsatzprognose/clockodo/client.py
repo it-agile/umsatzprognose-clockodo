@@ -70,6 +70,8 @@ if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
     from typing import Any
 
+    from umsatzprognose.util import Monat
+
     from .config import ClockodoCredentials
 
 from calendar import monthrange
@@ -200,6 +202,37 @@ class EntryGroupV2(TypedDict):
     grouped_by: str
     hourly_rate: NotRequired[float | None]
     sub_groups: NotRequired[list[EntryGroupV2]]
+
+
+def stunden_je_person_und_monat(
+    *gruppenlisten: list[EntryGroupV2],
+) -> dict[tuple[int, Monat], float]:
+    """Faltet eine oder mehrere Person-x-Monat-Gruppierungen zu Stunden je (Personen-ID, Monat).
+
+    Gemeinsame Auswertung der Antwortform von
+    :meth:`ClockodoClient.entrygroups_je_person_und_monat`: die aeussere Gruppe ist die
+    Person (``group`` als Zahl), die Untergruppen sind Monate (``group`` als String
+    ``"JJJJMM"``). Gedacht fuer mehrere getrennte Abrufe **derselben** Gruppierung, die
+    sich nur im ``billable``-Filter unterscheiden (:class:`.auslastung.AuslastungRepository`
+    ruft billable 1 und 2 getrennt ab, ein kuenftiger Baustein Kurzarbeit intern/extern) -
+    ihre Stunden werden aufaddiert, nicht ersetzt. Eine Personen-ID, die sich nicht als
+    Zahl lesen laesst, wird uebersprungen.
+    """
+    stunden: dict[tuple[int, Monat], float] = {}
+    for gruppen in gruppenlisten:
+        for person_gruppe in gruppen:
+            try:
+                mitarbeiter_id = int(person_gruppe["group"])
+            except (TypeError, ValueError):
+                continue
+            for monatsgruppe in person_gruppe.get("sub_groups") or ():
+                schluessel = str(monatsgruppe["group"])
+                monat: Monat = (int(schluessel[:4]), int(schluessel[4:6]))
+                stunden[(mitarbeiter_id, monat)] = (
+                    stunden.get((mitarbeiter_id, monat), 0.0)
+                    + float(monatsgruppe.get("duration") or 0.0) / SEKUNDEN_JE_STUNDE
+                )
+    return stunden
 
 
 def verbrauch_bis(stichtag: date | None = None) -> str:
