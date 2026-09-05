@@ -13,8 +13,14 @@ import httpx
 import pytest
 
 from conftest import CREDS, client_mit
-from umsatzprognose.clockodo import ClockodoClient, ClockodoCredentials, ClockodoError
-from umsatzprognose.clockodo.client import horizontende, monatsende, verbrauch_bis
+from umsatzprognose.clockodo import ClockodoClient, ClockodoCredentials, ClockodoError, cache
+from umsatzprognose.clockodo.client import (
+    EntryGroupV2,
+    entrygroups_zusammenfuehren,
+    horizontende,
+    monatsende,
+    verbrauch_bis,
+)
 from umsatzprognose.clockodo.nebenlaeufig import synchron
 
 
@@ -222,3 +228,185 @@ def test_obere_zeitgrenze_wird_je_aufruf_bestimmt():
     client, requests = client_mit(lambda _: httpx.Response(200, json={"groups": []}))
     synchron(client.entrygroups(["projects_id"]))
     assert dict(requests[0].url.params)["time_until"] == verbrauch_bis()
+
+
+def test_entrygroups_zusammenfuehren_summiert_je_schluessel_auch_in_untergruppen():
+    erste: list[EntryGroupV2] = [
+        {
+            "group": "101",
+            "name": "Projekt",
+            "duration": 3600,
+            "revenue": 100.0,
+            "grouped_by": "projects_id",
+            "sub_groups": [
+                {
+                    "group": "202601",
+                    "name": "202601",
+                    "duration": 3600,
+                    "revenue": 100.0,
+                    "grouped_by": "month",
+                }
+            ],
+        }
+    ]
+    zweite: list[EntryGroupV2] = [
+        {
+            "group": "101",
+            "name": "Projekt",
+            "duration": 1800,
+            "revenue": 50.0,
+            "grouped_by": "projects_id",
+            "sub_groups": [
+                {
+                    "group": "202601",
+                    "name": "202601",
+                    "duration": 1800,
+                    "revenue": 25.0,
+                    "grouped_by": "month",
+                },
+                {
+                    "group": "202602",
+                    "name": "202602",
+                    "duration": 900,
+                    "revenue": 25.0,
+                    "grouped_by": "month",
+                },
+            ],
+        },
+        {
+            "group": "202",
+            "name": "Anderes Projekt",
+            "duration": 100,
+            "revenue": 5.0,
+            "grouped_by": "projects_id",
+        },
+    ]
+
+    ergebnis = entrygroups_zusammenfuehren(erste, zweite)
+
+    nach_id = {g["group"]: g for g in ergebnis}
+    assert nach_id["101"]["duration"] == 5400
+    assert nach_id["101"]["revenue"] == 150.0
+    monate = {u["group"]: u for u in nach_id["101"]["sub_groups"]}
+    assert monate["202601"]["duration"] == 5400
+    assert monate["202601"]["revenue"] == 125.0
+    assert monate["202602"]["duration"] == 900
+    assert nach_id["202"]["revenue"] == 5.0
+
+
+def test_ohne_cache_umgebungsvariable_bleibt_es_bei_einem_abruf(monkeypatch):
+    monkeypatch.delenv(cache.TTL_ENV, raising=False)
+    client, requests = client_mit(lambda _: httpx.Response(200, json={"groups": []}))
+
+    synchron(client.entrygroups_je_projekt_und_monat(time_until="2026-09-05T23:59:59Z"))
+
+    assert len(requests) == 1
+
+
+def test_mit_aktiviertem_cache_wird_am_cutoff_gespalten_und_wieder_zusammengefuehrt(
+    monkeypatch, tmp_path
+):
+    monkeypatch.setenv(cache.TTL_ENV, "1200")
+    monkeypatch.setattr(cache, "VERZEICHNIS", tmp_path)
+
+    antworten = {
+        "2021-01-01T00:00:00Z": {
+            "groups": [
+                {
+                    "group": "101",
+                    "name": "Projekt",
+                    "duration": 3600,
+                    "revenue": 100.0,
+                    "grouped_by": "projects_id",
+                    "sub_groups": [
+                        {
+                            "group": "202601",
+                            "name": "202601",
+                            "duration": 3600,
+                            "revenue": 100.0,
+                            "grouped_by": "month",
+                        }
+                    ],
+                }
+            ]
+        },
+        "2026-07-01T00:00:00Z": {
+            "groups": [
+                {
+                    "group": "101",
+                    "name": "Projekt",
+                    "duration": 1800,
+                    "revenue": 50.0,
+                    "grouped_by": "projects_id",
+                    "sub_groups": [
+                        {
+                            "group": "202609",
+                            "name": "202609",
+                            "duration": 1800,
+                            "revenue": 50.0,
+                            "grouped_by": "month",
+                        }
+                    ],
+                }
+            ]
+        },
+    }
+
+    def handler(request):
+        return httpx.Response(200, json=antworten[request.url.params["time_since"]])
+
+    client, requests = client_mit(handler)
+
+    gruppen = synchron(
+        client.entrygroups_je_projekt_und_monat(
+            time_until="2026-09-05T23:59:59Z", cache_cutoff_monate=2
+        )
+    )
+
+    # Zwei Abrufe statt eines - der stabile historische Teil und der aktuelle,
+    # getrennt am Cutoff zwei Monate vor time_until.
+    assert {r.url.params["time_since"] for r in requests} == {
+        "2021-01-01T00:00:00Z",
+        "2026-07-01T00:00:00Z",
+    }
+    [projekt] = gruppen
+    assert projekt["duration"] == 5400
+    assert projekt["revenue"] == 150.0
+    monate = {u["group"] for u in projekt["sub_groups"]}
+    assert monate == {"202601", "202609"}
+
+
+def test_zweiter_lauf_ruft_den_historischen_teil_nicht_erneut_ab(monkeypatch, tmp_path):
+    monkeypatch.setenv(cache.TTL_ENV, "1200")
+    monkeypatch.setattr(cache, "VERZEICHNIS", tmp_path)
+    client, requests = client_mit(lambda _: httpx.Response(200, json={"groups": []}))
+
+    for _ in range(2):
+        synchron(
+            client.entrygroups_je_projekt_und_monat(
+                time_until="2026-09-05T23:59:59Z", cache_cutoff_monate=2
+            )
+        )
+
+    zeitfenster = [r.url.params["time_since"] for r in requests]
+    # Der historische Teil kommt beim zweiten Lauf aus dem Cache, der aktuelle wird
+    # beide Male frisch geholt.
+    assert zeitfenster.count("2021-01-01T00:00:00Z") == 1
+    assert zeitfenster.count("2026-07-01T00:00:00Z") == 2
+
+
+def test_cutoff_vor_time_since_bleibt_bei_einem_abruf(monkeypatch, tmp_path):
+    """Ein sehr kurzes Fenster (Cutoff faellt vor den Beginn) spaltet nicht sinnlos."""
+    monkeypatch.setenv(cache.TTL_ENV, "1200")
+    monkeypatch.setattr(cache, "VERZEICHNIS", tmp_path)
+    client, requests = client_mit(lambda _: httpx.Response(200, json={"groups": []}))
+
+    synchron(
+        client.entrygroups_je_projekt_und_monat(
+            time_since="2026-08-01T00:00:00Z",
+            time_until="2026-09-05T23:59:59Z",
+            cache_cutoff_monate=6,
+        )
+    )
+
+    assert len(requests) == 1

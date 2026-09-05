@@ -301,15 +301,23 @@ async def rohdaten(
     *,
     time_since: str = HISTORIE_VON,
     time_until: str | None = None,
+    cache_cutoff_monate: int | None = None,
 ) -> tuple[list[ProjectV4], list[EntryGroupV2]]:
     """Die beiden Antworten, aus denen ein Projekt entsteht.
 
     ``/v4/projects`` traegt das Auftragsvolumen, ``/v2/entrygroups`` den Verbrauch; sie
     haengen nicht voneinander ab, treffen sich aber in
     :meth:`ProjektRepository.abbilden` ueber die Projekt-ID.
+
+    ``cache_cutoff_monate`` siehe
+    :meth:`~umsatzprognose.clockodo.client.ClockodoClient.entrygroups_je_projekt_und_person`.
     """
     (projekte, _), gruppen = await gleichzeitig(
         client.projects(),
-        client.entrygroups_je_projekt_und_person(time_since=time_since, time_until=time_until),
+        client.entrygroups_je_projekt_und_person(
+            time_since=time_since,
+            time_until=time_until,
+            cache_cutoff_monate=cache_cutoff_monate,
+        ),
     )
     return projekte, gruppen

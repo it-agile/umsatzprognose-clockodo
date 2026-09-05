@@ -54,6 +54,7 @@ class BestandRepository:
         mit_verbrauchsverlauf: bool = True,
         abgeschlossene_monate: int = 12,
         horizont_monate: int = 3,
+        cache_cutoff_monate: int | None = None,
     ) -> Bestand:
         """Der Ladevorgang, synchron - der Einstieg fuer Notebook und Skript.
 
@@ -67,6 +68,7 @@ class BestandRepository:
                 mit_verbrauchsverlauf=mit_verbrauchsverlauf,
                 abgeschlossene_monate=abgeschlossene_monate,
                 horizont_monate=horizont_monate,
+                cache_cutoff_monate=cache_cutoff_monate,
             )
         )
 
@@ -78,6 +80,7 @@ class BestandRepository:
         mit_verbrauchsverlauf: bool = True,
         abgeschlossene_monate: int = 12,
         horizont_monate: int = 3,
+        cache_cutoff_monate: int | None = None,
     ) -> Bestand:
         """Den vollstaendigen Bestand zum Stichtag.
 
@@ -93,6 +96,10 @@ class BestandRepository:
             abgeschlossene_monate: Laenge der Umsatzhistorie vor dem laufenden Monat.
             horizont_monate: Laenge des Prognosehorizonts. Sie
                 bestimmt, wie weit der monatliche Verbrauch in die Zukunft reicht.
+            cache_cutoff_monate: siehe
+                :meth:`~.client.ClockodoClient.entrygroups_je_projekt_und_person` - ohne
+                aktivierten Verlaufscache (Standardfall, siehe :mod:`.cache`) ohne
+                jede Wirkung.
         """
         stichtag = stichtag or date.today()
         personen = MitarbeiterRepository(self._client)
@@ -109,12 +116,19 @@ class BestandRepository:
         kunden, mitarbeiter, rohe_projekte, umsatzhistorie, monatsgruppen = await gleichzeitig(
             KundenRepository(self._client).laden_async(),
             personen.laden_async(jahre=jahre),
-            projekt_rohdaten(self._client, time_until=verbrauch_bis(stichtag)),
+            projekt_rohdaten(
+                self._client,
+                time_until=verbrauch_bis(stichtag),
+                cache_cutoff_monate=cache_cutoff_monate,
+            ),
             UmsatzRepository(self._client).laden_async(
                 stichtag, abgeschlossene=abgeschlossene_monate
             ),
             self._monatsgruppen(
-                stichtag, horizont_monate=horizont_monate, geladen=mit_verbrauchsverlauf
+                stichtag,
+                horizont_monate=horizont_monate,
+                geladen=mit_verbrauchsverlauf,
+                cache_cutoff_monate=cache_cutoff_monate,
             ),
         )
 
@@ -134,7 +148,12 @@ class BestandRepository:
         )
 
     async def _monatsgruppen(
-        self, stichtag: date, *, horizont_monate: int, geladen: bool
+        self,
+        stichtag: date,
+        *,
+        horizont_monate: int,
+        geladen: bool,
+        cache_cutoff_monate: int | None = None,
     ) -> list[EntryGroupV2]:
         """Der siebte Abruf - oder nichts, wenn er abgeschaltet ist.
 
@@ -145,5 +164,8 @@ class BestandRepository:
         if not geladen:
             return []
         return await monatsverbrauch_rohdaten(
-            self._client, stichtag=stichtag, horizont_monate=horizont_monate
+            self._client,
+            stichtag=stichtag,
+            horizont_monate=horizont_monate,
+            cache_cutoff_monate=cache_cutoff_monate,
         )

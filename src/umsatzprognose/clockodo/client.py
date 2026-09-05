@@ -81,6 +81,7 @@ import httpx
 
 from umsatzprognose.util import aus_ordnung, ordnung
 
+from . import cache
 from .config import BASE_URL
 from .nebenlaeufig import gleichzeitig
 
@@ -233,6 +234,41 @@ def stunden_je_person_und_monat(
                     + float(monatsgruppe.get("duration") or 0.0) / SEKUNDEN_JE_STUNDE
                 )
     return stunden
+
+
+def entrygroups_zusammenfuehren(*gruppenlisten: list[EntryGroupV2]) -> list[EntryGroupV2]:
+    """Fasst mehrere ``entrygroups``-Antworten disjunkter Zeitfenster zusammen.
+
+    ``duration`` und ``revenue`` werden je Schluessel (``group``) aufsummiert, rekursiv
+    auch in ``sub_groups`` - nur korrekt, wenn sich die Zeitfenster der uebergebenen
+    Listen nicht ueberlappen. Gedacht fuer den Cache-Schnitt in
+    :meth:`ClockodoClient._entrygroups_mit_verlaufscache`: der stabile, gecachte Teil
+    der Historie und der immer frisch geholte aktuelle Teil ergeben zusammen dieselbe
+    Antwort wie ein einzelner Abruf ueber das volle Fenster.
+
+    Ein innerhalb **eines** Zeitfensters mehrfach vergebener Schluessel (``group == 0``
+    fuer Buchungen ohne Projekt, siehe Moduldocstring von :mod:`.projekte`) wird dabei
+    ebenfalls zu einer Zeile zusammengefasst - unschaedlich, weil alle bisherigen
+    Verwendungen ohnehin nur die Summe ueber diese Zeilen bilden, nie eine einzelne.
+    """
+    zusammengefasst: dict[str | int, EntryGroupV2] = {}
+    reihenfolge: list[str | int] = []
+    for gruppen in gruppenlisten:
+        for gruppe in gruppen:
+            schluessel = gruppe["group"]
+            vorhanden = zusammengefasst.get(schluessel)
+            if vorhanden is None:
+                zusammengefasst[schluessel] = dict(gruppe)  # type: ignore[assignment]
+                reihenfolge.append(schluessel)
+                continue
+            vorhanden["duration"] = vorhanden.get("duration", 0) + gruppe.get("duration", 0)
+            vorhanden["revenue"] = vorhanden.get("revenue", 0.0) + gruppe.get("revenue", 0.0)
+            neue_untergruppen = entrygroups_zusammenfuehren(
+                vorhanden.get("sub_groups") or [], gruppe.get("sub_groups") or []
+            )
+            if neue_untergruppen:
+                vorhanden["sub_groups"] = neue_untergruppen
+    return [zusammengefasst[schluessel] for schluessel in reihenfolge]
 
 
 def verbrauch_bis(stichtag: date | None = None) -> str:
@@ -410,22 +446,34 @@ class ClockodoClient:
         return cast("list[EntryGroupV2]", payload["groups"])
 
     async def entrygroups_je_projekt_und_person(
-        self, *, time_since: str = HISTORIE_VON, time_until: str | None = None
+        self,
+        *,
+        time_since: str = HISTORIE_VON,
+        time_until: str | None = None,
+        cache_cutoff_monate: int | None = None,
     ) -> list[EntryGroupV2]:
         """Verbrauch je Projekt, darunter die Anteile je Person.
 
         Ein Abruf statt zweier: die Projektsummen dieser Antwort sind mit denen der
         einfachen Gruppierung identisch, und die Untergruppen summieren sich exakt auf sie. Damit
         sind Verbrauch und Aufteilungsschluessel garantiert konsistent.
+
+        ``cache_cutoff_monate`` siehe :meth:`_entrygroups_mit_verlaufscache` - ohne
+        aktivierten Cache (Standardfall) ohne jede Wirkung.
         """
-        return await self.entrygroups(
+        return await self._entrygroups_mit_verlaufscache(
             [GRUPPIERUNG_PROJEKT, GRUPPIERUNG_PERSON],
             time_since=time_since,
-            time_until=time_until,
+            time_until=time_until or verbrauch_bis(),
+            cache_cutoff_monate=cache_cutoff_monate,
         )
 
     async def entrygroups_je_projekt_und_monat(
-        self, *, time_since: str = HISTORIE_VON, time_until: str | None = None
+        self,
+        *,
+        time_since: str = HISTORIE_VON,
+        time_until: str | None = None,
+        cache_cutoff_monate: int | None = None,
     ) -> list[EntryGroupV2]:
         """Verbrauch je Projekt, darunter die Monate.
 
@@ -433,12 +481,54 @@ class ClockodoClient:
         ``"JJJJMM"``, und die Untergruppen sind **nach Dauer absteigend** sortiert und
         nicht chronologisch - siehe
         :meth:`~umsatzprognose.domaene.verbrauchsverlauf.Verbrauchsverlauf.fuer`.
+
+        ``cache_cutoff_monate`` siehe :meth:`_entrygroups_mit_verlaufscache` - ohne
+        aktivierten Cache (Standardfall) ohne jede Wirkung.
         """
-        return await self.entrygroups(
+        return await self._entrygroups_mit_verlaufscache(
             [GRUPPIERUNG_PROJEKT, GRUPPIERUNG_MONAT],
             time_since=time_since,
-            time_until=time_until,
+            time_until=time_until or verbrauch_bis(),
+            cache_cutoff_monate=cache_cutoff_monate,
         )
+
+    async def _entrygroups_mit_verlaufscache(
+        self,
+        grouping: Sequence[str],
+        *,
+        time_since: str,
+        time_until: str,
+        cache_cutoff_monate: int | None,
+    ) -> list[EntryGroupV2]:
+        """Wie :meth:`entrygroups`, aber der laengst abgeschlossene Teil darf aus dem
+        lokalen Cache kommen (siehe Moduldocstring von :mod:`.cache`).
+
+        Ohne gesetzte Umgebungsvariable :data:`cache.TTL_ENV` (Standardfall)
+        unveraendert ein einzelner Abruf ueber das volle Fenster - der Cache ist
+        striktes Opt-in. Mit aktiviertem Cache wird die Anfrage am Cutoff
+        (:func:`cache.cutoff_datum`) gespalten: der stabile, aeltere Teil kommt aus dem
+        Cache oder wird einmalig geladen und abgelegt, der Rest wird immer frisch
+        geholt. Beide Teile werden ueber :func:`entrygroups_zusammenfuehren` wieder zu
+        einer Antwort vereint, die exakt der eines einzelnen Abrufs entspricht.
+        """
+        ttl = cache.ttl_sekunden()
+        if ttl is None:
+            return await self.entrygroups(grouping, time_since=time_since, time_until=time_until)
+
+        cutoff = cache.cutoff_datum(time_until, monate=cache.cutoff_monate(cache_cutoff_monate))
+        if cutoff <= time_since:
+            return await self.entrygroups(grouping, time_since=time_since, time_until=time_until)
+
+        cache_schluessel = cache.schluessel(grouping, time_since=time_since, time_until=cutoff)
+        historisch, aktuell = await gleichzeitig(
+            cache.gecacht_oder_neu(
+                cache_schluessel,
+                ttl=ttl,
+                lader=lambda: self.entrygroups(grouping, time_since=time_since, time_until=cutoff),
+            ),
+            self.entrygroups(grouping, time_since=cutoff, time_until=time_until),
+        )
+        return entrygroups_zusammenfuehren(historisch, aktuell)
 
     async def entrygroups_je_monat(self, *, time_since: str, time_until: str) -> list[EntryGroupV2]:
         """Umsatz je Kalendermonat - alle Buchungen, auch die ohne Projektbezug."""

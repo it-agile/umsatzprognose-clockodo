@@ -71,9 +71,10 @@ der sechs Pakete darf `util/` importieren.
   `config.py` (Zugangsdaten, benannte Konstruktoren `automatisch`, `aus_umgebung`,
   `aus_colab_secrets`), `client.py` (`ClockodoClient`: HTTP, Paginierung, verifizierte
   Parameterform je Endpunkt, `ClockodoError` mit Antwortkörper), `nebenlaeufig.py`
-  (`synchron`, `gleichzeitig`, siehe unten), dazu je Endpunkt ein Repository:
-  `kunden.py`, `mitarbeiter.py`, `projekte.py`, `umsatz.py`, `verbrauchsverlauf.py` und
-  `bestand.py` (`BestandRepository`, der eine Einstieg).
+  (`synchron`, `gleichzeitig`, siehe unten), `cache.py` (optionaler lokaler
+  Verlaufscache für die beiden Vollhistorien-Abrufe, siehe unten), dazu je Endpunkt ein
+  Repository: `kunden.py`, `mitarbeiter.py`, `projekte.py`, `umsatz.py`,
+  `verbrauchsverlauf.py` und `bestand.py` (`BestandRepository`, der eine Einstieg).
 - `src/umsatzprognose/google_sheets/` – **der gemeinsame Google-Sheets-Zugriff, den
   `schulungen/` und `kosten/` beide nutzen.** `config.py` (`GoogleSheetsConfig`,
   dieselben benannten Konstruktoren wie bei `ClockodoCredentials`, liest u. a.
@@ -138,6 +139,22 @@ der sechs Pakete darf `util/` importieren.
 - **Zeitbuchungen werden nicht einzeln geladen.** `/v2/entrygroups` mit
   `grouping[]=projects_id&grouping[]=users_id` liefert die Aufteilung fertig
   aggregiert; der Begriff bleibt als `Projektanteil` im Modell.
+- **Der Verlaufscache ist striktes Opt-in.** `entrygroups_je_projekt_und_person` und
+  `entrygroups_je_projekt_und_monat` fragen die komplette Historie seit `HISTORIE_VON`
+  ab (siehe unten) – bei Clockodo dauert das mehrere Sekunden, weil dort über Jahre
+  aggregiert wird. Der längst abgeschlossene Teil dieser Historie ändert sich nach
+  Beobachtung nicht mehr (Abrechnungen älterer Monate werden nicht nachträglich
+  korrigiert); nur die letzten Monate sind noch in Bewegung. `clockodo/cache.py`
+  spaltet die Abfrage deshalb an einem Cutoff (Standard: 6 Monate vor dem Abfrageende,
+  übersteuerbar über den Parameter `cache_cutoff_monate` oder die Umgebungsvariable
+  `CLOCKODO_CACHE_CUTOFF_MONATE`) in einen stabilen, cachefähigen und einen immer
+  frisch geholten Teil; `entrygroups_zusammenfuehren()` in `client.py` führt beide
+  wieder zu einer Antwort zusammen, die exakt der eines einzelnen Abrufs entspricht.
+  Ohne gesetzte `CLOCKODO_CACHE_TTL_SEKUNDEN` bleibt der Cache aus – das bisherige
+  Verhalten, unverändert. Abgelegt wird außerhalb des Repositories im
+  Nutzerverzeichnis (`~/.cache/umsatzprognose-clockodo/`), aus demselben Grund wie beim
+  gecachten Google-OAuth-Token: gelesene Werte gehören in keine Datei dieses
+  Repositories.
 
 ### Notebooks
 

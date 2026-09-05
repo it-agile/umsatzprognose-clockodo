@@ -67,6 +67,7 @@ class VerbrauchsverlaufRepository:
         stichtag: date | None = None,
         horizont_monate: int = 3,
         time_since: str = HISTORIE_VON,
+        cache_cutoff_monate: int | None = None,
     ) -> tuple[Verbrauchsverlauf, ...]:
         """Der Abruf, synchron - fuer den Aufruf ausserhalb eines Event-Loops."""
         return synchron(
@@ -75,6 +76,7 @@ class VerbrauchsverlaufRepository:
                 stichtag=stichtag,
                 horizont_monate=horizont_monate,
                 time_since=time_since,
+                cache_cutoff_monate=cache_cutoff_monate,
             )
         )
 
@@ -85,6 +87,7 @@ class VerbrauchsverlaufRepository:
         stichtag: date | None = None,
         horizont_monate: int = 3,
         time_since: str = HISTORIE_VON,
+        cache_cutoff_monate: int | None = None,
     ) -> tuple[Verbrauchsverlauf, ...]:
         """Die Verlaeufe zu den uebergebenen Projekten.
 
@@ -95,12 +98,15 @@ class VerbrauchsverlaufRepository:
                 heute.
             horizont_monate: Laenge des Prognosehorizonts.
             time_since: untere Grenze der Historie.
+            cache_cutoff_monate: siehe
+                :meth:`~umsatzprognose.clockodo.client.ClockodoClient.entrygroups_je_projekt_und_monat`.
         """
         gruppen = await rohdaten(
             self._client,
             stichtag=stichtag,
             horizont_monate=horizont_monate,
             time_since=time_since,
+            cache_cutoff_monate=cache_cutoff_monate,
         )
         return self.abbilden(gruppen, projekte)
 
@@ -141,6 +147,7 @@ async def rohdaten(
     stichtag: date | None = None,
     horizont_monate: int = 3,
     time_since: str = HISTORIE_VON,
+    cache_cutoff_monate: int | None = None,
 ) -> list[EntryGroupV2]:
     """Nur die Antwort - damit der Abruf neben den anderen laufen kann.
 
@@ -154,4 +161,5 @@ async def rohdaten(
     return await client.entrygroups_je_projekt_und_monat(
         time_since=time_since,
         time_until=horizontende(stichtag or date.today(), horizont_monate),
+        cache_cutoff_monate=cache_cutoff_monate,
     )
