@@ -1,0 +1,10 @@
+version: 2
+updates:
+  # actions/checkout ist auf den beweglichen Major-Tag "v7" gepinnt (wandert von
+  # GitHub selbst automatisch zur neuesten v7.x.y), astral-sh/setup-uv aber auf einen
+  # festen Patch-Tag (kein beweglicher Major-Tag verfügbar) - Dependabot hält diesen
+  # Pin aktuell, ohne dass das manuell nachgepflegt werden muss.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"

@@ -1,0 +1,66 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request: {}
+
+permissions:
+  contents: read
+
+# Ein neuer Push auf denselben Branch/PR bricht einen noch laufenden Lauf ab, statt
+# beide bis zum Ende laufen zu lassen.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ruff:
+    name: ruff
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.0.1
+      - run: uvx tox -e ruff
+
+  mypy:
+    name: mypy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.0.1
+      - run: uvx tox -e mypy
+
+  mypy-notebooks:
+    name: mypy (Notebooks)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.0.1
+      - run: uvx tox -e mypy-notebooks
+
+  # Je Python-Version ein eigener Job statt eines gemeinsamen Matrix-Laufs mit
+  # gemeinsamem Ergebnis - ein Fehlschlag unter py314 blockiert nicht die Sichtbarkeit
+  # der Ergebnisse unter py312/py313, siehe fail-fast: false.
+  test:
+    name: pytest (${{ matrix.env }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        env: [py312, py313, py314]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.0.1
+      - run: uvx tox -e ${{ matrix.env }}
+
+  # Coverage ist nur aussagekräftig, wenn die Tests unter allen drei Python-Versionen
+  # schon ohne Coverage-Instrumentierung grün sind - deshalb erst nach "test".
+  coverage:
+    name: coverage
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.0.1
+      - run: uvx tox -e coverage

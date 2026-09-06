@@ -202,7 +202,6 @@ def posten(
             for (titel, _figur), bild in zip(titel_figuren, bilder, strict=True)
         ],
     )
-    print(f"Wochenbericht gepostet in Channel {kanal}.")
 
 
 def main() -> None:
