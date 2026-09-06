@@ -4,4 +4,11 @@
 {% endblock %}
 {% block inhalt %}
 <p class="ladehinweis">Die Daten werden im Hintergrund geladen - diese Seite aktualisiert sich alle paar Sekunden von selbst.</p>
+{% if fortschritt %}
+<ul class="fortschritt">
+    {% for zeile in fortschritt %}
+    <li>{{ zeile }}</li>
+    {% endfor %}
+</ul>
+{% endif %}
 {% endblock %}

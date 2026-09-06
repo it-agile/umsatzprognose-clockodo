@@ -14,7 +14,11 @@ denselben, periodisch aktualisierten Stand - es gibt ohnehin keine Benutzertrenn
 ``anstossen()`` startet einen fehlenden Ladevorgang im Hintergrund (mehrfache Aufrufe
 fuer denselben Schluessel loesen keinen zweiten Ladevorgang aus). :mod:`.app` zeigt
 waehrend eines laufenden Hintergrund-Ladevorgangs eine "Daten werden geladen"-Seite,
-statt die Anfrage bis zum fertigen Ergebnis zu blockieren.
+statt die Anfrage bis zum fertigen Ergebnis zu blockieren. ``fortschritt()`` liefert
+dabei die bisher gemeldeten Statuszeilen desselben ``fortschritt``-Callbacks wie in
+den Notebooks (siehe ``notebooks/setup.py``) - die Ladeseite zeigt sie an und holt
+sie sich per Meta-Refresh alle paar Sekunden erneut, es gibt (anders als dort) keinen
+dauerhaft offenen Kanal zum Browser, ueber den sie live nachgeschoben werden koennten.
 
 **Ein Eintrag je Parameterkombination - aber nur, wenn ein engerer Wert wirklich
 weniger laedt.** :class:`DashboardCache` haelt je angefragter
@@ -35,12 +39,20 @@ from __future__ import annotations
 import asyncio
 import os
 import time
-from datetime import date
+from datetime import date, timedelta
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable, Hashable
 
+    from umsatzprognose.util import Fortschritt
+
+import humanize
+
+# Aktiviert nebenbei auch die deutsche humanize-Lokalisierung fuer diesen Prozess
+# (Modul-Level-Aufruf in darstellung.dashboard, humanize.i18n.activate() wirkt nur
+# thread-lokal) - hier reicht das, weil ein einzelner uvicorn-Prozess alles auf
+# demselben Thread ausfuehrt, anders als der Jupyter-Thread-Umweg von synchron().
 from umsatzprognose import Dashboard
 from umsatzprognose.domaene import Anmeldungsverlauf
 from umsatzprognose.schulungen import SchulungenRepository
@@ -72,6 +84,7 @@ class _TTLCache[K: Hashable, V]:
         self._ttl = standard_ttl_sekunden() if ttl_sekunden is None else ttl_sekunden
         self._eintraege: dict[K, tuple[V, float]] = {}
         self._laeuft: dict[K, asyncio.Task[None]] = {}
+        self._fortschritt: dict[K, list[str]] = {}
 
     def _frisch(self, schluessel: K) -> V | None:
         eintrag = self._eintraege.get(schluessel)
@@ -88,25 +101,41 @@ class _TTLCache[K: Hashable, V]:
         """
         return self._frisch(schluessel)
 
-    def anstossen(self, schluessel: K, laden: Callable[[], Awaitable[V]]) -> None:
+    def fortschritt(self, schluessel: K) -> list[str]:
+        """Die bisher gemeldeten Statuszeilen eines laufenden Ladevorgangs zu
+        ``schluessel`` - leer, wenn (noch) nichts gemeldet wurde oder gerade kein
+        Ladevorgang laeuft (auch schon direkt nach dessen Abschluss: die naechste
+        :meth:`bereit`-Abfrage liefert dann ohnehin den fertigen Wert, siehe
+        :meth:`anstossen`).
+        """
+        return list(self._fortschritt.get(schluessel, ()))
+
+    def anstossen(self, schluessel: K, laden: Callable[[Fortschritt], Awaitable[V]]) -> None:
         """Startet das Laden im Hintergrund, falls noetig - ohne darauf zu warten.
 
         Ohne Wirkung, wenn ``schluessel`` bereits frisch ist oder gerade laedt - ruft
         z. B. jede Anfrage auf eine noch ladende Seite erneut auf, entsteht daraus
-        trotzdem nur ein einziger Ladevorgang.
+        trotzdem nur ein einziger Ladevorgang. ``laden`` bekommt einen
+        ``fortschritt``-Callback uebergeben (dieselbe Form wie bei
+        ``Dashboard.laden_async``) und ruft ihn nach Belieben auf - jeder Aufruf landet
+        sofort in :meth:`fortschritt`.
         """
         if self._frisch(schluessel) is not None or schluessel in self._laeuft:
             return
 
+        zeilen: list[str] = []
+        self._fortschritt[schluessel] = zeilen
+
         async def _hintergrund() -> None:
             try:
-                wert = await laden()
+                wert = await laden(zeilen.append)
             except Exception as fehler:
                 print(f"Laden fehlgeschlagen ({schluessel}): {fehler}")
             else:
                 self._eintraege[schluessel] = (wert, time.monotonic())
             finally:
                 del self._laeuft[schluessel]
+                del self._fortschritt[schluessel]
 
         self._laeuft[schluessel] = asyncio.create_task(_hintergrund())
 
@@ -121,14 +150,18 @@ class DashboardCache:
     def bereit(self, *, horizont_monate: int, auslastung_monate: int) -> Dashboard | None:
         return self._cache.bereit((horizont_monate, auslastung_monate))
 
+    def fortschritt(self, *, horizont_monate: int, auslastung_monate: int) -> list[str]:
+        return self._cache.fortschritt((horizont_monate, auslastung_monate))
+
     def anstossen(self, *, horizont_monate: int, auslastung_monate: int) -> None:
-        async def laden() -> Dashboard:
+        async def laden(fortschritt: Fortschritt) -> Dashboard:
             dashboard = await Dashboard.laden_async(
                 stichtag=date.today(),
                 horizont_monate=horizont_monate,
                 auslastung_monate=auslastung_monate,
+                fortschritt=fortschritt,
             )
-            dashboard.simuliere(monate=horizont_monate)
+            dashboard.simuliere(monate=horizont_monate, fortschritt=fortschritt)
             return dashboard
 
         self._cache.anstossen((horizont_monate, auslastung_monate), laden)
@@ -153,11 +186,25 @@ class AnmeldungsverlaufCache:
     def bereit(self) -> Anmeldungsverlauf | None:
         return self._cache.bereit(None)
 
+    def fortschritt(self) -> list[str]:
+        return self._cache.fortschritt(None)
+
     def anstossen(self) -> None:
-        async def laden() -> Anmeldungsverlauf:
+        async def laden(fortschritt: Fortschritt) -> Anmeldungsverlauf:
             jahre = range(self._ab_jahr, date.today().year + 1)
-            return SchulungenRepository.mit_automatischen_zugangsdaten().anmeldungsverlauf_laden(
+            # anmeldungsverlauf_laden() ist ein einzelner synchroner Aufruf (siehe
+            # Moduldocstring von umsatzprognose.schulungen.schulungen) - kein eigener
+            # fortschritt-Parameter noetig, ein Vorher/Nachher-Bericht wie bei der
+            # Simulation genuegt (siehe Dashboard.simuliere).
+            start = time.perf_counter()
+            verlauf = SchulungenRepository.mit_automatischen_zugangsdaten().anmeldungsverlauf_laden(
                 jahre
             )
+            dauer = timedelta(seconds=time.perf_counter() - start)
+            fortschritt(
+                f"{len(verlauf.anmeldungen)} Anmeldungen aus {len(verlauf.monate)} Monaten "
+                f"geladen (in {humanize.naturaldelta(dauer)})."
+            )
+            return verlauf
 
         self._cache.anstossen(None, laden)

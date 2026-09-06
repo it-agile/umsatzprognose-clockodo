@@ -74,6 +74,8 @@ if TYPE_CHECKING:
     import pandas as pd
     import plotly.graph_objects as go
 
+    from umsatzprognose.darstellung import Dashboard
+
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Query, Request
@@ -188,9 +190,35 @@ def _antwort(
     )
 
 
-def _ladeseite(request: Request, *, seite: str) -> HTMLResponse:
-    """Kurze Zwischenseite, waehrend :mod:`.cache` im Hintergrund laedt - siehe Moduldocstring."""
-    return _antwort(request, seite=seite, name="laedt.html", stichtag=None)
+def _ladeseite(request: Request, *, seite: str, fortschritt: list[str]) -> HTMLResponse:
+    """Kurze Zwischenseite, waehrend :mod:`.cache` im Hintergrund laedt - siehe Moduldocstring.
+
+    ``fortschritt`` zeigt die bisher gemeldeten Statuszeilen des laufenden
+    Ladevorgangs (siehe ``DashboardCache.fortschritt``/``AnmeldungsverlaufCache.
+    fortschritt``) - dieselbe Sicht wie in den Notebooks, nur per Meta-Refresh
+    nachgeholt statt live nachgeschoben (siehe Moduldocstring von ``.cache``).
+    """
+    return _antwort(request, seite=seite, name="laedt.html", stichtag=None, fortschritt=fortschritt)
+
+
+def _dashboard_oder_ladeseite(
+    request: Request, *, seite: str, horizont_monate: int, auslastung_monate: int
+) -> Dashboard | HTMLResponse:
+    """Liefert das gecachte ``Dashboard`` fuer diese Parameterkombination, sonst die
+    Ladeseite - gemeinsam fuer ``uebersicht()`` und ``dashboard_seite()``, die
+    beide denselben ``DashboardCache``-Schluessel (``horizont_monate``,
+    ``auslastung_monate``) verwenden."""
+    dashboard = _dashboard_cache.bereit(
+        horizont_monate=horizont_monate, auslastung_monate=auslastung_monate
+    )
+    if dashboard is not None:
+        return dashboard
+
+    _dashboard_cache.anstossen(horizont_monate=horizont_monate, auslastung_monate=auslastung_monate)
+    fortschritt = _dashboard_cache.fortschritt(
+        horizont_monate=horizont_monate, auslastung_monate=auslastung_monate
+    )
+    return _ladeseite(request, seite=seite, fortschritt=fortschritt)
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -201,14 +229,15 @@ async def uebersicht(
 ) -> HTMLResponse:
     """Deckt sich mit notebooks/00_datencheck.ipynb: Gewinn/Verlust und Umsatzrendite."""
     horizont_zahl = int(horizont_monate)
-    dashboard = _dashboard_cache.bereit(
-        horizont_monate=horizont_zahl, auslastung_monate=STANDARD_AUSLASTUNG_MONATE
+    ergebnis = _dashboard_oder_ladeseite(
+        request,
+        seite="start",
+        horizont_monate=horizont_zahl,
+        auslastung_monate=STANDARD_AUSLASTUNG_MONATE,
     )
-    if dashboard is None:
-        _dashboard_cache.anstossen(
-            horizont_monate=horizont_zahl, auslastung_monate=STANDARD_AUSLASTUNG_MONATE
-        )
-        return _ladeseite(request, seite="start")
+    if isinstance(ergebnis, HTMLResponse):
+        return ergebnis
+    dashboard = ergebnis
 
     gewinn_verlust_zahl = None if gewinn_verlust_monate == "alle" else int(gewinn_verlust_monate)
     return _antwort(
@@ -236,14 +265,15 @@ async def dashboard_seite(
 ) -> HTMLResponse:
     """Deckt sich mit notebooks/01_dashboard.ipynb: Umsatzverlauf und offenes Volumen."""
     horizont_zahl = int(horizont_monate)
-    dashboard = _dashboard_cache.bereit(
-        horizont_monate=horizont_zahl, auslastung_monate=STANDARD_AUSLASTUNG_MONATE
+    ergebnis = _dashboard_oder_ladeseite(
+        request,
+        seite="dashboard",
+        horizont_monate=horizont_zahl,
+        auslastung_monate=STANDARD_AUSLASTUNG_MONATE,
     )
-    if dashboard is None:
-        _dashboard_cache.anstossen(
-            horizont_monate=horizont_zahl, auslastung_monate=STANDARD_AUSLASTUNG_MONATE
-        )
-        return _ladeseite(request, seite="dashboard")
+    if isinstance(ergebnis, HTMLResponse):
+        return ergebnis
+    dashboard = ergebnis
 
     return _antwort(
         request,
@@ -271,7 +301,9 @@ async def schulungen(request: Request, ab_jahr: AbJahr = STANDARD_AB_JAHR) -> HT
     verlauf = _anmeldungsverlauf_cache.bereit()
     if verlauf is None:
         _anmeldungsverlauf_cache.anstossen()
-        return _ladeseite(request, seite="schulungen")
+        return _ladeseite(
+            request, seite="schulungen", fortschritt=_anmeldungsverlauf_cache.fortschritt()
+        )
 
     verlauf_ab_jahr = verlauf.ab_jahr(ab_jahr)
     return _antwort(

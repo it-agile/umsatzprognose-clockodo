@@ -57,9 +57,13 @@ class _FakeDashboardCache:
     def __init__(self, ergebnis: Dashboard | None = DASHBOARD) -> None:
         self.ergebnis = ergebnis
         self.anstossen_aufrufe: list[tuple[int, int]] = []
+        self.fortschritt_zeilen: list[str] = []
 
     def bereit(self, *, horizont_monate: int, auslastung_monate: int) -> Dashboard | None:
         return self.ergebnis
+
+    def fortschritt(self, *, horizont_monate: int, auslastung_monate: int) -> list[str]:
+        return self.fortschritt_zeilen
 
     def anstossen(self, *, horizont_monate: int, auslastung_monate: int) -> None:
         self.anstossen_aufrufe.append((horizont_monate, auslastung_monate))
@@ -69,9 +73,13 @@ class _FakeAnmeldungsverlaufCache:
     def __init__(self, ergebnis: Anmeldungsverlauf | None = None) -> None:
         self.ergebnis = Anmeldungsverlauf() if ergebnis is None else ergebnis
         self.anstossen_aufrufe = 0
+        self.fortschritt_zeilen: list[str] = []
 
     def bereit(self) -> Anmeldungsverlauf | None:
         return self.ergebnis
+
+    def fortschritt(self) -> list[str]:
+        return self.fortschritt_zeilen
 
     def anstossen(self) -> None:
         self.anstossen_aufrufe += 1
@@ -117,6 +125,18 @@ def test_uebersicht_ohne_gecachte_daten_zeigt_die_ladeseite(_fake_caches):
     assert "werden geladen" in antwort.text
     assert "plotly" not in antwort.text.lower()
     assert dashboard_cache.anstossen_aufrufe == [(3, app_modul.STANDARD_AUSLASTUNG_MONATE)]
+
+
+def test_uebersicht_zeigt_fortschritt_der_ladeseite(_fake_caches):
+    dashboard_cache, _ = _fake_caches
+    dashboard_cache.ergebnis = None
+    dashboard_cache.fortschritt_zeilen = ["Bestand geladen: 900 Projekt(e) (in 16 Sekunden)"]
+    client = TestClient(app_modul.app)
+
+    antwort = client.get("/")
+
+    assert antwort.status_code == 200
+    assert "Bestand geladen: 900 Projekt(e) (in 16 Sekunden)" in antwort.text
 
 
 def test_uebersicht_weist_ausserhalb_der_optionen_liegende_parameter_zurueck():
@@ -206,6 +226,18 @@ def test_schulungen_ohne_gecachte_daten_zeigt_die_ladeseite(_fake_caches):
     assert antwort.status_code == 200
     assert "werden geladen" in antwort.text
     assert anmeldungsverlauf_cache.anstossen_aufrufe == 1
+
+
+def test_schulungen_zeigt_fortschritt_der_ladeseite(_fake_caches):
+    _, anmeldungsverlauf_cache = _fake_caches
+    anmeldungsverlauf_cache.ergebnis = None
+    anmeldungsverlauf_cache.fortschritt_zeilen = ["646 Anmeldungen aus 60 Monaten geladen."]
+    client = TestClient(app_modul.app)
+
+    antwort = client.get("/schulungen?ab_jahr=2023")
+
+    assert antwort.status_code == 200
+    assert "646 Anmeldungen aus 60 Monaten geladen." in antwort.text
 
 
 def test_schulungen_weist_jahr_ausserhalb_der_optionen_zurueck():
