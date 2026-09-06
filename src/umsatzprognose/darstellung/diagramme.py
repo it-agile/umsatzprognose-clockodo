@@ -277,15 +277,20 @@ def _balken_beschriften(fig: go.Figure, *namen: str) -> None:
     Kostenplan), werden stillschweigend uebersprungen. Fuer statische Bildexporte ohne
     Hover-Interaktivitaet (Wochenbericht).
 
-    ``constraintext="none"``: plotly schrumpft "outside"-Balkentext sonst automatisch,
-    sobald der Balken schmal ist (mehrere Balkengruppen nebeneinander, viele Monate) -
-    die gesetzte Schriftgroesse waere dann trotzdem kaum lesbar.
+    Liegend im Balken statt darueber (``textangle=-90``, ``textposition="inside"``,
+    helle Schrift fuer Kontrast auf der Balkenfarbe) - bei vielen Monaten und mehreren
+    Balkengruppen nebeneinander wuerde sich waagerechter Text ueber dem Balken mit dem
+    der Nachbarmonate ueberlappen. ``constraintext="none"``: plotly schrumpft den Text
+    sonst automatisch, sobald der Balken schmal ist - die gesetzte Schriftgroesse waere
+    dann trotzdem kaum lesbar.
     """
     fig.for_each_trace(
         lambda spur: spur.update(
             text=[tausend_euro(wert) for wert in spur.y],
-            textposition="outside",
-            textfont={"color": TINTE_ZWEITRANGIG, "size": 13},
+            textposition="inside",
+            textangle=-90,
+            insidetextanchor="middle",
+            textfont={"color": "#ffffff", "size": 13},
             cliponaxis=False,
             constraintext="none",
         ),
