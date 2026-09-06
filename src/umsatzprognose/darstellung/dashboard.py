@@ -315,14 +315,23 @@ class Dashboard:
     def simuliere(self, *, monate: int = 3, laeufe: int = 10_000):
         self.prognose = self.bestand.simulieren(monate=monate, laeufe=laeufe)
 
-    def umsatzverlauf(self) -> go.Figure:
-        """Der Umsatz je Monat - Historie und, daran anschliessend, der Prognosehorizont."""
+    def umsatzverlauf(self, *, mit_beschriftung: bool = False) -> go.Figure:
+        """Der Umsatz je Monat - Historie und, daran anschliessend, der Prognosehorizont.
+
+        ``mit_beschriftung`` siehe :func:`~umsatzprognose.darstellung.diagramme.umsatzverlauf`
+        - standardmaessig aus, weil Notebook und Webapp den Wert per Hover-Tooltip
+        zeigen; nur fuer statische Bildexporte (Wochenbericht) gedacht.
+        """
         return diagramme.umsatzverlauf(
-            self._historie(), self.prognose, self.schulungsplan, self.kostenplan
+            self._historie(),
+            self.prognose,
+            self.schulungsplan,
+            self.kostenplan,
+            mit_beschriftung=mit_beschriftung,
         )
 
     def gewinn_verlust_monatlich(
-        self, *, monate: int | None = STANDARD_GEWINN_VERLUST_MONATE
+        self, *, monate: int | None = STANDARD_GEWINN_VERLUST_MONATE, mit_beschriftung: bool = False
     ) -> go.Figure:
         """Gewinn/Verlust der letzten ``monate`` abgeschlossenen Monate, je Monat ein Balken.
 
@@ -330,6 +339,7 @@ class Dashboard:
         :meth:`gewinn_verlust_je_jahr`. Haengt, sofern :meth:`simuliere` bereits
         gelaufen ist, zusaetzlich die Vorausschau fuer den Prognosehorizont an -
         dieselbe Prognose wie im Umsatzverlauf, kein eigener Simulationslauf.
+        ``mit_beschriftung`` siehe :meth:`umsatzverlauf`.
         """
         historie = self._historie(anzahl=monate)
         letzte_monate = historie.abgeschlossene(monate)
@@ -341,9 +351,10 @@ class Dashboard:
             horizont_kosten=self._horizont_kosten(),
             schulungsplan=self.schulungsplan,
             verbrauch_laufender_monat=historie.laufender,
+            mit_beschriftung=mit_beschriftung,
         )
 
-    def gewinn_verlust_je_jahr(self) -> go.Figure:
+    def gewinn_verlust_je_jahr(self, *, mit_beschriftung: bool = False) -> go.Figure:
         """Fuer jedes Kalenderjahr der geladenen Historie eine eigene Linie je Monat.
 
         Nutzt bewusst die gesamte geladene Historie statt eines Fensters wie
@@ -352,7 +363,8 @@ class Dashboard:
         aufsummiert (siehe :meth:`umsatzrendite_kumuliert` fuer die kumulierte Sicht).
         Ein Jahr ganz ohne Kostenerfassung faellt heraus, siehe
         :func:`_mit_kostenabdeckung`. Mit Vorausschau fuer den Prognosehorizont am
-        juengsten Jahr, wie :meth:`gewinn_verlust_monatlich`.
+        juengsten Jahr, wie :meth:`gewinn_verlust_monatlich`. ``mit_beschriftung``
+        siehe :meth:`umsatzverlauf`.
         """
         historie = self._historie(anzahl=None)
         letzte_monate = _mit_kostenabdeckung(historie.abgeschlossene(), self.kostenplan)
@@ -364,9 +376,10 @@ class Dashboard:
             horizont_kosten=self._horizont_kosten(),
             schulungsplan=self.schulungsplan,
             verbrauch_laufender_monat=historie.laufender,
+            mit_beschriftung=mit_beschriftung,
         )
 
-    def umsatzrendite_kumuliert(self) -> go.Figure:
+    def umsatzrendite_kumuliert(self, *, mit_beschriftung: bool = False) -> go.Figure:
         """Fuer jedes Kalenderjahr die kumulierte Umsatzrendite (Gewinn/Umsatz) je Monat.
 
         Nutzt wie :meth:`gewinn_verlust_je_jahr` die gesamte geladene Historie, nicht
@@ -374,7 +387,7 @@ class Dashboard:
         (siehe :func:`_mit_kostenabdeckung`) - dort waere die Rendite sonst ueberall
         100 %, ohne dass ueberhaupt Kosten vorlaegen. Siehe
         :func:`~umsatzprognose.darstellung.diagramme.umsatzrendite_kumuliert` fuer die
-        genaue Berechnung.
+        genaue Berechnung. ``mit_beschriftung`` siehe :meth:`umsatzverlauf`.
         """
         historie = self._historie(anzahl=None)
         letzte_monate = _mit_kostenabdeckung(historie.abgeschlossene(), self.kostenplan)
@@ -386,6 +399,7 @@ class Dashboard:
             horizont_kosten=self._horizont_kosten(),
             schulungsplan=self.schulungsplan,
             verbrauch_laufender_monat=historie.laufender,
+            mit_beschriftung=mit_beschriftung,
         )
 
     def _horizont_kosten(self) -> list[float]:

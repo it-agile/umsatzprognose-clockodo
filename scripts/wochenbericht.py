@@ -136,18 +136,28 @@ def diagrammtitel_und_figuren(
     anmeldungsverlauf_fenster = anmeldungsverlauf.letzte(
         monate=ANMELDUNGEN_MONATE_FENSTER, stichtag=dashboard.stichtag
     )
+    # mit_beschriftung=True nur hier: ein statischer Bildexport ohne Hover-Tooltip
+    # braucht die Werte als Text, Notebooks und Webapp zeigen sie interaktiv per Hover.
     return [
-        ("Umsatz je Monat", dashboard.umsatzverlauf()),
+        ("Umsatz je Monat", dashboard.umsatzverlauf(mit_beschriftung=True)),
         ("Offenes Auftragsvolumen je Projekt", dashboard.restvolumen_je_projekt()),
         (
             "Gewinn/Verlust je Monat",
-            dashboard.gewinn_verlust_monatlich(monate=gewinn_verlust_monate),
+            dashboard.gewinn_verlust_monatlich(monate=gewinn_verlust_monate, mit_beschriftung=True),
         ),
-        ("Gewinn/Verlust je Monat und Jahr", dashboard.gewinn_verlust_je_jahr()),
-        ("Kumulierte Umsatzrendite je Jahr", dashboard.umsatzrendite_kumuliert()),
+        (
+            "Gewinn/Verlust je Monat und Jahr",
+            dashboard.gewinn_verlust_je_jahr(mit_beschriftung=True),
+        ),
+        (
+            "Kumulierte Umsatzrendite je Jahr",
+            dashboard.umsatzrendite_kumuliert(mit_beschriftung=True),
+        ),
         (
             "Anmeldungen je Monat",
-            diagramme.anmeldungsverlauf(anmeldungsverlauf_fenster, KATEGORIEN),
+            diagramme.anmeldungsverlauf(
+                anmeldungsverlauf_fenster, KATEGORIEN, mit_beschriftung=True
+            ),
         ),
         ("Umsatztabelle", umsatztabelle_grafik(dashboard.umsatztabelle())),
     ]

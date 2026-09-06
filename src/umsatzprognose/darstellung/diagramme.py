@@ -68,6 +68,7 @@ def umsatzverlauf(
     kostenplan: Kostenplan | None = None,
     *,
     hoehe: int = 420,
+    mit_beschriftung: bool = False,
 ) -> go.Figure:
     """Monatsumsatz als Balken: Historie, und daran anschliessend der Prognosehorizont.
 
@@ -106,6 +107,11 @@ def umsatzverlauf(
     uebereinander, ohne dass ``historie`` und ``prognose`` dafuer denselben Stichtag
     tragen muessten explizit geprueft zu werden; in der Praxis stammen beide ohnehin aus
     demselben :class:`~umsatzprognose.domaene.bestand.Bestand`.
+
+    ``mit_beschriftung`` zeigt zusaetzlich den Wert je Balken als Text (Historie,
+    Kosten, Ergebnis) bzw. den Gesamtwert je Prognosehorizontmonat - fuer statische
+    Bildexporte ohne Hover-Interaktivitaet (Wochenbericht). In Notebooks und der Webapp
+    liefert plotly den Wert ohnehin per Tooltip, deshalb dort standardmaessig aus.
     """
     monate = historie.monate
     laufender = historie.laufender
@@ -133,12 +139,9 @@ def umsatzverlauf(
         },
         customdata=[[euro(m.umsatz), f"{m.stunden:,.0f}".replace(",", ".")] for m in monate],
         hovertemplate="<b>%{x}</b><br>%{customdata[0]}<br>%{customdata[1]} Stunden<extra></extra>",
-        text=[tausend_euro(m.umsatz) for m in monate],
-        textposition="outside",
-        textfont={"color": TINTE_ZWEITRANGIG, "size": 11},
-        cliponaxis=False,
         showlegend=False,
         name="Historie",
+        **_balkentext([tausend_euro(m.umsatz) for m in monate] if mit_beschriftung else None),
     )
 
     horizont_gesamtumsatz: dict[tuple[int, int], float] = {}
@@ -149,6 +152,7 @@ def umsatzverlauf(
                 prognose,
                 verbrauch_laufender_monat=laufender,
                 schulungsplan=schulungsplan,
+                mit_beschriftung=mit_beschriftung,
             )
         else:
             _keine_prognose_hinweis(fig, prognose)
@@ -162,7 +166,12 @@ def umsatzverlauf(
     kosten_balken = KostenBalkenErgebnis()
     if kostenplan is not None:
         kosten_balken = _kosten_und_ergebnis(
-            fig, monate, prognose, kostenplan, horizont_gesamtumsatz
+            fig,
+            monate,
+            prognose,
+            kostenplan,
+            horizont_gesamtumsatz,
+            mit_beschriftung=mit_beschriftung,
         )
     _legendeintrag(fig, "Abgerechnet", SERIE)
     if laufender or any(horizont_gebucht):
@@ -249,6 +258,25 @@ def _alle_monatsschluessel(
     return schluessel
 
 
+def _balkentext(werte: Sequence[str] | None) -> dict[str, object]:
+    """Zusaetzliche ``add_bar``-Kwargs, um den Wert als Text ueber jedem Balken zu zeigen.
+
+    ``werte`` ist ``None``, wenn der Aufrufer ohne Beschriftung zeichnet (Notebooks,
+    Webapp - dort zeigt plotly den Wert ohnehin per Hover-Tooltip); dann liefert diese
+    Funktion ein leeres Dict, statt an jeder Aufrufstelle einzeln zu verzweigen.
+    Gemeinsamer Stil (Position, Farbe, Groesse) fuer alle so beschrifteten Balken -
+    Wochenbericht-Bildexporte ohne Hover-Interaktivitaet (``mit_beschriftung=True``).
+    """
+    if werte is None:
+        return {}
+    return {
+        "text": list(werte),
+        "textposition": "outside",
+        "textfont": {"color": TINTE_ZWEITRANGIG, "size": 11},
+        "cliponaxis": False,
+    }
+
+
 @dataclass(frozen=True)
 class KostenBalkenErgebnis:
     """Was der Aufrufer von :func:`_kosten_und_ergebnis` fuer die Legende braucht.
@@ -268,6 +296,8 @@ def _kosten_und_ergebnis(
     prognose: Prognose | None,
     kostenplan: Kostenplan,
     horizont_gesamtumsatz: dict[tuple[int, int], float],
+    *,
+    mit_beschriftung: bool = False,
 ) -> KostenBalkenErgebnis:
     """Kosten- und Ergebnis-Balken ueber die volle Breite - Historie und Prognosehorizont.
 
@@ -300,12 +330,9 @@ def _kosten_und_ergebnis(
         marker={"color": [KOSTEN if e else KOSTEN_HELL for e in hat_erfassung]},
         customdata=[[euro(betrag)] for betrag in kosten],
         hovertemplate="<b>%{x}</b><br>Kosten: %{customdata[0]}<extra></extra>",
-        text=[tausend_euro(betrag) for betrag in kosten],
-        textposition="outside",
-        textfont={"color": TINTE_ZWEITRANGIG, "size": 11},
-        cliponaxis=False,
         name="Kosten",
         showlegend=False,
+        **_balkentext([tausend_euro(betrag) for betrag in kosten] if mit_beschriftung else None),
     )
     fig.add_bar(
         x=beschriftungen,
@@ -314,12 +341,9 @@ def _kosten_und_ergebnis(
         marker={"color": [ERGEBNIS_POSITIV if b >= 0 else ERGEBNIS_NEGATIV for b in ergebnis]},
         customdata=[[euro(betrag)] for betrag in ergebnis],
         hovertemplate="<b>%{x}</b><br>Ergebnis: %{customdata[0]}<extra></extra>",
-        text=[tausend_euro(betrag) for betrag in ergebnis],
-        textposition="outside",
-        textfont={"color": TINTE_ZWEITRANGIG, "size": 11},
-        cliponaxis=False,
         name="Ergebnis",
         showlegend=False,
+        **_balkentext([tausend_euro(betrag) for betrag in ergebnis] if mit_beschriftung else None),
     )
     return KostenBalkenErgebnis(
         gezeichnet=True, hat_pauschale=not all(hat_erfassung), hat_erfassung=any(hat_erfassung)
@@ -369,6 +393,7 @@ def _prognosehorizont(
     *,
     verbrauch_laufender_monat: Monatsumsatz | None,
     schulungsplan: Schulungsplan | None = None,
+    mit_beschriftung: bool = False,
 ) -> dict[tuple[int, int], float]:
     """Haengt die Horizontmonate als zweigeteilte Balken an eine bestehende Figur an.
 
@@ -467,19 +492,20 @@ def _prognosehorizont(
     gesamtumsatz = _horizont_gesamtumsatz(
         prognose, verbrauch_laufender_monat=verbrauch_laufender_monat, schulungsplan=schulungsplan
     )
-    # Ein Gesamtwert je Monat statt einer Beschriftung je Segment (Schulungsanmeldungen,
-    # Bereits gebucht, Prognostiziert waeren fuer sich meist zu schmal fuer lesbaren
-    # Text) - platziert ueber dem Balkenstapel, dessen Segmente _horizont_gesamtumsatz
-    # bereits aufsummiert.
-    for beschriftung, schluessel in zip(beschriftungen, horizont, strict=True):
-        fig.add_annotation(
-            x=beschriftung,
-            y=gesamtumsatz[schluessel],
-            text=tausend_euro(gesamtumsatz[schluessel]),
-            showarrow=False,
-            yshift=10,
-            font={"color": TINTE_ZWEITRANGIG, "size": 11},
-        )
+    if mit_beschriftung:
+        # Ein Gesamtwert je Monat statt einer Beschriftung je Segment
+        # (Schulungsanmeldungen, Bereits gebucht, Prognostiziert waeren fuer sich meist
+        # zu schmal fuer lesbaren Text) - platziert ueber dem Balkenstapel, dessen
+        # Segmente _horizont_gesamtumsatz bereits aufsummiert.
+        for beschriftung, schluessel in zip(beschriftungen, horizont, strict=True):
+            fig.add_annotation(
+                x=beschriftung,
+                y=gesamtumsatz[schluessel],
+                text=tausend_euro(gesamtumsatz[schluessel]),
+                showarrow=False,
+                yshift=10,
+                font={"color": TINTE_ZWEITRANGIG, "size": 11},
+            )
     return gesamtumsatz
 
 
@@ -586,6 +612,7 @@ def _jahreslinien(
     *,
     werte: Callable[[list[tuple[int, float, float, float]]], list[float]],
     formatieren: Callable[[float], str],
+    mit_beschriftung: bool = False,
 ) -> None:
     """Zeichnet fuer jedes Jahr eine Linie in bis zu drei Abschnitten (siehe
     :data:`_LINIENABSCHNITTE`): Daten (durchgezogen, volle Deckkraft), vorlaeufige
@@ -597,6 +624,10 @@ def _jahreslinien(
     Abschnitt beginnt am letzten Punkt des vorigen, damit die Linie ohne Bruch
     weiterlaeuft; fehlt ein Abschnitt fuer ein Jahr (z. B. kein Vorlaeufig-Punkt, weil
     kein Prognosehorizont in dieses Jahr faellt), entfaellt er einfach.
+
+    ``mit_beschriftung`` zeigt zusaetzlich den letzten Punkt jeder Linie als Text - fuer
+    statische Bildexporte ohne Hover-Interaktivitaet (Wochenbericht), siehe
+    :func:`umsatzverlauf`.
     """
     for index, jahr in enumerate(sorted(jahre)):
         punkte = jahre[jahr]
@@ -630,17 +661,19 @@ def _jahreslinien(
             jahr_hat_legende = True
             ende = neues_ende
 
-        # Nur der letzte Punkt der Linie, nicht jeder einzelne Monat - bei bis zu acht
-        # Jahren auf derselben Monatsachse waere eine Beschriftung je Punkt unlesbar.
-        fig.add_annotation(
-            x=beschriftungen[-1],
-            y=y[-1],
-            text=f"{jahr}: {formatieren(y[-1])}",
-            showarrow=False,
-            xanchor="left",
-            yshift=8,
-            font={"color": farbe, "size": 11},
-        )
+        if mit_beschriftung:
+            # Nur der letzte Punkt der Linie, nicht jeder einzelne Monat - bei bis zu
+            # acht Jahren auf derselben Monatsachse waere eine Beschriftung je Punkt
+            # unlesbar.
+            fig.add_annotation(
+                x=beschriftungen[-1],
+                y=y[-1],
+                text=f"{jahr}: {formatieren(y[-1])}",
+                showarrow=False,
+                xanchor="left",
+                yshift=8,
+                font={"color": farbe, "size": 11},
+            )
 
 
 def gewinn_verlust_monatlich(
@@ -652,6 +685,7 @@ def gewinn_verlust_monatlich(
     schulungsplan: Schulungsplan | None = None,
     verbrauch_laufender_monat: Monatsumsatz | None = None,
     hoehe: int = 380,
+    mit_beschriftung: bool = False,
 ) -> go.Figure:
     """Gewinn/Verlust je Monat als Balken - gruen bei Gewinn, rot bei Verlust.
 
@@ -671,6 +705,7 @@ def gewinn_verlust_monatlich(
     ``verbrauch_laufender_monat`` liefert das vor dem Stichtag bereits Realisierte des
     laufenden Monats, ``schulungsplan`` zusaetzlich additiven Umsatz aus bereits
     geplanten Schulungsterminen - siehe :func:`_horizont_gesamtumsatz`.
+    ``mit_beschriftung`` siehe :func:`umsatzverlauf`.
     """
     beschriftungen, _umsatz, ergebnis, deckkraft = _historie_und_horizont_werte(
         monate, kosten, prognose, horizont_kosten, schulungsplan, verbrauch_laufender_monat
@@ -689,11 +724,8 @@ def gewinn_verlust_monatlich(
         },
         customdata=[[euro(betrag)] for betrag in ergebnis],
         hovertemplate="<b>%{x}</b><br>%{customdata[0]}<extra></extra>",
-        text=[tausend_euro(betrag) for betrag in ergebnis],
-        textposition="outside",
-        textfont={"color": TINTE_ZWEITRANGIG, "size": 11},
-        cliponaxis=False,
         showlegend=False,
+        **_balkentext([tausend_euro(betrag) for betrag in ergebnis] if mit_beschriftung else None),
     )
     if prognose is not None and not prognose.vorhanden:
         _keine_prognose_hinweis(fig, prognose)
@@ -716,6 +748,7 @@ def gewinn_verlust_je_jahr(
     schulungsplan: Schulungsplan | None = None,
     verbrauch_laufender_monat: Monatsumsatz | None = None,
     hoehe: int = 380,
+    mit_beschriftung: bool = False,
 ) -> go.Figure:
     """Fuer jedes Kalenderjahr in ``monate`` eine eigene Linie der monatlichen Werte.
 
@@ -731,7 +764,8 @@ def gewinn_verlust_je_jahr(
     Parameter) haengt sich an das juengste Jahr die Vorausschau fuer den
     Prognosehorizont an - gestrichelt und gedaempft ab dem letzten Ist-Monat, ohne
     Bruch. Faellt der Horizont in ein neues Kalenderjahr, beginnt dessen Linie direkt
-    gestrichelt, ohne eigenen Ist-Abschnitt.
+    gestrichelt, ohne eigenen Ist-Abschnitt. ``mit_beschriftung`` siehe
+    :func:`umsatzverlauf`.
     """
     _beschriftungen, umsatz, ergebnis, deckkraft = _historie_und_horizont_werte(
         monate, kosten, prognose, horizont_kosten, schulungsplan, verbrauch_laufender_monat
@@ -744,6 +778,7 @@ def gewinn_verlust_je_jahr(
         jahre,
         werte=lambda punkte: [ergebnis for _monat, _umsatz, ergebnis, _deck in punkte],
         formatieren=euro,
+        mit_beschriftung=mit_beschriftung,
     )
     fig.add_hline(y=0, line={"color": ACHSE, "width": 1})
     if VORLAEUFIG_DECKKRAFT in deckkraft or PROGNOSE_DECKKRAFT in deckkraft:
@@ -768,6 +803,7 @@ def umsatzrendite_kumuliert(
     schulungsplan: Schulungsplan | None = None,
     verbrauch_laufender_monat: Monatsumsatz | None = None,
     hoehe: int = 380,
+    mit_beschriftung: bool = False,
 ) -> go.Figure:
     """Fuer jedes Kalenderjahr die kumulierte Umsatzrendite (Gewinn/Umsatz) je Monat.
 
@@ -778,6 +814,7 @@ def umsatzrendite_kumuliert(
     Monate zusammen, und so weiter. Aufbau und Vorausschau-Konvention wie
     :func:`gewinn_verlust_je_jahr`, dort auch die uebrigen Parameter erklaert. Ein
     Monat ganz ohne Umsatz (weder Ist noch Vorausschau) zeigt 0 % statt eines Fehlers.
+    ``mit_beschriftung`` siehe :func:`umsatzverlauf`.
     """
     _beschriftungen, umsatz, ergebnis, deckkraft = _historie_und_horizont_werte(
         monate, kosten, prognose, horizont_kosten, schulungsplan, verbrauch_laufender_monat
@@ -1054,7 +1091,11 @@ def _linearer_trend(werte: Sequence[float]) -> list[float]:
 
 
 def anmeldungsverlauf(
-    verlauf: Anmeldungsverlauf, kategorien: Mapping[str, Sequence[str]], *, hoehe: int = 420
+    verlauf: Anmeldungsverlauf,
+    kategorien: Mapping[str, Sequence[str]],
+    *,
+    hoehe: int = 420,
+    mit_beschriftung: bool = False,
 ) -> go.Figure:
     """Teilnehmerzahl oeffentlicher Schulungen je Monat - wie in der internen
     ZDF-Praesentation ("Anmeldungen bleiben auf niedrigem Niveau"): eine Linie mit
@@ -1073,7 +1114,8 @@ def anmeldungsverlauf(
     gewuenschten Betrachtungszeitraum (etwa ueber
     :meth:`~umsatzprognose.domaene.anmeldung.Anmeldungsverlauf.letzte` fuer ein
     konfigurierbares Fenster wie die letzten 13 Monate) - diese Funktion zeigt ihn
-    unveraendert, ohne selbst ein Zeitfenster anzuwenden.
+    unveraendert, ohne selbst ein Zeitfenster anzuwenden. ``mit_beschriftung`` siehe
+    :func:`umsatzverlauf`.
     """
     monate = verlauf.monate
     fig = figur(
@@ -1112,17 +1154,18 @@ def anmeldungsverlauf(
         line={"color": TINTE, "width": 2},
         marker={"size": 5, "color": TINTE},
     )
-    # Nur die Gesamt-Linie beschriften, nicht jede Kategorie - bei mehreren Kategorien
-    # ueber 13 Monate waere eine Beschriftung je Linie unlesbar.
-    fig.add_annotation(
-        x=beschriftungen[-1],
-        y=gesamt[-1],
-        text=str(gesamt[-1]),
-        showarrow=False,
-        xanchor="left",
-        yshift=8,
-        font={"color": TINTE, "size": 11},
-    )
+    if mit_beschriftung:
+        # Nur die Gesamt-Linie beschriften, nicht jede Kategorie - bei mehreren
+        # Kategorien ueber 13 Monate waere eine Beschriftung je Linie unlesbar.
+        fig.add_annotation(
+            x=beschriftungen[-1],
+            y=gesamt[-1],
+            text=str(gesamt[-1]),
+            showarrow=False,
+            xanchor="left",
+            yshift=8,
+            font={"color": TINTE, "size": 11},
+        )
     fig.add_scatter(
         x=beschriftungen,
         y=_linearer_trend(gesamt),
