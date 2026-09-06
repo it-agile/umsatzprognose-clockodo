@@ -170,10 +170,23 @@ def umsatzverlauf(
         # Erst hier, an der oeffentlichen Funktion, statt in den Bauhelfern oben - die
         # bleiben dadurch unveraendert nutzbar, ob mit oder ohne Beschriftung. Liest die
         # Werte aus den schon gezeichneten Spuren zurueck, statt sie erneut zu berechnen.
-        _balken_beschriften(fig, "Historie", "Kosten", "Ergebnis")
+        # Der laufende Monat traegt am Prognosehorizont nur die Basis eines groesseren
+        # Stapels (siehe _balken_beschriften) - dort faellt die Historie-Beschriftung
+        # zugunsten der Gesamtwert-Annotation weiter unten weg.
+        horizont_monate = {
+            _monatsbeschriftung(jahr, monat) for jahr, monat in horizont_gesamtumsatz
+        }
+        _balken_beschriften(
+            fig, "Historie", "Kosten", "Ergebnis", uebersprungen={"Historie": horizont_monate}
+        )
+        # Eine Beschriftung fuer die Summe aus Schulungsanmeldungen, bereits gebuchtem
+        # und simuliertem Umsatz reicht, statt jedes der drei Segmente einzeln zu
+        # beschriften (die waeren dafuer meist zu schmal) - oberhalb des ganzen
+        # Balkenstapels, den _horizont_gesamtumsatz bereits aufsummiert.
         for (jahr, monat), betrag in horizont_gesamtumsatz.items():
+            beschriftung = _monatsbeschriftung(jahr, monat)
             fig.add_annotation(
-                x=_monatsbeschriftung(jahr, monat),
+                x=beschriftung,
                 y=betrag,
                 text=tausend_euro(betrag),
                 showarrow=False,
@@ -265,7 +278,14 @@ def _alle_monatsschluessel(
     return schluessel
 
 
-def _balken_beschriften(fig: go.Figure, *namen: str) -> None:
+# Unterhalb dieser Schwelle waere der gedrehte Text im (dann sehr kurzen) Balken
+# selbst kaum lesbar - siehe _balken_beschriften.
+BALKENTEXT_SCHWELLE = 100_000.0
+
+
+def _balken_beschriften(
+    fig: go.Figure, *namen: str, uebersprungen: Mapping[str, set[str]] | None = None
+) -> None:
     """Haengt an die genannten, bereits gezeichneten Balkenspuren ihren Wert als Text.
 
     Arbeitet auf der fertigen Figur statt den Wert beim Bau jeder Spur ueber ein
@@ -277,25 +297,50 @@ def _balken_beschriften(fig: go.Figure, *namen: str) -> None:
     Kostenplan), werden stillschweigend uebersprungen. Fuer statische Bildexporte ohne
     Hover-Interaktivitaet (Wochenbericht).
 
-    Liegend im Balken statt darueber (``textangle=-90``, ``textposition="inside"``,
-    helle Schrift fuer Kontrast auf der Balkenfarbe) - bei vielen Monaten und mehreren
-    Balkengruppen nebeneinander wuerde sich waagerechter Text ueber dem Balken mit dem
-    der Nachbarmonate ueberlappen. ``constraintext="none"``: plotly schrumpft den Text
-    sonst automatisch, sobald der Balken schmal ist - die gesetzte Schriftgroesse waere
-    dann trotzdem kaum lesbar.
+    Ab :data:`BALKENTEXT_SCHWELLE` liegend im Balken (``textangle=-90``, helle Schrift
+    fuer Kontrast auf der Balkenfarbe) - bei vielen Monaten und mehreren Balkengruppen
+    nebeneinander wuerde waagerechter Text ueber dem Balken mit dem der Nachbarmonate
+    ueberlappen. ``constraintext="none"``: plotly schrumpft den Text sonst automatisch,
+    sobald der Balken schmal ist. Darunter waere der gedrehte Text selbst kaum lesbar -
+    dort deshalb waagerecht, schwarz und ausserhalb des Balkens, als eigene Annotation
+    (``textangle`` gilt fuer eine Balkenspur nur einheitlich, nicht je Punkt einzeln).
+
+    ``uebersprungen`` (Spurname -> Monatsbeschriftungen) lässt einzelne Punkte ganz aus
+    - fuer :func:`umsatzverlauf`s "Historie"-Balken des laufenden Monats, der am
+    Prognosehorizont nur die Basis eines groesseren Stapels ist (Schulungsanmeldungen/
+    Bereits gebucht/Prognostiziert obendrauf): eine eigene Beschriftung mit dem
+    (kleineren) Basiswert allein waere dort irrefuehrend neben der Gesamtwert-Annotation
+    fuer den ganzen Stapel.
     """
-    fig.for_each_trace(
-        lambda spur: spur.update(
-            text=[tausend_euro(wert) for wert in spur.y],
+
+    def _spur_beschriften(spur: go.Bar) -> None:
+        ausgenommen = (uebersprungen or {}).get(spur.name, set())
+        spur.update(
+            text=[
+                tausend_euro(wert)
+                if x not in ausgenommen and abs(wert) >= BALKENTEXT_SCHWELLE
+                else ""
+                for x, wert in zip(spur.x, spur.y, strict=True)
+            ],
             textposition="inside",
             textangle=-90,
             insidetextanchor="middle",
             textfont={"color": "#ffffff", "size": 13},
             cliponaxis=False,
             constraintext="none",
-        ),
-        selector=lambda spur: spur.name in namen,
-    )
+        )
+        for x, wert in zip(spur.x, spur.y, strict=True):
+            if x not in ausgenommen and abs(wert) < BALKENTEXT_SCHWELLE:
+                fig.add_annotation(
+                    x=x,
+                    y=wert,
+                    text=tausend_euro(wert),
+                    showarrow=False,
+                    yshift=10 if wert >= 0 else -10,
+                    font={"color": TINTE, "size": 13},
+                )
+
+    fig.for_each_trace(_spur_beschriften, selector=lambda spur: spur.name in namen)
 
 
 @dataclass(frozen=True)
