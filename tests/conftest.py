@@ -13,14 +13,14 @@ from __future__ import annotations
 from collections.abc import Coroutine
 from typing import TYPE_CHECKING
 
-import httpx
+import httpx2
 
 if TYPE_CHECKING:
     from collections.abc import Callable
 
     # Ein Handler darf synchron oder eine Coroutine-Funktion sein - wie
-    # httpx._transports.mock.SyncHandler | AsyncHandler, aber nicht oeffentlich exportiert.
-    Handler = Callable[[httpx.Request], "httpx.Response | Coroutine[None, None, httpx.Response]"]
+    # httpx2._transports.mock.SyncHandler | AsyncHandler, aber nicht oeffentlich exportiert.
+    Handler = Callable[[httpx2.Request], "httpx2.Response | Coroutine[None, None, httpx2.Response]"]
 
 import pytest
 
@@ -38,17 +38,17 @@ def client_mit(handler: Handler):
     """Ein Client, der statt der API einen Handler befragt; sammelt die Requests.
 
     Der Wrapper ist bewusst eine Coroutine-Funktion und nicht synchron: nur so ist er
-    ein einheitlicher ``AsyncHandler`` fuer ``httpx.MockTransport``, egal ob der
+    ein einheitlicher ``AsyncHandler`` fuer ``httpx2.MockTransport``, egal ob der
     uebergebene ``handler`` selbst synchron ist oder eine Coroutine liefert.
     """
-    requests: list[httpx.Request] = []
+    requests: list[httpx2.Request] = []
 
-    async def aufzeichnen(request: httpx.Request) -> httpx.Response:
+    async def aufzeichnen(request: httpx2.Request) -> httpx2.Response:
         requests.append(request)
         ergebnis = handler(request)
         return await ergebnis if isinstance(ergebnis, Coroutine) else ergebnis
 
-    return ClockodoClient(CREDS, transport=httpx.MockTransport(aufzeichnen)), requests
+    return ClockodoClient(CREDS, transport=httpx2.MockTransport(aufzeichnen)), requests
 
 
 def client_mit_routen(routen: dict[str, object]):
@@ -61,14 +61,14 @@ def client_mit_routen(routen: dict[str, object]):
             ist ein Testfehler und fuehrt zu einem 404, damit er auffaellt.
     """
 
-    def handler(request: httpx.Request) -> httpx.Response:
+    def handler(request: httpx2.Request) -> httpx2.Response:
         # Die Basis-URL endet auf /api; die Routen sind ohne dieses Praefix notiert.
         koerper = routen.get(request.url.path.removeprefix("/api"))
         if koerper is None:
-            return httpx.Response(404, json={"error": {"message": request.url.path}})
+            return httpx2.Response(404, json={"error": {"message": request.url.path}})
         if callable(koerper):
             koerper = koerper(request)
-        return httpx.Response(200, json=koerper)
+        return httpx2.Response(200, json=koerper)
 
     return client_mit(handler)
 

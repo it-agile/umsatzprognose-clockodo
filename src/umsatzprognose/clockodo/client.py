@@ -58,7 +58,7 @@ Die Antwort hat **kein** ``paging``.
 
 **Fehler werden über Body diagnostiziert, nicht über Status.** Clockodo begruendet einen
 400 in der Form ``{"error": {"message": …, "fields": [...]}}`` und benennt dort den
-beanstandeten Parameter. ``httpx.Response.raise_for_status`` zeigt nur Status und URL
+beanstandeten Parameter. ``httpx2.Response.raise_for_status`` zeigt nur Status und URL
 und verwirft genau diese Information, deshalb :class:`ClockodoError`.
 """
 
@@ -74,10 +74,12 @@ if TYPE_CHECKING:
 
     from .config import ClockodoCredentials
 
+import asyncio
+import random
 from calendar import monthrange
 from datetime import date
 
-import httpx
+import httpx2
 
 from umsatzprognose.util import aus_ordnung, ordnung
 
@@ -86,6 +88,16 @@ from .config import BASE_URL
 from .nebenlaeufig import gleichzeitig
 
 DEFAULT_TIMEOUT = 60.0
+
+# Clockodo begrenzt manche Routen auf wenige Anfragen pro Minute (429 "... limit
+# exceeded (N requests per 1 minute)") - besonders beim gleichzeitigen Abruf vieler
+# Endpunkte (siehe .nebenlaeufig.gleichzeitig) real erreichbar. RATE_LIMIT_MAX_VERSUCHE
+# zaehlt den ersten Versuch mit; RATE_LIMIT_WARTEZEIT_SEKUNDEN orientiert sich am
+# Ein-Minuten-Fenster von Clockodos Limit, die Streuung (siehe .get) verhindert, dass
+# mehrere gleichzeitig wartende Aufrufe exakt zusammen erneut anfragen.
+RATE_LIMIT_STATUS = 429
+RATE_LIMIT_MAX_VERSUCHE = 4
+RATE_LIMIT_WARTEZEIT_SEKUNDEN = 15.0
 
 SEKUNDEN_JE_STUNDE = 3600.0
 
@@ -323,7 +335,7 @@ class ClockodoError(RuntimeError):
 class ClockodoClient:
     """Lesender Zugriff auf die Endpunkte, die die Prognose braucht.
 
-    Je Aufruf wird ein eigener ``httpx.AsyncClient`` geoeffnet und geschlossen. Fuer die
+    Je Aufruf wird ein eigener ``httpx2.AsyncClient`` geoeffnet und geschlossen. Fuer die
     halbe Handvoll Requests einer Prognose ist das ausreichend und erspart im Notebook
     jede Lebenszyklus-Verwaltung; auch ein gemeinsamer Verbindungspool haette fuer
     gleichzeitige Abrufe je eine eigene Verbindung aufgebaut.
@@ -335,7 +347,7 @@ class ClockodoClient:
         *,
         base_url: str = BASE_URL,
         timeout: float = DEFAULT_TIMEOUT,
-        transport: httpx.AsyncBaseTransport | None = None,
+        transport: httpx2.AsyncBaseTransport | None = None,
     ) -> None:
         self.credentials = credentials
         self.base_url = base_url
@@ -343,14 +355,27 @@ class ClockodoClient:
         self._transport = transport
 
     async def get(self, path: str, params: Mapping[str, Any] | None = None) -> Any:
-        """Ein GET gegen die API. Wirft bei HTTP-Fehlern einen :class:`ClockodoError`."""
-        async with httpx.AsyncClient(
-            base_url=self.base_url,
-            headers=self.credentials.headers(),
-            timeout=self.timeout,
-            transport=self._transport,
-        ) as client:
-            response = await client.get(path, params=dict(params) if params else None)
+        """Ein GET gegen die API. Wirft bei HTTP-Fehlern einen :class:`ClockodoError`.
+
+        Ein 429 (Ratenbegrenzung, siehe :data:`RATE_LIMIT_STATUS`) ist kein
+        :class:`ClockodoError`, sondern ein Hinweis, kurz zu warten - bis zu
+        :data:`RATE_LIMIT_MAX_VERSUCHE` Mal wird deshalb nach
+        :data:`RATE_LIMIT_WARTEZEIT_SEKUNDEN` (plus etwas Streuung) wiederholt, bevor
+        doch ein :class:`ClockodoError` geworfen wird.
+        """
+        versuch = 0
+        while True:
+            versuch += 1
+            async with httpx2.AsyncClient(
+                base_url=self.base_url,
+                headers=self.credentials.headers(),
+                timeout=self.timeout,
+                transport=self._transport,
+            ) as client:
+                response = await client.get(path, params=dict(params) if params else None)
+            if response.status_code != RATE_LIMIT_STATUS or versuch >= RATE_LIMIT_MAX_VERSUCHE:
+                break
+            await asyncio.sleep(RATE_LIMIT_WARTEZEIT_SEKUNDEN + random.uniform(0, 5))
         if response.is_error:
             raise ClockodoError(
                 f"{response.status_code} fuer {response.request.url}\n{response.text[:1000]}"

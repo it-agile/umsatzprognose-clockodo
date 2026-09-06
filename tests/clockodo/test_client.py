@@ -15,6 +15,7 @@ import pytest
 from conftest import CREDS, client_mit
 from umsatzprognose.clockodo import ClockodoClient, ClockodoCredentials, ClockodoError, cache
 from umsatzprognose.clockodo.client import (
+    RATE_LIMIT_MAX_VERSUCHE,
     EntryGroupV2,
     entrygroups_zusammenfuehren,
     horizontende,
@@ -183,6 +184,40 @@ def test_fehler_traegt_den_antwortkoerper():
 
     assert "400" in str(fehler.value)
     assert "Unknown group option" in str(fehler.value)
+
+
+async def _ohne_wartezeit(*_args, **_kwargs) -> None:
+    """Ersetzt ``asyncio.sleep`` in den Ratenbegrenzungs-Tests - sie sollen die echte
+    Wartezeit nicht abwarten muessen."""
+
+
+def test_get_wiederholt_bei_ratenbegrenzung_und_liefert_dann_die_antwort(monkeypatch):
+    monkeypatch.setattr("umsatzprognose.clockodo.client.asyncio.sleep", _ohne_wartezeit)
+    koerper_429 = {"error": {"message": "limit exceeded (10 requests per 1 minute)"}}
+    aufrufe = {"anzahl": 0}
+
+    def handler(request):
+        aufrufe["anzahl"] += 1
+        if aufrufe["anzahl"] < 3:
+            return httpx2.Response(429, json=koerper_429)
+        return httpx2.Response(200, json={"data": [{"id": 1}]})
+
+    client, requests = client_mit(handler)
+    projekte, _paging = synchron(client.projects())
+
+    assert projekte == [{"id": 1}]
+    assert len(requests) == 3
+
+
+def test_get_wirft_nach_ausgeschoepften_versuchen_weiterhin_den_clockodoerror(monkeypatch):
+    monkeypatch.setattr("umsatzprognose.clockodo.client.asyncio.sleep", _ohne_wartezeit)
+    koerper_429 = {"error": {"message": "limit exceeded (10 requests per 1 minute)"}}
+    client, requests = client_mit(lambda _: httpx2.Response(429, json=koerper_429))
+
+    with pytest.raises(ClockodoError, match="429"):
+        synchron(client.entrygroups(["projects"]))
+
+    assert len(requests) == RATE_LIMIT_MAX_VERSUCHE
 
 
 def test_zu_lange_anwendungskennung_wird_abgelehnt():
