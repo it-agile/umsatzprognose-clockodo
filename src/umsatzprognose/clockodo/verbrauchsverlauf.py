@@ -44,6 +44,7 @@ if TYPE_CHECKING:
     from umsatzprognose.domaene import Projekt
 
     from .client import ClockodoClient, EntryGroupV2
+    from .fortschritt import Fortschritt
 
 from datetime import date
 
@@ -148,6 +149,7 @@ async def rohdaten(
     horizont_monate: int = 3,
     time_since: str = HISTORIE_VON,
     cache_cutoff_monate: int | None = None,
+    cache_fortschritt: Fortschritt | None = None,
 ) -> list[EntryGroupV2]:
     """Nur die Antwort - damit der Abruf neben den anderen laufen kann.
 
@@ -157,9 +159,13 @@ async def rohdaten(
     (:class:`~umsatzprognose.clockodo.bestand.BestandRepository`). Eine freie Funktion
     wie :func:`umsatzprognose.clockodo.projekte.rohdaten` und keine Methode: hier ist
     kein Repository im Spiel, nur ein Request.
+
+    ``cache_cutoff_monate``/``cache_fortschritt`` siehe
+    :meth:`~umsatzprognose.clockodo.client.ClockodoClient.entrygroups_je_projekt_und_monat`.
     """
     return await client.entrygroups_je_projekt_und_monat(
         time_since=time_since,
         time_until=horizontende(stichtag or date.today(), horizont_monate),
         cache_cutoff_monate=cache_cutoff_monate,
+        cache_fortschritt=cache_fortschritt,
     )

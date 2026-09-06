@@ -64,6 +64,7 @@ if TYPE_CHECKING:
     from typing import Any
 
     from .client import ClockodoClient, EntryGroupV2, ProjectV4
+    from .fortschritt import Fortschritt
 
 from collections.abc import Mapping
 from datetime import date
@@ -302,6 +303,7 @@ async def rohdaten(
     time_since: str = HISTORIE_VON,
     time_until: str | None = None,
     cache_cutoff_monate: int | None = None,
+    cache_fortschritt: Fortschritt | None = None,
 ) -> tuple[list[ProjectV4], list[EntryGroupV2]]:
     """Die beiden Antworten, aus denen ein Projekt entsteht.
 
@@ -309,7 +311,7 @@ async def rohdaten(
     haengen nicht voneinander ab, treffen sich aber in
     :meth:`ProjektRepository.abbilden` ueber die Projekt-ID.
 
-    ``cache_cutoff_monate`` siehe
+    ``cache_cutoff_monate``/``cache_fortschritt`` siehe
     :meth:`~umsatzprognose.clockodo.client.ClockodoClient.entrygroups_je_projekt_und_person`.
     """
     (projekte, _), gruppen = await gleichzeitig(
@@ -318,6 +320,7 @@ async def rohdaten(
             time_since=time_since,
             time_until=time_until,
             cache_cutoff_monate=cache_cutoff_monate,
+            cache_fortschritt=cache_fortschritt,
         ),
     )
     return projekte, gruppen

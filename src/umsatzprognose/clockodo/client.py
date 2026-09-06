@@ -73,6 +73,7 @@ if TYPE_CHECKING:
     from umsatzprognose.util import Monat
 
     from .config import ClockodoCredentials
+    from .fortschritt import Fortschritt
 
 import asyncio
 import random
@@ -263,15 +264,16 @@ def entrygroups_zusammenfuehren(*gruppenlisten: list[EntryGroupV2]) -> list[Entr
     ebenfalls zu einer Zeile zusammengefasst - unschaedlich, weil alle bisherigen
     Verwendungen ohnehin nur die Summe ueber diese Zeilen bilden, nie eine einzelne.
     """
+    # Kein separates Reihenfolge-Tracking noetig: dict erhaelt seit Python 3.7 die
+    # Einfuegereihenfolge, und ein Update eines vorhandenen Schluessels (Zweig unten)
+    # aendert daran nichts.
     zusammengefasst: dict[str | int, EntryGroupV2] = {}
-    reihenfolge: list[str | int] = []
     for gruppen in gruppenlisten:
         for gruppe in gruppen:
             schluessel = gruppe["group"]
             vorhanden = zusammengefasst.get(schluessel)
             if vorhanden is None:
                 zusammengefasst[schluessel] = dict(gruppe)  # type: ignore[assignment]
-                reihenfolge.append(schluessel)
                 continue
             vorhanden["duration"] = vorhanden.get("duration", 0) + gruppe.get("duration", 0)
             vorhanden["revenue"] = vorhanden.get("revenue", 0.0) + gruppe.get("revenue", 0.0)
@@ -280,7 +282,7 @@ def entrygroups_zusammenfuehren(*gruppenlisten: list[EntryGroupV2]) -> list[Entr
             )
             if neue_untergruppen:
                 vorhanden["sub_groups"] = neue_untergruppen
-    return [zusammengefasst[schluessel] for schluessel in reihenfolge]
+    return list(zusammengefasst.values())
 
 
 def verbrauch_bis(stichtag: date | None = None) -> str:
@@ -476,6 +478,7 @@ class ClockodoClient:
         time_since: str = HISTORIE_VON,
         time_until: str | None = None,
         cache_cutoff_monate: int | None = None,
+        cache_fortschritt: Fortschritt | None = None,
     ) -> list[EntryGroupV2]:
         """Verbrauch je Projekt, darunter die Anteile je Person.
 
@@ -483,14 +486,17 @@ class ClockodoClient:
         einfachen Gruppierung identisch, und die Untergruppen summieren sich exakt auf sie. Damit
         sind Verbrauch und Aufteilungsschluessel garantiert konsistent.
 
-        ``cache_cutoff_monate`` siehe :meth:`_entrygroups_mit_verlaufscache` - ohne
-        aktivierten Cache (Standardfall) ohne jede Wirkung.
+        ``cache_cutoff_monate``/``cache_fortschritt`` siehe
+        :meth:`_entrygroups_mit_verlaufscache` - ohne aktivierten Cache (Standardfall)
+        ohne jede Wirkung.
         """
         return await self._entrygroups_mit_verlaufscache(
             [GRUPPIERUNG_PROJEKT, GRUPPIERUNG_PERSON],
             time_since=time_since,
             time_until=time_until or verbrauch_bis(),
             cache_cutoff_monate=cache_cutoff_monate,
+            cache_label="Projektanteile",
+            cache_fortschritt=cache_fortschritt,
         )
 
     async def entrygroups_je_projekt_und_monat(
@@ -499,6 +505,7 @@ class ClockodoClient:
         time_since: str = HISTORIE_VON,
         time_until: str | None = None,
         cache_cutoff_monate: int | None = None,
+        cache_fortschritt: Fortschritt | None = None,
     ) -> list[EntryGroupV2]:
         """Verbrauch je Projekt, darunter die Monate.
 
@@ -507,14 +514,17 @@ class ClockodoClient:
         nicht chronologisch - siehe
         :meth:`~umsatzprognose.domaene.verbrauchsverlauf.Verbrauchsverlauf.fuer`.
 
-        ``cache_cutoff_monate`` siehe :meth:`_entrygroups_mit_verlaufscache` - ohne
-        aktivierten Cache (Standardfall) ohne jede Wirkung.
+        ``cache_cutoff_monate``/``cache_fortschritt`` siehe
+        :meth:`_entrygroups_mit_verlaufscache` - ohne aktivierten Cache (Standardfall)
+        ohne jede Wirkung.
         """
         return await self._entrygroups_mit_verlaufscache(
             [GRUPPIERUNG_PROJEKT, GRUPPIERUNG_MONAT],
             time_since=time_since,
             time_until=time_until or verbrauch_bis(),
             cache_cutoff_monate=cache_cutoff_monate,
+            cache_label="Verbrauchsverlauf",
+            cache_fortschritt=cache_fortschritt,
         )
 
     async def _entrygroups_mit_verlaufscache(
@@ -524,6 +534,8 @@ class ClockodoClient:
         time_since: str,
         time_until: str,
         cache_cutoff_monate: int | None,
+        cache_label: str,
+        cache_fortschritt: Fortschritt | None = None,
     ) -> list[EntryGroupV2]:
         """Wie :meth:`entrygroups`, aber der laengst abgeschlossene Teil darf aus dem
         lokalen Cache kommen (siehe Moduldocstring von :mod:`.cache`).
@@ -535,6 +547,10 @@ class ClockodoClient:
         Cache oder wird einmalig geladen und abgelegt, der Rest wird immer frisch
         geholt. Beide Teile werden ueber :func:`entrygroups_zusammenfuehren` wieder zu
         einer Antwort vereint, die exakt der eines einzelnen Abrufs entspricht.
+
+        ``cache_fortschritt``, sofern angegeben, meldet nach dem gecachten Teilabruf
+        eine Statuszeile (Treffer oder nicht, gemessene Dauer) - siehe
+        :func:`~umsatzprognose.clockodo.cache.gecacht_oder_neu`.
         """
         ttl = cache.ttl_sekunden()
         if ttl is None:
@@ -550,6 +566,8 @@ class ClockodoClient:
                 cache_schluessel,
                 ttl=ttl,
                 lader=lambda: self.entrygroups(grouping, time_since=time_since, time_until=cutoff),
+                label=cache_label,
+                fortschritt=cache_fortschritt,
             ),
             self.entrygroups(grouping, time_since=cutoff, time_until=time_until),
         )

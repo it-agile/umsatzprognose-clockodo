@@ -18,6 +18,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from .client import EntryGroupV2
+    from .fortschritt import Fortschritt
 
 from datetime import date
 
@@ -55,6 +56,7 @@ class BestandRepository:
         abgeschlossene_monate: int = 12,
         horizont_monate: int = 3,
         cache_cutoff_monate: int | None = None,
+        cache_fortschritt: Fortschritt | None = None,
     ) -> Bestand:
         """Der Ladevorgang, synchron - der Einstieg fuer Notebook und Skript.
 
@@ -69,6 +71,7 @@ class BestandRepository:
                 abgeschlossene_monate=abgeschlossene_monate,
                 horizont_monate=horizont_monate,
                 cache_cutoff_monate=cache_cutoff_monate,
+                cache_fortschritt=cache_fortschritt,
             )
         )
 
@@ -81,6 +84,7 @@ class BestandRepository:
         abgeschlossene_monate: int = 12,
         horizont_monate: int = 3,
         cache_cutoff_monate: int | None = None,
+        cache_fortschritt: Fortschritt | None = None,
     ) -> Bestand:
         """Den vollstaendigen Bestand zum Stichtag.
 
@@ -100,6 +104,10 @@ class BestandRepository:
                 :meth:`~.client.ClockodoClient.entrygroups_je_projekt_und_person` - ohne
                 aktivierten Verlaufscache (Standardfall, siehe :mod:`.cache`) ohne
                 jede Wirkung.
+            cache_fortschritt: meldet, sofern angegeben, je getroffenem Verlaufscache-
+                Zugriff (Projektanteile, Verbrauchsverlauf) eine eigene Statuszeile mit
+                dessen gemessener Dauer - ohne aktivierten Verlaufscache ohne jede
+                Wirkung, siehe :func:`~.cache.gecacht_oder_neu`.
         """
         stichtag = stichtag or date.today()
         personen = MitarbeiterRepository(self._client)
@@ -120,6 +128,7 @@ class BestandRepository:
                 self._client,
                 time_until=verbrauch_bis(stichtag),
                 cache_cutoff_monate=cache_cutoff_monate,
+                cache_fortschritt=cache_fortschritt,
             ),
             UmsatzRepository(self._client).laden_async(
                 stichtag, abgeschlossene=abgeschlossene_monate
@@ -129,6 +138,7 @@ class BestandRepository:
                 horizont_monate=horizont_monate,
                 geladen=mit_verbrauchsverlauf,
                 cache_cutoff_monate=cache_cutoff_monate,
+                cache_fortschritt=cache_fortschritt,
             ),
         )
 
@@ -154,6 +164,7 @@ class BestandRepository:
         horizont_monate: int,
         geladen: bool,
         cache_cutoff_monate: int | None = None,
+        cache_fortschritt: Fortschritt | None = None,
     ) -> list[EntryGroupV2]:
         """Der siebte Abruf - oder nichts, wenn er abgeschaltet ist.
 
@@ -168,4 +179,5 @@ class BestandRepository:
             stichtag=stichtag,
             horizont_monate=horizont_monate,
             cache_cutoff_monate=cache_cutoff_monate,
+            cache_fortschritt=cache_fortschritt,
         )

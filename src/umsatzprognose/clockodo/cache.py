@@ -33,6 +33,8 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable, Sequence
 
+    from .fortschritt import Fortschritt
+
 import hashlib
 import json
 import os
@@ -49,6 +51,19 @@ STANDARD_TTL_SEKUNDEN = 20 * 60
 STANDARD_CUTOFF_MONATE = 6
 
 VERZEICHNIS = Path.home() / ".cache" / "umsatzprognose-clockodo"
+
+
+def _dauer_text(sekunden: float) -> str:
+    """Kurze, praezise Dauer in ms oder s - ein Cache-Treffer dauert oft nur wenige
+    Millisekunden, wo die grobe Rundung von ``humanize.naturaldelta`` (siehe
+    ``darstellung.dashboard._dauer_text``) immer nur "ein Moment" anzeigen wuerde und
+    damit genau die Information verschluckt, die ein Cache-Fortschrittsbericht zeigen
+    soll: wie schnell der Zugriff auf die Festplatte gegenueber einem Netzabruf war.
+    """
+    ms = sekunden * 1000
+    if ms < 1000:
+        return f"{ms:.0f} ms"
+    return f"{sekunden:.1f} s".replace(".", ",")
 
 
 def ttl_sekunden() -> int | None:
@@ -101,17 +116,44 @@ def schluessel(grouping: Sequence[str], *, time_since: str, time_until: str) -> 
     return hashlib.sha256(roh.encode()).hexdigest()
 
 
-async def gecacht_oder_neu[T](schluessel: str, *, ttl: int, lader: Callable[[], Awaitable[T]]) -> T:
+async def gecacht_oder_neu[T](
+    schluessel: str,
+    *,
+    ttl: int,
+    lader: Callable[[], Awaitable[T]],
+    label: str = "Verlaufscache",
+    fortschritt: Fortschritt | None = None,
+) -> T:
     """Liefert den gecachten Wert, wenn er existiert und juenger als ``ttl`` Sekunden ist.
 
     Sonst wird ``lader`` aufgerufen und das (JSON-faehige) Ergebnis fuer folgende
     Aufrufe abgelegt.
+
+    ``fortschritt``, sofern angegeben, wird danach einmal mit einer Statuszeile
+    aufgerufen (Treffer oder nicht, gemessene Dauer dieses einen Zugriffs) - fuer eine
+    Fortschrittsanzeige, die auch bei einem Cache-Treffer sichtbar bleibt, statt dass der
+    ungewoehnlich schnelle "Bestand"-Schritt (siehe
+    :meth:`~umsatzprognose.darstellung.dashboard.Dashboard.laden_async`) kommentarlos
+    durchrauscht. ``label`` unterscheidet dabei, welcher der beiden Verlaufscache-Zugriffe
+    gemeint ist (Projektanteile oder Verbrauchsverlauf, siehe deren Aufrufer in
+    :mod:`.client`).
     """
     datei = VERZEICHNIS / f"{schluessel}.json"
+    start = time.perf_counter()
     if datei.exists() and (time.time() - datei.stat().st_mtime) < ttl:
-        return json.loads(datei.read_text())
+        ergebnis = json.loads(datei.read_text())
+        if fortschritt is not None:
+            fortschritt(
+                f"{label}: aus dem Cache geladen ({_dauer_text(time.perf_counter() - start)})"
+            )
+        return ergebnis
 
     ergebnis = await lader()
     VERZEICHNIS.mkdir(parents=True, exist_ok=True)
     datei.write_text(json.dumps(ergebnis))
+    if fortschritt is not None:
+        fortschritt(
+            f"{label}: frisch geladen und zwischengespeichert"
+            f" ({_dauer_text(time.perf_counter() - start)})"
+        )
     return ergebnis

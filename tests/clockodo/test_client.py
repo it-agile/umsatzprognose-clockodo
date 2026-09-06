@@ -430,6 +430,27 @@ def test_zweiter_lauf_ruft_den_historischen_teil_nicht_erneut_ab(monkeypatch, tm
     assert zeitfenster.count("2026-07-01T00:00:00Z") == 2
 
 
+def test_cache_fortschritt_meldet_label_je_teilabruf(monkeypatch, tmp_path):
+    monkeypatch.setenv(cache.TTL_ENV, "1200")
+    monkeypatch.setattr(cache, "VERZEICHNIS", tmp_path)
+    client, _ = client_mit(lambda _: httpx2.Response(200, json={"groups": []}))
+
+    zeilen: list[str] = []
+    for _ in range(2):
+        synchron(
+            client.entrygroups_je_projekt_und_monat(
+                time_until="2026-09-05T23:59:59Z",
+                cache_cutoff_monate=2,
+                cache_fortschritt=zeilen.append,
+            )
+        )
+
+    # Erster Lauf: kein Treffer (frisch geladen und abgelegt). Zweiter Lauf: Treffer.
+    assert len(zeilen) == 2
+    assert zeilen[0].startswith("Verbrauchsverlauf: frisch geladen und zwischengespeichert (")
+    assert zeilen[1].startswith("Verbrauchsverlauf: aus dem Cache geladen (")
+
+
 def test_cutoff_vor_time_since_bleibt_bei_einem_abruf(monkeypatch, tmp_path):
     """Ein sehr kurzes Fenster (Cutoff faellt vor den Beginn) spaltet nicht sinnlos."""
     monkeypatch.setenv(cache.TTL_ENV, "1200")

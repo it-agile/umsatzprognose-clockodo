@@ -95,6 +95,66 @@ def test_gecacht_oder_neu_laedt_nach_ablauf_der_ttl_neu(tmp_path, monkeypatch):
     assert ergebnis == 2
 
 
+def test_gecacht_oder_neu_meldet_treffer_mit_label(tmp_path, monkeypatch):
+    monkeypatch.setattr(cache, "VERZEICHNIS", tmp_path)
+
+    async def lader():
+        return [{"group": 1, "revenue": 10.0}]
+
+    async def zweimal():
+        await cache.gecacht_oder_neu("schluessel", ttl=60, lader=lader, label="Verbrauchsverlauf")
+        zeilen: list[str] = []
+        await cache.gecacht_oder_neu(
+            "schluessel",
+            ttl=60,
+            lader=lader,
+            label="Verbrauchsverlauf",
+            fortschritt=zeilen.append,
+        )
+        return zeilen
+
+    zeilen = asyncio.run(zweimal())
+
+    assert len(zeilen) == 1
+    assert zeilen[0].startswith("Verbrauchsverlauf: aus dem Cache geladen (")
+
+
+def test_gecacht_oder_neu_meldet_frisch_geladen_ohne_treffer(tmp_path, monkeypatch):
+    monkeypatch.setattr(cache, "VERZEICHNIS", tmp_path)
+
+    async def lader():
+        return [{"group": 1, "revenue": 10.0}]
+
+    async def einmal():
+        zeilen: list[str] = []
+        await cache.gecacht_oder_neu(
+            "schluessel",
+            ttl=60,
+            lader=lader,
+            label="Projektanteile",
+            fortschritt=zeilen.append,
+        )
+        return zeilen
+
+    zeilen = asyncio.run(einmal())
+
+    assert len(zeilen) == 1
+    assert zeilen[0].startswith("Projektanteile: frisch geladen und zwischengespeichert (")
+
+
+@pytest.mark.parametrize(
+    ("sekunden", "erwartet"),
+    [
+        (0.0042, "4 ms"),
+        (0.5, "500 ms"),
+        (1.2, "1,2 s"),
+        (65.0, "65,0 s"),
+    ],
+)
+def test_dauer_text_wechselt_zwischen_millisekunden_und_sekunden(sekunden, erwartet):
+    assert cache._dauer_text(sekunden) == erwartet
+
+
 def test_schluessel_ist_deterministisch_und_unterscheidet_zeitfenster():
     a = cache.schluessel(["projects_id"], time_since="2021-01-01", time_until="2026-01-01")
     b = cache.schluessel(["projects_id"], time_since="2021-01-01", time_until="2026-02-01")
