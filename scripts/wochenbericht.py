@@ -155,9 +155,7 @@ def diagrammtitel_und_figuren(
         ),
         (
             "Anmeldungen je Monat",
-            diagramme.anmeldungsverlauf(
-                anmeldungsverlauf_fenster, KATEGORIEN, mit_beschriftung=True
-            ),
+            diagramme.anmeldungsverlauf(anmeldungsverlauf_fenster, KATEGORIEN),
         ),
         ("Umsatztabelle", umsatztabelle_grafik(dashboard.umsatztabelle())),
     ]

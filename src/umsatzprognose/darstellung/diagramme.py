@@ -178,7 +178,7 @@ def umsatzverlauf(
                 text=tausend_euro(betrag),
                 showarrow=False,
                 yshift=10,
-                font={"color": TINTE_ZWEITRANGIG, "size": 11},
+                font={"color": TINTE_ZWEITRANGIG, "size": 13},
             )
     _legendeintrag(fig, "Abgerechnet", SERIE)
     if laufender or any(horizont_gebucht):
@@ -281,7 +281,7 @@ def _balken_beschriften(fig: go.Figure, *namen: str) -> None:
         lambda spur: spur.update(
             text=[tausend_euro(wert) for wert in spur.y],
             textposition="outside",
-            textfont={"color": TINTE_ZWEITRANGIG, "size": 11},
+            textfont={"color": TINTE_ZWEITRANGIG, "size": 13},
             cliponaxis=False,
         ),
         selector=lambda spur: spur.name in namen,
@@ -603,7 +603,7 @@ def _jahreslinien(
     *,
     werte: Callable[[list[tuple[int, float, float, float]]], list[float]],
     formatieren: Callable[[float], str],
-) -> dict[int, tuple[str, float, str]]:
+) -> dict[int, list[tuple[str, float, str]]]:
     """Zeichnet fuer jedes Jahr eine Linie in bis zu drei Abschnitten (siehe
     :data:`_LINIENABSCHNITTE`): Daten (durchgezogen, volle Deckkraft), vorlaeufige
     Daten des laufenden Monats (durchgezogen, mittlere Deckkraft) und simulierte
@@ -616,11 +616,15 @@ def _jahreslinien(
     kein Prognosehorizont in dieses Jahr faellt), entfaellt er einfach.
 
     Returns:
-        Je Jahr Beschriftung, Wert und Farbe des letzten gezeichneten Punktes - fuer
-        eine optionale Endpunkt-Beschriftung beim Aufrufer (siehe
-        :func:`_endpunkte_beschriften`), ohne sie hier selbst zu zeichnen.
+        Je Jahr eine Liste mit ein oder zwei Punkten (Beschriftung, Wert, Farbe) - fuer
+        eine optionale Beschriftung beim Aufrufer (siehe :func:`_endpunkte_beschriften`),
+        ohne sie hier selbst zu zeichnen. Traegt ein Jahr sowohl echte (volle Deckkraft)
+        als auch simulierte Punkte, sind es zwei: der letzte echte Punkt (Grenze
+        Ist/Simulation) und der letzte Punkt der Linie ueberhaupt. Ein Jahr ganz ohne
+        Simulationsanteil (jeder vergangene Jahrgang) liefert nur den einen Endpunkt,
+        um ihn nicht doppelt zu beschriften.
     """
-    letzte_punkte: dict[int, tuple[str, float, str]] = {}
+    letzte_punkte: dict[int, list[tuple[str, float, str]]] = {}
     for index, jahr in enumerate(sorted(jahre)):
         punkte = jahre[jahr]
         farbe = JAHRESFARBEN[index % len(JAHRESFARBEN)]
@@ -653,33 +657,48 @@ def _jahreslinien(
             jahr_hat_legende = True
             ende = neues_ende
 
-        letzte_punkte[jahr] = (beschriftungen[-1], y[-1], farbe)
+        # Letzter Index mit voller Deckkraft (1.0) - die Grenze zwischen echten und
+        # simulierten Punkten. -1, wenn das Jahr (nur moeglich am aktuellen
+        # Prognosehorizont) gar keinen echten Punkt traegt.
+        grenze = -1
+        for i, deck in enumerate(deckkraft_folge):
+            if deck != 1.0:
+                break
+            grenze = i
+
+        punkte_dieses_jahr = []
+        if grenze != -1 and grenze != len(punkte) - 1:
+            punkte_dieses_jahr.append((beschriftungen[grenze], y[grenze], farbe))
+        punkte_dieses_jahr.append((beschriftungen[-1], y[-1], farbe))
+        letzte_punkte[jahr] = punkte_dieses_jahr
 
     return letzte_punkte
 
 
 def _endpunkte_beschriften(
     fig: go.Figure,
-    letzte_punkte: dict[int, tuple[str, float, str]],
+    letzte_punkte: dict[int, list[tuple[str, float, str]]],
     formatieren: Callable[[float], str],
 ) -> None:
-    """Beschriftet den letzten Punkt jeder Jahres-Linie aus :func:`_jahreslinien`.
+    """Beschriftet die Punkte aus :func:`_jahreslinien` (Ist/Simulation-Grenze und/oder
+    Linienende).
 
     Gemeinsam fuer :func:`gewinn_verlust_je_jahr` und :func:`umsatzrendite_kumuliert` -
-    nur der letzte Punkt, nicht jeder einzelne Monat, sonst waere bei bis zu acht
-    Jahren auf derselben Monatsachse eine Beschriftung je Punkt unlesbar. Fuer
+    hoechstens zwei Punkte je Jahr, nicht jeder einzelne Monat, sonst waere bei bis zu
+    acht Jahren auf derselben Monatsachse eine Beschriftung je Punkt unlesbar. Fuer
     statische Bildexporte ohne Hover-Interaktivitaet (Wochenbericht).
     """
-    for jahr, (beschriftung, wert, farbe) in letzte_punkte.items():
-        fig.add_annotation(
-            x=beschriftung,
-            y=wert,
-            text=f"{jahr}: {formatieren(wert)}",
-            showarrow=False,
-            xanchor="left",
-            yshift=8,
-            font={"color": farbe, "size": 11},
-        )
+    for jahr, punkte in letzte_punkte.items():
+        for beschriftung, wert, farbe in punkte:
+            fig.add_annotation(
+                x=beschriftung,
+                y=wert,
+                text=f"{jahr}: {formatieren(wert)}",
+                showarrow=False,
+                xanchor="left",
+                yshift=8,
+                font={"color": farbe, "size": 11},
+            )
 
 
 def gewinn_verlust_monatlich(
@@ -1100,11 +1119,7 @@ def _linearer_trend(werte: Sequence[float]) -> list[float]:
 
 
 def anmeldungsverlauf(
-    verlauf: Anmeldungsverlauf,
-    kategorien: Mapping[str, Sequence[str]],
-    *,
-    hoehe: int = 420,
-    mit_beschriftung: bool = False,
+    verlauf: Anmeldungsverlauf, kategorien: Mapping[str, Sequence[str]], *, hoehe: int = 420
 ) -> go.Figure:
     """Teilnehmerzahl oeffentlicher Schulungen je Monat - wie in der internen
     ZDF-Praesentation ("Anmeldungen bleiben auf niedrigem Niveau"): eine Linie mit
@@ -1123,8 +1138,12 @@ def anmeldungsverlauf(
     gewuenschten Betrachtungszeitraum (etwa ueber
     :meth:`~umsatzprognose.domaene.anmeldung.Anmeldungsverlauf.letzte` fuer ein
     konfigurierbares Fenster wie die letzten 13 Monate) - diese Funktion zeigt ihn
-    unveraendert, ohne selbst ein Zeitfenster anzuwenden. ``mit_beschriftung`` siehe
-    :func:`umsatzverlauf`.
+    unveraendert, ohne selbst ein Zeitfenster anzuwenden.
+
+    Anders als die uebrigen Diagrammfunktionen bewusst ohne ``mit_beschriftung``: eine
+    einzelne Zahl am Ende der Gesamt-Linie hilft bei so wenigen Kategorien und Monaten
+    kaum weiter, der Hover-Tooltip reicht - siehe :func:`umsatzverlauf` fuer den
+    Parameter bei den uebrigen Diagrammen.
     """
     monate = verlauf.monate
     fig = figur(
@@ -1163,18 +1182,6 @@ def anmeldungsverlauf(
         line={"color": TINTE, "width": 2},
         marker={"size": 5, "color": TINTE},
     )
-    if mit_beschriftung:
-        # Nur die Gesamt-Linie beschriften, nicht jede Kategorie - bei mehreren
-        # Kategorien ueber 13 Monate waere eine Beschriftung je Linie unlesbar.
-        fig.add_annotation(
-            x=beschriftungen[-1],
-            y=gesamt[-1],
-            text=str(gesamt[-1]),
-            showarrow=False,
-            xanchor="left",
-            yshift=8,
-            font={"color": TINTE, "size": 11},
-        )
     fig.add_scatter(
         x=beschriftungen,
         y=_linearer_trend(gesamt),
