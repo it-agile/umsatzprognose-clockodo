@@ -302,8 +302,12 @@ def _balken_beschriften(
     nebeneinander wuerde waagerechter Text ueber dem Balken mit dem der Nachbarmonate
     ueberlappen. ``constraintext="none"``: plotly schrumpft den Text sonst automatisch,
     sobald der Balken schmal ist. Darunter waere der gedrehte Text selbst kaum lesbar -
-    dort deshalb waagerecht, schwarz und ausserhalb des Balkens, als eigene Annotation
-    (``textangle`` gilt fuer eine Balkenspur nur einheitlich, nicht je Punkt einzeln).
+    dort deshalb waagerecht und schwarz, als eigene Annotation unterhalb der Nulllinie
+    statt auf Balkenhoehe (``textangle`` gilt fuer eine Balkenspur nur einheitlich,
+    nicht je Punkt einzeln) - waagerechter Text auf Balkenhoehe wuerde sonst durch den
+    gedrehten Text eines hohen Nachbarbalkens reichen. Nur vereinzelte kleine Balken
+    brauchen ueberhaupt diese Beschriftung, der Bereich unter der Nulllinie ist deshalb
+    fast immer frei.
 
     ``uebersprungen`` (Spurname -> Monatsbeschriftungen) lässt einzelne Punkte ganz aus
     - fuer :func:`umsatzverlauf`s "Historie"-Balken des laufenden Monats, der am
@@ -333,10 +337,10 @@ def _balken_beschriften(
             if x not in ausgenommen and abs(wert) < BALKENTEXT_SCHWELLE:
                 fig.add_annotation(
                     x=x,
-                    y=wert,
+                    y=0,
                     text=tausend_euro(wert),
                     showarrow=False,
-                    yshift=10 if wert >= 0 else -10,
+                    yshift=-30,
                     font={"color": TINTE, "size": 13},
                 )
 
