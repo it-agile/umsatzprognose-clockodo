@@ -10,7 +10,7 @@ from __future__ import annotations
 import asyncio
 from datetime import date
 
-import httpx
+import httpx2
 import pytest
 
 from conftest import CREDS, client_mit
@@ -35,9 +35,9 @@ def treffpunkt_fuer(anzahl: int):
     """Ein Handler, der jeden Request warten laesst, bis ``anzahl`` davon offen sind."""
     schranke = asyncio.Barrier(anzahl)
 
-    async def handler(request: httpx.Request, koerper: dict) -> httpx.Response:
+    async def handler(request: httpx2.Request, koerper: dict) -> httpx2.Response:
         await asyncio.wait_for(schranke.wait(), TIMEOUT)
-        return httpx.Response(200, json=koerper)
+        return httpx2.Response(200, json=koerper)
 
     return handler
 
@@ -71,7 +71,7 @@ def test_alle_abrufe_eines_bestands_laufen_gleichzeitig(
         ("projects_id", "month"): projekt_monats_antwort,
     }
 
-    def handler(request: httpx.Request):
+    def handler(request: httpx2.Request):
         pfad = request.url.path.removeprefix("/api")
         if pfad == "/v2/entrygroups":
             koerper = nach_gruppierung[tuple(request.url.params.get_list("grouping[]"))]
@@ -90,11 +90,11 @@ def test_folgeseiten_einer_paginierung_laufen_gleichzeitig():
     """Seite 1 muss allein kommen, Seite 2 und 3 nicht mehr nacheinander."""
     warten = treffpunkt_fuer(2)
 
-    def handler(request: httpx.Request):
+    def handler(request: httpx2.Request):
         seite = int(dict(request.url.params)["page"])
         koerper = {"paging": {"current_page": seite, "count_pages": 3}, "data": [{"id": seite}]}
         if seite == 1:
-            return httpx.Response(200, json=koerper)
+            return httpx2.Response(200, json=koerper)
         return warten(request, koerper)
 
     client, _ = client_mit(handler)
@@ -111,12 +111,12 @@ def test_ein_fehler_bricht_die_uebrigen_abrufe_ab():
     """
     fertig_gelaufen: list[str] = []
 
-    async def handler(request: httpx.Request) -> httpx.Response:
+    async def handler(request: httpx2.Request) -> httpx2.Response:
         if request.url.path.endswith("/v2/entrygroups"):
-            return httpx.Response(400, json={"error": {"message": "Unknown group option"}})
+            return httpx2.Response(400, json={"error": {"message": "Unknown group option"}})
         await asyncio.sleep(TIMEOUT)
         fertig_gelaufen.append(request.url.path)
-        return httpx.Response(200, json={"data": []})
+        return httpx2.Response(200, json={"data": []})
 
     client, _ = client_mit(handler)
 
@@ -150,7 +150,7 @@ def test_laden_funktioniert_in_einem_laufenden_event_loop(
         "/v2/usersNonbusinessDays": feiertage_antwort,
     }
     client, _ = client_mit(
-        lambda request: httpx.Response(200, json=antworten[request.url.path.removeprefix("/api")])
+        lambda request: httpx2.Response(200, json=antworten[request.url.path.removeprefix("/api")])
     )
 
     async def wie_in_einer_notebook_zelle():
@@ -177,7 +177,7 @@ def test_zweiter_ladevorgang_laeuft_im_neuen_loop():
     ``asyncio.Semaphore`` wuerde genau hier mit einem ``RuntimeError`` brechen.
     """
     client = ClockodoClient(
-        CREDS, transport=httpx.MockTransport(lambda _: httpx.Response(200, json={"data": []}))
+        CREDS, transport=httpx2.MockTransport(lambda _: httpx2.Response(200, json={"data": []}))
     )
     assert synchron(client.customers()) == ([], {})
     assert synchron(client.customers()) == ([], {})

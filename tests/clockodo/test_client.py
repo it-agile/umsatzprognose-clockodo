@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from datetime import date
 
-import httpx
+import httpx2
 import pytest
 
 from conftest import CREDS, client_mit
@@ -29,7 +29,7 @@ def test_alle_seiten_werden_eingesammelt():
 
     def handler(request):
         seite = int(dict(request.url.params)["page"])
-        return httpx.Response(
+        return httpx2.Response(
             200,
             json={
                 "paging": {"current_page": seite, "count_pages": 3},
@@ -49,7 +49,7 @@ def test_alle_seiten_werden_eingesammelt():
 
 
 def test_ohne_paging_bleibt_es_bei_einer_seite():
-    client, requests = client_mit(lambda _: httpx.Response(200, json={"data": [{"id": 7}]}))
+    client, requests = client_mit(lambda _: httpx2.Response(200, json={"data": [{"id": 7}]}))
     projekte, paging = synchron(client.projects())
 
     assert [p["id"] for p in projekte] == [7]
@@ -58,7 +58,7 @@ def test_ohne_paging_bleibt_es_bei_einer_seite():
 
 
 def test_alle_drei_pflichtheader_gehen_mit():
-    client, requests = client_mit(lambda _: httpx.Response(200, json={"data": []}))
+    client, requests = client_mit(lambda _: httpx2.Response(200, json={"data": []}))
     synchron(client.projects())
 
     header = requests[0].headers
@@ -70,7 +70,7 @@ def test_alle_drei_pflichtheader_gehen_mit():
 def test_entrygroups_verlangen_arrayform_und_volle_zeitangabe():
     # grouping=… ohne Klammern antwortet mit "Array expected.", ein reines Datum mit
     # "Wrong format" - beides an 400ern belegt.
-    client, requests = client_mit(lambda _: httpx.Response(200, json={"groups": []}))
+    client, requests = client_mit(lambda _: httpx2.Response(200, json={"groups": []}))
     synchron(client.entrygroups_je_projekt_und_person())
 
     params = requests[0].url.params
@@ -80,7 +80,7 @@ def test_entrygroups_verlangen_arrayform_und_volle_zeitangabe():
 
 
 def test_monatsgruppierung_heisst_month_im_singular():
-    client, requests = client_mit(lambda _: httpx.Response(200, json={"groups": []}))
+    client, requests = client_mit(lambda _: httpx2.Response(200, json={"groups": []}))
     synchron(
         client.entrygroups_je_monat(
             time_since="2025-09-01T00:00:00Z", time_until="2026-08-31T23:59:59Z"
@@ -92,7 +92,7 @@ def test_monatsgruppierung_heisst_month_im_singular():
 
 def test_doppelgruppierung_nach_projekt_und_monat():
     # die zuerst genannte Gruppierung ist die aeussere Ebene.
-    client, requests = client_mit(lambda _: httpx.Response(200, json={"groups": []}))
+    client, requests = client_mit(lambda _: httpx2.Response(200, json={"groups": []}))
     synchron(client.entrygroups_je_projekt_und_monat(time_until="2026-10-31T23:59:59Z"))
 
     params = requests[0].url.params
@@ -101,7 +101,7 @@ def test_doppelgruppierung_nach_projekt_und_monat():
 
 
 def test_billable_filter_wird_nur_bei_angabe_gesetzt():
-    client, requests = client_mit(lambda _: httpx.Response(200, json={"groups": []}))
+    client, requests = client_mit(lambda _: httpx2.Response(200, json={"groups": []}))
     synchron(client.entrygroups(["users_id"]))
     synchron(client.entrygroups(["users_id"], billable=1))
 
@@ -110,7 +110,7 @@ def test_billable_filter_wird_nur_bei_angabe_gesetzt():
 
 
 def test_entrygroups_je_person_und_monat_filtert_und_gruppiert_doppelt():
-    client, requests = client_mit(lambda _: httpx.Response(200, json={"groups": []}))
+    client, requests = client_mit(lambda _: httpx2.Response(200, json={"groups": []}))
     synchron(
         client.entrygroups_je_person_und_monat(
             billable=2, time_since="2026-01-01T00:00:00Z", time_until="2026-09-30T23:59:59Z"
@@ -139,7 +139,7 @@ def test_horizontende_ist_die_dritte_obere_zeitgrenze():
 
 
 def test_sollarbeitszeit_kommt_vom_unversionierten_endpunkt():
-    client, requests = client_mit(lambda _: httpx.Response(200, json={"targethours": []}))
+    client, requests = client_mit(lambda _: httpx2.Response(200, json={"targethours": []}))
     synchron(client.targethours())
 
     # Die Basis-URL endet auf /api, der Endpunkt haengt ohne Versionsteil daran.
@@ -148,7 +148,7 @@ def test_sollarbeitszeit_kommt_vom_unversionierten_endpunkt():
 
 def test_abwesenheiten_filtern_ueber_deepobject_jahresparameter():
     # filter[year], nicht year direkt - deepObject-Form wie bei grouping[].
-    client, requests = client_mit(lambda _: httpx.Response(200, json={"data": []}))
+    client, requests = client_mit(lambda _: httpx2.Response(200, json={"data": []}))
     synchron(client.absences(2026))
 
     assert requests[0].url.path == "/api/v4/absences"
@@ -158,7 +158,7 @@ def test_abwesenheiten_filtern_ueber_deepobject_jahresparameter():
 def test_feiertage_filtern_ueber_einfaches_jahr_und_sind_paginiert():
     # year direkt, kein deepObject wie bei absences - und mit paging, anders als dort.
     client, requests = client_mit(
-        lambda _: httpx.Response(
+        lambda _: httpx2.Response(
             200,
             json={
                 "paging": {"current_page": 1, "count_pages": 1, "count_items": 0},
@@ -176,7 +176,7 @@ def test_fehler_traegt_den_antwortkoerper():
     # raise_for_status wuerde genau die Begruendung verwerfen, die den beanstandeten
     # Parameter benennt.
     koerper = {"error": {"message": "Unknown group option", "fields": ["grouping"]}}
-    client, _ = client_mit(lambda _: httpx.Response(400, json=koerper))
+    client, _ = client_mit(lambda _: httpx2.Response(400, json=koerper))
 
     with pytest.raises(ClockodoError) as fehler:
         synchron(client.entrygroups(["projects"]))
@@ -225,7 +225,7 @@ def test_monatsende_traegt_die_laenge_des_monats(tag, erwartet):
 
 def test_obere_zeitgrenze_wird_je_aufruf_bestimmt():
     """Kein eingefrorener Wert."""
-    client, requests = client_mit(lambda _: httpx.Response(200, json={"groups": []}))
+    client, requests = client_mit(lambda _: httpx2.Response(200, json={"groups": []}))
     synchron(client.entrygroups(["projects_id"]))
     assert dict(requests[0].url.params)["time_until"] == verbrauch_bis()
 
@@ -296,7 +296,7 @@ def test_entrygroups_zusammenfuehren_summiert_je_schluessel_auch_in_untergruppen
 
 def test_ohne_cache_umgebungsvariable_bleibt_es_bei_einem_abruf(monkeypatch):
     monkeypatch.delenv(cache.TTL_ENV, raising=False)
-    client, requests = client_mit(lambda _: httpx.Response(200, json={"groups": []}))
+    client, requests = client_mit(lambda _: httpx2.Response(200, json={"groups": []}))
 
     synchron(client.entrygroups_je_projekt_und_monat(time_until="2026-09-05T23:59:59Z"))
 
@@ -353,7 +353,7 @@ def test_mit_aktiviertem_cache_wird_am_cutoff_gespalten_und_wieder_zusammengefue
     }
 
     def handler(request):
-        return httpx.Response(200, json=antworten[request.url.params["time_since"]])
+        return httpx2.Response(200, json=antworten[request.url.params["time_since"]])
 
     client, requests = client_mit(handler)
 
@@ -379,7 +379,7 @@ def test_mit_aktiviertem_cache_wird_am_cutoff_gespalten_und_wieder_zusammengefue
 def test_zweiter_lauf_ruft_den_historischen_teil_nicht_erneut_ab(monkeypatch, tmp_path):
     monkeypatch.setenv(cache.TTL_ENV, "1200")
     monkeypatch.setattr(cache, "VERZEICHNIS", tmp_path)
-    client, requests = client_mit(lambda _: httpx.Response(200, json={"groups": []}))
+    client, requests = client_mit(lambda _: httpx2.Response(200, json={"groups": []}))
 
     for _ in range(2):
         synchron(
@@ -399,7 +399,7 @@ def test_cutoff_vor_time_since_bleibt_bei_einem_abruf(monkeypatch, tmp_path):
     """Ein sehr kurzes Fenster (Cutoff faellt vor den Beginn) spaltet nicht sinnlos."""
     monkeypatch.setenv(cache.TTL_ENV, "1200")
     monkeypatch.setattr(cache, "VERZEICHNIS", tmp_path)
-    client, requests = client_mit(lambda _: httpx.Response(200, json={"groups": []}))
+    client, requests = client_mit(lambda _: httpx2.Response(200, json={"groups": []}))
 
     synchron(
         client.entrygroups_je_projekt_und_monat(

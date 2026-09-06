@@ -10,11 +10,15 @@ von ``schulungen``/``kosten`` abgedeckt, die sie aufrufen.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from umsatzprognose.google_sheets.client import (
+    TOKEN_PFAD_STANDARD,
     _lokale_credentials,
     kopfzeile_finden,
+    token_pfad,
     zelle,
     zelle_an,
 )
@@ -24,6 +28,17 @@ from umsatzprognose.google_sheets.config import MissingCredentialsError
 def test_lokale_credentials_ohne_oauth_client_json_wirft():
     with pytest.raises(MissingCredentialsError, match="GOOGLE_OAUTH_CLIENT_JSON"):
         _lokale_credentials(None)
+
+
+def test_token_pfad_ohne_env_ist_der_standardpfad(monkeypatch):
+    monkeypatch.delenv("GOOGLE_OAUTH_TOKEN_PFAD", raising=False)
+    assert token_pfad() == TOKEN_PFAD_STANDARD
+
+
+def test_token_pfad_liest_env(monkeypatch, tmp_path):
+    eigener_pfad = tmp_path / "token.json"
+    monkeypatch.setenv("GOOGLE_OAUTH_TOKEN_PFAD", str(eigener_pfad))
+    assert token_pfad() == Path(eigener_pfad)
 
 
 def test_kopfzeile_finden_findet_erste_zeile_mit_allen_pflichtspalten():
