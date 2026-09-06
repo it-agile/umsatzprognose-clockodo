@@ -114,6 +114,11 @@ def posten(
         channel=kanal,
         text=f"Zahlen, Daten, Fakten - Stand {dashboard.stichtag:%d.%m.%Y}",
     )
+    # chat.postMessage loest eine Nutzer-ID im DM-Fall selbst zur eigentlichen
+    # Conversation-ID auf (antwortet mit "channel") - die neueren Datei-Upload-Endpunkte
+    # pruefen channel_id dagegen streng gegen "^[CGDZ][A-Z0-9]{8,}$" und lehnen eine
+    # Nutzer-ID ("U...") ab. Deshalb ab hier die aufgeloeste ID statt kanal verwenden.
+    channel_id = einstieg["channel"]
     titel_figuren = diagrammtitel_und_figuren(
         dashboard, gewinn_verlust_monate=gewinn_verlust_monate
     )
@@ -126,7 +131,7 @@ def posten(
     )
     for (titel, _figur), bild in zip(titel_figuren, bilder, strict=True):
         client.files_upload_v2(
-            channel=kanal,
+            channel=channel_id,
             thread_ts=einstieg["ts"],
             file=str(bild),
             title=titel,
@@ -134,7 +139,7 @@ def posten(
 
     umsatztabelle = dashboard.umsatztabelle().to_string(index=False)
     client.chat_postMessage(
-        channel=kanal,
+        channel=channel_id,
         thread_ts=einstieg["ts"],
         text=f"Umsatz je Monat\n```{umsatztabelle}```",
     )
