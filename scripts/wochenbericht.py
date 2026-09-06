@@ -146,6 +146,11 @@ def posten(
         text=f"Umsatz je Monat\n```{umsatztabelle}```",
     )
 
+    # Ohne diese Zeile bliebe ein erfolgreicher Lauf im Actions-Log unauffindbar, wohin
+    # er tatsaechlich gepostet hat - channel_id kann sich beim DM-Versand von der
+    # eingetragenen SLACK_CHANNEL_ID unterscheiden, siehe oben.
+    print(f"Wochenbericht gepostet in Channel {channel_id} (thread_ts={einstieg['ts']}).")
+
 
 def main() -> None:
     horizont_monate = _optionale_ganzzahl(HORIZONT_MONATE_VAR, STANDARD_HORIZONT_MONATE)
