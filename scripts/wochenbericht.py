@@ -10,10 +10,12 @@ Zugangsdaten kommen ausschließlich aus Umgebungsvariablen (``ClockodoCredential
 aus_umgebung()`` bzw. ``GoogleSheetsConfig.aus_umgebung()``) - in der Action als
 Secrets, siehe .github/workflows/wochenbericht.yml.
 
-Der Post besteht aus zwei Nachrichten im selben Thread: die erste ("Zahlen, Daten,
-Fakten") trägt alle Diagramme als Bilder, die zweite die Umsatztabelle als Text -
-dieselben Ansichten wie in notebooks/01_dashboard.ipynb, notebooks/00_datencheck.ipynb
-und notebooks/03_schulungsanmeldungen.ipynb.
+Ein einziger Post ("Zahlen, Daten, Fakten") trägt alle Diagramme als Bilder,
+einschließlich der Umsatztabelle als gerendertes Bild statt als Text - dieselben
+Ansichten wie in notebooks/01_dashboard.ipynb, notebooks/00_datencheck.ipynb und
+notebooks/03_schulungsanmeldungen.ipynb. Ein einzelner Slack-API-Aufruf
+(``files_upload_v2`` mit ``file_uploads``) hängt dabei alle Bilder gemeinsam an
+dieselbe Nachricht, statt je Bild eine eigene Unternachricht zu erzeugen.
 
 ``WOCHENBERICHT_HORIZONT_MONATE`` und ``WOCHENBERICHT_GEWINN_VERLUST_MONATE`` sind
 optional - ohne gesetztes Secret gelten dieselben Standardwerte wie in den Notebooks
@@ -23,15 +25,22 @@ optional - ohne gesetztes Secret gelten dieselben Standardwerte wie in den Noteb
 from __future__ import annotations
 
 import os
+import re
 import tempfile
 from pathlib import Path
+from typing import TYPE_CHECKING
 
+if TYPE_CHECKING:
+    import pandas as pd
+
+import plotly.graph_objects as go
 import plotly.io as pio
 from slack_sdk import WebClient
 
 from umsatzprognose import Dashboard, SchulungenRepository
 from umsatzprognose.darstellung import diagramme
 from umsatzprognose.darstellung.dashboard import STANDARD_GEWINN_VERLUST_MONATE
+from umsatzprognose.darstellung.gestaltung import FLAECHE, SCHRIFT, SERIE, TINTE, figur
 
 SLACK_CHANNEL_VAR = "SLACK_CHANNEL_ID"
 SLACK_TOKEN_VAR = "SLACK_BOT_TOKEN"
@@ -39,6 +48,13 @@ HORIZONT_MONATE_VAR = "WOCHENBERICHT_HORIZONT_MONATE"
 GEWINN_VERLUST_MONATE_VAR = "WOCHENBERICHT_GEWINN_VERLUST_MONATE"
 
 STANDARD_HORIZONT_MONATE = 3
+
+# Slacks Datei-Upload-Endpunkt (anders als chat.postMessage, das eine Nutzer-ID beim
+# DM-Versand selbst zur Conversation-ID aufloest) verlangt bereits eine echte
+# Channel-/Conversation-ID. Wer zu Testzwecken an sich selbst postet, braucht deshalb
+# die ID der DM-Konversation (Slack-Client: Konversation oeffnen, "Copy link" - der
+# "D..."-Teil der URL), nicht die eigene Mitglieds-ID ("U...").
+_CHANNEL_ID_MUSTER = re.compile(r"^[CGDZ][A-Z0-9]{8,}$")
 
 # Deckt sich mit "monate_fenster"/"ab_jahr" in notebooks/03_schulungsanmeldungen.ipynb -
 # derselbe Betrachtungszeitraum für den Anmeldungsverlauf, hier ohne eigenes Secret,
@@ -75,6 +91,40 @@ KATEGORIEN: dict[str, list[str]] = {
 }
 
 
+def umsatztabelle_grafik(tabelle: pd.DataFrame) -> go.Figure:
+    """Dieselbe Monatstabelle als Bild statt als Text.
+
+    Slack kann eine eingebettete Tabelle nicht darstellen - ein monospace-Codeblock
+    (die vorige Lösung) ist auf Mobilgeräten und bei vielen Spalten kaum lesbar. Kein
+    Teil von :mod:`umsatzprognose.darstellung.tabellen`/``diagramme`` (dort bewusst
+    pandas bzw. plotly getrennt, siehe deren Modul-Docstrings) - dieses Skript steht
+    ohnehin schon außerhalb des Pakets, siehe Moduldocstring oben.
+    """
+    zeilenhoehe = 26
+    fig = figur("Umsatz je Monat", hoehe=70 + zeilenhoehe * (len(tabelle) + 1))
+    ausrichtung = ["left"] + ["right"] * (len(tabelle.columns) - 1)
+    fig.add_trace(
+        go.Table(
+            header={
+                "values": [f"<b>{spalte}</b>" for spalte in tabelle.columns],
+                "fill_color": SERIE,
+                "font": {"color": "#ffffff", "family": SCHRIFT, "size": 13},
+                "align": ausrichtung,
+                "height": 30,
+            },
+            cells={
+                "values": [tabelle[spalte] for spalte in tabelle.columns],
+                "fill_color": FLAECHE,
+                "font": {"color": TINTE, "family": SCHRIFT, "size": 12},
+                "align": ausrichtung,
+                "height": zeilenhoehe,
+            },
+        )
+    )
+    fig.update_layout(margin={"l": 12, "r": 12, "t": 40, "b": 12})
+    return fig
+
+
 def diagrammtitel_und_figuren(
     dashboard: Dashboard, *, gewinn_verlust_monate: int | None
 ) -> list[tuple[str, object]]:
@@ -99,6 +149,7 @@ def diagrammtitel_und_figuren(
             "Anmeldungen je Monat",
             diagramme.anmeldungsverlauf(anmeldungsverlauf_fenster, KATEGORIEN),
         ),
+        ("Umsatztabelle", umsatztabelle_grafik(dashboard.umsatztabelle())),
     ]
 
 
@@ -110,15 +161,14 @@ def posten(
     *,
     gewinn_verlust_monate: int | None,
 ) -> None:
-    einstieg = client.chat_postMessage(
-        channel=kanal,
-        text=f"Zahlen, Daten, Fakten - Stand {dashboard.stichtag:%d.%m.%Y}",
-    )
-    # chat.postMessage loest eine Nutzer-ID im DM-Fall selbst zur eigentlichen
-    # Conversation-ID auf (antwortet mit "channel") - die neueren Datei-Upload-Endpunkte
-    # pruefen channel_id dagegen streng gegen "^[CGDZ][A-Z0-9]{8,}$" und lehnen eine
-    # Nutzer-ID ("U...") ab. Deshalb ab hier die aufgeloeste ID statt kanal verwenden.
-    channel_id = einstieg["channel"]
+    if not _CHANNEL_ID_MUSTER.match(kanal):
+        raise RuntimeError(
+            f"{SLACK_CHANNEL_VAR}={kanal!r} sieht nicht nach einer Channel-/Conversation-ID "
+            "aus (erwartet z. B. 'C0123456789' oder 'D0123456789'). Für einen DM-Test an "
+            "sich selbst die ID der DM-Konversation verwenden (Slack: Konversation öffnen, "
+            "„Copy link“ - der Teil nach der letzten '/'), nicht die eigene Mitglieds-ID."
+        )
+
     titel_figuren = diagrammtitel_und_figuren(
         dashboard, gewinn_verlust_monate=gewinn_verlust_monate
     )
@@ -131,25 +181,19 @@ def posten(
     pio.write_images(
         fig=[figur for _titel, figur in titel_figuren], file=bilder, width=1400, height=800, scale=2
     )
-    for (titel, _figur), bild in zip(titel_figuren, bilder, strict=True):
-        client.files_upload_v2(
-            channel=channel_id,
-            thread_ts=einstieg["ts"],
-            file=str(bild),
-            title=titel,
-        )
 
-    umsatztabelle = dashboard.umsatztabelle().to_string(index=False)
-    client.chat_postMessage(
-        channel=channel_id,
-        thread_ts=einstieg["ts"],
-        text=f"Umsatz je Monat\n```{umsatztabelle}```",
+    # file_uploads statt einer Schleife aus einzelnen files_upload_v2-Aufrufen: so
+    # haengen alle Bilder gemeinsam an einer Nachricht (initial_comment), statt je Bild
+    # eine eigene Unternachricht im Thread zu erzeugen.
+    client.files_upload_v2(
+        channel=kanal,
+        initial_comment=f"Zahlen, Daten, Fakten - Stand {dashboard.stichtag:%d.%m.%Y}",
+        file_uploads=[
+            {"file": str(bild), "title": titel}
+            for (titel, _figur), bild in zip(titel_figuren, bilder, strict=True)
+        ],
     )
-
-    # Ohne diese Zeile bliebe ein erfolgreicher Lauf im Actions-Log unauffindbar, wohin
-    # er tatsaechlich gepostet hat - channel_id kann sich beim DM-Versand von der
-    # eingetragenen SLACK_CHANNEL_ID unterscheiden, siehe oben.
-    print(f"Wochenbericht gepostet in Channel {channel_id} (thread_ts={einstieg['ts']}).")
+    print(f"Wochenbericht gepostet in Channel {kanal}.")
 
 
 def main() -> None:
