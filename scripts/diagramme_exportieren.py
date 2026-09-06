@@ -90,6 +90,16 @@ DIAGRAMME_DASHBOARD = {
     "auslastung-je-mitarbeiter": Dashboard.auslastung_je_mitarbeiter,
 }
 
+# Diese vier kennen "mit_beschriftung" (siehe deren Dashboard-Methoden) - die uebrigen
+# (kennzahlen, restvolumen-je-projekt, kapazitaet-*, auslastung-je-mitarbeiter) haben
+# den Wert entweder schon fest eingezeichnet oder brauchen ihn nicht.
+MIT_BESCHRIFTUNG_FAEHIG = {
+    "umsatzverlauf",
+    "gewinn-verlust-monatlich",
+    "gewinn-verlust-je-jahr",
+    "umsatzrendite-kumuliert",
+}
+
 ALLE_DIAGRAMME = sorted({*DIAGRAMME_DASHBOARD, DIAGRAMM_ANMELDUNGSVERLAUF})
 
 
@@ -159,18 +169,32 @@ def _anmeldungsverlauf_figur(*, stichtag: date, monate_fenster: int) -> go.Figur
 
 
 def _figuren(
-    namen: list[str], *, stichtag: date | None, horizont_monate: int, monate_fenster: int
+    namen: list[str],
+    *,
+    stichtag: date | None,
+    horizont_monate: int,
+    monate_fenster: int,
+    ausgabeformat: str,
 ) -> dict[str, go.Figure]:
     """Je angefordertem Namen die fertige Figur - laedt Dashboard bzw. Anmeldungsverlauf
-    nur, wenn tatsaechlich ein Diagramm der jeweiligen Quelle angefordert ist."""
+    nur, wenn tatsaechlich ein Diagramm der jeweiligen Quelle angefordert ist.
+
+    ``html`` bleibt interaktiv (Hover zeigt den Wert), ``png``/``svg`` sind statische
+    Bilder ohne Hover - wie im Wochenbericht (``scripts/wochenbericht.py``) bekommen die
+    dafuer geeigneten Diagramme dort zusaetzlich den Wert als Text.
+    """
     figuren: dict[str, go.Figure] = {}
+    mit_beschriftung = ausgabeformat != "html"
 
     dashboard_namen = [name for name in namen if name in DIAGRAMME_DASHBOARD]
     if dashboard_namen:
         dashboard = Dashboard.laden(stichtag=stichtag, horizont_monate=horizont_monate)
         dashboard.simuliere(monate=horizont_monate)
         for name in dashboard_namen:
-            figuren[name] = DIAGRAMME_DASHBOARD[name](dashboard)
+            kwargs = (
+                {"mit_beschriftung": mit_beschriftung} if name in MIT_BESCHRIFTUNG_FAEHIG else {}
+            )
+            figuren[name] = DIAGRAMME_DASHBOARD[name](dashboard, **kwargs)
 
     if DIAGRAMM_ANMELDUNGSVERLAUF in namen:
         figuren[DIAGRAMM_ANMELDUNGSVERLAUF] = _anmeldungsverlauf_figur(
@@ -207,6 +231,7 @@ def main(argv: list[str]) -> int:
         stichtag=args.stichtag,
         horizont_monate=args.horizont_monate,
         monate_fenster=args.monate_fenster,
+        ausgabeformat=args.format,
     )
     pfade = exportieren(figuren, namen, args.ausgabeverzeichnis, args.format)
 
