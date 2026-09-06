@@ -178,7 +178,7 @@ def umsatzverlauf(
                 text=tausend_euro(betrag),
                 showarrow=False,
                 yshift=10,
-                font={"color": TINTE_ZWEITRANGIG, "size": 13},
+                font={"color": TINTE_ZWEITRANGIG, "size": 11},
             )
     _legendeintrag(fig, "Abgerechnet", SERIE)
     if laufender or any(horizont_gebucht):
@@ -276,6 +276,10 @@ def _balken_beschriften(fig: go.Figure, *namen: str) -> None:
     berechnen. Spuren, die gar nicht gezeichnet wurden (z. B. "Kosten" ohne
     Kostenplan), werden stillschweigend uebersprungen. Fuer statische Bildexporte ohne
     Hover-Interaktivitaet (Wochenbericht).
+
+    ``constraintext="none"``: plotly schrumpft "outside"-Balkentext sonst automatisch,
+    sobald der Balken schmal ist (mehrere Balkengruppen nebeneinander, viele Monate) -
+    die gesetzte Schriftgroesse waere dann trotzdem kaum lesbar.
     """
     fig.for_each_trace(
         lambda spur: spur.update(
@@ -283,6 +287,7 @@ def _balken_beschriften(fig: go.Figure, *namen: str) -> None:
             textposition="outside",
             textfont={"color": TINTE_ZWEITRANGIG, "size": 13},
             cliponaxis=False,
+            constraintext="none",
         ),
         selector=lambda spur: spur.name in namen,
     )
@@ -616,20 +621,27 @@ def _jahreslinien(
     kein Prognosehorizont in dieses Jahr faellt), entfaellt er einfach.
 
     Returns:
-        Je Jahr eine Liste mit ein oder zwei Punkten (Beschriftung, Wert, Farbe) - fuer
-        eine optionale Beschriftung beim Aufrufer (siehe :func:`_endpunkte_beschriften`),
-        ohne sie hier selbst zu zeichnen. Traegt ein Jahr sowohl echte (volle Deckkraft)
-        als auch simulierte Punkte, sind es zwei: der letzte echte Punkt (Grenze
-        Ist/Simulation) und der letzte Punkt der Linie ueberhaupt. Ein Jahr ganz ohne
-        Simulationsanteil (jeder vergangene Jahrgang) liefert nur den einen Endpunkt,
-        um ihn nicht doppelt zu beschriften.
+        Je Jahr eine Liste von Punkten (Beschriftung, Wert, Farbe) - fuer eine optionale
+        Beschriftung beim Aufrufer (siehe :func:`_endpunkte_beschriften`), ohne sie hier
+        selbst zu zeichnen. Dieselben Monate fuer jedes Jahr: die Vereinigung aus dem
+        letzten Punkt jeder Linie und - traegt ein Jahr sowohl echte (volle Deckkraft)
+        als auch simulierte Punkte - der Grenze zwischen beiden (z. B. der laufende
+        Monat des aktuellen Jahres). Andere Jahre zeigen an dieser Grenze ihren eigenen
+        Wert desselben Kalendermonats, statt dort leer zu bleiben - erst das macht die
+        Zahlen zwischen den Jahren vergleichbar.
     """
-    letzte_punkte: dict[int, list[tuple[str, float, str]]] = {}
+    beschriftungen_je_jahr: dict[int, list[str]] = {}
+    werte_je_jahr: dict[int, list[float]] = {}
+    monate_je_jahr: dict[int, list[int]] = {}
+    farbe_je_jahr: dict[int, str] = {}
+    eigene_monate_je_jahr: dict[int, set[int]] = {}
+
     for index, jahr in enumerate(sorted(jahre)):
         punkte = jahre[jahr]
         farbe = JAHRESFARBEN[index % len(JAHRESFARBEN)]
         beschriftungen = [MONATSNAMEN[monat - 1] for monat, *_rest in punkte]
         y = werte(punkte)
+        monate = [monat for monat, *_rest in punkte]
         deckkraft_folge = [deck for *_rest, deck in punkte]
 
         ende = 0
@@ -666,13 +678,28 @@ def _jahreslinien(
                 break
             grenze = i
 
-        punkte_dieses_jahr = []
-        if grenze != -1 and grenze != len(punkte) - 1:
-            punkte_dieses_jahr.append((beschriftungen[grenze], y[grenze], farbe))
-        punkte_dieses_jahr.append((beschriftungen[-1], y[-1], farbe))
-        letzte_punkte[jahr] = punkte_dieses_jahr
+        eigene_monate = {monate[-1]}
+        if grenze not in (-1, len(punkte) - 1):
+            eigene_monate.add(monate[grenze])
 
-    return letzte_punkte
+        beschriftungen_je_jahr[jahr] = beschriftungen
+        werte_je_jahr[jahr] = y
+        monate_je_jahr[jahr] = monate
+        farbe_je_jahr[jahr] = farbe
+        eigene_monate_je_jahr[jahr] = eigene_monate
+
+    alle_monate: set[int] = set()
+    for eigene_monate in eigene_monate_je_jahr.values():
+        alle_monate |= eigene_monate
+
+    return {
+        jahr: [
+            (beschriftungen_je_jahr[jahr][i], werte_je_jahr[jahr][i], farbe_je_jahr[jahr])
+            for i, monat in enumerate(monate_je_jahr[jahr])
+            if monat in alle_monate
+        ]
+        for jahr in jahre
+    }
 
 
 def _endpunkte_beschriften(
