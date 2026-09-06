@@ -32,6 +32,7 @@ if TYPE_CHECKING:
     import plotly.graph_objects as go
 
 import plotly.io as pio
+from tqdm import tqdm
 
 from umsatzprognose import Dashboard
 from umsatzprognose.darstellung import diagramme
@@ -168,6 +169,42 @@ def _anmeldungsverlauf_figur(*, stichtag: date, monate_fenster: int) -> go.Figur
     return diagramme.anmeldungsverlauf(fenster, STANDARD_KATEGORIEN)
 
 
+SCHRITTE_DASHBOARD_LADEN = ("Bestand", "Schulungsplan", "Kostenplan", "Auslastung")
+# Ein je Schritt eindeutiger Textbaustein aus dessen fertiger Statuszeile (siehe
+# Dashboard.laden_async) - daran erkennt _melden, welchem der vier Platzhalter-Balken
+# eine ankommende fortschritt()-Meldung zuzuordnen ist. Verlaufscache-Meldungen (siehe
+# cache.gecacht_oder_neu) passen auf keinen dieser Bausteine und werden stattdessen
+# einfach als zusaetzliche Zeile ausgegeben - das ist die Vereinheitlichung von
+# fortschritt und dem frueheren eigenen cache_fortschritt in Dashboard.laden().
+_SCHRITT_MUSTER = {
+    "Bestand": "Bestand geladen",
+    "Schulungsplan": "Schulung(en) geladen",
+    "Kostenplan": "Kostenprognose geladen",
+    "Auslastung": "Auslastungsmonat(e) geladen",
+}
+
+
+def _platzhalter_balken(desc: str, *, position: int) -> tqdm:
+    """Eine eigene Zeile fuer einen von mehreren gleichzeitig ausstehenden Schritten -
+    Platzhalter, bis er fertig ist, siehe :func:`_balken_ersetzen`.
+
+    Wie ``rustup update`` es fuer mehrere gleichzeitig synchronisierte Toolchains macht:
+    alle ausstehenden Schritte stehen von Anfang an da, jeder in seiner eigenen Zeile;
+    ihr Balken verschwindet zugunsten des fertigen Textes, sobald der jeweilige Schritt
+    da ist - unabhaengig davon, ob die Schritte technisch nacheinander oder gleichzeitig
+    ablaufen (siehe Aufrufer).
+    """
+    return tqdm(total=1, desc=desc, bar_format="{desc} {bar}", position=position, leave=True)
+
+
+def _balken_ersetzen(balken: tqdm, text: str) -> None:
+    """Den Platzhalter-Balken eines Schritts durch seinen fertigen Text ersetzen."""
+    balken.bar_format = "{desc}"
+    balken.set_description_str(text)
+    balken.update(1)
+    balken.close()
+
+
 def _figuren(
     namen: list[str],
     *,
@@ -188,8 +225,33 @@ def _figuren(
 
     dashboard_namen = [name for name in namen if name in DIAGRAMME_DASHBOARD]
     if dashboard_namen:
-        dashboard = Dashboard.laden(stichtag=stichtag, horizont_monate=horizont_monate)
-        dashboard.simuliere(monate=horizont_monate)
+        # Bestand und Schulungsplan laufen in Dashboard.laden_async() gleichzeitig,
+        # Kostenplan und Auslastung danach ebenfalls gleichzeitig (siehe dort). Alle vier
+        # stehen hier trotzdem von Anfang an als ausstehende Schritte da (siehe
+        # _platzhalter_balken), damit sichtbar ist, was insgesamt noch kommt - jede Zeile
+        # wird ersetzt, sobald ihr Schritt tatsaechlich fertig ist, unabhaengig von der
+        # Reihenfolge. ``fortschritt`` traegt zusaetzlich die Verlaufscache-Meldungen
+        # (Vereinheitlichung statt eines eigenen cache_fortschritt) sowie die
+        # Abschlussmeldung der Simulation - _melden erkennt sie daran, dass ihr Text zu
+        # keinem der vier bekannten Muster passt, und gibt sie einfach als Zeile aus.
+        offene_schritte = {
+            name: _platzhalter_balken(f"{name} laden", position=i)
+            for i, name in enumerate(SCHRITTE_DASHBOARD_LADEN)
+        }
+
+        def _melden(text: str) -> None:
+            for name, muster in _SCHRITT_MUSTER.items():
+                if name in offene_schritte and muster in text:
+                    _balken_ersetzen(offene_schritte.pop(name), text)
+                    return
+            tqdm.write(text)
+
+        dashboard = Dashboard.laden(
+            stichtag=stichtag,
+            horizont_monate=horizont_monate,
+            fortschritt=_melden,
+        )
+        dashboard.simuliere(monate=horizont_monate, fortschritt=_melden)
         for name in dashboard_namen:
             kwargs = (
                 {"mit_beschriftung": mit_beschriftung} if name in MIT_BESCHRIFTUNG_FAEHIG else {}
@@ -207,18 +269,37 @@ def _figuren(
 def exportieren(
     figuren: dict[str, go.Figure], namen: list[str], ausgabeverzeichnis: Path, ausgabeformat: str
 ) -> list[Path]:
-    """Je Name aus ``namen`` eine Datei schreiben, gibt die geschriebenen Pfade zurück."""
+    """Je Name aus ``namen`` eine Datei schreiben, gibt die geschriebenen Pfade zurück.
+
+    Zeigt vorne an, welche Datei gerade geschrieben wird. Bei ``html`` geschieht das
+    Schreiben der Reihe nach - ein einzelner Balken genuegt, seine Beschriftung wechselt
+    vor jeder Datei. Bei ``png``/``svg`` schreibt kaleido dagegen alle Bilder in einem
+    gemeinsamen Batch-Aufruf zugleich (siehe Kommentar unten) und liefert dabei keinen
+    Zwischenstand je Datei - stattdessen bekommt jede Datei ihre eigene Zeile, zunaechst
+    als Platzhalter, nach dem Batch durch ihren fertigen Pfad ersetzt (wie ``rustup
+    update`` es fuer mehrere gleichzeitig synchronisierte Toolchains zeigt).
+    """
     ausgabeverzeichnis.mkdir(parents=True, exist_ok=True)
     geordnete_figuren = [figuren[name] for name in namen]
     pfade = [ausgabeverzeichnis / f"{name}.{ausgabeformat}" for name in namen]
+
     if ausgabeformat == "html":
-        for figur, pfad in zip(geordnete_figuren, pfade, strict=True):
-            figur.write_html(pfad)
+        with tqdm(total=len(pfade), desc="Diagramme exportieren", leave=False) as balken:
+            for figur, pfad in zip(geordnete_figuren, pfade, strict=True):
+                balken.set_description(f"{pfad.name} schreiben")
+                figur.write_html(pfad)
+                balken.write(f"  {pfad}")
+                balken.update(1)
     else:
         # Ein Batch-Aufruf statt figur.write_image() je Diagramm: kaleido (>=1.0) startet
         # sonst für jedes einzelne Bild eine eigene Chromium-Instanz neu, was den Export
         # mehrerer Diagramme spürbar verlangsamt - hier ein gemeinsamer Browserprozess.
+        datei_balken = [
+            _platzhalter_balken(f"  {pfad}", position=i) for i, pfad in enumerate(pfade)
+        ]
         pio.write_images(fig=geordnete_figuren, file=pfade, width=1400, height=800, scale=2)
+        for balken, pfad in zip(datei_balken, pfade, strict=True):
+            _balken_ersetzen(balken, f"  {pfad}")
     return pfade
 
 
@@ -233,11 +314,12 @@ def main(argv: list[str]) -> int:
         monate_fenster=args.monate_fenster,
         ausgabeformat=args.format,
     )
+    print("Daten geladen.")
+
+    print("\nDiagramm(e) exportieren:")
     pfade = exportieren(figuren, namen, args.ausgabeverzeichnis, args.format)
 
-    print(f"{len(pfade)} Diagramm(e) exportiert nach {args.ausgabeverzeichnis}:")
-    for pfad in pfade:
-        print(f"  {pfad}")
+    print(f"{len(pfade)} Diagramm(e) exportiert nach {args.ausgabeverzeichnis}")
     return 0
 
 
