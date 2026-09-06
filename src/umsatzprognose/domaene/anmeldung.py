@@ -38,6 +38,7 @@ if TYPE_CHECKING:
 
     Kategorisierung = Mapping[str, Sequence[str]]
 
+from collections import Counter
 from dataclasses import dataclass, field
 
 from umsatzprognose.util import ordnung
@@ -86,24 +87,24 @@ class Anmeldungsverlauf:
     @property
     def schulungstypen(self) -> tuple[str, ...]:
         """Alle vorkommenden Schulungstypen, nach absteigender Gesamtteilnehmerzahl."""
-        summen: dict[str, int] = {}
+        summen: Counter[str] = Counter()
         for a in self.anmeldungen:
-            summen[a.schulungstyp] = summen.get(a.schulungstyp, 0) + a.teilnehmerzahl
+            summen[a.schulungstyp] += a.teilnehmerzahl
         return tuple(sorted(summen, key=lambda typ: summen[typ], reverse=True))
 
     def je_monat(self) -> dict[Monat, int]:
         """Summe der Teilnehmerzahl je Monat, ueber alle Schulungstypen hinweg."""
-        summen: dict[Monat, int] = {}
+        summen: Counter[Monat] = Counter()
         for a in self.anmeldungen:
-            summen[a.schluessel] = summen.get(a.schluessel, 0) + a.teilnehmerzahl
+            summen[a.schluessel] += a.teilnehmerzahl
         return summen
 
     def je_monat_und_typ(self, schulungstyp: str) -> dict[Monat, int]:
         """Teilnehmerzahl je Monat fuer einen einzelnen Schulungstyp."""
-        summen: dict[Monat, int] = {}
+        summen: Counter[Monat] = Counter()
         for a in self.anmeldungen:
             if a.schulungstyp == schulungstyp:
-                summen[a.schluessel] = summen.get(a.schluessel, 0) + a.teilnehmerzahl
+                summen[a.schluessel] += a.teilnehmerzahl
         return summen
 
     def je_monat_und_kategorie(self, kategorien: Kategorisierung) -> dict[str, dict[Monat, int]]:
@@ -117,11 +118,11 @@ class Anmeldungsverlauf:
         """
         zuordnung = _kategorie_zuordnung(kategorien)
         ergebnis: dict[str, dict[Monat, int]] = {
-            name: {} for name in (*kategorien, KATEGORIE_SONSTIGE)
+            name: Counter() for name in (*kategorien, KATEGORIE_SONSTIGE)
         }
         for a in self.anmeldungen:
             summen = ergebnis[zuordnung.get(a.schulungstyp, KATEGORIE_SONSTIGE)]
-            summen[a.schluessel] = summen.get(a.schluessel, 0) + a.teilnehmerzahl
+            summen[a.schluessel] += a.teilnehmerzahl
         return ergebnis
 
     def letzte(self, *, monate: int, stichtag: date) -> Anmeldungsverlauf:

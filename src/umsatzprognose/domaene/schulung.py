@@ -20,6 +20,7 @@ if TYPE_CHECKING:
 
     from .hinweis import Hinweis
 
+from collections import defaultdict
 from dataclasses import dataclass, field
 
 from .umsatzhistorie import fehlende_monate_hinweis
@@ -64,10 +65,10 @@ class Schulungsplan:
 
     def umsatz_je_monat(self, horizontmonate: Sequence[Monat]) -> list[float]:
         """Summe von ``Umsatz gesamt`` je uebergebenem Monat, 0 ohne passenden Termin (Spec 5.1)."""
-        summen: dict[Monat, float] = {}
+        summen: defaultdict[Monat, float] = defaultdict(float)
         for termin in self._relevante_termine():
-            summen[termin.schluessel] = summen.get(termin.schluessel, 0.0) + termin.umsatz
-        return [summen.get(monat, 0.0) for monat in horizontmonate]
+            summen[termin.schluessel] += termin.umsatz
+        return [summen[monat] for monat in horizontmonate]
 
     def summe(self, horizontmonate: Sequence[Monat]) -> float:
         return sum(self.umsatz_je_monat(horizontmonate))
