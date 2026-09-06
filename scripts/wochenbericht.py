@@ -122,7 +122,9 @@ def posten(
     titel_figuren = diagrammtitel_und_figuren(
         dashboard, gewinn_verlust_monate=gewinn_verlust_monate
     )
-    bilder = [verzeichnis / f"{titel}.png" for titel, _figur in titel_figuren]
+    # "/" im Titel ("Gewinn/Verlust je Monat") waere im Dateinamen ein Pfadtrenner -
+    # der Slack-Titel bleibt davon unberuehrt, nur der lokale Dateiname wird bereinigt.
+    bilder = [verzeichnis / f"{titel.replace('/', '-')}.png" for titel, _figur in titel_figuren]
     # Ein Batch-Aufruf statt figur.write_image() je Bild: kaleido (>=1.0) startet sonst
     # fuer jedes Bild eine eigene Chromium-Instanz neu - siehe
     # scripts/diagramme_exportieren.py fuer denselben Fix mit Zeitmessung.
