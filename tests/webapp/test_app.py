@@ -257,6 +257,17 @@ def test_navigation_verlinkt_alle_drei_seiten():
         assert f'href="{pfad}"' in antwort.text
 
 
+def test_favicon_wird_eingebunden_und_ausgeliefert():
+    client = TestClient(app_modul.app)
+
+    seite = client.get("/")
+    assert 'href="/static/favicon.png"' in seite.text
+
+    favicon = client.get("/static/favicon.png")
+    assert favicon.status_code == 200
+    assert favicon.headers["content-type"] == "image/png"
+
+
 def test_start_stoesst_die_standardkombination_bereits_beim_start_an(_fake_caches):
     dashboard_cache, anmeldungsverlauf_cache = _fake_caches
 

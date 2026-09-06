@@ -80,6 +80,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Query, Request
 from fastapi.responses import HTMLResponse
+from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from umsatzprognose.darstellung import diagramme
@@ -160,6 +161,7 @@ async def _vorladen(app: FastAPI) -> AsyncIterator[None]:
 
 
 app = FastAPI(title="Umsatzprognose", lifespan=_vorladen)
+app.mount("/static", StaticFiles(directory=str(Path(__file__).parent / "static")), name="static")
 
 
 def _figur_html(figur: go.Figure, *, mit_plotlyjs: bool) -> str:
