@@ -1,0 +1,15 @@
+{% extends "basis.html" %}
+{% block inhalt %}
+<form method="get" class="parameter">
+    <label>Prognosehorizont
+        <select name="horizont_monate" onchange="this.form.submit()">
+            {% for wert in horizont_optionen %}
+            <option value="{{ wert }}" {{ "selected" if wert == horizont_monate }}>{{ wert }} Monate</option>
+            {% endfor %}
+        </select>
+    </label>
+</form>
+{{ umsatzverlauf | safe }}
+{{ umsatztabelle | safe }}
+{{ restvolumen_je_projekt | safe }}
+{% endblock %}

@@ -19,6 +19,7 @@ uv run jupyter lab             # Notebooks lokal
 uvx tox                        # Tests unter Python 3.12-3.14 + Coverage + Lint, ein Kommando
 uvx tox -e jupyter             # Notebooks starten (wie uv run jupyter lab, mit --autoreload)
 uv sync --extra bericht && uv run python scripts/diagramme_exportieren.py     # Diagramme als PNG exportieren, inkl. Anmeldungsverlauf (--help für Optionen)
+uvx tox -e web                 # Web-Frontend lokal starten (siehe Abschnitt "Web-Frontend")
 ```
 
 `tox` ist nicht Projektabhängigkeit, sondern läuft über `uvx` (`[tool.tox]` in
@@ -97,10 +98,17 @@ der sechs Pakete darf `util/` importieren.
 - `src/umsatzprognose/darstellung/` – der einzige Ort mit plotly (`diagramme.py`,
   `gestaltung.py`) und pandas (`tabellen.py`), dazu `dashboard.py` mit der Fassade
   `Dashboard`, die die Notebooks benutzen.
-- `tests/` – pytest. Die Antwortausschnitte in `conftest.py` sind gekürzte, aber echte
-  Antworten samt ihrer Fallen.
-- `notebooks/` – drei Notebooks mit verschiedenen Zielgruppen plus ein gemeinsames
-  Start-Notebook, siehe unten.
+- `tests/` – pytest, in Unterordnern gespiegelt nach den sechs Bausteinen plus
+  `darstellung/`, `util/` und `webapp/` (z. B. `tests/domaene/test_bestand.py` für
+  `src/umsatzprognose/domaene/bestand.py`); `conftest.py` (gemeinsame Fixtures) und
+  `test_pre_commit_hook.py` (testet `.githooks/pre-commit`, gehört zu keinem der
+  Bausteine) bleiben direkt in `tests/`. Die Antwortausschnitte in `conftest.py` sind
+  gekürzte, aber echte Antworten samt ihrer Fallen. Jeder Unterordner trägt ein
+  (leeres) `__init__.py` - ohne das würden gleichnamige Testdateien in
+  verschiedenen Unterordnern (z. B. je ein `test_config.py` unter `clockodo/` und
+  unter `util/`) mit demselben Modulnamen kollidieren.
+- `notebooks/` – vier Notebooks mit verschiedenen Zielgruppen plus ein gemeinsames
+  Start-Modul, siehe unten.
 - `spec/spec-umsatzprognose-clockodo-modul.md` – die Spezifikation des Bausteins Bestand.
 - `spec/spec-schulungsanmeldungen.md` – die Spezifikation des Bausteins
   Schulungsanmeldungen.
@@ -185,6 +193,105 @@ als undefiniert erscheinen. `setup.py` wird nicht eigenständig geöffnet.
 - `notebooks/02_technik_pruefung.ipynb` – für die Entwicklung. Prüfsummen,
   Aufteilungsschlüssel, Sollarbeitszeiten, Kapazität je Person und je Projekt und
   offene fachliche Fragen (`ENTSCHEIDEN`-Abschnitte).
+- `notebooks/03_schulungsanmeldungen.ipynb` – unabhängig vom Baustein Bestand: der
+  Anmeldungsverlauf öffentlicher Schulungen (Teilnehmerzahl je Monat und Kategorie,
+  `setup.anmeldungsverlauf()`), nicht der Umsatz. Die Kategorie-Zuordnung
+  (`KATEGORIEN`) ist frei konfigurierbar und steht im Notebook, nicht im Paket.
+
+### Web-Frontend
+
+`src/umsatzprognose/webapp/` ist ein zweites Frontend neben den Notebooks – eine
+gehostete Webseite, die dieselben Daten zeigt, ohne dass Betrachtende Jupyter/Colab
+brauchen. Kein eigener Baustein, keine eigene Fachlogik: strukturell nur ein weiterer
+Konsument von `Dashboard`, wie `notebooks/`. **Keine eigene Benutzerverwaltung** – es
+gibt keine Accounts für Besucher der Seite; alle sehen denselben, periodisch
+aktualisierten Stand aus genau einer Clockodo-/Google-Sheets-Anbindung, wie beim
+Dashboard-Notebook auch.
+
+- **Rendering**: serverseitig über FastAPI + Jinja2 (`webapp/app.py`,
+  `webapp/templates/`) statt einer eigenen JS-Anwendung – die vorhandenen
+  Plotly-Figuren aus `darstellung/diagramme.py` und die pandas-Tabellen aus
+  `darstellung/tabellen.py` lassen sich unverändert per `to_html()` einbetten, ohne
+  eine eigene JSON-API zu brauchen.
+- **Drei navigierbare Seiten**, verlinkt über eine gemeinsame Navigation
+  (`webapp/templates/basis.html`), jede mit dem Inhalt genau einer Notebook-Zelle
+  statt einer eigenen Auswahl: `/` deckt sich mit `notebooks/00_datencheck.ipynb`
+  (Gewinn/Verlust je Monat, Gewinn/Verlust je Jahr, kumulierte Umsatzrendite);
+  `/dashboard` mit `notebooks/01_dashboard.ipynb` (Umsatzverlauf, die zugehörige
+  Monatstabelle `Dashboard.umsatztabelle()`, offenes Auftragsvolumen je Projekt);
+  `/schulungen` mit `notebooks/03_schulungsanmeldungen.ipynb` (der
+  Anmeldungsverlauf über `diagramme.anmeldungsverlauf()`, samt der dort gepflegten
+  `KATEGORIEN`-Zuordnung, als Konstante in `webapp/app.py` übernommen).
+- **Parameter der Notebook-Ladezellen sind hier URL-Parameter, wählbar über ein
+  Dropdown** statt eines freien Zahlenbereichs (via `typing.Literal` - zugleich die
+  Dropdown-Optionsliste über `typing.get_args()`, siehe `HorizontMonate`,
+  `GewinnVerlustMonate` in `webapp/app.py`): `horizont_monate` (Prognosehorizont – 3,
+  4, 5 oder 6 Monate, auf `/` und `/dashboard`, weil beide denselben geladenen
+  `Dashboard` zeigen) und `gewinn_verlust_monate` (historisches Fenster – 3, 6, 12,
+  24 Monate oder "alle", nur auf `/`). `ab_jahr` (nur auf `/schulungen`, filtert
+  einen unabhängig geladenen `Anmeldungsverlauf`) bleibt ein zusammenhängender
+  Zahlenbereich (`Query(ge=STANDARD_AB_JAHR, le=aktuelles Jahr)`), weil Jahre
+  lückenlos sind; seine Dropdown-Optionen sind einfach dieser Bereich.
+  `auslastung_monate` aus `Dashboard.laden_async()` ist **kein** URL-Parameter
+  (mehr): keine der drei Seiten zeigt etwas, das davon abhängt – eine feste
+  Standardkombination genügt, ein Dropdown ohne sichtbare Wirkung wäre nur
+  verwirrend. `stichtag` bleibt ebenfalls kein URL-Parameter: anders als die
+  anderen gibt es dafür keinen sinnvollen Standard für alle Besuchenden
+  gleichzeitig. `Dashboard.gewinn_verlust_monatlich()` akzeptiert seit der
+  "alle"-Option auch `monate=None` (zeigt die gesamte geladene Historie, nicht nur
+  `STANDARD_HISTORIE_MONATE`).
+- **Zwei verschiedene Cache-Strategien, je nachdem, ob ein engerer Parameter
+  wirklich weniger laedt oder nur anders anzeigt** (siehe Klassendocstrings in
+  `webapp/cache.py`): `DashboardCache` haelt je angefragter
+  (`horizont_monate`, `auslastung_monate`)-Kombination einen **eigenen** Eintrag -
+  ein anderer `horizont_monate` fragt bei Clockodo tatsaechlich ein anderes
+  Zeitfenster ab, und ein neuer Simulationslauf ist dann auch fachlich richtig,
+  keine Abkuerzung ueber einen breiteren Lauf. `gewinn_verlust_monate` ist dagegen
+  bewusst **kein** Teil dieses Cache-Schluessels: es schneidet nur das schon
+  geladene `Dashboard` unterschiedlich zurecht (`Dashboard.gewinn_verlust_monatlich`
+  liest lediglich einen anderen Ausschnitt derselben geladenen Historie), ein
+  Wechsel zwischen 3/6/12/24/"alle" laedt deshalb nie neu. `AnmeldungsverlaufCache`
+  haelt dagegen ganz bewusst **nur einen einzigen** Eintrag, ab dem im Konstruktor
+  fest hinterlegten `STANDARD_AB_JAHR`: die Google-Sheets-Dateien sind unabhaengig
+  vom gewaehlten `ab_jahr` dieselben, ein engerer Beginn ("seit 2024" statt "seit
+  2022") ist immer eine Teilmenge dieses einen geladenen Bereichs -
+  `Anmeldungsverlauf.ab_jahr()` filtert dafuer nur noch in-memory, ganz ohne
+  erneuten Abruf.
+- **Caching, nicht blockierend**: `webapp/cache.py` erneuert seine Eintraege nach
+  Ablauf einer TTL (`WEBAPP_CACHE_TTL_SEKUNDEN`, Standard eine Stunde). Anders
+  als `notebooks/setup.py` – eine Modulvariable je Kernel – bedient ein Webserver
+  mehrere gleichzeitige Anfragen aus demselben Prozess; ein Neuladen je Anfrage wäre
+  wegen des Abrufs und der Monte-Carlo-Simulation zu langsam, ein Cache je Besucher
+  unnötig, da es keine Benutzertrennung gibt. `bereit()`/`anstossen()` (statt eines
+  blockierenden `holen()`) prüfen, ob etwas schon geladen ist, bzw.
+  stoßen einen fehlenden Ladevorgang im Hintergrund an, ohne auf ihn zu warten -
+  `/`, `/dashboard` und `/schulungen` liefern in diesem Fall sofort eine schlichte
+  "Daten werden geladen"-Seite (`webapp/templates/laedt.html`, Meta-Refresh alle
+  zwei Sekunden) statt die Anfrage offenzuhalten. `_vorladen()` (FastAPIs
+  `lifespan`) stößt die Standardkombination zusätzlich schon beim Start an, damit
+  sie im üblichen Fall längst fertig ist, bevor die ersten Besuchenden eintreffen.
+  Ein fehlgeschlagener Hintergrund-Ladevorgang wird auf der Konsole gemeldet (sonst
+  wäre er nicht diagnostizierbar) und beim nächsten Aufruf automatisch erneut
+  versucht; ein erfolgreicher dagegen bewusst **ohne** Statusausgabe - anders als in
+  einer früheren Fassung, die nach jedem Laden einen Ladebericht ausgab.
+- **Google-Auth**: der Webserver loggt sich nie selbst interaktiv ein. Der lokale
+  OAuth-Login (`google_sheets/client.py`, `_lokale_credentials()`) läuft einmalig auf
+  dem Rechner einer administrierenden Person; die entstandene Token-Datei wird dem
+  Server als Secret unter einem eigenen Pfad zur Verfügung gestellt
+  (`GOOGLE_OAUTH_TOKEN_PFAD`, siehe `token_pfad()` in `google_sheets/client.py`) statt
+  am Notebook-Pfad `.google_oauth_token.json`. Offener Punkt vor dem produktiven
+  Einsatz: prüfen, ob die OAuth-Client-ID in der Google-Cloud-Konsole im Status "In
+  production" statt "Testing" steht – im Testing-Status laufen Refresh-Tokens nach 7
+  Tagen ab, ungeeignet für einen dauerhaft laufenden Server.
+- **Clockodo-Auth**: unverändert – die API-Key-Authentifizierung ist bereits
+  service-artig und funktioniert unverändert aus einem Serverprozess heraus.
+- Gehört zum optionalen `web`-Extra (`fastapi`, `jinja2`, `uvicorn`) – keine
+  Basisabhängigkeit, weil nur dieses Paket sie braucht. Start lokal: `uvx tox -e web`
+  bzw. `uv run --extra web uvicorn umsatzprognose.webapp.app:app --reload`. `--reload`
+  beobachtet standardmäßig das gesamte Arbeitsverzeichnis, auch z. B. `.tox/` – läuft
+  parallel `uvx tox`, startet das ständig neu; für aktive Entwicklung an `webapp/`
+  deshalb besser `--reload-dir src/umsatzprognose/webapp`, wer nur die Seiten ansehen
+  will, lässt `--reload` ganz weg.
 
 ## Keine gelesenen Werte im Repository
 
@@ -320,6 +427,15 @@ Basis-URL `https://my.clockodo.com/api`. Authentifizierung über drei Pflicht-He
 **Fehler immer im Body diagnostizieren, nicht am Status.** Clockodo begründet 400er als
 `{"error": {"message": …, "fields": [...]}}`. `get()` wirft deshalb einen eigenen
 `ClockodoError` mit angehängtem Antwortkörper statt `raise_for_status()`.
+
+**Ratenbegrenzung (429) ist kein Fehler, sondern ein Hinweis, kurz zu warten.**
+Manche Routen begrenzen auf wenige Anfragen pro Minute (`"... limit exceeded (N
+requests per 1 minute)"`) - beim gleichzeitigen Abruf vieler Endpunkte
+(`nebenlaeufig.gleichzeitig()`) real erreichbar, siehe Web-Frontend oben. `get()`
+wiederholt einen 429 deshalb bis zu `RATE_LIMIT_MAX_VERSUCHE`-mal nach
+`RATE_LIMIT_WARTEZEIT_SEKUNDEN` (plus Streuung, gegen gleichzeitig wartende Aufrufe,
+die sonst exakt zusammen erneut anfragen würden), bevor doch ein `ClockodoError`
+geworfen wird.
 
 Abweichungen von `spec/clocodo-api.yaml`, verifiziert über echte Antworten:
 

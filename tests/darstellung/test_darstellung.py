@@ -989,6 +989,21 @@ def test_dashboard_gewinn_verlust_monatlich_nutzt_kostenplan():
     assert list(fig.data[0].y) == [10000.0]  # 50.000 - 40.000, Kostenplan ohne August-Posten
 
 
+def test_dashboard_gewinn_verlust_monatlich_ohne_monate_zeigt_mehr_als_zwoelf_monate():
+    stichtag = date(2026, 3, 15)
+    monate = [Monatsumsatz(2025, m, 1000.0) for m in range(2, 13)] + [
+        Monatsumsatz(2026, 1, 1000.0),
+        Monatsumsatz(2026, 2, 1000.0),
+    ]  # Feb 2025 bis Feb 2026 - 13 abgeschlossene Monate, mehr als STANDARD_HISTORIE_MONATE (12)
+    historie = Umsatzhistorie.zum_stichtag(monate, stichtag, abgeschlossene=13)
+    bestand = Bestand(stichtag=stichtag, umsatzhistorie=historie)
+    dashboard = Dashboard(bestand, SCHULUNGSPLAN, KOSTENPLAN)
+
+    fig = dashboard.gewinn_verlust_monatlich(monate=None)
+
+    assert len(fig.data[0].x) == 13
+
+
 def test_dashboard_gewinn_verlust_je_jahr_nutzt_kostenplan():
     historie = Umsatzhistorie.zum_stichtag(
         [

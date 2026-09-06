@@ -11,8 +11,12 @@ kein Service-Account-Key. Die Anmeldung laeuft deshalb je Umgebung unterschiedli
 - **Lokal** startet ein einmaliger interaktiver Login im Browser
   (``google_auth_oauthlib.flow.InstalledAppFlow``), auf Basis des Client-JSON aus
   :class:`~umsatzprognose.google_sheets.config.GoogleSheetsConfig`. Das Ergebnis
-  (Refresh-Token) wird in :data:`TOKEN_PFAD` zwischengespeichert und danach automatisch
-  erneuert - die Datei ist in ``.gitignore`` aufgenommen.
+  (Refresh-Token) wird unter :func:`token_pfad` zwischengespeichert und danach
+  automatisch erneuert - der Standardpfad ist in ``.gitignore`` aufgenommen. Ein
+  dauerhaft laufender Prozess ohne projektbezogenes Arbeitsverzeichnis (z. B. der
+  Webserver in :mod:`umsatzprognose.webapp`) legt den einmalig lokal erzeugten Token
+  ueber :data:`TOKEN_PFAD_ENV` an einem eigenen Ort ab, statt selbst interaktiv
+  einzuloggen.
 
 Dieses Modul kennt keinen bestimmten Baustein und damit auch kein bestimmtes
 Tabellenblatt - welcher Reiter bzw. Zellbereich gelesen wird, entscheidet jeder
@@ -21,6 +25,7 @@ Aufrufer (:mod:`umsatzprognose.schulungen`, :mod:`umsatzprognose.kosten`, ...) s
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol
 
@@ -36,7 +41,19 @@ from umsatzprognose.util import in_colab
 from .config import OAUTH_CLIENT_VAR, MissingCredentialsError
 
 SCOPES = ("https://www.googleapis.com/auth/spreadsheets.readonly",)
-TOKEN_PFAD = Path(".google_oauth_token.json")
+TOKEN_PFAD_ENV = "GOOGLE_OAUTH_TOKEN_PFAD"
+TOKEN_PFAD_STANDARD = Path(".google_oauth_token.json")
+
+
+def token_pfad() -> Path:
+    """Wo der zwischengespeicherte Google-OAuth-Token liegt.
+
+    Ungesetzt gilt :data:`TOKEN_PFAD_STANDARD`, relativ zum Arbeitsverzeichnis, in dem
+    Jupyter gestartet wurde. Wird zur Laufzeit gelesen statt einmalig beim Import, damit
+    :data:`TOKEN_PFAD_ENV` auch nach dem Import dieses Moduls noch wirkt (etwa in Tests).
+    """
+    wert = os.environ.get(TOKEN_PFAD_ENV, "").strip()
+    return Path(wert) if wert else TOKEN_PFAD_STANDARD
 
 
 class TabellenClient(Protocol):
@@ -189,9 +206,10 @@ def _lokale_credentials(oauth_client_config: dict | None) -> CredentialsBase:
             f"Fuer den lokalen Login fehlt das OAuth-Client-JSON aus {OAUTH_CLIENT_VAR}."
         )
 
+    pfad = token_pfad()
     credentials = None
-    if TOKEN_PFAD.exists():
-        credentials = Credentials.from_authorized_user_file(str(TOKEN_PFAD), SCOPES)
+    if pfad.exists():
+        credentials = Credentials.from_authorized_user_file(str(pfad), SCOPES)
 
     if not credentials or not credentials.valid:
         if credentials and credentials.expired and credentials.refresh_token:
@@ -199,6 +217,6 @@ def _lokale_credentials(oauth_client_config: dict | None) -> CredentialsBase:
         else:
             flow = InstalledAppFlow.from_client_config(oauth_client_config, SCOPES)
             credentials = flow.run_local_server(port=0)
-        TOKEN_PFAD.write_text(credentials.to_json())
+        pfad.write_text(credentials.to_json())
 
     return credentials

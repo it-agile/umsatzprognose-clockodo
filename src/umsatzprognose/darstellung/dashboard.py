@@ -322,15 +322,16 @@ class Dashboard:
         )
 
     def gewinn_verlust_monatlich(
-        self, *, monate: int = STANDARD_GEWINN_VERLUST_MONATE
+        self, *, monate: int | None = STANDARD_GEWINN_VERLUST_MONATE
     ) -> go.Figure:
         """Gewinn/Verlust der letzten ``monate`` abgeschlossenen Monate, je Monat ein Balken.
 
-        Haengt, sofern :meth:`simuliere` bereits gelaufen ist, zusaetzlich die
-        Vorausschau fuer den Prognosehorizont an - dieselbe Prognose wie im
-        Umsatzverlauf, kein eigener Simulationslauf.
+        ``monate=None`` zeigt alle geladenen abgeschlossenen Monate, wie bei
+        :meth:`gewinn_verlust_je_jahr`. Haengt, sofern :meth:`simuliere` bereits
+        gelaufen ist, zusaetzlich die Vorausschau fuer den Prognosehorizont an -
+        dieselbe Prognose wie im Umsatzverlauf, kein eigener Simulationslauf.
         """
-        historie = self._historie()
+        historie = self._historie(anzahl=monate)
         letzte_monate = historie.abgeschlossene(monate)
         kosten = self.kostenplan.kosten_je_monat([m.schluessel for m in letzte_monate])
         return diagramme.gewinn_verlust_monatlich(

@@ -1,0 +1,13 @@
+{% extends "basis.html" %}
+{% block inhalt %}
+<form method="get" class="parameter">
+    <label>Anmeldungen ab Jahr
+        <select name="ab_jahr" onchange="this.form.submit()">
+            {% for jahr in ab_jahr_optionen %}
+            <option value="{{ jahr }}" {{ "selected" if jahr == ab_jahr }}>{{ jahr }}</option>
+            {% endfor %}
+        </select>
+    </label>
+</form>
+{{ anmeldungsverlauf | safe }}
+{% endblock %}

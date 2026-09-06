@@ -18,25 +18,37 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+kaleido = [
+    "kaleido>=0.2",
+]
+pytest = [
+    "pytest>=8.3",
+]
+ruff = [
+    "ruff>=0.8",
+]
+
 notebook = [
     "ipykernel>=6.29",
     "jupyterlab>=4.2",
     "nbformat>=4.2",
 ]
 dev = [
-    "kaleido>=0.2",
-    "pytest>=8.3",
-    "ruff>=0.8",
+    "umsatzprognose-clockodo[kaleido]",
+    "umsatzprognose-clockodo[pytest]",
+    "umsatzprognose-clockodo[ruff]",
 ]
 bericht = [
-    "kaleido>=0.2",
+    "umsatzprognose-clockodo[kaleido]",
     "slack-sdk>=3.27",
 ]
-ruff = [
-    "ruff>=0.8",
+web = [
+    "fastapi>=0.115",
+    "jinja2>=3.1",
+    "uvicorn[standard]>=0.32",
 ]
 coverage = [
-    "pytest>=8.3",
+    "umsatzprognose-clockodo[pytest]",
     "coverage>=7.0",
 ]
 mypy = [
@@ -62,7 +74,7 @@ allowlist_externals = [ "pytest" ]
 commands = [["pytest", { replace = "posargs", default = [], extend = true }]]
 
 [tool.tox.env.coverage]
-extras = [ "coverage" ]
+extras = [ "coverage", "web" ]
 allowlist_externals = [ "coverage" ]
 commands = [
     ["coverage", "erase"],
@@ -91,6 +103,11 @@ commands = [[ "nbqa", "mypy", { replace = "posargs", default = ["notebooks"], ex
 extras = [ "notebook" ]
 allowlist_externals = [ "jupyter" ]
 commands = [[ "jupyter", { replace = "posargs", default = ["lab", "--autoreload"], extend = true } ]]
+
+[tool.tox.env.web]
+extras = [ "web" ]
+allowlist_externals = [ "uvicorn" ]
+commands = [[ "uvicorn", { replace = "posargs", default = ["umsatzprognose.webapp.app:app", "--reload"], extend = true } ]]
 
 [tool.ruff]
 line-length = 100
@@ -131,6 +148,12 @@ warn_unused_configs = true
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
+filterwarnings = [
+    # Kommt aus starlette.testclient selbst (fastapi/starlette, Teil des optionalen
+    # web-Extras), nicht aus eigenem Code - starlette referenziert dort noch den
+    # veralteten Alias, den eine neuere anyio-Version bemängelt.
+    "ignore:The anyio\\.abc\\.BlockingPortal alias is deprecated:DeprecationWarning",
+]
 
 [tool.coverage.paths]
 source = [

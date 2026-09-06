@@ -138,3 +138,15 @@ class Anmeldungsverlauf:
         start = ende - (monate - 1)
         gefiltert = tuple(a for a in self.anmeldungen if start <= ordnung(a.jahr, a.monat) <= ende)
         return type(self)(anmeldungen=gefiltert, abbildungshinweise=self.abbildungshinweise)
+
+    def ab_jahr(self, jahr: int) -> Anmeldungsverlauf:
+        """Nur die Anmeldungen ab (einschliesslich) dem angegebenen Jahr.
+
+        Anders als :meth:`letzte` kein rollierendes Fenster relativ zu einem Stichtag,
+        sondern ein fester Beginn - Grundlage fuer einen waehlbaren Betrachtungsbeginn
+        (etwa "seit 2022"), der schmaler sein kann als der insgesamt geladene Zeitraum,
+        ohne dass dafuer neu geladen werden muesste (siehe
+        :class:`~umsatzprognose.webapp.cache.AnmeldungsverlaufCache`).
+        """
+        gefiltert = tuple(a for a in self.anmeldungen if a.jahr >= jahr)
+        return type(self)(anmeldungen=gefiltert, abbildungshinweise=self.abbildungshinweise)

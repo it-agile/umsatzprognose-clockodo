@@ -153,3 +153,25 @@ def test_letzte_behaelt_abbildungshinweise() -> None:
     )
     fenster = verlauf.letzte(monate=12, stichtag=date(2026, 9, 15))
     assert fenster.abbildungshinweise == (hinweis,)
+
+
+def test_ab_jahr_behaelt_nur_anmeldungen_ab_dem_angegebenen_jahr() -> None:
+    verlauf = Anmeldungsverlauf(
+        anmeldungen=(
+            Anmeldung(2022, 12, "KSD", 1),
+            Anmeldung(2023, 1, "KSD", 2),
+            Anmeldung(2024, 6, "KSD", 3),
+        )
+    )
+    gefiltert = verlauf.ab_jahr(2023)
+    assert gefiltert.monate == ((2023, 1), (2024, 6))
+    assert gefiltert.je_monat() == {(2023, 1): 2, (2024, 6): 3}
+
+
+def test_ab_jahr_behaelt_abbildungshinweise() -> None:
+    hinweis = Hinweis("Die Schulungs-Datei für 2022 konnte nicht gelesen werden (HttpError)")
+    verlauf = Anmeldungsverlauf(
+        anmeldungen=(Anmeldung(2024, 9, "KSD", 1),), abbildungshinweise=(hinweis,)
+    )
+    gefiltert = verlauf.ab_jahr(2023)
+    assert gefiltert.abbildungshinweise == (hinweis,)
