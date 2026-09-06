@@ -30,8 +30,10 @@ ruff = [
 
 notebook = [
     "ipykernel>=6.29",
+    "ipywidgets>=8.1",
     "jupyterlab>=4.2",
     "nbformat>=4.2",
+    "tqdm>=4.66",
 ]
 dev = [
     "umsatzprognose-clockodo[kaleido]",
@@ -41,6 +43,7 @@ dev = [
 bericht = [
     "umsatzprognose-clockodo[kaleido]",
     "slack-sdk>=3.27",
+    "tqdm>=4.66",
 ]
 web = [
     "fastapi>=0.115",
