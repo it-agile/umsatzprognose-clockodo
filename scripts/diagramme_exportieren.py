@@ -205,6 +205,42 @@ def _balken_ersetzen(balken: tqdm, text: str) -> None:
     balken.close()
 
 
+def _dashboard_mit_fortschritt(*, stichtag: date | None, horizont_monate: int) -> Dashboard:
+    """Laedt das Dashboard und simuliert direkt danach, mit denselben vier
+    Platzhalterbalken wie ``notebooks/setup.py`` (siehe dort) - eigene Funktion, damit
+    ``_figuren()`` nur noch entscheidet, was gebaut wird, nicht wie geladen wird.
+
+    Bestand und Schulungsplan laufen in ``Dashboard.laden_async()`` gleichzeitig,
+    Kostenplan und Auslastung danach ebenfalls gleichzeitig (siehe dort). Alle vier
+    stehen hier trotzdem von Anfang an als ausstehende Schritte da (siehe
+    ``_platzhalter_balken``), damit sichtbar ist, was insgesamt noch kommt - jede Zeile
+    wird ersetzt, sobald ihr Schritt tatsaechlich fertig ist, unabhaengig von der
+    Reihenfolge. ``fortschritt`` traegt zusaetzlich die Verlaufscache-Meldungen
+    (Vereinheitlichung statt eines eigenen ``cache_fortschritt``) sowie die
+    Abschlussmeldung der Simulation - ``_melden`` erkennt sie daran, dass ihr Text zu
+    keinem der vier bekannten Muster passt, und gibt sie einfach als Zeile aus.
+    """
+    offene_schritte = {
+        name: _platzhalter_balken(f"{name} laden", position=i)
+        for i, name in enumerate(SCHRITTE_DASHBOARD_LADEN)
+    }
+
+    def _melden(text: str) -> None:
+        for name, muster in _SCHRITT_MUSTER.items():
+            if name in offene_schritte and muster in text:
+                _balken_ersetzen(offene_schritte.pop(name), text)
+                return
+        tqdm.write(text)
+
+    dashboard = Dashboard.laden(
+        stichtag=stichtag,
+        horizont_monate=horizont_monate,
+        fortschritt=_melden,
+    )
+    dashboard.simuliere(monate=horizont_monate, fortschritt=_melden)
+    return dashboard
+
+
 def _figuren(
     namen: list[str],
     *,
@@ -225,33 +261,7 @@ def _figuren(
 
     dashboard_namen = [name for name in namen if name in DIAGRAMME_DASHBOARD]
     if dashboard_namen:
-        # Bestand und Schulungsplan laufen in Dashboard.laden_async() gleichzeitig,
-        # Kostenplan und Auslastung danach ebenfalls gleichzeitig (siehe dort). Alle vier
-        # stehen hier trotzdem von Anfang an als ausstehende Schritte da (siehe
-        # _platzhalter_balken), damit sichtbar ist, was insgesamt noch kommt - jede Zeile
-        # wird ersetzt, sobald ihr Schritt tatsaechlich fertig ist, unabhaengig von der
-        # Reihenfolge. ``fortschritt`` traegt zusaetzlich die Verlaufscache-Meldungen
-        # (Vereinheitlichung statt eines eigenen cache_fortschritt) sowie die
-        # Abschlussmeldung der Simulation - _melden erkennt sie daran, dass ihr Text zu
-        # keinem der vier bekannten Muster passt, und gibt sie einfach als Zeile aus.
-        offene_schritte = {
-            name: _platzhalter_balken(f"{name} laden", position=i)
-            for i, name in enumerate(SCHRITTE_DASHBOARD_LADEN)
-        }
-
-        def _melden(text: str) -> None:
-            for name, muster in _SCHRITT_MUSTER.items():
-                if name in offene_schritte and muster in text:
-                    _balken_ersetzen(offene_schritte.pop(name), text)
-                    return
-            tqdm.write(text)
-
-        dashboard = Dashboard.laden(
-            stichtag=stichtag,
-            horizont_monate=horizont_monate,
-            fortschritt=_melden,
-        )
-        dashboard.simuliere(monate=horizont_monate, fortschritt=_melden)
+        dashboard = _dashboard_mit_fortschritt(stichtag=stichtag, horizont_monate=horizont_monate)
         for name in dashboard_namen:
             kwargs = (
                 {"mit_beschriftung": mit_beschriftung} if name in MIT_BESCHRIFTUNG_FAEHIG else {}
