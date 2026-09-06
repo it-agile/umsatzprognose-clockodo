@@ -133,6 +133,10 @@ def umsatzverlauf(
         },
         customdata=[[euro(m.umsatz), f"{m.stunden:,.0f}".replace(",", ".")] for m in monate],
         hovertemplate="<b>%{x}</b><br>%{customdata[0]}<br>%{customdata[1]} Stunden<extra></extra>",
+        text=[tausend_euro(m.umsatz) for m in monate],
+        textposition="outside",
+        textfont={"color": TINTE_ZWEITRANGIG, "size": 11},
+        cliponaxis=False,
         showlegend=False,
         name="Historie",
     )
@@ -296,6 +300,10 @@ def _kosten_und_ergebnis(
         marker={"color": [KOSTEN if e else KOSTEN_HELL for e in hat_erfassung]},
         customdata=[[euro(betrag)] for betrag in kosten],
         hovertemplate="<b>%{x}</b><br>Kosten: %{customdata[0]}<extra></extra>",
+        text=[tausend_euro(betrag) for betrag in kosten],
+        textposition="outside",
+        textfont={"color": TINTE_ZWEITRANGIG, "size": 11},
+        cliponaxis=False,
         name="Kosten",
         showlegend=False,
     )
@@ -306,6 +314,10 @@ def _kosten_und_ergebnis(
         marker={"color": [ERGEBNIS_POSITIV if b >= 0 else ERGEBNIS_NEGATIV for b in ergebnis]},
         customdata=[[euro(betrag)] for betrag in ergebnis],
         hovertemplate="<b>%{x}</b><br>Ergebnis: %{customdata[0]}<extra></extra>",
+        text=[tausend_euro(betrag) for betrag in ergebnis],
+        textposition="outside",
+        textfont={"color": TINTE_ZWEITRANGIG, "size": 11},
+        cliponaxis=False,
         name="Ergebnis",
         showlegend=False,
     )
@@ -452,9 +464,23 @@ def _prognosehorizont(
         name="Prognostiziert",
     )
 
-    return _horizont_gesamtumsatz(
+    gesamtumsatz = _horizont_gesamtumsatz(
         prognose, verbrauch_laufender_monat=verbrauch_laufender_monat, schulungsplan=schulungsplan
     )
+    # Ein Gesamtwert je Monat statt einer Beschriftung je Segment (Schulungsanmeldungen,
+    # Bereits gebucht, Prognostiziert waeren fuer sich meist zu schmal fuer lesbaren
+    # Text) - platziert ueber dem Balkenstapel, dessen Segmente _horizont_gesamtumsatz
+    # bereits aufsummiert.
+    for beschriftung, schluessel in zip(beschriftungen, horizont, strict=True):
+        fig.add_annotation(
+            x=beschriftung,
+            y=gesamtumsatz[schluessel],
+            text=tausend_euro(gesamtumsatz[schluessel]),
+            showarrow=False,
+            yshift=10,
+            font={"color": TINTE_ZWEITRANGIG, "size": 11},
+        )
+    return gesamtumsatz
 
 
 def _keine_prognose_hinweis(fig: go.Figure, prognose: Prognose) -> None:
@@ -604,6 +630,18 @@ def _jahreslinien(
             jahr_hat_legende = True
             ende = neues_ende
 
+        # Nur der letzte Punkt der Linie, nicht jeder einzelne Monat - bei bis zu acht
+        # Jahren auf derselben Monatsachse waere eine Beschriftung je Punkt unlesbar.
+        fig.add_annotation(
+            x=beschriftungen[-1],
+            y=y[-1],
+            text=f"{jahr}: {formatieren(y[-1])}",
+            showarrow=False,
+            xanchor="left",
+            yshift=8,
+            font={"color": farbe, "size": 11},
+        )
+
 
 def gewinn_verlust_monatlich(
     monate: Sequence[Monatsumsatz],
@@ -651,6 +689,10 @@ def gewinn_verlust_monatlich(
         },
         customdata=[[euro(betrag)] for betrag in ergebnis],
         hovertemplate="<b>%{x}</b><br>%{customdata[0]}<extra></extra>",
+        text=[tausend_euro(betrag) for betrag in ergebnis],
+        textposition="outside",
+        textfont={"color": TINTE_ZWEITRANGIG, "size": 11},
+        cliponaxis=False,
         showlegend=False,
     )
     if prognose is not None and not prognose.vorhanden:
@@ -1069,6 +1111,17 @@ def anmeldungsverlauf(
         name="Gesamt",
         line={"color": TINTE, "width": 2},
         marker={"size": 5, "color": TINTE},
+    )
+    # Nur die Gesamt-Linie beschriften, nicht jede Kategorie - bei mehreren Kategorien
+    # ueber 13 Monate waere eine Beschriftung je Linie unlesbar.
+    fig.add_annotation(
+        x=beschriftungen[-1],
+        y=gesamt[-1],
+        text=str(gesamt[-1]),
+        showarrow=False,
+        xanchor="left",
+        yshift=8,
+        font={"color": TINTE, "size": 11},
     )
     fig.add_scatter(
         x=beschriftungen,
