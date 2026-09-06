@@ -77,6 +77,51 @@ SCHULUNGSPLAN = Schulungsplan(stichtag=STICHTAG, termine=())
 KOSTENPLAN = Kostenplan()
 
 
+@pytest.fixture
+def dashboard_repository_stubs(monkeypatch):
+    """Patcht alle vier ``mit_automatischen_zugangsdaten()``-Einstiege durch Stubs, die
+    ``BESTAND``/``SCHULUNGSPLAN``/``KOSTENPLAN``/eine leere Auslastung liefern - fuer
+    Tests, die nur pruefen, WIE ``Dashboard.laden()``/``laden_async()`` diese vier
+    Repositories aufruft (Fortschritt, Reihenfolge, Durchreichung), nicht was sie
+    fachlich liefern. Gibt die an ``BestandRepository.laden_async()`` uebergebenen
+    ``kwargs`` je Aufruf zurueck, fuer Tests, die diese pruefen wollen.
+    """
+    bestand_aufrufe: list[dict] = []
+
+    class _StubBestandRepository:
+        async def laden_async(self, **kwargs):
+            bestand_aufrufe.append(kwargs)
+            return BESTAND
+
+    class _StubSchulungenRepository:
+        def laden(self, **kwargs):
+            return SCHULUNGSPLAN
+
+    class _StubKostenRepository:
+        fruehestes_konfiguriertes_jahr = None
+
+        def laden(self, **kwargs):
+            return KOSTENPLAN
+
+    class _StubAuslastungRepository:
+        async def laden_async(self, *args, **kwargs):
+            return ()
+
+    monkeypatch.setattr(
+        BestandRepository, "mit_automatischen_zugangsdaten", lambda: _StubBestandRepository()
+    )
+    monkeypatch.setattr(
+        SchulungenRepository, "mit_automatischen_zugangsdaten", lambda: _StubSchulungenRepository()
+    )
+    monkeypatch.setattr(
+        KostenRepository, "mit_automatischen_zugangsdaten", lambda: _StubKostenRepository()
+    )
+    monkeypatch.setattr(
+        AuslastungRepository, "mit_automatischen_zugangsdaten", lambda: _StubAuslastungRepository()
+    )
+    return bestand_aufrufe
+
+
 def _historie_fuer_abrufquote(quote: float) -> Verbrauchsverlauf:
     """Ein einzelner Beobachtungsmonat, der die Abrufquote-Verteilung auf ``quote`` setzt.
 
@@ -826,6 +871,18 @@ def test_dashboard_projekte_ohne_budget_filtert_projekte():
     )
 
 
+def test_dashboard_simuliere_meldet_fortschritt_einmal_nach_abschluss():
+    """``fortschritt`` bei ``simuliere()`` feuert genau einmal, nach Abschluss - die
+    Simulation ist eine einzige Rechnung ohne sinnvolle Zwischenschritte."""
+    dashboard = Dashboard(BESTAND, SCHULUNGSPLAN, KOSTENPLAN)
+    zeilen: list[str] = []
+    dashboard.simuliere(monate=1, laeufe=100, fortschritt=zeilen.append)
+    assert len(zeilen) == 1
+    assert "Simulation abgeschlossen" in zeilen[0]
+    assert "100 Laeufe" in zeilen[0]
+    assert "1 Monat(e)" in zeilen[0]
+
+
 def test_dashboard_zeigt_horizont_im_umsatzverlauf():
     stichtag = date(2026, 9, 1)
     historie = Umsatzhistorie.zum_stichtag(
@@ -1162,17 +1219,19 @@ def test_dashboard_ohne_auslastung_bleibt_leer():
     assert list(dashboard.auslastung_je_mitarbeiter().data[0].x) == []
 
 
-def test_dashboard_ladebericht_zeigt_stand_und_umfang_ohne_ladedauern():
+def test_dashboard_ladebericht_zeigt_nur_stand_ohne_dauer_je_repository():
+    """Die Dauer/Umfang-Zeilen je Abruf zeigt im Notebook bereits ``fortschritt`` sukzessive
+    waehrend des Ladens (siehe ``test_dashboard_laden_meldet_fortschritt_...``) - ``ladebericht()``
+    wiederholt sie deshalb nicht mehr, nur noch Stand der Auswertung."""
     dashboard = Dashboard(BESTAND, SCHULUNGSPLAN, KOSTENPLAN)
     bericht = dashboard.ladebericht()
-    assert "24.08.2026" in bericht
-    assert "0 Schulung(en) geladen" in bericht
-    assert "0 Monat(e) mit Kostenprognose geladen" in bericht
-    assert "0 Auslastungsmonat(e) geladen" in bericht
-    assert bericht.count("unbekannter Dauer") == 4
+    assert bericht == "Abrechnungsdaten geladen.\nStand der Auswertung: 24.08.2026"
 
 
-def test_dashboard_ladebericht_zeigt_gemessene_ladedauer_je_repository():
+def test_dashboard_schritt_berichte_rekonstruiert_dieselben_vier_zeilen():
+    """``schritt_berichte()`` liefert dieselben Zeilen wie ``fortschritt`` waehrend eines
+    Ladevorgangs, aus einem schon fertig geladenen Dashboard - fuer einen Aufrufer, der
+    ohne neuen Ladevorgang trotzdem berichten will (siehe ``notebooks/setup.py``)."""
     ladedauern = Ladedauern(
         bestand=timedelta(seconds=95),
         schulungsplan=timedelta(seconds=2),
@@ -1180,11 +1239,34 @@ def test_dashboard_ladebericht_zeigt_gemessene_ladedauer_je_repository():
         auslastung=timedelta(seconds=3),
     )
     dashboard = Dashboard(BESTAND, SCHULUNGSPLAN, KOSTENPLAN, ladedauern=ladedauern)
-    bericht = dashboard.ladebericht()
-    assert "Bestand geladen (in 2 Minuten)" in bericht
-    assert "Schulung(en) geladen (in 2 Sekunden)" in bericht
-    assert "Kostenprognose geladen (in eine Sekunde)" in bericht
-    assert "Auslastungsmonat(e) geladen (in 3 Sekunden)" in bericht
+
+    bestand_zeile, schulungsplan_zeile, kostenplan_zeile, auslastung_zeile = (
+        dashboard.schritt_berichte()
+    )
+
+    assert bestand_zeile == f"Bestand geladen: {len(PROJEKTE)} Projekt(e) (in 2 Minuten)"
+    assert schulungsplan_zeile == "0 Schulung(en) geladen (in 2 Sekunden)"
+    assert kostenplan_zeile == "0 Monat(e) mit Kostenprognose geladen (in eine Sekunde)"
+    assert auslastung_zeile == "0 Auslastungsmonat(e) geladen (in 3 Sekunden)"
+
+
+def test_dashboard_schritt_berichte_mit_dauer_ueberschreibt_gespeicherte_werte():
+    """``dauer`` ersetzt die urspruenglichen, teuren Ladedauern - fuer einen Aufrufer,
+    der dasselbe Dashboard nur aus einem eigenen, schnellen Zwischenspeicher zurueckgibt
+    und dafuer die tatsaechlich kurze Dauer dieses Zugriffs zeigen will, statt
+    faelschlich die alte, teure Original-Ladedauer erneut zu melden."""
+    ladedauern = Ladedauern(
+        bestand=timedelta(seconds=16),
+        schulungsplan=timedelta(seconds=1),
+        kostenplan=timedelta(seconds=3),
+        auslastung=timedelta(seconds=0),
+    )
+    dashboard = Dashboard(BESTAND, SCHULUNGSPLAN, KOSTENPLAN, ladedauern=ladedauern)
+
+    berichte = dashboard.schritt_berichte(dauer=timedelta(seconds=0.001))
+
+    assert all("ein Moment" in zeile for zeile in berichte)
+    assert "16 Sekunden" not in "".join(berichte)
 
 
 def test_dashboard_bestandsbericht_zeigt_zahlen_und_ladezeit_je_repository():
@@ -1308,3 +1390,99 @@ def test_dashboard_laden_verdrahtet_alle_vier_repositories(monkeypatch):
     assert dashboard.schulungsplan is SCHULUNGSPLAN
     assert dashboard.kostenplan is KOSTENPLAN
     assert dashboard.auslastung == ()
+
+
+def test_dashboard_laden_meldet_fortschritt_nach_jedem_der_vier_abrufe(dashboard_repository_stubs):
+    """``fortschritt`` feuert sukzessive: eine Zeile direkt nach jedem Abruf, nicht erst am Ende.
+
+    Bestand zuerst und allein, garantiert an erster Stelle. Schulungsplan, Kostenplan und
+    Auslastung laufen danach gleichzeitig (siehe ``Dashboard.laden_async``) - ihre drei
+    Meldungen kommen deshalb in der Reihenfolge, in der sie tatsaechlich fertig werden,
+    nicht in einer festen Reihenfolge.
+    """
+    zeilen: list[str] = []
+    Dashboard.laden(stichtag=STICHTAG, fortschritt=zeilen.append)
+
+    assert len(zeilen) == 4
+    assert "Bestand geladen" in zeilen[0]
+    uebrige = zeilen[1:]
+    assert any("Schulung(en) geladen" in z for z in uebrige)
+    assert any("Kostenprognose geladen" in z for z in uebrige)
+    assert any("Auslastungsmonat(e) geladen" in z for z in uebrige)
+
+
+def test_dashboard_laden_meldet_beginn_jedes_schritts_vor_dessen_fortschritt(
+    dashboard_repository_stubs,
+):
+    """``schritt_beginnt`` feuert je Abruf vor dessen ``fortschritt`` - fuer eine Anzeige,
+    die schon waehrend des laufenden Abrufs zeigt, was gerade geladen wird.
+
+    Bestand und Schulungsplan laufen gleichzeitig, Kostenplan und Auslastung erst
+    danach (siehe ``Dashboard.laden_async``) - geprueft werden deshalb nur die
+    tatsaechlich garantierten Invarianten: je Abruf beginnt vor fortschritt, und
+    Kostenplan/Auslastung beginnen erst, nachdem Bestand fertig gemeldet hat. Die
+    Reihenfolge zwischen echt nebenlaeufigen Abrufen (Bestand/Schulungsplan
+    zueinander, Kostenplan/Auslastung zueinander) ist bewusst nicht Teil dieser
+    Pruefung.
+    """
+    ereignisse: list[str] = []
+    Dashboard.laden(
+        stichtag=STICHTAG,
+        fortschritt=lambda text: ereignisse.append(f"fortschritt:{text}"),
+        schritt_beginnt=lambda name: ereignisse.append(f"beginnt:{name}"),
+    )
+
+    beginnt_namen = {e.split(":", 1)[1] for e in ereignisse if e.startswith("beginnt:")}
+    assert beginnt_namen == {"Bestand", "Schulungsplan", "Kostenplan", "Auslastung"}
+    assert len(ereignisse) == 8
+
+    def index(vorhersage):
+        return next(i for i, e in enumerate(ereignisse) if vorhersage(e))
+
+    idx_bestand_beginnt = index(lambda e: e == "beginnt:Bestand")
+    idx_bestand_fortschritt = index(lambda e: e.startswith("fortschritt:Bestand geladen"))
+    idx_schulungsplan_beginnt = index(lambda e: e == "beginnt:Schulungsplan")
+    idx_schulungsplan_fortschritt = index(
+        lambda e: e.startswith("fortschritt:") and "Schulung(en)" in e
+    )
+    idx_kostenplan_beginnt = index(lambda e: e == "beginnt:Kostenplan")
+    idx_kostenplan_fortschritt = index(
+        lambda e: e.startswith("fortschritt:") and "Kostenprognose" in e
+    )
+    idx_auslastung_beginnt = index(lambda e: e == "beginnt:Auslastung")
+    idx_auslastung_fortschritt = index(
+        lambda e: e.startswith("fortschritt:") and "Auslastungsmonat" in e
+    )
+
+    # Je Abruf: sein beginnt kommt vor seinem eigenen fortschritt.
+    assert idx_bestand_beginnt < idx_bestand_fortschritt
+    assert idx_schulungsplan_beginnt < idx_schulungsplan_fortschritt
+    assert idx_kostenplan_beginnt < idx_kostenplan_fortschritt
+    assert idx_auslastung_beginnt < idx_auslastung_fortschritt
+
+    # Kostenplan und Auslastung haengen von Bestand ab: ihr beginnt kommt erst, nachdem
+    # Bestand fertig gemeldet hat. Schulungsplan haengt an nichts - seine Reihenfolge
+    # relativ zu Bestand ist bewusst nicht Teil dieser Pruefung (echte Nebenlaeufigkeit).
+    assert idx_kostenplan_beginnt > idx_bestand_fortschritt
+    assert idx_auslastung_beginnt > idx_bestand_fortschritt
+
+
+def test_dashboard_laden_reicht_fortschritt_als_cache_fortschritt_durch(
+    dashboard_repository_stubs,
+):
+    """``fortschritt`` ist der einzige Ladehinweis-Callback - Verlaufscache-Meldungen
+    laufen ueber denselben Kanal wie die vier Abrufe (Vereinheitlichung), nicht ueber
+    einen eigenen ``cache_fortschritt``-Parameter. Dashboard reicht dafuer intern eine
+    Weiterleitung als ``cache_fortschritt`` bis zu ``BestandRepository.laden_async()``
+    durch - erst dort (und tiefer, siehe test_client.py/test_cache.py) entstehen die
+    eigentlichen Verlaufscache-Meldungen."""
+    zeilen: list[str] = []
+    Dashboard.laden(stichtag=STICHTAG, fortschritt=zeilen.append)
+
+    # Die an BestandRepository durchgereichte Weiterleitung ruft, aufgerufen, denselben
+    # fortschritt-Callback auf, den Dashboard.laden() bekommen hat - eine Verlaufscache-
+    # Meldung landet also in derselben Liste wie die vier Abruf-Meldungen.
+    weiterleitung = dashboard_repository_stubs[0]["cache_fortschritt"]
+    assert weiterleitung is not None
+    weiterleitung("Projektanteile: aus dem Cache geladen (3 ms)")
+    assert "Projektanteile: aus dem Cache geladen (3 ms)" in zeilen

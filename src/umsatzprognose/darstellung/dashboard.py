@@ -11,6 +11,7 @@ Selbstverstaendlichkeit ist.
 
 from __future__ import annotations
 
+import asyncio
 import time
 from dataclasses import dataclass
 from datetime import date, timedelta
@@ -24,6 +25,7 @@ if TYPE_CHECKING:
     import pandas as pd
     import plotly.graph_objects as go
 
+    from umsatzprognose.clockodo import Fortschritt
     from umsatzprognose.domaene import (
         Auslastungsmonat,
         Bestand,
@@ -34,7 +36,7 @@ if TYPE_CHECKING:
         Schulungsplan,
     )
 
-from umsatzprognose.clockodo import AuslastungRepository, BestandRepository, synchron
+from umsatzprognose.clockodo import AuslastungRepository, BestandRepository, gleichzeitig, synchron
 from umsatzprognose.domaene import Auslastungssumme
 from umsatzprognose.domaene.projekt import sonderfall
 from umsatzprognose.kosten import KostenRepository
@@ -112,6 +114,30 @@ def _dauer_text(dauer: timedelta | None) -> str:
     return humanize.naturaldelta(dauer) if dauer is not None else "unbekannter Dauer"
 
 
+# Je Abruf ein Textbaustein, sowohl fuer die sukzessive fortschritt()-Meldung waehrend
+# eines laufenden Ladevorgangs (siehe Dashboard.laden_async) als auch fuer
+# Dashboard.schritt_berichte() - dieselben vier Zeilen im Nachhinein aus einem schon
+# geladenen Dashboard rekonstruiert, etwa wenn ein Aufrufer (siehe notebooks/setup.py)
+# ein zweites Mal im selben Kernel nicht neu laedt, aber trotzdem berichten will.
+def _bestand_bericht(bestand: Bestand, dauer: timedelta | None) -> str:
+    return (
+        f"Bestand geladen: {humanize.intcomma(len(bestand.projekte))} Projekt(e)"
+        f" (in {_dauer_text(dauer)})"
+    )
+
+
+def _schulungsplan_bericht(schulungsplan: Schulungsplan, dauer: timedelta | None) -> str:
+    return f"{len(schulungsplan.termine)} Schulung(en) geladen (in {_dauer_text(dauer)})"
+
+
+def _kostenplan_bericht(kostenplan: Kostenplan, dauer: timedelta | None) -> str:
+    return f"{len(kostenplan.posten)} Monat(e) mit Kostenprognose geladen (in {_dauer_text(dauer)})"
+
+
+def _auslastung_bericht(auslastung: Sequence[Auslastungsmonat], dauer: timedelta | None) -> str:
+    return f"{len(auslastung)} Auslastungsmonat(e) geladen (in {_dauer_text(dauer)})"
+
+
 class _Stoppuhr:
     """Misst die Dauer eines ``with``-Blocks, danach als :attr:`dauer` verfuegbar."""
 
@@ -167,6 +193,8 @@ class Dashboard:
         mit_verbrauchsverlauf: bool = True,
         horizont_monate: int = 3,
         auslastung_monate: int = 12,
+        fortschritt: Fortschritt | None = None,
+        schritt_beginnt: Fortschritt | None = None,
     ) -> Dashboard:
         """Daten aus Clockodo holen und das Dashboard bereitstellen.
 
@@ -175,9 +203,47 @@ class Dashboard:
         immer alle in ``KOSTEN_SHEET_IDS`` konfigurierten Jahre ab statt eines festen
         Fensters - eine Gewinn/Verlust-Ansicht ohne Kosten waere ohnehin nur Umsatz.
         Welchen Ausschnitt davon eine einzelne Ansicht zeigt, entscheidet sie selbst
-        (siehe :data:`STANDARD_HISTORIE_MONATE`). Bestand, Schulungsplan und
-        Kostenplan werden gleichzeitig geladen; die Auslastung erst danach, weil sie die
-        Personen des geladenen Bestands braucht.
+        (siehe :data:`STANDARD_HISTORIE_MONATE`). Bestand und Schulungsplan haengen an
+        nichts weiter als ``stichtag``/``horizont_monate`` und starten deshalb sofort
+        gleichzeitig, statt Schulungsplan unnoetig auf Bestand warten zu lassen.
+        Kostenplan und Auslastung haengen dagegen echt von Bestand ab (Kostenplan ueber
+        dessen Stichtag/Umsatzhistorie, Auslastung ueber dessen Mitarbeiter) und starten
+        darum erst, wenn Bestand fertig ist - dann aber gleichzeitig miteinander, egal ob
+        Schulungsplan zu dem Zeitpunkt schon fertig ist oder noch laeuft.
+        ``SchulungenRepository.laden()`` und ``KostenRepository.laden()`` sind synchrone
+        Google-Sheets-Aufrufe (siehe Moduldocstring von
+        :mod:`umsatzprognose.google_sheets.client`), keine Coroutinen - ``asyncio.to_thread()``
+        gibt ihnen dafuer je einen eigenen Thread, waehrend Bestand und Auslastung als
+        echte Coroutinen nebenher laufen; :func:`~umsatzprognose.clockodo.gleichzeitig`
+        faechert jeweils die gleichzeitig laufenden Abrufe.
+
+        ``fortschritt``, sofern angegeben, wird nach jedem der vier Abrufe einmal mit
+        einer fertigen Statuszeile (Umfang und Dauer) aufgerufen - fuer eine sukzessive
+        Fortschrittsanzeige waehrend des rund halbminuetigen Ladevorgangs, etwa per
+        ``tqdm`` im Notebook (siehe ``notebooks/setup.py``). Diese vier Aufrufe kommen
+        dabei in der Reihenfolge, in der die jeweiligen Abrufe tatsaechlich fertig
+        werden - Bestand und Schulungsplan in beliebiger Reihenfolge zueinander, danach
+        Kostenplan und Auslastung ebenfalls in beliebiger Reihenfolge zueinander, aber
+        immer erst nach Bestand. ``schritt_beginnt`` wird stattdessen **vor** dem
+        jeweiligen Abruf einmal mit dessen Bezeichnung aufgerufen (``"Bestand"`` und
+        ``"Schulungsplan"`` beide sofort, ``"Kostenplan"`` und ``"Auslastung"`` beide
+        erst, sobald Bestand fertig ist) - fuer eine Anzeige, die schon waehrend des
+        laufenden Abrufs zeigt, was gerade geladen wird, statt nur eines generischen
+        Titels.
+        ``fortschritt`` meldet zusaetzlich, sofern angegeben, je getroffenem
+        Verlaufscache-Zugriff (Projektanteile, Verbrauchsverlauf) eine eigene
+        Statuszeile mit dessen gemessener Dauer - ueber denselben Callback wie die vier
+        Abrufe oben, nur eben zusaetzlich und mittendrin (siehe
+        :func:`~umsatzprognose.clockodo.cache.gecacht_oder_neu`): so bleibt sichtbar,
+        dass und wie schnell diese beiden Zugriffe kamen, auch wenn der
+        "Bestand"-Schritt insgesamt dadurch ungewoehnlich schnell fertig ist. Ein
+        Aufrufer, der die vier Abruf-Meldungen von den Verlaufscache-Meldungen
+        unterscheiden will, erkennt Letztere daran, dass ihr Text mit keinem der vier
+        Abrufberichte uebereinstimmt (siehe ``notebooks/setup.py`` fuer ein Beispiel).
+        Ohne aktivierten Verlaufscache (Standardfall, siehe
+        :mod:`umsatzprognose.clockodo.cache`) ohne jede Wirkung. Ohne Angabe der
+        Callbacks bleibt das Verhalten wie zuvor: nur der fertige :meth:`ladebericht`
+        am Ende.
 
         Legt ``synchron()`` um :meth:`laden_async`, wie die ``laden``-Methoden der
         Repositories um ihre eigene ``laden_async``-Coroutine (siehe
@@ -191,6 +257,8 @@ class Dashboard:
                 mit_verbrauchsverlauf=mit_verbrauchsverlauf,
                 horizont_monate=horizont_monate,
                 auslastung_monate=auslastung_monate,
+                fortschritt=fortschritt,
+                schritt_beginnt=schritt_beginnt,
             )
         )
 
@@ -203,43 +271,112 @@ class Dashboard:
         mit_verbrauchsverlauf: bool = True,
         horizont_monate: int = 3,
         auslastung_monate: int = 12,
+        fortschritt: Fortschritt | None = None,
+        schritt_beginnt: Fortschritt | None = None,
     ) -> Dashboard:
         """Derselbe Ladevorgang fuer Aufrufer, die schon in einem Event-Loop stehen."""
+        # humanize.i18n.activate() wirkt nur thread-lokal (siehe humanize.i18n._CURRENT).
+        # Das Modul-Level-activate() oben greift deshalb nicht, wenn synchron() diese
+        # Coroutine ueber einen eigenen Worker-Thread ausfuehrt (Jupyter/Colab, siehe
+        # clockodo.nebenlaeufig) - ohne diese Zeile waeren die per fortschritt() sofort
+        # gemeldeten Dauern englisch, nur die spaeter im Aufrufer-Thread gebauten
+        # Berichte (ladebericht(), bestandsbericht()) deutsch.
+        humanize.i18n.activate("de_DE")
         stichtag = stichtag or date.today()
         kosten_repo = KostenRepository.mit_automatischen_zugangsdaten()
         abgeschlossene_monate = _abgeschlossene_monate(
             stichtag, kosten_repo.fruehestes_konfiguriertes_jahr
         )
 
-        with _Stoppuhr() as t:
-            bestand = await BestandRepository.mit_automatischen_zugangsdaten().laden_async(
-                stichtag=stichtag,
-                mit_anteilen=mit_anteilen,
-                mit_verbrauchsverlauf=mit_verbrauchsverlauf,
-                abgeschlossene_monate=abgeschlossene_monate,
-                horizont_monate=horizont_monate,
-            )
-        bestand_dauer = t.dauer
+        def _melden(text: str) -> None:
+            if fortschritt is not None:
+                fortschritt(text)
 
-        with _Stoppuhr() as t:
-            schulungsplan = SchulungenRepository.mit_automatischen_zugangsdaten().laden(
-                stichtag=stichtag, horizont_monate=horizont_monate
-            )
-        schulungsplan_dauer = t.dauer
+        def _beginnt(name: str) -> None:
+            if schritt_beginnt is not None:
+                schritt_beginnt(name)
 
-        with _Stoppuhr() as t:
-            kostenplan = kosten_repo.laden(
-                stichtag=bestand.stichtag,
-                horizont_monate=horizont_monate,
-                historie_monate=_historie_monate(bestand, anzahl=None),
-            )
-        kostenplan_dauer = t.dauer
+        # Schulungsplan haengt an nichts weiter als stichtag/horizont_monate und startet
+        # deshalb sofort neben Bestand, statt erst auf ihn zu warten. Kostenplan und
+        # Auslastung haengen dagegen echt von bestand ab (Kostenplan ueber dessen
+        # Stichtag/Umsatzhistorie, Auslastung ueber dessen Mitarbeiter) und koennen darum
+        # erst starten, wenn Bestand fertig ist - dann aber gleichzeitig miteinander, egal
+        # ob Schulungsplan zu dem Zeitpunkt schon fertig ist oder noch laeuft.
+        # SchulungenRepository.laden() und kosten_repo.laden() sind synchrone
+        # Google-Sheets-Aufrufe (siehe Moduldocstring von
+        # umsatzprognose.google_sheets.client), keine Coroutinen - asyncio.to_thread()
+        # gibt ihnen dafuer je einen eigenen Thread, waehrend Bestand und Auslastung als
+        # echte Coroutinen nebenher laufen.
 
-        with _Stoppuhr() as t:
-            auslastung = await AuslastungRepository.mit_automatischen_zugangsdaten().laden_async(
-                _aktive_mitarbeiter(bestand), stichtag=bestand.stichtag, monate=auslastung_monate
+        async def _bestand_und_abhaengige_laden() -> tuple[
+            Bestand, timedelta, Kostenplan, timedelta, tuple[Auslastungsmonat, ...], timedelta
+        ]:
+            _beginnt("Bestand")
+            with _Stoppuhr() as t:
+                bestand = await BestandRepository.mit_automatischen_zugangsdaten().laden_async(
+                    stichtag=stichtag,
+                    mit_anteilen=mit_anteilen,
+                    mit_verbrauchsverlauf=mit_verbrauchsverlauf,
+                    abgeschlossene_monate=abgeschlossene_monate,
+                    horizont_monate=horizont_monate,
+                    cache_fortschritt=_melden,
+                )
+            bestand_dauer = t.dauer
+            _melden(_bestand_bericht(bestand, bestand_dauer))
+
+            _beginnt("Kostenplan")
+            _beginnt("Auslastung")
+
+            async def _kostenplan_laden() -> tuple[Kostenplan, timedelta]:
+                with _Stoppuhr() as t:
+                    kostenplan = await asyncio.to_thread(
+                        kosten_repo.laden,
+                        stichtag=bestand.stichtag,
+                        horizont_monate=horizont_monate,
+                        historie_monate=_historie_monate(bestand, anzahl=None),
+                    )
+                _melden(_kostenplan_bericht(kostenplan, t.dauer))
+                return kostenplan, t.dauer
+
+            async def _auslastung_laden() -> tuple[tuple[Auslastungsmonat, ...], timedelta]:
+                with _Stoppuhr() as t:
+                    auslastung = (
+                        await AuslastungRepository.mit_automatischen_zugangsdaten().laden_async(
+                            _aktive_mitarbeiter(bestand),
+                            stichtag=bestand.stichtag,
+                            monate=auslastung_monate,
+                        )
+                    )
+                _melden(_auslastung_bericht(auslastung, t.dauer))
+                return auslastung, t.dauer
+
+            (kostenplan, kostenplan_dauer), (auslastung, auslastung_dauer) = await gleichzeitig(
+                _kostenplan_laden(), _auslastung_laden()
             )
-        auslastung_dauer = t.dauer
+            return (
+                bestand,
+                bestand_dauer,
+                kostenplan,
+                kostenplan_dauer,
+                auslastung,
+                auslastung_dauer,
+            )
+
+        async def _schulungsplan_laden() -> tuple[Schulungsplan, timedelta]:
+            _beginnt("Schulungsplan")
+            with _Stoppuhr() as t:
+                schulungsplan = await asyncio.to_thread(
+                    SchulungenRepository.mit_automatischen_zugangsdaten().laden,
+                    stichtag=stichtag,
+                    horizont_monate=horizont_monate,
+                )
+            _melden(_schulungsplan_bericht(schulungsplan, t.dauer))
+            return schulungsplan, t.dauer
+
+        (
+            (bestand, bestand_dauer, kostenplan, kostenplan_dauer, auslastung, auslastung_dauer),
+            (schulungsplan, schulungsplan_dauer),
+        ) = await gleichzeitig(_bestand_und_abhaengige_laden(), _schulungsplan_laden())
 
         ladedauern = Ladedauern(
             bestand=bestand_dauer,
@@ -254,10 +391,6 @@ class Dashboard:
         return self.bestand.stichtag
 
     @property
-    def anzahl_schulungen(self) -> int:
-        return len(self.schulungsplan.termine)
-
-    @property
     def anzahl_kostenmonate(self) -> int:
         return len(self.kostenplan.posten)
 
@@ -265,20 +398,50 @@ class Dashboard:
     def anzahl_auslastungsmonate(self) -> int:
         return len(self.auslastung)
 
-    def ladebericht(self) -> str:
-        """Kurzer Ladehinweis fuer Fachexperten: Stand, Umfang und Dauer je Abruf."""
+    def schritt_berichte(self, *, dauer: timedelta | None = None) -> tuple[str, str, str, str]:
+        """Dieselben vier Statuszeilen wie ``fortschritt`` waehrend :meth:`laden_async`
+        (Bestand, Schulungsplan, Kostenplan, Auslastung, in dieser Reihenfolge) - aus
+        :attr:`ladedauern` und dem geladenen Bestand im Nachhinein rekonstruiert.
+
+        Fuer einen Aufrufer, der ein schon geladenes Dashboard erneut berichten will,
+        ohne neu zu laden - etwa ``notebooks/setup.py`` bei einem zweiten Aufruf im
+        selben Kernel: ohne diese Methode gaebe es dabei gar keine Ausgabe mehr, weil
+        kein neuer Ladevorgang (und damit kein ``fortschritt``-Aufruf) mehr stattfindet.
+
+        ``dauer``, sofern angegeben, ersetzt in allen vier Zeilen die einzeln
+        gespeicherten Dauern aus :attr:`ladedauern`. Gedacht fuer genau diesen
+        Wiederholungsfall: die in :attr:`ladedauern` gespeicherten Werte stammen vom
+        urspruenglichen, echten Ladevorgang (z. B. 16 Sekunden fuer Bestand) - ein
+        Aufrufer, der dasselbe Dashboard nur aus seinem eigenen, viel schnelleren
+        Zwischenspeicher zurueckgibt, wuerde mit den unveraenderten Werten faelschlich
+        genau diese alte, teure Dauer erneut zeigen, obwohl der eigentliche Zugriff
+        diesmal nur Sekundenbruchteile brauchte. Ein einzelner uebergebener Wert statt
+        vier getrennter Overrides, weil ein solcher Zwischenspeicher das Dashboard immer
+        als Ganzes zurueckgibt, nicht schrittweise.
+        """
         dauern = self.ladedauern
+        bestand_dauer = dauer if dauer is not None else dauern.bestand
+        schulungsplan_dauer = dauer if dauer is not None else dauern.schulungsplan
+        kostenplan_dauer = dauer if dauer is not None else dauern.kostenplan
+        auslastung_dauer = dauer if dauer is not None else dauern.auslastung
         return (
-            f"Abrechnungsdaten geladen.\n"
-            f"Stand der Auswertung: {self.stichtag:%d.%m.%Y}\n"
-            f"Bestand geladen (in {_dauer_text(dauern.bestand)})\n"
-            f"{self.anzahl_schulungen} Schulung(en) geladen"
-            f" (in {_dauer_text(dauern.schulungsplan)})\n"
-            f"{self.anzahl_kostenmonate} Monat(e) mit Kostenprognose geladen"
-            f" (in {_dauer_text(dauern.kostenplan)})\n"
-            f"{self.anzahl_auslastungsmonate} Auslastungsmonat(e) geladen"
-            f" (in {_dauer_text(dauern.auslastung)})"
+            _bestand_bericht(self.bestand, bestand_dauer),
+            _schulungsplan_bericht(self.schulungsplan, schulungsplan_dauer),
+            _kostenplan_bericht(self.kostenplan, kostenplan_dauer),
+            _auslastung_bericht(self.auslastung, auslastung_dauer),
         )
+
+    def ladebericht(self) -> str:
+        """Kurzer Ladehinweis fuer Fachexperten: Stand der Auswertung.
+
+        Ohne die Dauer/Umfang-Zeilen je Abruf: die zeigt im Notebook bereits
+        ``setup.dashboard()`` sukzessive waehrend des Ladens per ``fortschritt``
+        (siehe :meth:`laden_async`) - hier noch einmal aufgefuehrt waere reine
+        Wiederholung. Wer sie im Nachhinein braucht (z. B. ausserhalb eines Notebooks,
+        ohne ``fortschritt``-Callback), findet sie unveraendert in
+        :attr:`ladedauern`/:meth:`bestandsbericht`/:meth:`schritt_berichte`.
+        """
+        return f"Abrechnungsdaten geladen.\nStand der Auswertung: {self.stichtag:%d.%m.%Y}"
 
     def bestandsbericht(self) -> str:
         """Zahlen zum geladenen Bestand fuer die technische Pruefung, samt Ladezeit je Abruf."""
@@ -312,8 +475,29 @@ class Dashboard:
             ]
         )
 
-    def simuliere(self, *, monate: int = 3, laeufe: int = 10_000):
-        self.prognose = self.bestand.simulieren(monate=monate, laeufe=laeufe)
+    def simuliere(
+        self, *, monate: int = 3, laeufe: int = 10_000, fortschritt: Fortschritt | None = None
+    ) -> None:
+        """Fuehrt die Monte-Carlo-Simulation aus und haelt das Ergebnis in
+        :attr:`prognose` fuer die anderen Ansichten bereit.
+
+        ``fortschritt``, sofern angegeben, wird einmal nach Abschluss mit einer
+        fertigen Statuszeile (Laeufe, Horizont, Dauer) aufgerufen - dieselbe Form wie
+        beim Laden (siehe :meth:`laden_async`), aber nur ein einzelner Aufruf statt
+        vier: die Simulation ist eine einzige vektorisierte numpy-Rechnung (siehe
+        :func:`~umsatzprognose.domaene.simulation.simulieren`) ohne sinnvolle
+        Zwischenschritte (der Horizont ist auf 1-3 Monate begrenzt, jeder davon in
+        etwa gleich teuer) - ein Vorher/Nachher-Bericht wie bei einem einzelnen
+        Verlaufscache-Zugriff genuegt, eine feingranulare Zwischenanzeige waere nur
+        Anschein von Fortschritt ohne echten Informationsgewinn.
+        """
+        with _Stoppuhr() as t:
+            self.prognose = self.bestand.simulieren(monate=monate, laeufe=laeufe)
+        if fortschritt is not None:
+            fortschritt(
+                f"Simulation abgeschlossen: {humanize.intcomma(laeufe)} Laeufe ueber "
+                f"{monate} Monat(e) (in {_dauer_text(t.dauer)})"
+            )
 
     def umsatzverlauf(self, *, mit_beschriftung: bool = False) -> go.Figure:
         """Der Umsatz je Monat - Historie und, daran anschliessend, der Prognosehorizont.
