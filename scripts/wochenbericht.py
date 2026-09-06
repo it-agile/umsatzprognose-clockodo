@@ -10,7 +10,7 @@ Zugangsdaten kommen ausschließlich aus Umgebungsvariablen (``ClockodoCredential
 aus_umgebung()`` bzw. ``GoogleSheetsConfig.aus_umgebung()``) - in der Action als
 Secrets, siehe .github/workflows/wochenbericht.yml.
 
-Ein einziger Post ("Zahlen, Daten, Fakten") trägt alle Diagramme als Bilder,
+Ein einziger Post ("Wochenbericht Zahlen, Daten, Fakten") trägt alle Diagramme als Bilder,
 einschließlich der Umsatztabelle als gerendertes Bild statt als Text - dieselben
 Ansichten wie in notebooks/01_dashboard.ipynb, notebooks/00_datencheck.ipynb und
 notebooks/03_schulungsanmeldungen.ipynb. Ein einzelner Slack-API-Aufruf
@@ -185,9 +185,10 @@ def posten(
     # file_uploads statt einer Schleife aus einzelnen files_upload_v2-Aufrufen: so
     # haengen alle Bilder gemeinsam an einer Nachricht (initial_comment), statt je Bild
     # eine eigene Unternachricht im Thread zu erzeugen.
+    titel_post = f"Wochenbericht Zahlen, Daten, Fakten - Stand {dashboard.stichtag:%d.%m.%Y}"
     client.files_upload_v2(
         channel=kanal,
-        initial_comment=f"Zahlen, Daten, Fakten - Stand {dashboard.stichtag:%d.%m.%Y}",
+        initial_comment=titel_post,
         file_uploads=[
             {"file": str(bild), "title": titel}
             for (titel, _figur), bild in zip(titel_figuren, bilder, strict=True)
