@@ -14,6 +14,12 @@ concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# "uvx tox" allein läuft mit tox' eingebautem virtualenv-Runner, der nur bereits auf
+# dem Runner vorhandene Interpreter findet - ubuntu-latest bringt aber nur eine
+# Python-Version mit. "--with tox-uv" lädt den in pyproject.toml als Build-Abhängigkeit
+# geführten Plugin mit in dieselbe uvx-Umgebung und schaltet dadurch tox auf uvs
+# eigene Python-Verwaltung um (uv-venv-runner), die fehlende Versionen (hier py313,
+# py314) bei Bedarf selbst herunterlädt - kein separates actions/setup-python nötig.
 jobs:
   ruff:
     name: ruff
@@ -21,7 +27,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v10.0.1
-      - run: uvx tox -e ruff
+      - run: uvx --with tox-uv tox -e ruff
 
   mypy:
     name: mypy
@@ -29,7 +35,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v10.0.1
-      - run: uvx tox -e mypy
+      - run: uvx --with tox-uv tox -e mypy
 
   mypy-notebooks:
     name: mypy (Notebooks)
@@ -37,7 +43,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v10.0.1
-      - run: uvx tox -e mypy-notebooks
+      - run: uvx --with tox-uv tox -e mypy-notebooks
 
   # Je Python-Version ein eigener Job statt eines gemeinsamen Matrix-Laufs mit
   # gemeinsamem Ergebnis - ein Fehlschlag unter py314 blockiert nicht die Sichtbarkeit
@@ -52,7 +58,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v10.0.1
-      - run: uvx tox -e ${{ matrix.env }}
+      - run: uvx --with tox-uv tox -e ${{ matrix.env }}
 
   # Coverage ist nur aussagekräftig, wenn die Tests unter allen drei Python-Versionen
   # schon ohne Coverage-Instrumentierung grün sind - deshalb erst nach "test".
@@ -63,4 +69,4 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v10.0.1
-      - run: uvx tox -e coverage
+      - run: uvx --with tox-uv tox -e coverage
