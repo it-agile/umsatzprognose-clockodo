@@ -80,7 +80,7 @@ KOSTENPLAN = Kostenplan()
 def _historie_fuer_abrufquote(quote: float) -> Verbrauchsverlauf:
     """Ein einzelner Beobachtungsmonat, der die Abrufquote-Verteilung auf ``quote`` setzt.
 
-    Dasselbe Muster wie in ``tests/test_simulation.py``: das Projekt liegt ausserhalb
+    Dasselbe Muster wie in ``tests/domaene/test_simulation.py``: das Projekt liegt ausserhalb
     des Prognose-Scope und traegt selbst keinen Umsatz bei, nur die eine Beobachtung.
     """
     projekt = Projekt(id=900, name="Historie", aktiv=False, budget=Gesamtbudget(betrag=1000.0))

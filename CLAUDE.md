@@ -12,7 +12,7 @@ angelegtes venv. Colab läuft auf Python 3.13.
 uv sync --extra notebook       # Umgebung herstellen
 git config core.hooksPath .githooks  # einmalig: Pre-Commit-Hook aktivieren (siehe unten)
 uv run pytest                  # alle Tests
-uv run pytest tests/test_projekt.py::test_restvolumen_ist_budget_minus_verbrauch  # ein Test
+uv run pytest tests/domaene/test_projekt.py::test_restvolumen_ist_budget_minus_verbrauch  # ein Test
 uv run ruff check .            # Lint
 uv run ruff format .           # Formatierung
 uv run jupyter lab             # Notebooks lokal
@@ -23,9 +23,9 @@ uvx tox -e web                 # Web-Frontend lokal starten (siehe Abschnitt "We
 ```
 
 `tox` ist nicht Projektabhängigkeit, sondern läuft über `uvx` (`[tool.tox]` in
-`pyproject.toml`). `env_list` (`py312`, `py313`, `py314`, `coverage`, `ruff`) läuft bei
-`uvx tox` ohne weitere Angabe; `jupyter` ist eine zusätzliche Umgebung und läuft nur mit
-`-e jupyter`.
+`pyproject.toml`). `env_list` (`py312`, `py313`, `py314`, `coverage`, `ruff`, `mypy`,
+`mypy-notebooks`) läuft bei `uvx tox` ohne weitere Angabe; `jupyter` und `web` sind
+zusätzliche Umgebungen und laufen nur mit `-e jupyter` bzw. `-e web`.
 
 ## Aufbau
 
@@ -142,7 +142,7 @@ der sechs Pakete darf `util/` importieren.
   Wer selbst in einem Loop steht, ruft `laden_async()` direkt auf.
 - **Nebenläufigkeitsprimitive gehören nicht an ein langlebiges Objekt.**
   `gleichzeitig()` erzeugt seine Sperre je Aufruf und bricht bei einem Fehler die
-  übrigen Abrufe ab. `tests/test_nebenlaeufig.py` prüft mit einer `asyncio.Barrier`,
+  übrigen Abrufe ab. `tests/clockodo/test_nebenlaeufig.py` prüft mit einer `asyncio.Barrier`,
   dass die Abrufe wirklich überlappen.
 - **Zeitbuchungen werden nicht einzeln geladen.** `/v2/entrygroups` mit
   `grouping[]=projects_id&grouping[]=users_id` liefert die Aufteilung fertig
