@@ -148,6 +148,15 @@ def test_sollarbeitszeit_kommt_vom_unversionierten_endpunkt():
     assert requests[0].url.path == "/api/targethours"
 
 
+def test_userreports_kommt_vom_unversionierten_endpunkt_mit_jahr_und_typ():
+    client, requests = client_mit(lambda _: httpx2.Response(200, json={"userreports": []}))
+    synchron(client.userreports(year=2026))
+
+    assert requests[0].url.path == "/api/userreports"
+    assert requests[0].url.params["year"] == "2026"
+    assert requests[0].url.params["type"] == "1"
+
+
 def test_abwesenheiten_filtern_ueber_deepobject_jahresparameter():
     # filter[year], nicht year direkt - deepObject-Form wie bei grouping[].
     client, requests = client_mit(lambda _: httpx2.Response(200, json={"data": []}))

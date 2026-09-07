@@ -1,4 +1,5 @@
-"""Fruehwarn-Tests fuer scripts/wochenbericht.py - keine Live-API, kein Slack-Post.
+"""Fruehwarn-Tests fuer scripts/wochenbericht.py, samt der Kurzarbeit-Integration -
+keine Live-API, kein Slack-Post.
 
 Deckt genau die Art von Regression ab, die zuletzt unbemerkt blieb, bis der
 woechentliche Actions-Lauf fehlschlug: eine falsche Signatur, ein vertauschter
@@ -20,6 +21,7 @@ import plotly.graph_objects as go
 import pytest
 
 from umsatzprognose.darstellung import diagramme
+from umsatzprognose.domaene import Kurzarbeitsbewertung, Schwellenwerte
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -28,6 +30,14 @@ if TYPE_CHECKING:
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent / "scripts"))
 import wochenbericht
+
+# Minimale, gueltige Kurzarbeit-Rohdaten fuer Tests von diagrammtitel_und_figuren() -
+# die Funktion ruft echten Code auf (diagramme.kurzarbeit_grafik()), kein Mock noetig.
+_KURZARBEIT_ERGEBNISSE = {
+    (2026, 8): Kurzarbeitsbewertung(
+        jahr=2026, monat=8, schwellenwerte=Schwellenwerte(), anzahl_kurzarbeitsfaehig=1
+    )
+}
 
 
 class _FakeDashboard:
@@ -72,11 +82,13 @@ class _FakeSchulungenRepository:
         return _FakeAnmeldungsverlauf()
 
 
-def test_diagrammtitel_und_figuren_liefert_alle_acht_diagramme_in_reihenfolge(monkeypatch):
+def test_diagrammtitel_und_figuren_liefert_alle_neun_diagramme_in_reihenfolge(monkeypatch):
     monkeypatch.setattr(wochenbericht, "SchulungenRepository", _FakeSchulungenRepository)
     monkeypatch.setattr(diagramme, "anmeldungsverlauf", lambda *a, **kw: go.Figure())
 
-    ergebnis = wochenbericht.diagrammtitel_und_figuren(_FakeDashboard(), gewinn_verlust_monate=12)
+    ergebnis = wochenbericht.diagrammtitel_und_figuren(
+        _FakeDashboard(), _KURZARBEIT_ERGEBNISSE, gewinn_verlust_monate=12
+    )
 
     assert [titel for titel, _figur in ergebnis] == [
         "Umsatz je Monat",
@@ -85,6 +97,7 @@ def test_diagrammtitel_und_figuren_liefert_alle_acht_diagramme_in_reihenfolge(mo
         "Gewinn/Verlust je Monat und Jahr",
         "Kumulierte Umsatzrendite je Jahr",
         "Auslastung je Person",
+        "Kurzarbeitsbereitschaft je Monat",
         "Anmeldungen je Monat",
         "Umsatztabelle",
     ]
@@ -205,8 +218,40 @@ def test_diagramm_erlaeuterungen_deckt_alle_diagrammtitel_ab(monkeypatch):
     titel = {
         titel
         for titel, _figur in wochenbericht.diagrammtitel_und_figuren(
-            _FakeDashboard(), gewinn_verlust_monate=12
+            _FakeDashboard(), _KURZARBEIT_ERGEBNISSE, gewinn_verlust_monate=12
         )
     }
 
     assert titel == set(wochenbericht.DIAGRAMM_ERLAEUTERUNGEN)
+
+
+def test_kurzarbeit_erlaeuterung_nennt_status_und_quote_des_juengsten_monats():
+    ergebnisse = {
+        (2026, 7): Kurzarbeitsbewertung(
+            jahr=2026, monat=7, schwellenwerte=Schwellenwerte(quote_organisation=0.30)
+        ),
+        (2026, 8): Kurzarbeitsbewertung(
+            jahr=2026,
+            monat=8,
+            schwellenwerte=Schwellenwerte(quote_organisation=0.30),
+            anzahl_kurzarbeitsfaehig=3,
+            anzahl_scheitert_interne_arbeit=1,
+        ),
+    }
+
+    text = wochenbericht.kurzarbeit_erlaeuterung(ergebnisse)
+
+    assert "Aug 2026" in text
+    assert "*Voraussetzung erfüllt*" in text  # Slack-mrkdwn kennt keine Textfarbe
+    assert "75%" in text
+    assert "Schwelle 30%" in text
+
+
+def test_kurzarbeit_erlaeuterung_ohne_quote_meldet_keine_auswertung_moeglich():
+    ergebnisse = {
+        (2026, 8): Kurzarbeitsbewertung(jahr=2026, monat=8, schwellenwerte=Schwellenwerte())
+    }
+
+    text = wochenbericht.kurzarbeit_erlaeuterung(ergebnisse)
+
+    assert text == "Kurzarbeitsbereitschaft (Aug 2026): keine Auswertung möglich."

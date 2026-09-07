@@ -11,14 +11,18 @@ import humanize
 from tqdm.auto import tqdm
 
 from umsatzprognose import Dashboard
-from umsatzprognose.domaene import Anmeldungsverlauf
+from umsatzprognose.clockodo import KurzarbeitRepository
+from umsatzprognose.domaene import Anmeldungsverlauf, Personenmonat
 from umsatzprognose.schulungen import SchulungenRepository
+from umsatzprognose.util import Monat
 
 humanize.i18n.activate("de_DE")
 
 _dashboard: Dashboard | None = None
 _anmeldungsverlauf: Anmeldungsverlauf | None = None
 _anmeldungsverlauf_dauer: timedelta | None = None
+_kurzarbeit_rohdaten: dict[Monat, tuple[Personenmonat, ...]] | None = None
+_kurzarbeit_rohdaten_dauer: timedelta | None = None
 
 SCHRITTE_DASHBOARD_LADEN = ("Bestand", "Schulungsplan", "Kostenplan", "Auslastung")
 # Ein je Schritt eindeutiger Textbaustein aus dessen fertiger Statuszeile (siehe
@@ -203,6 +207,67 @@ def anmeldungsverlauf(*, ab_jahr: int = 2022) -> Anmeldungsverlauf:
         else:
             fortschrittsbalken.write(anmeldungsverlauf_bericht(dauer=zugriffsdauer))
     return _anmeldungsverlauf
+
+
+def kurzarbeit_rohdaten(
+    *, stichtag: date | None = None, anzahl_monate: int = 6
+) -> dict[Monat, tuple[Personenmonat, ...]]:
+    """Laedt die Personenmonat-Rohdaten fuer den Baustein Kurzarbeitsbereitschaft beim
+    ersten Aufruf je Kernel, danach nur noch zurueckgegeben.
+
+    Komplett unabhaengig von :func:`dashboard` - eigener Baustein, kein Bezug zur
+    Umsatzprognose (siehe ``spec/spec-kurzarbeit.md`` Abschnitt 2/7). Liefert bewusst
+    nur die Rohdaten, nicht schon eine :class:`~umsatzprognose.domaene.
+    kurzarbeit.Kurzarbeitsbewertung` - die Bewertung mit Rollenzuordnung und
+    Schwellenwerten ist eine reine, sofortige Rechnung
+    (:func:`~umsatzprognose.domaene.kurzarbeit.bewertungen`) und braucht deshalb keinen
+    eigenen Ladevorgang; sie steht im Notebook selbst, damit Schwellenwerte dort ohne
+    Neuabruf geaendert werden koennen.
+
+    Der Balken fuellt sich dabei sichtbar ueber echte Zwischenschritte (fuenf
+    gleichzeitige Zweige plus ein ``/userreports``-Abruf je Jahr, siehe Docstring von
+    ``KurzarbeitRepository.laden_async``), ohne dafuer eine eigene Zeile zu
+    hinterlassen. ``total=None`` statt einer festen Zahl, weil die Anzahl der
+    Jahres-Abrufe vorher nicht bekannt ist (haengt von ``anzahl_monate`` ab).
+    """
+    global _kurzarbeit_rohdaten, _kurzarbeit_rohdaten_dauer
+    start = time.perf_counter()
+    with tqdm(total=None, desc="Kurzarbeit-Rohdaten laden", leave=False) as fortschrittsbalken:
+        neu_geladen = _kurzarbeit_rohdaten is None
+        if neu_geladen:
+
+            def _melden(text: str) -> None:
+                fortschrittsbalken.update(1)
+
+            _kurzarbeit_rohdaten = KurzarbeitRepository.mit_automatischen_zugangsdaten().laden(
+                stichtag=date.today() if stichtag is None else stichtag,
+                anzahl_monate=anzahl_monate,
+                fortschritt=_melden,
+            )
+        else:
+            fortschrittsbalken.update(1)
+        zugriffsdauer = timedelta(seconds=time.perf_counter() - start)
+        if neu_geladen:
+            _kurzarbeit_rohdaten_dauer = zugriffsdauer
+            fortschrittsbalken.write(kurzarbeit_rohdaten_bericht())
+        else:
+            fortschrittsbalken.write(kurzarbeit_rohdaten_bericht(dauer=zugriffsdauer))
+    return _kurzarbeit_rohdaten
+
+
+def kurzarbeit_rohdaten_bericht(*, dauer: timedelta | None = None) -> str:
+    """Kurzer Ladehinweis, analog zu :func:`anmeldungsverlauf_bericht`.
+
+    Setzt voraus, dass :func:`kurzarbeit_rohdaten` bereits im selben Kernel gelaufen ist.
+    """
+    if _kurzarbeit_rohdaten is None or _kurzarbeit_rohdaten_dauer is None:
+        raise ValueError("Die Kurzarbeit-Rohdaten wurden noch nicht geladen.")
+    tatsaechliche_dauer = dauer if dauer is not None else _kurzarbeit_rohdaten_dauer
+    anzahl_personen = len({p.mitarbeiter_id for pm in _kurzarbeit_rohdaten.values() for p in pm})
+    return (
+        f"{len(_kurzarbeit_rohdaten)} Monate, {anzahl_personen} Personen geladen"
+        f" (in {humanize.naturaldelta(tatsaechliche_dauer)})."
+    )
 
 
 def anmeldungsverlauf_bericht(*, dauer: timedelta | None = None) -> str:

@@ -9,9 +9,13 @@ Google-Sheets-Tabelle – deterministisch, ohne eigene Bandbreite.
 
 Maßgeblich sind die Spezifikationen:
 [`spec/spec-umsatzprognose-clockodo-modul.md`](spec/spec-umsatzprognose-clockodo-modul.md)
-(Baustein Bestand) und
+(Baustein Bestand),
 [`spec/spec-schulungsanmeldungen.md`](spec/spec-schulungsanmeldungen.md)
-(Baustein Schulungsanmeldungen).
+(Baustein Schulungsanmeldungen) und
+[`spec/spec-kurzarbeit.md`](spec/spec-kurzarbeit.md) (Baustein Kurzarbeitsbereitschaft
+– rückblickend je Monat, ob die Organisation die Voraussetzungen für Kurzarbeit erfüllt
+hätte; unabhängig vom Umsatz, siehe `notebooks/04_kurzarbeit.ipynb` und `/kurzarbeit`
+im Web-Frontend).
 
 ## Stand
 
@@ -40,7 +44,9 @@ Zugangsdaten aus `.env.sample` nach `.env` kopieren und ausfüllen. Den API-Key 
 jede Person in Clockodo unter „Persönliche Daten“. Für den Baustein Schulungsanmeldungen
 zusätzlich eine OAuth-Client-ID (kein Service-Account, siehe `.env.sample`) sowie die
 Jahr-zu-Spreadsheet-Zuordnung eintragen; der erste Aufruf öffnet dafür lokal einmalig
-einen Browser-Tab zum Anmelden.
+einen Browser-Tab zum Anmelden. Für den Baustein Kurzarbeitsbereitschaft zusätzlich
+`KURZARBEIT_ROLLENZUORDNUNG` eintragen (siehe `.env.sample`) – eine personenbezogene
+Angabe, die deshalb in keiner Datei dieses Repositories steht.
 
 ## Nutzung
 

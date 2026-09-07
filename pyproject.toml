@@ -110,7 +110,7 @@ commands = [[ "jupyter", { replace = "posargs", default = ["lab", "--autoreload"
 [tool.tox.env.web]
 extras = [ "web" ]
 allowlist_externals = [ "uvicorn" ]
-commands = [[ "uvicorn", { replace = "posargs", default = ["umsatzprognose.webapp.app:app", "--reload"], extend = true } ]]
+commands = [[ "uvicorn", { replace = "posargs", default = ["umsatzprognose.webapp.app:app"], extend = true } ]]
 
 [tool.ruff]
 line-length = 100

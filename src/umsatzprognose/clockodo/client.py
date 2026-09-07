@@ -94,8 +94,14 @@ DEFAULT_TIMEOUT = 60.0
 # exceeded (N requests per 1 minute)") - besonders beim gleichzeitigen Abruf vieler
 # Endpunkte (siehe .nebenlaeufig.gleichzeitig) real erreichbar. RATE_LIMIT_MAX_VERSUCHE
 # zaehlt den ersten Versuch mit; RATE_LIMIT_WARTEZEIT_SEKUNDEN orientiert sich am
-# Ein-Minuten-Fenster von Clockodos Limit, die Streuung (siehe .get) verhindert, dass
-# mehrere gleichzeitig wartende Aufrufe exakt zusammen erneut anfragen.
+# Ein-Minuten-Fenster von Clockodos Limit. Die Streuung (siehe
+# _wartezeit_vor_wiederholung) reicht bewusst
+# ueber das gesamte Wartefenster (nicht nur ein paar Sekunden): mehrere gleichzeitig
+# wartende Zweige derselben ``gleichzeitig()``-Abfrage (z. B. die vier
+# entrygroups-Aufrufe von KurzarbeitRepository) treffen sonst mit fast identischer
+# Wartezeit erneut zusammen ein und fuellen das Kontingent gegenseitig wieder auf,
+# bevor der naechste eigene Versuch drankommt - live beobachtet als wiederholter 429
+# trotz mehrerer Wiederholungen.
 RATE_LIMIT_STATUS = 429
 RATE_LIMIT_MAX_VERSUCHE = 4
 RATE_LIMIT_WARTEZEIT_SEKUNDEN = 15.0
@@ -208,6 +214,32 @@ class UsersNonbusinessDayV2(TypedDict):
 
     users_id: int
     days: list[NonbusinessDayV2]
+
+
+class UserReportMonthDetailV1(TypedDict):
+    """Ein Monatseintrag aus ``UserReportV1.month_details``.
+
+    ``diff`` ist trotz des Namens **nicht** der kumulierte Stand, sondern nur die
+    Abweichung dieses einzelnen Monats - siehe Moduldocstring von
+    :mod:`umsatzprognose.clockodo.kurzarbeit` und Abschnitt 8 von
+    ``spec/spec-kurzarbeit.md`` (live verifiziert).
+    """
+
+    nr: int
+    diff: float
+
+
+class UserReportV1(TypedDict):
+    """Ein Eintrag aus ``/userreports?type=1`` (Monatsbericht) - nur die hier
+    verwendeten Felder.
+
+    ``overtime_carryover`` ist der Überstunden-Saldo zum Jahresbeginn (in Sekunden);
+    ``diff`` (hier nicht deklariert, ungenutzt) ist der kumulierte Jahresstand.
+    """
+
+    users_id: int
+    overtime_carryover: float
+    month_details: list[UserReportMonthDetailV1] | None
 
 
 class EntryGroupV2(TypedDict):
@@ -350,7 +382,7 @@ def _wartezeit_vor_wiederholung(status_code: int, versuch: int) -> float | None:
     ``versuch`` zaehlt den gerade abgeschlossenen Versuch mit (der erste ist 1).
     """
     if status_code == RATE_LIMIT_STATUS and versuch < RATE_LIMIT_MAX_VERSUCHE:
-        return RATE_LIMIT_WARTEZEIT_SEKUNDEN + random.uniform(0, 5)
+        return RATE_LIMIT_WARTEZEIT_SEKUNDEN + random.uniform(0, RATE_LIMIT_WARTEZEIT_SEKUNDEN)
     if status_code == GATEWAY_TIMEOUT_STATUS and versuch < GATEWAY_TIMEOUT_MAX_VERSUCHE:
         return GATEWAY_TIMEOUT_WARTEZEIT_SEKUNDEN + random.uniform(0, 5)
     return None
@@ -616,6 +648,16 @@ class ClockodoClient:
             time_until=time_until,
             billable=billable,
         )
+
+    async def userreports(self, *, year: int, typ: int = 1) -> list[UserReportV1]:
+        """Berichte aus dem unversionierten ``/userreports``, Standard ``typ=1`` (Monat).
+
+        Envelope-Key ist ``userreports``, es gibt kein ``paging``. ``typ`` ist
+        Clockodos ``UserReportType``-Enum (0 Jahr, 1 Monat, 2 Woche, 3 Tag,
+        4 Tag mit Arbeitszeit) - nur ``typ=1`` liefert ``month_details``.
+        """
+        payload = await self.get("/userreports", {"year": year, "type": typ})
+        return cast("list[UserReportV1]", payload["userreports"])
 
     async def absences(self, year: int) -> list[AbsenceV4]:
         """Abwesenheiten eines Jahres aus ``/v4/absences``."""

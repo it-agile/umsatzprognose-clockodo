@@ -42,12 +42,14 @@ from umsatzprognose.domaene import (
     Kostenplan,
     Kostenposten,
     Kunde,
+    Kurzarbeitsbewertung,
     Mitarbeiter,
     Monatsumsatz,
     Projekt,
     Projektanteil,
     Schulungsplan,
     Schulungstermin,
+    Schwellenwerte,
     Umsatzhistorie,
     Verbrauchsverlauf,
     Wochenarbeitszeit,
@@ -179,6 +181,73 @@ def test_anmeldungsverlauf_ohne_daten_zeigt_hinweis_statt_balken():
     assert (
         fig.layout.annotations[0].text == "Keine Anmeldedaten für den gewählten Zeitraum geladen."
     )
+
+
+def _kurzarbeit_ergebnisse() -> dict[tuple[int, int], Kurzarbeitsbewertung]:
+    return {
+        (2026, 7): Kurzarbeitsbewertung(
+            jahr=2026,
+            monat=7,
+            schwellenwerte=Schwellenwerte(quote_organisation=0.30),
+            anzahl_kurzarbeitsfaehig=1,
+            anzahl_scheitert_interne_arbeit=9,
+        ),
+        (2026, 8): Kurzarbeitsbewertung(
+            jahr=2026,
+            monat=8,
+            schwellenwerte=Schwellenwerte(quote_organisation=0.30),
+            anzahl_kurzarbeitsfaehig=3,
+            anzahl_scheitert_interne_arbeit=1,
+        ),
+    }
+
+
+def test_kurzarbeit_grafik_zeigt_gesamtzahl_und_kurzarbeitsfaehig_als_balken():
+    fig = diagramme.kurzarbeit_grafik(_kurzarbeit_ergebnisse())
+
+    gesamt = next(s for s in fig.data if s.name == "Gesamtanzahl")
+    faehig = next(s for s in fig.data if s.name == "Kurzarbeitsfähig")
+    assert list(gesamt.x) == ["Jul 2026", "Aug 2026"]
+    assert list(gesamt.y) == [10, 4]
+    assert list(faehig.y) == [1, 3]
+    assert fig.layout.barmode == "overlay"
+
+
+def test_kurzarbeit_grafik_zeigt_quote_auf_zweiter_y_achse_farbig_nach_schwelle():
+    fig = diagramme.kurzarbeit_grafik(_kurzarbeit_ergebnisse())
+
+    quote = next(s for s in fig.data if s.name == "Quote")
+    assert quote.yaxis == "y2"
+    assert list(quote.y) == pytest.approx([10.0, 75.0])
+    # Juli (10 %) unter der Schwelle (30 %), August (75 %) darueber - unterschiedliche
+    # Markerfarben je nachdem.
+    assert quote.marker.color[0] != quote.marker.color[1]
+    assert fig.layout.yaxis2.range == (0, 100)
+
+
+def test_kurzarbeit_grafik_ohne_beschriftung_zeigt_keinen_text():
+    fig = diagramme.kurzarbeit_grafik(_kurzarbeit_ergebnisse(), mit_beschriftung=False)
+    assert all(spur.text is None for spur in fig.data)
+
+
+def test_kurzarbeit_grafik_mit_beschriftung_zeigt_werte_als_text():
+    fig = diagramme.kurzarbeit_grafik(_kurzarbeit_ergebnisse(), mit_beschriftung=True)
+
+    gesamt = next(s for s in fig.data if s.name == "Gesamtanzahl")
+    quote = next(s for s in fig.data if s.name == "Quote")
+    assert list(gesamt.text) == ["10", "4"]
+    assert list(quote.text) == ["10%", "75%"]
+
+
+def test_kurzarbeit_grafik_ohne_quote_zeigt_n_a_als_text():
+    ergebnisse = {
+        (2026, 8): Kurzarbeitsbewertung(jahr=2026, monat=8, schwellenwerte=Schwellenwerte())
+    }
+    fig = diagramme.kurzarbeit_grafik(ergebnisse, mit_beschriftung=True)
+
+    quote = next(s for s in fig.data if s.name == "Quote")
+    assert list(quote.y) == [0.0]
+    assert list(quote.text) == ["n/a"]
 
 
 def test_umsatzverlauf_zeigt_alle_monate_und_hebt_den_laufenden_hervor():
