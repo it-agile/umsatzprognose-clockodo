@@ -31,11 +31,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    import pandas as pd
-
     from umsatzprognose.util import Monat
 
-import plotly.graph_objects as go
 import plotly.io as pio
 from slack_sdk import WebClient
 
@@ -43,7 +40,6 @@ from umsatzprognose import Dashboard, SchulungenRepository
 from umsatzprognose.clockodo import KurzarbeitRepository, rollenzuordnung_automatisch
 from umsatzprognose.darstellung import diagramme
 from umsatzprognose.darstellung.dashboard import STANDARD_GEWINN_VERLUST_MONATE
-from umsatzprognose.darstellung.gestaltung import FLAECHE, SCHRIFT, SERIE, TINTE, figur
 from umsatzprognose.domaene import Kurzarbeitsbewertung, bewertungen
 from umsatzprognose.domaene.umsatzhistorie import MONATSNAMEN
 from umsatzprognose.domaene.zahlen import euro, prozent
@@ -72,40 +68,6 @@ KURZARBEIT_ANZAHL_MONATE = 6
 # weil nicht angefragt.
 ANMELDUNGEN_AB_JAHR = 2022
 ANMELDUNGEN_MONATE_FENSTER = 13
-
-
-def umsatztabelle_grafik(tabelle: pd.DataFrame) -> go.Figure:
-    """Dieselbe Monatstabelle als Bild statt als Text.
-
-    Slack kann eine eingebettete Tabelle nicht darstellen - ein monospace-Codeblock
-    (die vorige Lösung) ist auf Mobilgeräten und bei vielen Spalten kaum lesbar. Kein
-    Teil von :mod:`umsatzprognose.darstellung.tabellen`/``diagramme`` (dort bewusst
-    pandas bzw. plotly getrennt, siehe deren Modul-Docstrings) - dieses Skript steht
-    ohnehin schon außerhalb des Pakets, siehe Moduldocstring oben.
-    """
-    zeilenhoehe = 26
-    fig = figur("Umsatz je Monat", hoehe=70 + zeilenhoehe * (len(tabelle) + 1))
-    ausrichtung = ["left"] + ["right"] * (len(tabelle.columns) - 1)
-    fig.add_trace(
-        go.Table(
-            header={
-                "values": [f"<b>{spalte}</b>" for spalte in tabelle.columns],
-                "fill_color": SERIE,
-                "font": {"color": "#ffffff", "family": SCHRIFT, "size": 13},
-                "align": ausrichtung,
-                "height": 30,
-            },
-            cells={
-                "values": [tabelle[spalte] for spalte in tabelle.columns],
-                "fill_color": FLAECHE,
-                "font": {"color": TINTE, "family": SCHRIFT, "size": 12},
-                "align": ausrichtung,
-                "height": zeilenhoehe,
-            },
-        )
-    )
-    fig.update_layout(margin={"l": 12, "r": 12, "t": 40, "b": 12})
-    return fig
 
 
 # Eine Zeile Kontext je Grafik (Kollegen-Feedback: "etwas mehr Kontext als nur die
@@ -239,7 +201,10 @@ def diagrammtitel_und_figuren(
             diagramme.kurzarbeit_grafik(kurzarbeit_ergebnisse, mit_beschriftung=True),
         ),
         ("Anmeldungen je Monat", diagramme.anmeldungsverlauf(anmeldungsverlauf_fenster)),
-        ("Umsatztabelle", umsatztabelle_grafik(dashboard.umsatztabelle())),
+        (
+            "Umsatztabelle",
+            diagramme.tabelle_als_grafik("Umsatz je Monat", dashboard.umsatztabelle()),
+        ),
     ]
 
 

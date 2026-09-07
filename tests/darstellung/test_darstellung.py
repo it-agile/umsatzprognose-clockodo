@@ -10,6 +10,7 @@ from __future__ import annotations
 from datetime import date, timedelta
 
 import numpy as np
+import plotly.graph_objects as go
 import pytest
 
 from umsatzprognose.clockodo import AuslastungRepository, BestandRepository
@@ -27,9 +28,11 @@ from umsatzprognose.darstellung.gestaltung import (
     KOSTEN,
     KOSTEN_HELL,
     PROGNOSE_DECKKRAFT,
+    SCHRAEGE_BESCHRIFTUNG_AB_ANZAHL,
     SCHULUNG,
     SERIE_HELL,
     VORLAEUFIG_DECKKRAFT,
+    tickwinkel,
 )
 from umsatzprognose.domaene import (
     Anmeldung,
@@ -181,6 +184,54 @@ def test_anmeldungsverlauf_ohne_daten_zeigt_hinweis_statt_balken():
     assert (
         fig.layout.annotations[0].text == "Keine Anmeldedaten für den gewählten Zeitraum geladen."
     )
+
+
+def _figur_mit_x_kategorien(anzahl: int) -> go.Figure:
+    fig = go.Figure()
+    fig.add_bar(x=[f"Kategorie {i}" for i in range(anzahl)], y=[1] * anzahl)
+    return fig
+
+
+def test_tickwinkel_bleibt_waagerecht_bis_zur_schwelle():
+    assert tickwinkel(_figur_mit_x_kategorien(SCHRAEGE_BESCHRIFTUNG_AB_ANZAHL)) == 0
+
+
+def test_tickwinkel_steht_schraeg_ab_einer_kategorie_ueber_der_schwelle():
+    assert tickwinkel(_figur_mit_x_kategorien(SCHRAEGE_BESCHRIFTUNG_AB_ANZAHL + 1)) == 30
+
+
+def test_tickwinkel_zaehlt_kategorien_ueber_mehrere_spuren_hinweg_nur_einmal():
+    fig = go.Figure()
+    monate = [f"Monat {i}" for i in range(SCHRAEGE_BESCHRIFTUNG_AB_ANZAHL)]
+    fig.add_bar(x=monate, y=[1] * len(monate))
+    fig.add_bar(x=monate, y=[2] * len(monate))  # dieselben Kategorien, keine neuen
+    assert tickwinkel(fig) == 0
+
+
+def _anmeldungsverlauf_ueber_monate(anzahl: int) -> Anmeldungsverlauf:
+    anmeldungen = []
+    jahr, monat = 2024, 1
+    for _ in range(anzahl):
+        anmeldungen.append(Anmeldung(jahr, monat, "CSM 2-tägig", 1))
+        monat += 1
+        if monat > 12:
+            monat = 1
+            jahr += 1
+    return Anmeldungsverlauf(anmeldungen=tuple(anmeldungen))
+
+
+def test_anmeldungsverlauf_bleibt_waagerecht_bei_wenigen_monaten():
+    fig = diagramme.anmeldungsverlauf(
+        _anmeldungsverlauf_ueber_monate(SCHRAEGE_BESCHRIFTUNG_AB_ANZAHL)
+    )
+    assert fig.layout.xaxis.tickangle == 0
+
+
+def test_anmeldungsverlauf_dreht_beschriftung_bei_vielen_monaten():
+    fig = diagramme.anmeldungsverlauf(
+        _anmeldungsverlauf_ueber_monate(SCHRAEGE_BESCHRIFTUNG_AB_ANZAHL + 1)
+    )
+    assert fig.layout.xaxis.tickangle == 30
 
 
 def _kurzarbeit_ergebnisse() -> dict[tuple[int, int], Kurzarbeitsbewertung]:

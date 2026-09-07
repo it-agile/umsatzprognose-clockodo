@@ -5,6 +5,7 @@
     uv run python scripts/diagramme_exportieren.py --diagramm umsatzverlauf --diagramm kennzahlen
     uv run python scripts/diagramme_exportieren.py -o export --horizont-monate 1
     uv run python scripts/diagramme_exportieren.py --diagramm anmeldungsverlauf --monate-fenster 6
+    uv run python scripts/diagramme_exportieren.py --diagramm umsatztabelle
 
 Lädt den Bestand wie die Notebooks (``Dashboard.laden()``) und schreibt dieselben
 Diagramme, die dort gezeigt werden, als Dateien in ein Verzeichnis. PNG- und
@@ -13,11 +14,21 @@ SVG-Export laufen wie im Wochenbericht (``scripts/wochenbericht.py``) über
 zusätzliche Abhängigkeit aus, ist dafür aber nur im Browser interaktiv statt als
 eigenständige Bilddatei nutzbar.
 
-Der Anmeldungsverlauf (``notebooks/03_schulungsanmeldungen.ipynb``) hängt anders als
-die übrigen Diagramme nicht am ``Dashboard`` der Umsatzprognose, sondern lädt
-eigenständig über ``SchulungenRepository`` - deshalb ein eigener Ladepfad
-(:func:`_anmeldungsverlauf_figur`) statt eines Eintrags in ``DIAGRAMME_DASHBOARD``, nur
-geladen, wenn ``anmeldungsverlauf`` tatsächlich angefordert ist.
+**Tabellen genauso exportierbar wie Diagramme** (``TABELLEN_DASHBOARD``,
+``anmeldungstabelle``): pandas-Tabellen kennen kein PNG/SVG - analog zur
+Umsatztabelle im Wochenbericht macht :func:`~umsatzprognose.darstellung.diagramme.
+tabelle_als_grafik` daraus dieselbe Art plotly-Figur wie ein Diagramm, exportierbar
+über denselben Weg (``exportieren()`` unterscheidet nicht zwischen Diagramm- und
+Tabellen-Figuren, beides ist am Ende ein ``go.Figure``).
+
+Der Anmeldungsverlauf und die Anmeldungstabelle (``notebooks/03_schulungsanmeldungen.
+ipynb``) hängen anders als die übrigen Diagramme/Tabellen nicht am ``Dashboard`` der
+Umsatzprognose, sondern laden eigenständig über ``SchulungenRepository`` - deshalb ein
+eigener Ladepfad (:func:`_anmeldungsverlauf_laden`) statt eines Eintrags in
+``DIAGRAMME_DASHBOARD``/``TABELLEN_DASHBOARD``, nur geladen, wenn eines von beiden
+tatsächlich angefordert ist. ``KATEGORIEN`` deckt sich mit derselben, von Hand
+gepflegten Zuordnung in ``webapp/app.py``/``notebooks/03_schulungsanmeldungen.ipynb``
+(siehe CLAUDE.md) - frei konfigurierbar, deshalb bewusst hier dupliziert statt im Paket.
 """
 
 from __future__ import annotations
@@ -29,13 +40,18 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    import pandas as pd
     import plotly.graph_objects as go
+
+    from umsatzprognose.domaene.anmeldung import Anmeldungsverlauf
 
 import plotly.io as pio
 from tqdm import tqdm
 
 from umsatzprognose import Dashboard
-from umsatzprognose.darstellung import diagramme
+from umsatzprognose.darstellung import diagramme, tabellen
 from umsatzprognose.schulungen import SchulungenRepository
 from umsatzprognose.util import aus_ordnung, ordnung
 
@@ -44,6 +60,37 @@ FORMATE = ("png", "svg", "html")
 STANDARD_MONATE_FENSTER = 13  # wie notebooks/03_schulungsanmeldungen.ipynb
 
 DIAGRAMM_ANMELDUNGSVERLAUF = "anmeldungsverlauf"
+DIAGRAMM_ANMELDUNGSTABELLE = "anmeldungstabelle"
+
+# Deckt sich mit "KATEGORIEN" in webapp/app.py und notebooks/03_schulungsanmeldungen.ipynb -
+# dieselbe, von Hand gepflegte Zuordnung Schulungstyp -> Kategorie, nur fuer
+# anmeldungstabelle gebraucht (der Anmeldungsverlauf zeigt nur die Gesamtzahl, siehe
+# diagramme.anmeldungsverlauf).
+KATEGORIEN: dict[str, list[str]] = {
+    "Scrum": [
+        "A-CSD",
+        "A-CSM",
+        "A-CSPO",
+        "CSD",
+        "CSM 2-tägig",
+        "CSM 3-tägig",
+        "CSP-PO",
+        "CSP-SM",
+        "CSPO 2-tägig",
+        "CSPO 3-tägig",
+        "CAL 2",
+        "CAL ETO",
+    ],
+    "Kanban": [
+        "KCP",
+        "KMM",
+        "KSD",
+        "KSI",
+        "KSI 2-tägig",
+        "KSI 3-tägig",
+        "SBK",
+    ],
+}
 
 # Name auf der Kommandozeile -> Dashboard-Methode, die die Figur liefert. Deckt alle
 # Grafik-Methoden aus den drei Bestand-Notebooks ab (siehe deren Zellen), nicht nur die
@@ -61,6 +108,15 @@ DIAGRAMME_DASHBOARD = {
     "auslastung-je-mitarbeiter": Dashboard.auslastung_je_mitarbeiter,
 }
 
+# Name auf der Kommandozeile -> (Dashboard-Methode, Bildtitel). Anders als
+# DIAGRAMME_DASHBOARD liefert die Methode ein pd.DataFrame statt einer fertigen Figur -
+# diagramme.tabelle_als_grafik() macht daraus eine bildexportfaehige plotly-Tabelle,
+# siehe Moduldocstring.
+TABELLEN_DASHBOARD: dict[str, tuple[Callable[[Dashboard], pd.DataFrame], str]] = {
+    "umsatztabelle": (Dashboard.umsatztabelle, "Umsatztabelle"),
+    "projekttabelle": (Dashboard.projekttabelle, "Projekttabelle"),
+}
+
 # Diese vier kennen "mit_beschriftung" (siehe deren Dashboard-Methoden) - die uebrigen
 # (kennzahlen, restvolumen-je-projekt, kapazitaet-*, auslastung-je-mitarbeiter) haben
 # den Wert entweder schon fest eingezeichnet oder brauchen ihn nicht.
@@ -71,7 +127,14 @@ MIT_BESCHRIFTUNG_FAEHIG = {
     "umsatzrendite-kumuliert",
 }
 
-ALLE_DIAGRAMME = sorted({*DIAGRAMME_DASHBOARD, DIAGRAMM_ANMELDUNGSVERLAUF})
+ALLE_DIAGRAMME = sorted(
+    {
+        *DIAGRAMME_DASHBOARD,
+        *TABELLEN_DASHBOARD,
+        DIAGRAMM_ANMELDUNGSVERLAUF,
+        DIAGRAMM_ANMELDUNGSTABELLE,
+    }
+)
 
 
 def _argumente(argv: list[str]) -> argparse.Namespace:
@@ -117,14 +180,17 @@ def _argumente(argv: list[str]) -> argparse.Namespace:
         default=STANDARD_MONATE_FENSTER,
         help=(
             "Betrachtungszeitraum in Monaten bis zum Stichtag für "
-            f"'{DIAGRAMM_ANMELDUNGSVERLAUF}' (Standard: {STANDARD_MONATE_FENSTER})."
+            f"'{DIAGRAMM_ANMELDUNGSVERLAUF}' und '{DIAGRAMM_ANMELDUNGSTABELLE}' "
+            f"(Standard: {STANDARD_MONATE_FENSTER})."
         ),
     )
     return parser.parse_args(argv)
 
 
-def _anmeldungsverlauf_figur(*, stichtag: date, monate_fenster: int) -> go.Figure:
-    """Laedt den Anmeldungsverlauf eigenstaendig (siehe Moduldocstring) und liefert die Figur.
+def _anmeldungsverlauf_laden(*, stichtag: date, monate_fenster: int) -> Anmeldungsverlauf:
+    """Laedt den Anmeldungsverlauf eigenstaendig (siehe Moduldocstring), auf das
+    angefragte Fenster zugeschnitten - fuer sowohl den Anmeldungsverlauf als auch die
+    Anmeldungstabelle, ohne die Jahrgaenge zweimal zu laden, wenn beide angefordert sind.
 
     Die benoetigten Jahrgaenge ergeben sich aus ``stichtag`` und ``monate_fenster`` -
     genau wie ``schulungen._benoetigte_jahre`` fuer den Prognosehorizont, hier nur
@@ -143,8 +209,7 @@ def _anmeldungsverlauf_figur(*, stichtag: date, monate_fenster: int) -> go.Figur
         verlauf = SchulungenRepository.mit_automatischen_zugangsdaten().anmeldungsverlauf_laden(
             jahre, fortschritt=_melden
         )
-    fenster = verlauf.letzte(monate=monate_fenster, stichtag=stichtag)
-    return diagramme.anmeldungsverlauf(fenster)
+    return verlauf.letzte(monate=monate_fenster, stichtag=stichtag)
 
 
 SCHRITTE_DASHBOARD_LADEN = ("Bestand", "Schulungsplan", "Kostenplan", "Auslastung")
@@ -255,28 +320,45 @@ def _figuren(
     ausgabeformat: str,
 ) -> dict[str, go.Figure]:
     """Je angefordertem Namen die fertige Figur - laedt Dashboard bzw. Anmeldungsverlauf
-    nur, wenn tatsaechlich ein Diagramm der jeweiligen Quelle angefordert ist.
+    nur, wenn tatsaechlich ein Diagramm oder eine Tabelle der jeweiligen Quelle
+    angefordert ist.
 
     ``html`` bleibt interaktiv (Hover zeigt den Wert), ``png``/``svg`` sind statische
     Bilder ohne Hover - wie im Wochenbericht (``scripts/wochenbericht.py``) bekommen die
-    dafuer geeigneten Diagramme dort zusaetzlich den Wert als Text.
+    dafuer geeigneten Diagramme dort zusaetzlich den Wert als Text. Tabellen
+    (``TABELLEN_DASHBOARD``, ``anmeldungstabelle``) zeigen ihre Werte ohnehin schon als
+    Text in der Tabelle - ``mit_beschriftung`` betrifft nur Diagramme.
     """
     figuren: dict[str, go.Figure] = {}
     mit_beschriftung = ausgabeformat != "html"
 
     dashboard_namen = [name for name in namen if name in DIAGRAMME_DASHBOARD]
-    if dashboard_namen:
+    tabellen_namen = [name for name in namen if name in TABELLEN_DASHBOARD]
+    if dashboard_namen or tabellen_namen:
         dashboard = _dashboard_mit_fortschritt(stichtag=stichtag, horizont_monate=horizont_monate)
         for name in dashboard_namen:
             kwargs = (
                 {"mit_beschriftung": mit_beschriftung} if name in MIT_BESCHRIFTUNG_FAEHIG else {}
             )
             figuren[name] = DIAGRAMME_DASHBOARD[name](dashboard, **kwargs)
+        for name in tabellen_namen:
+            methode, titel = TABELLEN_DASHBOARD[name]
+            figuren[name] = diagramme.tabelle_als_grafik(titel, methode(dashboard))
 
-    if DIAGRAMM_ANMELDUNGSVERLAUF in namen:
-        figuren[DIAGRAMM_ANMELDUNGSVERLAUF] = _anmeldungsverlauf_figur(
+    anmeldungs_namen = [
+        name for name in (DIAGRAMM_ANMELDUNGSVERLAUF, DIAGRAMM_ANMELDUNGSTABELLE) if name in namen
+    ]
+    if anmeldungs_namen:
+        fenster = _anmeldungsverlauf_laden(
             stichtag=stichtag or date.today(), monate_fenster=monate_fenster
         )
+        if DIAGRAMM_ANMELDUNGSVERLAUF in anmeldungs_namen:
+            figuren[DIAGRAMM_ANMELDUNGSVERLAUF] = diagramme.anmeldungsverlauf(fenster)
+        if DIAGRAMM_ANMELDUNGSTABELLE in anmeldungs_namen:
+            figuren[DIAGRAMM_ANMELDUNGSTABELLE] = diagramme.tabelle_als_grafik(
+                "Anmeldungen je Monat und Kategorie",
+                tabellen.anmeldungstabelle(fenster, KATEGORIEN),
+            )
 
     return figuren
 

@@ -15,6 +15,8 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping, Sequence
 
+    import pandas as pd
+
     from umsatzprognose.domaene import (
         Anmeldungsverlauf,
         Auslastungsmonat,
@@ -38,10 +40,12 @@ from umsatzprognose.darstellung.gestaltung import (
     ACHSE,
     ERGEBNIS_NEGATIV,
     ERGEBNIS_POSITIV,
+    FLAECHE,
     JAHRESFARBEN,
     KOSTEN,
     KOSTEN_HELL,
     PROGNOSE_DECKKRAFT,
+    SCHRIFT,
     SCHULUNG,
     SERIE,
     SERIE_HELL,
@@ -52,6 +56,7 @@ from umsatzprognose.darstellung.gestaltung import (
     VORLAEUFIG_DECKKRAFT,
     achsen,
     figur,
+    tickwinkel,
 )
 from umsatzprognose.domaene.umsatzhistorie import MONATSNAMEN
 from umsatzprognose.domaene.zahlen import STUNDEN_JE_TAG, euro, prozent, tage, tausend_euro
@@ -214,7 +219,7 @@ def umsatzverlauf(
     achsen(fig)
     fig.update_layout(bargap=0.3, bargroupgap=0.08, barcornerradius=4, barmode="group")
     fig.update_yaxes(tickformat=",.0f", ticksuffix=" €", rangemode="tozero")
-    fig.update_xaxes(tickangle=0)
+    fig.update_xaxes(tickangle=tickwinkel(fig))
     return fig
 
 
@@ -845,7 +850,7 @@ def gewinn_verlust_monatlich(
     achsen(fig)
     fig.update_layout(bargap=0.3, barcornerradius=4)
     fig.update_yaxes(tickformat=",.0f", ticksuffix=" €")
-    fig.update_xaxes(tickangle=0)
+    fig.update_xaxes(tickangle=tickwinkel(fig))
     return fig
 
 
@@ -901,7 +906,9 @@ def gewinn_verlust_je_jahr(
     _horizontale_legende(fig)
     achsen(fig)
     fig.update_yaxes(tickformat=",.0f", ticksuffix=" €")
-    fig.update_xaxes(categoryorder="array", categoryarray=list(MONATSNAMEN), tickangle=0)
+    fig.update_xaxes(
+        categoryorder="array", categoryarray=list(MONATSNAMEN), tickangle=tickwinkel(fig)
+    )
     return fig
 
 
@@ -959,7 +966,9 @@ def umsatzrendite_kumuliert(
     _horizontale_legende(fig)
     achsen(fig)
     fig.update_yaxes(tickformat=",.1f", ticksuffix=" %")
-    fig.update_xaxes(categoryorder="array", categoryarray=list(MONATSNAMEN), tickangle=0)
+    fig.update_xaxes(
+        categoryorder="array", categoryarray=list(MONATSNAMEN), tickangle=tickwinkel(fig)
+    )
     return fig
 
 
@@ -1263,7 +1272,7 @@ def anmeldungsverlauf(verlauf: Anmeldungsverlauf, *, hoehe: int = 420) -> go.Fig
     _horizontale_legende(fig)
     achsen(fig)
     fig.update_yaxes(rangemode="tozero")
-    fig.update_xaxes(tickangle=0)
+    fig.update_xaxes(tickangle=tickwinkel(fig))
     return fig
 
 
@@ -1355,7 +1364,7 @@ def kurzarbeit_grafik(
         },
     )
     fig.update_yaxes(rangemode="tozero")
-    fig.update_xaxes(tickangle=0)
+    fig.update_xaxes(tickangle=tickwinkel(fig))
     return fig
 
 
@@ -1381,4 +1390,40 @@ def kennzahlen(eintraege: Sequence[tuple[str, float, str]], *, hoehe: int = 150)
                 domain={"row": 0, "column": spalte},
             )
         )
+    return fig
+
+
+def tabelle_als_grafik(titel: str, tabelle: pd.DataFrame, *, hoehe: int | None = None) -> go.Figure:
+    """Eine der Tabellen aus :mod:`umsatzprognose.darstellung.tabellen` als
+    plotly-Figur statt als Text.
+
+    Fuer Ausgabewege ohne echte Tabellendarstellung: den Bildexport in
+    ``scripts/wochenbericht.py`` (Slack kann eine eingebettete Tabelle nicht
+    darstellen) und ``scripts/diagramme_exportieren.py``. Nicht fuer Notebook/Webapp
+    gedacht - dort reicht pandas' eigenes Rendering (Zellenausgabe bzw. ``to_html()``).
+    ``hoehe`` ohne Angabe richtet sich nach der Zeilenzahl, damit weder Leerraum
+    uebrigbleibt noch Zeilen abgeschnitten werden.
+    """
+    zeilenhoehe = 26
+    fig = figur(titel, hoehe=hoehe or 70 + zeilenhoehe * (len(tabelle) + 1))
+    ausrichtung = ["left"] + ["right"] * (len(tabelle.columns) - 1)
+    fig.add_trace(
+        go.Table(
+            header={
+                "values": [f"<b>{spalte}</b>" for spalte in tabelle.columns],
+                "fill_color": SERIE,
+                "font": {"color": "#ffffff", "family": SCHRIFT, "size": 13},
+                "align": ausrichtung,
+                "height": 30,
+            },
+            cells={
+                "values": [tabelle[spalte] for spalte in tabelle.columns],
+                "fill_color": FLAECHE,
+                "font": {"color": TINTE, "family": SCHRIFT, "size": 12},
+                "align": ausrichtung,
+                "height": zeilenhoehe,
+            },
+        )
+    )
+    fig.update_layout(margin={"l": 12, "r": 12, "t": 40, "b": 12})
     return fig

@@ -107,3 +107,27 @@ def achsen(fig: go.Figure, *, gitter_x: bool = False, gitter_y: bool = True) -> 
     fig.update_xaxes(showgrid=gitter_x, **gemeinsam)
     fig.update_yaxes(showgrid=gitter_y, **gemeinsam)
     return fig
+
+
+# Ab wievielen x-Achsen-Kategorien Monatsbeschriftungen schraeg statt waagerecht
+# stehen (siehe tickwinkel()). Die breiteste Standardansicht ueber alle Dropdowns
+# hinweg ist STANDARD_HISTORIE_MONATE (12) plus der groesste waehlbare
+# Prognosehorizont (6 Monate) = 18 - bis dahin bleibt waagerecht, damit keine
+# gewoehnliche Ansicht unnoetig gedreht wird. Darueber hinaus (z. B. "alle" Historie,
+# die "24"-Option bei gewinn_verlust_monate oder ein mehrjaehriger Anmeldungsverlauf)
+# waeren waagerechte Beschriftungen tatsaechlich zu eng.
+SCHRAEGE_BESCHRIFTUNG_AB_ANZAHL = 18
+
+
+def tickwinkel(fig: go.Figure) -> int:
+    """0 Grad (waagerecht) bis zu :data:`SCHRAEGE_BESCHRIFTUNG_AB_ANZAHL` x-Achsen-
+    Kategorien, danach 30 Grad schraeg - verhindert ueberlappende Monatsbeschriftungen
+    bei laengeren Zeitraeumen, ohne kurze Standardansichten unnoetig zu drehen.
+
+    Zaehlt die tatsaechlich in allen Spuren der Figur gezeichneten x-Werte,
+    unabhaengig davon, wie viele Balken/Linien sie zusammensetzen (z. B. Historie und
+    Prognosehorizont in :func:`~umsatzprognose.darstellung.diagramme.umsatzverlauf`
+    zusammen) - deshalb erst aufrufen, nachdem alle Spuren hinzugefuegt sind.
+    """
+    kategorien = {wert for spur in fig.data for wert in (spur.x or ())}
+    return 30 if len(kategorien) > SCHRAEGE_BESCHRIFTUNG_AB_ANZAHL else 0
