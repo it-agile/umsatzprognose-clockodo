@@ -44,11 +44,14 @@ from umsatzprognose.darstellung.gestaltung import (
     JAHRESFARBEN,
     KOSTEN,
     KOSTEN_HELL,
+    KURZARBEIT_SCHWELLE_ERREICHT,
+    KURZARBEIT_SCHWELLE_NICHT_ERREICHT,
     PROGNOSE_DECKKRAFT,
     SCHRIFT,
     SCHULUNG,
     SERIE,
     SERIE_HELL,
+    TICKWINKEL,
     TINTE,
     TINTE_GEDAEMPFT,
     TINTE_ZWEITRANGIG,
@@ -56,7 +59,6 @@ from umsatzprognose.darstellung.gestaltung import (
     VORLAEUFIG_DECKKRAFT,
     achsen,
     figur,
-    tickwinkel,
 )
 from umsatzprognose.domaene.umsatzhistorie import MONATSNAMEN
 from umsatzprognose.domaene.zahlen import STUNDEN_JE_TAG, euro, prozent, tage, tausend_euro
@@ -219,7 +221,7 @@ def umsatzverlauf(
     achsen(fig)
     fig.update_layout(bargap=0.3, bargroupgap=0.08, barcornerradius=4, barmode="group")
     fig.update_yaxes(tickformat=",.0f", ticksuffix=" €", rangemode="tozero")
-    fig.update_xaxes(tickangle=tickwinkel(fig))
+    fig.update_xaxes(tickangle=TICKWINKEL)
     return fig
 
 
@@ -850,7 +852,7 @@ def gewinn_verlust_monatlich(
     achsen(fig)
     fig.update_layout(bargap=0.3, barcornerradius=4)
     fig.update_yaxes(tickformat=",.0f", ticksuffix=" €")
-    fig.update_xaxes(tickangle=tickwinkel(fig))
+    fig.update_xaxes(tickangle=TICKWINKEL)
     return fig
 
 
@@ -906,9 +908,7 @@ def gewinn_verlust_je_jahr(
     _horizontale_legende(fig)
     achsen(fig)
     fig.update_yaxes(tickformat=",.0f", ticksuffix=" €")
-    fig.update_xaxes(
-        categoryorder="array", categoryarray=list(MONATSNAMEN), tickangle=tickwinkel(fig)
-    )
+    fig.update_xaxes(categoryorder="array", categoryarray=list(MONATSNAMEN), tickangle=TICKWINKEL)
     return fig
 
 
@@ -966,9 +966,7 @@ def umsatzrendite_kumuliert(
     _horizontale_legende(fig)
     achsen(fig)
     fig.update_yaxes(tickformat=",.1f", ticksuffix=" %")
-    fig.update_xaxes(
-        categoryorder="array", categoryarray=list(MONATSNAMEN), tickangle=tickwinkel(fig)
-    )
+    fig.update_xaxes(categoryorder="array", categoryarray=list(MONATSNAMEN), tickangle=TICKWINKEL)
     return fig
 
 
@@ -1272,7 +1270,7 @@ def anmeldungsverlauf(verlauf: Anmeldungsverlauf, *, hoehe: int = 420) -> go.Fig
     _horizontale_legende(fig)
     achsen(fig)
     fig.update_yaxes(rangemode="tozero")
-    fig.update_xaxes(tickangle=tickwinkel(fig))
+    fig.update_xaxes(tickangle=TICKWINKEL)
     return fig
 
 
@@ -1304,7 +1302,10 @@ def kurzarbeit_grafik(
     quoten = [ergebnisse[m].quote for m in monate]
     quoten_prozent = [(q or 0.0) * 100 for q in quoten]
     markerfarben = [
-        ERGEBNIS_POSITIV if (q is not None and q >= schwelle) else ERGEBNIS_NEGATIV for q in quoten
+        KURZARBEIT_SCHWELLE_ERREICHT
+        if (q is not None and q >= schwelle)
+        else KURZARBEIT_SCHWELLE_NICHT_ERREICHT
+        for q in quoten
     ]
 
     fig = figur(
@@ -1364,7 +1365,7 @@ def kurzarbeit_grafik(
         },
     )
     fig.update_yaxes(rangemode="tozero")
-    fig.update_xaxes(tickangle=tickwinkel(fig))
+    fig.update_xaxes(tickangle=TICKWINKEL)
     return fig
 
 

@@ -28,11 +28,12 @@
             border: 1px solid #ccc; border-radius: 3px; padding: 0.2rem 0.6rem; width: fit-content;
         }
         .zuruecksetzen:hover { background: #f2f2f2; }
-        /* Dieselbe Farbfamilie wie ERGEBNIS_POSITIV/ERGEBNIS_NEGATIV in
-           darstellung/gestaltung.py, fuer dieselbe Unterscheidung im Text wie in
-           der Kurzarbeitsgrafik. */
-        .status-positiv { color: #3f7d54; font-weight: 600; }
-        .status-negativ { color: #8c2f2f; font-weight: 600; }
+        /* Dieselbe (nicht wertende) Farbfamilie wie KURZARBEIT_SCHWELLE_ERREICHT/
+           KURZARBEIT_SCHWELLE_NICHT_ERREICHT in darstellung/gestaltung.py, fuer
+           dieselbe Unterscheidung im Text wie in der Kurzarbeitsgrafik - bewusst kein
+           Gruen/Rot, "erfuellt" ist hier keine Wertung. */
+        .status-erfuellt { color: #8a6d4f; font-weight: 600; }
+        .status-nicht-erfuellt { color: #4a3aa7; font-weight: 600; }
         .ladehinweis { color: #555; }
         .fortschritt { list-style: none; padding: 0; color: #555; }
         .fortschritt li { padding: 0.2rem 0; }

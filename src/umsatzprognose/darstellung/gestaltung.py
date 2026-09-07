@@ -109,25 +109,23 @@ def achsen(fig: go.Figure, *, gitter_x: bool = False, gitter_y: bool = True) -> 
     return fig
 
 
-# Ab wievielen x-Achsen-Kategorien Monatsbeschriftungen schraeg statt waagerecht
-# stehen (siehe tickwinkel()). Die breiteste Standardansicht ueber alle Dropdowns
-# hinweg ist STANDARD_HISTORIE_MONATE (12) plus der groesste waehlbare
-# Prognosehorizont (6 Monate) = 18 - bis dahin bleibt waagerecht, damit keine
-# gewoehnliche Ansicht unnoetig gedreht wird. Darueber hinaus (z. B. "alle" Historie,
-# die "24"-Option bei gewinn_verlust_monate oder ein mehrjaehriger Anmeldungsverlauf)
-# waeren waagerechte Beschriftungen tatsaechlich zu eng.
-SCHRAEGE_BESCHRIFTUNG_AB_ANZAHL = 18
+# Monatsbeschriftungen ("Sep 2025") auf der x-Achse stehen schraeg statt waagerecht,
+# unabhaengig von der Anzahl Kategorien: bei ueblichen Notebook-/Browserbreiten
+# ueberlappen sich waagerechte Monatsnamen schon in der gewoehnlichen Standardansicht
+# (z. B. 12 Historienmonate), nicht erst bei einem langen Zeitraum. Negativer Winkel
+# (statt +30), damit die Beschriftung von unten links nach oben rechts ansteigt - die
+# ueblichere Leserichtung fuer schraege Achsenbeschriftungen.
+TICKWINKEL = -30
 
-
-def tickwinkel(fig: go.Figure) -> int:
-    """0 Grad (waagerecht) bis zu :data:`SCHRAEGE_BESCHRIFTUNG_AB_ANZAHL` x-Achsen-
-    Kategorien, danach 30 Grad schraeg - verhindert ueberlappende Monatsbeschriftungen
-    bei laengeren Zeitraeumen, ohne kurze Standardansichten unnoetig zu drehen.
-
-    Zaehlt die tatsaechlich in allen Spuren der Figur gezeichneten x-Werte,
-    unabhaengig davon, wie viele Balken/Linien sie zusammensetzen (z. B. Historie und
-    Prognosehorizont in :func:`~umsatzprognose.darstellung.diagramme.umsatzverlauf`
-    zusammen) - deshalb erst aufrufen, nachdem alle Spuren hinzugefuegt sind.
-    """
-    kategorien = {wert for spur in fig.data for wert in (spur.x or ())}
-    return 30 if len(kategorien) > SCHRAEGE_BESCHRIFTUNG_AB_ANZAHL else 0
+# Kurzarbeitsbereitschaft: ob die Schwelle je Monat erreicht wurde, ist ein reiner
+# Zustand, keine Wertung (siehe Moduldocstring von domaene.kurzarbeit) - "erreicht"
+# bedeutet, dass die Organisation Kurzarbeit haette anmelden koennen, nicht, dass das
+# wuenschenswert waere. Deshalb bewusst nicht ERGEBNIS_POSITIV/ERGEBNIS_NEGATIV
+# (gruen/rot, an anderer Stelle fuer ein tatsaechliches Vorzeichen reserviert) und auch
+# kein Tuerkis (zu nah an Gruen, liest sich noch als "gut") - stattdessen ein gedaempft-
+# sachliches Sandbraun/Taupe neben Violett, keines von beiden aus der Kategorial-
+# Palette JAHRESFARBEN, um dort keine zweite Bedeutung fuer dieselben Farbtoene zu
+# erzeugen, und ohne Blau (schon fuer die Balken in
+# :func:`~umsatzprognose.darstellung.diagramme.kurzarbeit_grafik` vergeben).
+KURZARBEIT_SCHWELLE_ERREICHT = "#8a6d4f"  # sandbraun/taupe
+KURZARBEIT_SCHWELLE_NICHT_ERREICHT = "#4a3aa7"  # violett

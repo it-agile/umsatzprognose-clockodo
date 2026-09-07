@@ -422,14 +422,17 @@ def _kurzarbeit_status_text(bewertung: Kurzarbeitsbewertung) -> str:
 
 
 def _kurzarbeit_status_klasse(bewertung: Kurzarbeitsbewertung) -> str:
-    """CSS-Klasse fuer die Statusanzeige - dieselbe Farbfamilie wie ERGEBNIS_POSITIV/
-    ERGEBNIS_NEGATIV in der Grafik (siehe .status-positiv/.status-negativ in
-    basis.html), damit Text und Grafik dieselbe Unterscheidung erfuellt/nicht erfuellt
-    zeigen. Leer ohne Quote (Spec 5.6) - "keine Auswertung möglich" ist ein dritter,
-    unentschiedener Zustand und soll nicht wie "nicht erfuellt" rot erscheinen."""
+    """CSS-Klasse fuer die Statusanzeige - dieselbe (nicht wertende) Farbfamilie wie
+    KURZARBEIT_SCHWELLE_ERREICHT/KURZARBEIT_SCHWELLE_NICHT_ERREICHT in der Grafik
+    (siehe .status-erfuellt/.status-nicht-erfuellt in basis.html), damit Text und
+    Grafik dieselbe Unterscheidung erfuellt/nicht erfuellt zeigen - bewusst kein
+    Gruen/Rot, weil "erfuellt" hier kein gutes Ergebnis ist (siehe
+    darstellung/gestaltung.py). Leer ohne Quote (Spec 5.6) - "keine Auswertung
+    möglich" ist ein dritter, unentschiedener Zustand und soll nicht wie "nicht
+    erfuellt" gefaerbt erscheinen."""
     if bewertung.vorbereitet is None:
         return ""
-    return "status-positiv" if bewertung.vorbereitet else "status-negativ"
+    return "status-erfuellt" if bewertung.vorbereitet else "status-nicht-erfuellt"
 
 
 def _kurzarbeit_quote_text(bewertung: Kurzarbeitsbewertung) -> str:

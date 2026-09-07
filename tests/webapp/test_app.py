@@ -388,8 +388,9 @@ def test_kurzarbeit_zeigt_status_und_zaehler(_fake_caches):
 
 
 def test_kurzarbeit_faerbt_status_wie_die_grafik(_fake_caches):
-    """Dieselbe Farbfamilie wie ERGEBNIS_POSITIV/ERGEBNIS_NEGATIV in der Grafik -
-    siehe .status-positiv/.status-negativ in basis.html."""
+    """Dieselbe (nicht wertende) Farbfamilie wie KURZARBEIT_SCHWELLE_ERREICHT/
+    KURZARBEIT_SCHWELLE_NICHT_ERREICHT in der Grafik - siehe
+    .status-erfuellt/.status-nicht-erfuellt in basis.html."""
     _, _, kurzarbeit_cache = _fake_caches
     kurzarbeit_cache.ergebnis = {
         (2026, 6): Kurzarbeitsbewertung(  # 75 % Quote >= 50 %-Schwelle -> erfuellt
@@ -414,8 +415,8 @@ def test_kurzarbeit_faerbt_status_wie_die_grafik(_fake_caches):
 
     antwort = client.get("/kurzarbeit")
 
-    assert '<td class="status-positiv">Voraussetzung erfüllt</td>' in antwort.text
-    assert '<td class="status-negativ">Voraussetzung nicht erfüllt</td>' in antwort.text
+    assert '<td class="status-erfuellt">Voraussetzung erfüllt</td>' in antwort.text
+    assert '<td class="status-nicht-erfuellt">Voraussetzung nicht erfüllt</td>' in antwort.text
     assert '<td class="">keine Auswertung möglich</td>' in antwort.text
 
 
