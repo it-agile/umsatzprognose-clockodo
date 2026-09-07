@@ -12,7 +12,11 @@ if TYPE_CHECKING:
     from umsatzprognose.clockodo.client import EntryGroupV2
 
 from conftest import client_mit_routen
-from umsatzprognose.clockodo.kurzarbeit import KurzarbeitRepository, _abgeschlossene_monate
+from umsatzprognose.clockodo.kurzarbeit import (
+    KurzarbeitRepository,
+    _abgeschlossene_monate,
+    anzahl_ladeschritte,
+)
 
 STICHTAG = date(2026, 9, 24)
 
@@ -66,6 +70,18 @@ def test_abgeschlossene_monate_schliesst_stichtagsmonat_aus():
     monate = _abgeschlossene_monate(date(2026, 9, 24), 3)
 
     assert monate == [(2026, 6), (2026, 7), (2026, 8)]
+
+
+def test_anzahl_ladeschritte_ohne_jahreswechsel_im_horizont():
+    # Juni bis August 2026 - ein einziges Kalenderjahr, also fuenf feste Zweige plus
+    # ein /userreports-Abruf.
+    assert anzahl_ladeschritte(date(2026, 9, 24), 3) == 5 + 1
+
+
+def test_anzahl_ladeschritte_mit_jahreswechsel_im_horizont():
+    # November/Dezember 2025 plus Januar 2026 - zwei Kalenderjahre, also fuenf feste
+    # Zweige plus zwei /userreports-Abrufe.
+    assert anzahl_ladeschritte(date(2026, 2, 15), 3) == 5 + 2
 
 
 def test_abbilden_faellt_intern_extern_und_gesamt_stunden_zusammen():

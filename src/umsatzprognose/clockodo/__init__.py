@@ -19,6 +19,7 @@ from umsatzprognose.clockodo.fortschritt import Fortschritt
 from umsatzprognose.clockodo.kunden import KundenRepository
 from umsatzprognose.clockodo.kurzarbeit import (
     KurzarbeitRepository,
+    anzahl_ladeschritte,
     rollenzuordnung_automatisch,
 )
 from umsatzprognose.clockodo.mitarbeiter import MitarbeiterRepository
@@ -41,6 +42,7 @@ __all__ = [
     "ProjektRepository",
     "UmsatzRepository",
     "VerbrauchsverlaufRepository",
+    "anzahl_ladeschritte",
     "gleichzeitig",
     "rollenzuordnung_automatisch",
     "synchron",

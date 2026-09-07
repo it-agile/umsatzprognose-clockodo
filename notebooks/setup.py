@@ -11,7 +11,7 @@ import humanize
 from tqdm.auto import tqdm
 
 from umsatzprognose import Dashboard
-from umsatzprognose.clockodo import KurzarbeitRepository
+from umsatzprognose.clockodo import KurzarbeitRepository, anzahl_ladeschritte
 from umsatzprognose.domaene import Anmeldungsverlauf, Personenmonat
 from umsatzprognose.schulungen import SchulungenRepository
 from umsatzprognose.util import Monat
@@ -227,12 +227,16 @@ def kurzarbeit_rohdaten(
     Der Balken fuellt sich dabei sichtbar ueber echte Zwischenschritte (fuenf
     gleichzeitige Zweige plus ein ``/userreports``-Abruf je Jahr, siehe Docstring von
     ``KurzarbeitRepository.laden_async``), ohne dafuer eine eigene Zeile zu
-    hinterlassen. ``total=None`` statt einer festen Zahl, weil die Anzahl der
-    Jahres-Abrufe vorher nicht bekannt ist (haengt von ``anzahl_monate`` ab).
+    hinterlassen. ``total`` steht dabei vorab fest (:func:`anzahl_ladeschritte`) - ein
+    "X von Y Monaten" waere hier irrefuehrend, weil die Monate selbst nie einzeln,
+    sondern immer als ganzes Zeitfenster je Endpunkt abgerufen werden; die tatsaechlich
+    abgesetzten Meldungen zaehlen stattdessen die Zweige/Jahres-Abrufe.
     """
     global _kurzarbeit_rohdaten, _kurzarbeit_rohdaten_dauer
+    stichtag_aufgeloest = date.today() if stichtag is None else stichtag
     start = time.perf_counter()
-    with tqdm(total=None, desc="Kurzarbeit-Rohdaten laden", leave=False) as fortschrittsbalken:
+    total = anzahl_ladeschritte(stichtag_aufgeloest, anzahl_monate)
+    with tqdm(total=total, desc="Kurzarbeit-Rohdaten laden", leave=False) as fortschrittsbalken:
         neu_geladen = _kurzarbeit_rohdaten is None
         if neu_geladen:
 
@@ -240,12 +244,12 @@ def kurzarbeit_rohdaten(
                 fortschrittsbalken.update(1)
 
             _kurzarbeit_rohdaten = KurzarbeitRepository.mit_automatischen_zugangsdaten().laden(
-                stichtag=date.today() if stichtag is None else stichtag,
+                stichtag=stichtag_aufgeloest,
                 anzahl_monate=anzahl_monate,
                 fortschritt=_melden,
             )
         else:
-            fortschrittsbalken.update(1)
+            fortschrittsbalken.update(total)
         zugriffsdauer = timedelta(seconds=time.perf_counter() - start)
         if neu_geladen:
             _kurzarbeit_rohdaten_dauer = zugriffsdauer

@@ -64,6 +64,12 @@ BILLABLE_FAKTURIERT = 2
 
 ROLLENZUORDNUNG_VAR = "KURZARBEIT_ROLLENZUORDNUNG"
 
+# Personen, interne/abrechenbare/fakturierte Stunden, Gesamtstunden - die fuenf
+# gleichzeitigen Zweige in KurzarbeitRepository.laden_async(), die unabhaengig von
+# anzahl_monate immer genau einmal fortschritt() melden (siehe dort und
+# anzahl_ladeschritte() unten).
+ANZAHL_FESTER_LADESCHRITTE = 5
+
 
 class KurzarbeitRepository:
     """Laedt die Personenmonat-Rohdaten fuer den Baustein Kurzarbeitsbereitschaft."""
@@ -204,6 +210,24 @@ def _abgeschlossene_monate(stichtag: date, anzahl: int) -> list[Monat]:
     letzter = vormonat(stichtag.year, stichtag.month)
     start = aus_ordnung(ordnung(*letzter) - anzahl + 1)
     return monatsfolge(start, anzahl)
+
+
+def anzahl_ladeschritte(stichtag: date, anzahl_monate: int) -> int:
+    """Wie viele ``fortschritt()``-Meldungen :meth:`KurzarbeitRepository.laden_async`
+    fuer diese Parameter insgesamt absetzt: die fuenf festen Zweige
+    (:data:`ANZAHL_FESTER_LADESCHRITTE`) plus ein ``/userreports``-Abruf je im Horizont
+    vorkommendem Kalenderjahr (meist eins, zwei bei einem Jahreswechsel im Horizont).
+
+    Vorab berechenbar, ohne selbst zu laden - fuer eine Fortschrittsanzeige mit
+    bekanntem ``total`` statt eines unbestimmten Spinners (siehe ``notebooks/setup.py``,
+    Funktion ``kurzarbeit_rohdaten``). Nicht dagegen ueber die Anzahl ``anzahl_monate``
+    selbst: die fuenf festen Zweige laufen unabhaengig davon genau einmal, und die
+    Monate selbst werden nie einzeln, sondern immer als ganzes Zeitfenster je
+    Endpunkt abgerufen - ein Fortschritt "X von Y Monaten" haette also keine
+    Entsprechung im tatsaechlichen Ladevorgang.
+    """
+    jahre = {jahr for jahr, _ in _abgeschlossene_monate(stichtag, anzahl_monate)}
+    return ANZAHL_FESTER_LADESCHRITTE + len(jahre)
 
 
 def _monatsende_des_letzten_monats(monate: list[Monat]) -> str:
