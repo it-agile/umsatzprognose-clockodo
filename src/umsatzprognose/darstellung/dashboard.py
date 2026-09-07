@@ -320,6 +320,7 @@ class Dashboard:
                     abgeschlossene_monate=abgeschlossene_monate,
                     horizont_monate=horizont_monate,
                     cache_fortschritt=_melden,
+                    fortschritt=_melden,
                 )
             bestand_dauer = t.dauer
             _melden(_bestand_bericht(bestand, bestand_dauer))
@@ -334,6 +335,7 @@ class Dashboard:
                         stichtag=bestand.stichtag,
                         horizont_monate=horizont_monate,
                         historie_monate=_historie_monate(bestand, anzahl=None),
+                        fortschritt=_melden,
                     )
                 _melden(_kostenplan_bericht(kostenplan, t.dauer))
                 return kostenplan, t.dauer

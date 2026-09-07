@@ -13,6 +13,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterable, Sequence
 
     from umsatzprognose.domaene import (
+        Anmeldungsverlauf,
         Hinweis,
         Kostenplan,
         Prognose,
@@ -20,6 +21,7 @@ if TYPE_CHECKING:
         Schulungsplan,
         Umsatzhistorie,
     )
+    from umsatzprognose.domaene.anmeldung import Kategorisierung
 
 import pandas as pd
 
@@ -186,6 +188,32 @@ def hinweistabelle(hinweise: Sequence[Hinweis], *, max_anzahl_betroffen: int = 1
             columns=HINWEISSPALTEN,
         )
     )
+
+
+def anmeldungstabelle(verlauf: Anmeldungsverlauf, kategorien: Kategorisierung) -> pd.DataFrame:
+    """Teilnehmerzahl je Monat und Kategorie, mit einer Summenspalte je Monat - der
+    Drilldown hinter der Gesamtzahl aus
+    :func:`~umsatzprognose.darstellung.diagramme.anmeldungsverlauf`.
+
+    ``kategorien`` bildet Kategoriename auf die zugehoerigen Schulungstypen ab (siehe
+    Moduldocstring von :mod:`umsatzprognose.domaene.anmeldung`) - typischerweise eine
+    im Notebook/Skript gepflegte, frei aenderbare Zuordnung, keine Konstante dieser
+    Funktion. Die Spalten ergeben sich aus den uebergebenen Kategorien (in ihrer
+    Reihenfolge, plus ``KATEGORIE_SONSTIGE`` am Ende) statt einer festen Konstante.
+    """
+    je_kategorie = verlauf.je_monat_und_kategorie(kategorien)
+    zeilen = []
+    for monat in verlauf.monate:
+        werte = {kategorie: je_monat.get(monat, 0) for kategorie, je_monat in je_kategorie.items()}
+        zeilen.append(
+            {
+                "Monat": f"{MONATSNAMEN[monat[1] - 1]} {monat[0]}",
+                **werte,
+                "Summe": sum(werte.values()),
+            }
+        )
+    spalten = ["Monat", *je_kategorie, "Summe"]
+    return _ohne_index(pd.DataFrame(zeilen, columns=spalten))
 
 
 def projekte_ohne_budget(projekte: Iterable[tuple[str, str]]) -> pd.DataFrame:

@@ -49,7 +49,7 @@ if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
     from datetime import date
 
-    from umsatzprognose.util import Monat
+    from umsatzprognose.util import Fortschritt, Monat
 
 from umsatzprognose.domaene import Erfasst, Geschaetzt, Hinweis, Kostenplan, Kostenposten
 from umsatzprognose.domaene.zahlen import euro_parsen
@@ -171,7 +171,12 @@ class KostenRepository:
         return min(self._jahre_zu_dateien) if self._jahre_zu_dateien else None
 
     def laden(
-        self, *, stichtag: date, horizont_monate: int = 3, historie_monate: Sequence[Monat] = ()
+        self,
+        *,
+        stichtag: date,
+        horizont_monate: int = 3,
+        historie_monate: Sequence[Monat] = (),
+        fortschritt: Fortschritt | None = None,
     ) -> Kostenplan:
         """Die Kostenprognose fuer die Historie- und Prognosehorizont-Monate.
 
@@ -182,6 +187,10 @@ class KostenRepository:
         Jahreswechsel, werden die Dateien mehrerer Jahrgaenge gelesen und ihre Posten
         vor der Aggregation zusammengefuehrt. Ein fehlendes oder nicht lesbares Jahr
         wird nicht zum Fehler, siehe Moduldocstring.
+
+        ``fortschritt``, sofern angegeben, meldet sich einmal je verarbeitetem Jahr mit
+        der bis dahin kumulierten Anzahl Kostenposten - dieselbe Technik wie bei
+        :meth:`~umsatzprognose.schulungen.schulungen.SchulungenRepository.anmeldungsverlauf_laden`.
         """
         horizont = _monatsfolge(stichtag, horizont_monate)
         monate = list(historie_monate) + [m for m in horizont if m not in historie_monate]
@@ -195,6 +204,8 @@ class KostenRepository:
             abbilden=_zeilen_zu_posten,
             fehlt_meldung="Für {jahr} ist in KOSTEN_SHEET_IDS keine Kosten-Datei hinterlegt",
             fehler_meldung="Die Kosten-Datei für {jahr} konnte nicht gelesen werden ({detail})",
+            fortschritt=fortschritt,
+            fortschritt_text=lambda jahr, bisher: f"{len(bisher)} Kostenposten bis {jahr} geladen",
         )
         return Kostenplan(
             posten=tuple(posten), abbildungshinweise=tuple(Hinweis(m) for m in meldungen)

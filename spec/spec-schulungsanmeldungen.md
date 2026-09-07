@@ -154,28 +154,39 @@ Restvolumen, Abrufquote oder Kapazitätsdeckel davon berührt werden.
   beschränkt**, sondern über mehrere zurückliegende Kalenderjahre (Aufruf mit einer
   Jahresliste). Eine Teilnehmerzahl ist kein Umsatz und dupliziert daher nichts aus
   Clockodo - das Doppelzählungsrisiko aus Abschnitt 5.2 entfällt hier.
-- **Aggregation:** Summe der Teilnehmerzahl je Monat, wahlweise gesamt, je einzelnem
-  Schulungstyp oder je Kategorie (siehe unten).
+- **Aggregation:** Summe der Teilnehmerzahl je Monat (die Gesamtzahl, primäre
+  Ansicht im Diagramm), sowie je Monat **und** Kategorie mit einer Summenspalte je
+  Monat (der Drilldown als Tabelle, siehe unten). Eine Kategorisierung als eigene
+  Linie **im Diagramm** gibt es bewusst nicht mehr - eine von Hand gepflegte Zuordnung
+  veraltet unbemerkt, sobald neue Schulungstypen dazukommen, und niemand nimmt sie
+  dann aus dem Diagramm heraus. Als Tabellenspalten fällt eine
+  veraltete/unvollständige Zuordnung eher auf und stört weniger als im Diagramm - die
+  Kategorisierung bleibt deshalb dort erhalten, weiterhin je Monat aufgeschlüsselt.
 - **Kategorisierung:** frei konfigurierbar, keine Konstante im Paket - eine
-  `dict[str, list[str]]` (Kategoriename -> zugehörige Schulungstypen), die im Notebook
-  gepflegt wird (`notebooks/03_schulungsanmeldungen.ipynb`, Zelle "Kategorien
-  konfigurieren"; Standardbelegung dort wie in der internen ZDF-Präsentation:
-  **Scrum** und **Kanban**). Eine von Hand gepflegte Liste einzelner Schulungstypen,
-  keine Stichwortsuche: Zertifizierungen laufen überwiegend über Kürzel (`CSM`, `KSD`,
-  `SBK` = "Scrum better with Kanban", ...), nicht über die ausgeschriebenen Wörter
-  "Scrum"/"Kanban". Ein Schulungstyp, der in keiner konfigurierten Kategorie auftaucht,
-  fällt auf `Sonstige` zurück (`domaene.anmeldung.KATEGORIE_SONSTIGE`).
+  `dict[str, list[str]]` (Kategoriename -> zugehörige Schulungstypen), die im
+  Notebook/Skript gepflegt wird (`notebooks/03_schulungsanmeldungen.ipynb`, Zelle
+  "Kategorien konfigurieren"; Standardbelegung dort wie in der internen
+  ZDF-Präsentation: **Scrum** und **Kanban**). Eine von Hand gepflegte Liste einzelner
+  Schulungstypen, keine Stichwortsuche: Zertifizierungen laufen überwiegend über
+  Kürzel (`CSM`, `KSD`, `SBK` = "Scrum better with Kanban", ...), nicht über die
+  ausgeschriebenen Wörter "Scrum"/"Kanban". Ein Schulungstyp, der in keiner
+  konfigurierten Kategorie auftaucht, fällt auf `Sonstige` zurück
+  (`domaene.anmeldung.KATEGORIE_SONSTIGE`).
 - **Betrachtungszeitraum:** konfigurierbar, standardmäßig die letzten 13 Kalendermonate
   bis einschließlich des Stichtagsmonats (`Anmeldungsverlauf.letzte(monate=...,
   stichtag=...)` - `monate` keyword-only, damit an der Aufrufstelle lesbar bleibt, was
   die Zahl bedeutet) - unabhängig von der vollständig geladenen, mehrjährigen Historie.
-- **Ausgabe:** eine Linie mit Datenpunkten je Kategorie, zusätzlich eine "Gesamt"-Linie
-  (Summe aller Kategorien je Monat) und eine lineare Trendlinie (Ausgleichsgerade)
-  derselben Gesamtsumme - in derselben dunkelroten Farbe wie die Trendlinie beim
-  Kontostand-Chart der Präsentation (dort exponentiell geglättet, hier linear). In
-  einem eigenen Notebook, unabhängig vom `Dashboard` der Umsatzprognose.
+- **Ausgabe:** zunächst nur die Gesamtzahl - eine Linie mit Datenpunkten je Monat,
+  dazu eine lineare Trendlinie (Ausgleichsgerade) - in derselben dunkelroten Farbe wie
+  die Trendlinie beim Kontostand-Chart der Präsentation (dort exponentiell geglättet,
+  hier linear). Der Blick je Kategorie ist ein eigener Drilldown als Tabelle (ein
+  Monat je Zeile, eine Kategorie je Spalte, plus einer Summenspalte je Monat), kein
+  zweites Diagramm - bei Bedarf einsehbar, ohne das Hauptdiagramm zu überladen. In
+  einem eigenen Notebook, unabhängig vom
+  `Dashboard` der Umsatzprognose.
 
 Umgesetzt: `domaene.anmeldung.Anmeldung`/`Anmeldungsverlauf` (inkl. `letzte()`,
-`je_monat_und_kategorie()`, `_kategorie_zuordnung()`), `SchulungenRepository.anmeldungsverlauf_laden()`,
+`je_monat_und_kategorie()`), `SchulungenRepository.anmeldungsverlauf_laden()`,
 `diagramme.anmeldungsverlauf()` (inkl. `_linearer_trend()`),
-`notebooks/setup.anmeldungsverlauf()` und `notebooks/03_schulungsanmeldungen.ipynb`.
+`tabellen.anmeldungstabelle()`, `notebooks/setup.anmeldungsverlauf()` und
+`notebooks/03_schulungsanmeldungen.ipynb`.

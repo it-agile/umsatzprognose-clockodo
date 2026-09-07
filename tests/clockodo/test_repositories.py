@@ -377,3 +377,86 @@ def test_bestand_setzt_alles_zusammen(
     # Der Monatsverbrauch je Projekt traegt die Verteilung bis in den Bestand.
     assert [v.projekt.id for v in bestand.verbrauchsverlaeufe] == [101]
     assert bestand.abrufquotenverteilung().anzahl == 4
+
+
+def test_bestand_meldet_fortschritt_je_zweig_statt_nur_am_ende(
+    projekt_antwort,
+    kunden_antwort,
+    benutzer_antwort,
+    sollzeit_antwort,
+    entrygroup_antwort,
+    monats_antwort,
+    projekt_monats_antwort,
+    abwesenheiten_antwort,
+    feiertage_antwort,
+):
+    """``fortschritt`` meldet sich je einem der fuenf gleichzeitigen Faecher, sobald
+    genau dieser fertig ist - nicht erst, wenn alle fuenf fertig sind."""
+
+    def entrygroups(request):
+        gruppierung = tuple(request.url.params.get_list("grouping[]"))
+        return {
+            ("projects_id", "users_id"): entrygroup_antwort,
+            ("month",): monats_antwort,
+            ("projects_id", "month"): projekt_monats_antwort,
+        }[gruppierung]
+
+    client, _requests = client_mit_routen(
+        {
+            "/v4/projects": projekt_antwort,
+            "/v3/customers": kunden_antwort,
+            "/v3/users": benutzer_antwort,
+            "/targethours": sollzeit_antwort,
+            "/v2/entrygroups": entrygroups,
+            "/v4/absences": abwesenheiten_antwort,
+            "/v2/usersNonbusinessDays": feiertage_antwort,
+        }
+    )
+    gemeldet: list[str] = []
+
+    BestandRepository(client).laden(stichtag=STICHTAG, fortschritt=gemeldet.append)
+
+    assert set(gemeldet) == {
+        "Kunden geladen",
+        "Personen geladen",
+        "Projekt-Rohdaten geladen",
+        "Umsatzhistorie geladen",
+        "Verbrauchsverlauf geladen",
+    }
+
+
+def test_bestand_meldet_keinen_fortschritt_fuer_abgeschalteten_verbrauchsverlauf(
+    projekt_antwort,
+    kunden_antwort,
+    benutzer_antwort,
+    sollzeit_antwort,
+    entrygroup_antwort,
+    monats_antwort,
+    abwesenheiten_antwort,
+    feiertage_antwort,
+):
+    def entrygroups(request):
+        gruppierung = tuple(request.url.params.get_list("grouping[]"))
+        return {
+            ("projects_id", "users_id"): entrygroup_antwort,
+            ("month",): monats_antwort,
+        }[gruppierung]
+
+    client, _requests = client_mit_routen(
+        {
+            "/v4/projects": projekt_antwort,
+            "/v3/customers": kunden_antwort,
+            "/v3/users": benutzer_antwort,
+            "/targethours": sollzeit_antwort,
+            "/v2/entrygroups": entrygroups,
+            "/v4/absences": abwesenheiten_antwort,
+            "/v2/usersNonbusinessDays": feiertage_antwort,
+        }
+    )
+    gemeldet: list[str] = []
+
+    BestandRepository(client).laden(
+        stichtag=STICHTAG, mit_verbrauchsverlauf=False, fortschritt=gemeldet.append
+    )
+
+    assert "Verbrauchsverlauf geladen" not in gemeldet

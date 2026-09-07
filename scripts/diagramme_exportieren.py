@@ -45,36 +45,6 @@ STANDARD_MONATE_FENSTER = 13  # wie notebooks/03_schulungsanmeldungen.ipynb
 
 DIAGRAMM_ANMELDUNGSVERLAUF = "anmeldungsverlauf"
 
-# Dieselbe Standard-Zuordnung wie in notebooks/03_schulungsanmeldungen.ipynb - dort ist
-# sie die eigentlich vorgesehene Stelle zum Anpassen, hier nur ein Startwert fuer den
-# Kommandozeilen-Export ohne Notebook.
-STANDARD_KATEGORIEN: dict[str, list[str]] = {
-    "Scrum": [
-        "A-CSD",
-        "A-CSM",
-        "A-CSPO",
-        "CSD",
-        "CSM 2-tägig",
-        "CSM 3-tägig",
-        "CSP-PO",
-        "CSP-SM",
-        "CSPO 2-tägig",
-        "CSPO 3-tägig",
-        "CAL 2",
-        "CAL ETO",
-        "AI for Scrum Masters",
-    ],
-    "Kanban": [
-        "KCP",
-        "KMM",
-        "KSD",
-        "KSI",
-        "KSI 2-tägig",
-        "KSI 3-tägig",
-        "SBK",  # "Scrum better with Kanban"
-    ],
-}
-
 # Name auf der Kommandozeile -> Dashboard-Methode, die die Figur liefert. Deckt alle
 # Grafik-Methoden aus den drei Bestand-Notebooks ab (siehe deren Zellen), nicht nur die
 # fuenf aus scripts/wochenbericht.py. Der Anmeldungsverlauf steht bewusst nicht hier,
@@ -158,15 +128,23 @@ def _anmeldungsverlauf_figur(*, stichtag: date, monate_fenster: int) -> go.Figur
 
     Die benoetigten Jahrgaenge ergeben sich aus ``stichtag`` und ``monate_fenster`` -
     genau wie ``schulungen._benoetigte_jahre`` fuer den Prognosehorizont, hier nur
-    rueckwaerts statt vorwaerts gezaehlt.
+    rueckwaerts statt vorwaerts gezaehlt. Der Balken fuellt sich dabei sichtbar ueber
+    echte Zwischenschritte, ein Jahr nach dem anderen (siehe Docstring von
+    ``anmeldungsverlauf_laden``), ohne dafuer je Jahr eine eigene Zeile zu hinterlassen.
     """
     ende = ordnung(stichtag.year, stichtag.month)
     start_jahr = aus_ordnung(ende - (monate_fenster - 1))[0]
-    verlauf = SchulungenRepository.mit_automatischen_zugangsdaten().anmeldungsverlauf_laden(
-        range(start_jahr, stichtag.year + 1)
-    )
+    jahre = list(range(start_jahr, stichtag.year + 1))
+    with tqdm(total=len(jahre), desc="Anmeldungsverlauf laden", leave=False) as balken:
+
+        def _melden(text: str) -> None:
+            balken.update(1)
+
+        verlauf = SchulungenRepository.mit_automatischen_zugangsdaten().anmeldungsverlauf_laden(
+            jahre, fortschritt=_melden
+        )
     fenster = verlauf.letzte(monate=monate_fenster, stichtag=stichtag)
-    return diagramme.anmeldungsverlauf(fenster, STANDARD_KATEGORIEN)
+    return diagramme.anmeldungsverlauf(fenster)
 
 
 SCHRITTE_DASHBOARD_LADEN = ("Bestand", "Schulungsplan", "Kostenplan", "Auslastung")
@@ -183,8 +161,28 @@ _SCHRITT_MUSTER = {
     "Auslastung": "Auslastungsmonat(e) geladen",
 }
 
+# Bestand meldet sich zusaetzlich zwischendurch, je einem seiner fuenf gleichzeitigen
+# Zweige (siehe BestandRepository.laden_async) - ein Tick je Zweig auf dem eigenen
+# Platzhalter-Balken (total=6: fuenf Zwischenschritte plus der Abschluss durch
+# _balken_ersetzen) statt einer eigenen Zeile je Zwischenschritt.
+_BESTAND_ZWISCHENSCHRITTE = frozenset(
+    {
+        "Kunden geladen",
+        "Personen geladen",
+        "Projekt-Rohdaten geladen",
+        "Umsatzhistorie geladen",
+        "Verbrauchsverlauf geladen",
+    }
+)
+_SCHRITT_TOTAL = {"Bestand": len(_BESTAND_ZWISCHENSCHRITTE) + 1, "Kostenplan": 1}
 
-def _platzhalter_balken(desc: str, *, position: int) -> tqdm:
+# Kostenplan meldet sich ebenfalls zwischendurch, je verarbeitetem Jahr (siehe
+# KostenRepository.laden) - die Jahresanzahl ist vorher nicht bekannt, deshalb nur die
+# Beschreibung des Platzhalter-Balkens statt eines echten Prozentanteils.
+_KOSTENPLAN_ZWISCHENSCHRITT_MUSTER = "Kostenposten bis"
+
+
+def _platzhalter_balken(desc: str, *, position: int, total: int = 1) -> tqdm:
     """Eine eigene Zeile fuer einen von mehreren gleichzeitig ausstehenden Schritten -
     Platzhalter, bis er fertig ist, siehe :func:`_balken_ersetzen`.
 
@@ -192,9 +190,10 @@ def _platzhalter_balken(desc: str, *, position: int) -> tqdm:
     alle ausstehenden Schritte stehen von Anfang an da, jeder in seiner eigenen Zeile;
     ihr Balken verschwindet zugunsten des fertigen Textes, sobald der jeweilige Schritt
     da ist - unabhaengig davon, ob die Schritte technisch nacheinander oder gleichzeitig
-    ablaufen (siehe Aufrufer).
+    ablaufen (siehe Aufrufer). ``total`` > 1 nur fuer Bestand - sichtbarer Fortschritt
+    durch dessen fuenf Zwischenschritte, siehe :data:`_SCHRITT_TOTAL`.
     """
-    return tqdm(total=1, desc=desc, bar_format="{desc} {bar}", position=position, leave=True)
+    return tqdm(total=total, desc=desc, bar_format="{desc} {bar}", position=position, leave=True)
 
 
 def _balken_ersetzen(balken: tqdm, text: str) -> None:
@@ -221,7 +220,7 @@ def _dashboard_mit_fortschritt(*, stichtag: date | None, horizont_monate: int) -
     keinem der vier bekannten Muster passt, und gibt sie einfach als Zeile aus.
     """
     offene_schritte = {
-        name: _platzhalter_balken(f"{name} laden", position=i)
+        name: _platzhalter_balken(f"{name} laden", position=i, total=_SCHRITT_TOTAL.get(name, 1))
         for i, name in enumerate(SCHRITTE_DASHBOARD_LADEN)
     }
 
@@ -230,6 +229,12 @@ def _dashboard_mit_fortschritt(*, stichtag: date | None, horizont_monate: int) -
             if name in offene_schritte and muster in text:
                 _balken_ersetzen(offene_schritte.pop(name), text)
                 return
+        if "Bestand" in offene_schritte and text in _BESTAND_ZWISCHENSCHRITTE:
+            offene_schritte["Bestand"].update(1)
+            return
+        if "Kostenplan" in offene_schritte and _KOSTENPLAN_ZWISCHENSCHRITT_MUSTER in text:
+            offene_schritte["Kostenplan"].set_description_str(f"Kostenplan laden: {text}")
+            return
         tqdm.write(text)
 
     dashboard = Dashboard.laden(

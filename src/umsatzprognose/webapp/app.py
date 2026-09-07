@@ -83,7 +83,7 @@ from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from umsatzprognose.darstellung import diagramme
+from umsatzprognose.darstellung import diagramme, tabellen
 
 from .cache import AnmeldungsverlaufCache, DashboardCache
 
@@ -92,7 +92,8 @@ from .cache import AnmeldungsverlaufCache, DashboardCache
 RESTVOLUMEN_TOP = 20
 
 # Deckt sich mit "KATEGORIEN" in notebooks/03_schulungsanmeldungen.ipynb - dieselbe,
-# von Hand gepflegte Zuordnung Schulungstyp -> Kategorie fuer denselben Verlauf.
+# von Hand gepflegte Zuordnung Schulungstyp -> Kategorie, nur noch fuer die
+# Anmeldungstabelle gebraucht (das Diagramm zeigt nur noch die Gesamtzahl).
 KATEGORIEN: dict[str, list[str]] = {
     "Scrum": [
         "A-CSD",
@@ -135,9 +136,28 @@ STANDARD_HORIZONT_MONATE: _HorizontMonateWert = "3"
 STANDARD_AUSLASTUNG_MONATE = 12
 STANDARD_GEWINN_VERLUST_MONATE: _GewinnVerlustMonateWert = "12"
 STANDARD_AB_JAHR = 2022
+# Ab diesem Monat gilt das laufende Jahr als eigenstaendig aussagekraeftig genug fuer
+# die Standardansicht (siehe _standard_anzeige_ab_jahr()) - vorher wird zusaetzlich
+# das Vorjahr gezeigt.
+STANDARD_ANZEIGE_MINDESTMONAT = 6
 
-AbJahr = Annotated[int, Query(ge=STANDARD_AB_JAHR, le=date.today().year)]
+AbJahr = Annotated[int | None, Query(ge=STANDARD_AB_JAHR, le=date.today().year)]
 AB_JAHR_OPTIONEN = tuple(range(STANDARD_AB_JAHR, date.today().year + 1))
+
+
+def _standard_anzeige_ab_jahr(*, heute: date | None = None) -> int:
+    """Ohne explizit gewaehlten ``ab_jahr``-Parameter gezeigtes Jahr.
+
+    Das laufende Jahr, wenn davon schon mindestens
+    :data:`STANDARD_ANZEIGE_MINDESTMONAT` Monate vorueber sind, sonst zusaetzlich das
+    Vorjahr - eine Standardansicht mit nur ein oder zwei Monaten waere zu duenn fuer
+    einen sinnvollen Blick auf den Anmeldungsverlauf. Nie vor :data:`STANDARD_AB_JAHR`,
+    weiter zurueck ist ohnehin nichts geladen.
+    """
+    heute = heute or date.today()
+    jahr = heute.year if heute.month >= STANDARD_ANZEIGE_MINDESTMONAT else heute.year - 1
+    return max(jahr, STANDARD_AB_JAHR)
+
 
 _dashboard_cache = DashboardCache()
 _anmeldungsverlauf_cache = AnmeldungsverlaufCache(ab_jahr=STANDARD_AB_JAHR)
@@ -293,12 +313,13 @@ async def dashboard_seite(
 
 
 @app.get("/schulungen", response_class=HTMLResponse)
-async def schulungen(request: Request, ab_jahr: AbJahr = STANDARD_AB_JAHR) -> HTMLResponse:
+async def schulungen(request: Request, ab_jahr: AbJahr = None) -> HTMLResponse:
     """Deckt sich mit notebooks/03_schulungsanmeldungen.ipynb: der Anmeldungsverlauf.
 
     ``ab_jahr`` filtert den einen geladenen Anmeldungsverlauf nur noch in-memory
     (siehe :class:`~umsatzprognose.webapp.cache.AnmeldungsverlaufCache`) - ein
-    engerer Beginn zeigt deshalb sofort ein anderes Ergebnis, ohne neu zu laden.
+    engerer Beginn zeigt deshalb sofort ein anderes Ergebnis, ohne neu zu laden. Ohne
+    Angabe gilt :func:`_standard_anzeige_ab_jahr` statt starr :data:`STANDARD_AB_JAHR`.
     """
     verlauf = _anmeldungsverlauf_cache.bereit()
     if verlauf is None:
@@ -307,15 +328,17 @@ async def schulungen(request: Request, ab_jahr: AbJahr = STANDARD_AB_JAHR) -> HT
             request, seite="schulungen", fortschritt=_anmeldungsverlauf_cache.fortschritt()
         )
 
-    verlauf_ab_jahr = verlauf.ab_jahr(ab_jahr)
+    jahr = ab_jahr if ab_jahr is not None else _standard_anzeige_ab_jahr()
+    verlauf_ab_jahr = verlauf.ab_jahr(jahr)
     return _antwort(
         request,
         seite="schulungen",
         name="schulungen.html",
         stichtag=date.today(),
-        ab_jahr=ab_jahr,
+        ab_jahr=jahr,
         ab_jahr_optionen=AB_JAHR_OPTIONEN,
         anmeldungsverlauf=_figur_html(
-            diagramme.anmeldungsverlauf(verlauf_ab_jahr, KATEGORIEN), mit_plotlyjs=True
+            diagramme.anmeldungsverlauf(verlauf_ab_jahr), mit_plotlyjs=True
         ),
+        anmeldungstabelle=_tabelle_html(tabellen.anmeldungstabelle(verlauf_ab_jahr, KATEGORIEN)),
     )

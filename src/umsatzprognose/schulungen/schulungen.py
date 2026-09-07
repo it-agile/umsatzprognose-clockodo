@@ -50,6 +50,8 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
 
+    from umsatzprognose.util import Fortschritt
+
 from datetime import date
 
 from umsatzprognose.domaene import (
@@ -184,11 +186,18 @@ class SchulungenRepository:
             abbildungshinweise=tuple(Hinweis(m) for m in meldungen),
         )
 
-    def anmeldungsverlauf_laden(self, jahre: Sequence[int]) -> Anmeldungsverlauf:
+    def anmeldungsverlauf_laden(
+        self, jahre: Sequence[int], *, fortschritt: Fortschritt | None = None
+    ) -> Anmeldungsverlauf:
         """Teilnehmerzahl je Schulungstyp und Monat, ueber die angegebenen Jahre hinweg.
 
         Anders als :meth:`laden` nicht auf den Prognosehorizont beschraenkt, siehe
         Moduldocstring von :mod:`umsatzprognose.domaene.anmeldung`.
+
+        ``fortschritt``, sofern angegeben, meldet sich einmal je verarbeitetem Jahr mit
+        der bis dahin kumulierten Anmeldungszahl - mehr Zwischenschritte gibt es nicht,
+        weil Google Sheets einen Zellbereich immer als einen einzigen atomaren Abruf
+        liefert (siehe :func:`~umsatzprognose.google_sheets.client.jahre_laden`).
         """
         anmeldungen, meldungen = jahre_laden(
             self._client,
@@ -198,6 +207,8 @@ class SchulungenRepository:
             abbilden=lambda zeilen, _jahr: _zeilen_zu_anmeldungen(zeilen),
             fehlt_meldung="Für {jahr} ist in KOSTEN_SHEET_IDS keine Schulungs-Datei hinterlegt",
             fehler_meldung="Die Schulungs-Datei für {jahr} konnte nicht gelesen werden ({detail})",
+            fortschritt=fortschritt,
+            fortschritt_text=lambda jahr, bisher: f"{len(bisher)} Anmeldungen bis {jahr} geladen",
         )
         return Anmeldungsverlauf(
             anmeldungen=tuple(anmeldungen),

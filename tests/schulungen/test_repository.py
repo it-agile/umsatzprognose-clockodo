@@ -202,6 +202,39 @@ def test_anmeldungsverlauf_laden_fuehrt_mehrere_jahre_zusammen() -> None:
     assert verlauf.abbildungshinweise == ()
 
 
+def test_anmeldungsverlauf_laden_meldet_fortschritt_je_jahr_mit_kumulierter_anzahl() -> None:
+    client = FakeClient(
+        {
+            "sheet-2022": [
+                KOPFZEILE_ANMELDUNGEN,
+                ["Scrum Master", "2022", "3", "", "1", "1.000,00 €", "", "4", "10", "6", "40%"],
+            ],
+            "sheet-2023": [
+                KOPFZEILE_ANMELDUNGEN,
+                ["Scrum Master", "2023", "1", "", "1", "2.000,00 €", "", "6", "10", "4", "60%"],
+            ],
+        }
+    )
+    repository = SchulungenRepository(client, {2022: "sheet-2022", 2023: "sheet-2023"})
+    gemeldet: list[str] = []
+
+    repository.anmeldungsverlauf_laden([2022, 2023], fortschritt=gemeldet.append)
+
+    assert gemeldet == [
+        "1 Anmeldungen bis 2022 geladen",
+        "2 Anmeldungen bis 2023 geladen",
+    ]
+
+
+def test_anmeldungsverlauf_laden_meldet_fortschritt_auch_fuer_ein_fehlendes_jahr() -> None:
+    repository = SchulungenRepository(FakeClient({}), {})
+    gemeldet: list[str] = []
+
+    repository.anmeldungsverlauf_laden([2022], fortschritt=gemeldet.append)
+
+    assert gemeldet == ["0 Anmeldungen bis 2022 geladen"]
+
+
 def test_anmeldungsverlauf_laden_meldet_nicht_konfiguriertes_jahr_als_hinweis() -> None:
     repository = SchulungenRepository(FakeClient({}), {})
     verlauf = repository.anmeldungsverlauf_laden([2022])

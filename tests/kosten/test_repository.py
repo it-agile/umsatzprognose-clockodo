@@ -221,6 +221,33 @@ def test_laden_deckt_historie_und_prognosehorizont_ab() -> None:
     assert plan.hinweise([(2026, 11), (2026, 12), (2027, 1)]) == ()
 
 
+def test_laden_meldet_fortschritt_je_jahr_mit_kumulierter_anzahl() -> None:
+    client = FakeClient(
+        {
+            "sheet-2026": [
+                KOPFZEILE,
+                ["November", "", "", "", "500,00 €"],
+                ["Dezember", "", "", "", "600,00 €"],
+            ],
+            "sheet-2027": [KOPFZEILE, ["Januar", "", "", "", "700,00 €"]],
+        }
+    )
+    repository = KostenRepository(client, {2026: "sheet-2026", 2027: "sheet-2027"})
+    gemeldet: list[str] = []
+
+    repository.laden(
+        stichtag=date(2026, 12, 1),
+        horizont_monate=2,
+        historie_monate=[(2026, 11)],
+        fortschritt=gemeldet.append,
+    )
+
+    assert gemeldet == [
+        "2 Kostenposten bis 2026 geladen",
+        "3 Kostenposten bis 2027 geladen",
+    ]
+
+
 def test_laden_ohne_historie_deckt_nur_den_horizont_ab() -> None:
     client = FakeClient({"sheet-2026": [KOPFZEILE, ["September", "", "", "", "300,00 €"]]})
     repository = KostenRepository(client, {2026: "sheet-2026"})

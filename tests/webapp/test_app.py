@@ -203,6 +203,31 @@ def test_schulungen_zeigt_den_anmeldungsverlauf(_fake_caches):
     assert 'value="2023" selected' in antwort.text
 
 
+def test_schulungen_ohne_ab_jahr_zeigt_den_dynamischen_standard(_fake_caches):
+    client = TestClient(app_modul.app)
+
+    antwort = client.get("/schulungen")
+
+    erwartet = app_modul._standard_anzeige_ab_jahr()
+    assert antwort.status_code == 200
+    assert f'value="{erwartet}" selected' in antwort.text
+
+
+def test_standard_anzeige_ab_jahr_ab_dem_mindestmonat_ist_das_laufende_jahr():
+    heute = date(2026, app_modul.STANDARD_ANZEIGE_MINDESTMONAT, 15)
+    assert app_modul._standard_anzeige_ab_jahr(heute=heute) == 2026
+
+
+def test_standard_anzeige_ab_jahr_vor_dem_mindestmonat_ist_das_vorjahr():
+    heute = date(2026, app_modul.STANDARD_ANZEIGE_MINDESTMONAT - 1, 28)
+    assert app_modul._standard_anzeige_ab_jahr(heute=heute) == 2025
+
+
+def test_standard_anzeige_ab_jahr_faellt_nie_vor_standard_ab_jahr():
+    heute = date(app_modul.STANDARD_AB_JAHR, 1, 1)
+    assert app_modul._standard_anzeige_ab_jahr(heute=heute) == app_modul.STANDARD_AB_JAHR
+
+
 def test_schulungen_wechsel_des_jahres_laedt_nicht_neu(_fake_caches):
     """``ab_jahr`` filtert nur den schon geladenen Anmeldungsverlauf anders zurecht
     (siehe Anmeldungsverlauf.ab_jahr) - ein engerer Beginn ist immer eine Teilmenge

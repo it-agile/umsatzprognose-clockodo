@@ -77,6 +77,17 @@ def test_abbildungshinweise_werden_unveraendert_gehalten() -> None:
     assert verlauf.abbildungshinweise == (hinweis,)
 
 
+def test_summe_je_typ_summiert_ueber_alle_monate() -> None:
+    verlauf = Anmeldungsverlauf(
+        anmeldungen=(
+            Anmeldung(2026, 9, "Scrum Master", 5),
+            Anmeldung(2026, 10, "Scrum Master", 3),
+            Anmeldung(2026, 9, "Requirements Engineering", 2),
+        )
+    )
+    assert verlauf.summe_je_typ() == {"Scrum Master": 8, "Requirements Engineering": 2}
+
+
 def test_kategorie_zuordnung_kehrt_kategorie_zu_typen_zuordnung_um() -> None:
     assert _kategorie_zuordnung(KATEGORIEN) == {
         "CSM 2-tägig": "Scrum",

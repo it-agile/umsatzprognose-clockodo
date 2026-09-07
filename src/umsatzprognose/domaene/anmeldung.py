@@ -12,16 +12,24 @@ Baustein Schulungsanmeldungen gibt es hier kein Doppelzaehlungsrisiko, das den B
 die Vergangenheit ausschliessen wuerde. Bleibt wie der Baustein Schulungsanmeldungen
 additiv: kein Einfluss auf Restvolumen, Abrufquote oder Kapazitaetsdeckel.
 
-**Kategorisierung frei konfigurierbar** (:meth:`Anmeldungsverlauf.je_monat_und_kategorie`),
-wie in der internen ZDF-Praesentation (dort Scrum/Kanban/Sonstige): eine von Hand
-gepflegte Zuordnung einzelner Schulungstypen, keine Stichwortsuche - Zertifizierungen
-laufen ueberwiegend ueber Kuerzel (``"CSM"``, ``"KSD"``, ...), nicht ueber
-ausgeschriebene Woerter wie "Scrum"/"Kanban". Die Zuordnung selbst ist bewusst **keine
-Konstante dieses Moduls**, sondern wird als Parameter uebergeben (typischerweise eine im
-Notebook gepflegte ``dict[str, list[str]]``, siehe
-``notebooks/03_schulungsanmeldungen.ipynb``) - welche Kategorien es gibt und welche
-Schulungstypen dazuzaehlen, ist reine Konfiguration, keine Fachlogik. Ein Schulungstyp,
-der in keiner Kategorie auftaucht, faellt auf :data:`KATEGORIE_SONSTIGE` zurueck.
+**Keine Kategorisierung im Diagramm mehr** (eine fruehere Fassung gruppierte dort per
+von Hand gepflegter Zuordnung nach Scrum/Kanban/Sonstige, siehe Spec Abschnitt 9) - als
+Liniendiagramm mit einer Linie je Kategorie veraltete das unbemerkt, sobald neue
+Schulungstypen dazukamen. Primaer zaehlt dort nur noch die Gesamtzahl je Monat (siehe
+:meth:`Anmeldungsverlauf.je_monat`). Dieselbe Kategorisierung bleibt aber als Drilldown
+hinter der Gesamtzahl erhalten, weiterhin je Monat aufgeschluesselt
+(:meth:`Anmeldungsverlauf.je_monat_und_kategorie`) - als Tabelle faellt eine
+veraltete/unvollstaendige Zuordnung eher auf und stoert weniger als im Diagramm.
+
+**Kategorisierung frei konfigurierbar**: eine von Hand gepflegte Zuordnung einzelner
+Schulungstypen, keine Stichwortsuche - Zertifizierungen laufen ueberwiegend ueber
+Kuerzel (``"CSM"``, ``"KSD"``, ...), nicht ueber ausgeschriebene Woerter wie
+"Scrum"/"Kanban". Die Zuordnung selbst ist bewusst **keine Konstante dieses Moduls**,
+sondern wird als Parameter uebergeben (typischerweise eine im Notebook/Skript
+gepflegte ``dict[str, list[str]]``, siehe ``notebooks/03_schulungsanmeldungen.ipynb``)
+- welche Kategorien es gibt und welche Schulungstypen dazuzaehlen, ist reine
+Konfiguration, keine Fachlogik. Ein Schulungstyp, der in keiner Kategorie auftaucht,
+faellt auf :data:`KATEGORIE_SONSTIGE` zurueck.
 """
 
 from __future__ import annotations
@@ -87,28 +95,22 @@ class Anmeldungsverlauf:
     @property
     def schulungstypen(self) -> tuple[str, ...]:
         """Alle vorkommenden Schulungstypen, nach absteigender Gesamtteilnehmerzahl."""
+        summen = self.summe_je_typ()
+        return tuple(sorted(summen, key=lambda typ: summen[typ], reverse=True))
+
+    def summe_je_typ(self) -> dict[str, int]:
+        """Teilnehmerzahl je Schulungstyp, ueber den gesamten abgedeckten Zeitraum -
+        der Drilldown hinter der Gesamtzahl aus :meth:`je_monat`, siehe
+        :func:`~umsatzprognose.darstellung.tabellen.anmeldungstabelle`."""
         summen: Counter[str] = Counter()
         for a in self.anmeldungen:
             summen[a.schulungstyp] += a.teilnehmerzahl
-        return tuple(sorted(summen, key=lambda typ: summen[typ], reverse=True))
-
-    def je_monat(self) -> dict[Monat, int]:
-        """Summe der Teilnehmerzahl je Monat, ueber alle Schulungstypen hinweg."""
-        summen: Counter[Monat] = Counter()
-        for a in self.anmeldungen:
-            summen[a.schluessel] += a.teilnehmerzahl
-        return summen
-
-    def je_monat_und_typ(self, schulungstyp: str) -> dict[Monat, int]:
-        """Teilnehmerzahl je Monat fuer einen einzelnen Schulungstyp."""
-        summen: Counter[Monat] = Counter()
-        for a in self.anmeldungen:
-            if a.schulungstyp == schulungstyp:
-                summen[a.schluessel] += a.teilnehmerzahl
         return summen
 
     def je_monat_und_kategorie(self, kategorien: Kategorisierung) -> dict[str, dict[Monat, int]]:
-        """Teilnehmerzahl je Monat, gruppiert nach den uebergebenen Kategorien.
+        """Teilnehmerzahl je Monat, gruppiert nach den uebergebenen Kategorien - der
+        Drilldown hinter der Gesamtzahl aus :meth:`je_monat`, siehe
+        :func:`~umsatzprognose.darstellung.tabellen.anmeldungstabelle`.
 
         ``kategorien`` bildet Kategoriename auf die zugehoerigen Schulungstypen ab
         (siehe Moduldocstring) - ein Schulungstyp, der in keiner Kategorie auftaucht,
@@ -124,6 +126,21 @@ class Anmeldungsverlauf:
             summen = ergebnis[zuordnung.get(a.schulungstyp, KATEGORIE_SONSTIGE)]
             summen[a.schluessel] += a.teilnehmerzahl
         return ergebnis
+
+    def je_monat(self) -> dict[Monat, int]:
+        """Summe der Teilnehmerzahl je Monat, ueber alle Schulungstypen hinweg."""
+        summen: Counter[Monat] = Counter()
+        for a in self.anmeldungen:
+            summen[a.schluessel] += a.teilnehmerzahl
+        return summen
+
+    def je_monat_und_typ(self, schulungstyp: str) -> dict[Monat, int]:
+        """Teilnehmerzahl je Monat fuer einen einzelnen Schulungstyp."""
+        summen: Counter[Monat] = Counter()
+        for a in self.anmeldungen:
+            if a.schulungstyp == schulungstyp:
+                summen[a.schluessel] += a.teilnehmerzahl
+        return summen
 
     def letzte(self, *, monate: int, stichtag: date) -> Anmeldungsverlauf:
         """Nur die ``monate`` Kalendermonate bis einschliesslich des Stichtagsmonats.

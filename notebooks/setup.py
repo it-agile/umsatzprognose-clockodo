@@ -34,8 +34,32 @@ _SCHRITT_MUSTER = {
     "Auslastung": "Auslastungsmonat(e) geladen",
 }
 
+# Bestand meldet sich zusaetzlich zwischendurch, je einem seiner fuenf gleichzeitigen
+# Zweige (siehe BestandRepository.laden_async) - diese Texte sind fest und bekannt,
+# anders als bei Kostenplan (dort variiert die Jahreszahl). Ein Tick je Zweig auf dem
+# eigenen Platzhalter-Balken (total=6: fuenf Zwischenschritte plus der Abschluss durch
+# _balken_ersetzen) statt einer eigenen Zeile - sonst waere der Output wie in einem
+# frueheren Anlauf mit einer eigenen Zeile je Zwischenschritt ueberladen.
+_BESTAND_ZWISCHENSCHRITTE = frozenset(
+    {
+        "Kunden geladen",
+        "Personen geladen",
+        "Projekt-Rohdaten geladen",
+        "Umsatzhistorie geladen",
+        "Verbrauchsverlauf geladen",
+    }
+)
+_SCHRITT_TOTAL = {"Bestand": len(_BESTAND_ZWISCHENSCHRITTE) + 1, "Kostenplan": 1}
 
-def _platzhalter_balken(desc: str, *, position: int) -> tqdm:
+# Kostenplan meldet sich ebenfalls zwischendurch, je verarbeitetem Jahr (siehe
+# KostenRepository.laden) - anders als bei Bestand ist die Anzahl Jahre vorher nicht
+# bekannt (haengt von der geladenen Historie ab), ein Balken mit echtem Prozentanteil
+# waere hier nur geraten. Die Beschreibung zeigt den jeweils juengsten Zwischenstand
+# stattdessen nur voruebergehend an, ohne eine eigene Zeile zu hinterlassen.
+_KOSTENPLAN_ZWISCHENSCHRITT_MUSTER = "Kostenposten bis"
+
+
+def _platzhalter_balken(desc: str, *, position: int, total: int = 1) -> tqdm:
     """Eine eigene Zeile fuer einen von mehreren gleichzeitig ausstehenden Schritten -
     Platzhalter, bis er fertig ist, siehe :func:`_balken_ersetzen`.
 
@@ -43,9 +67,10 @@ def _platzhalter_balken(desc: str, *, position: int) -> tqdm:
     alle ausstehenden Schritte stehen von Anfang an da, jeder in seiner eigenen Zeile;
     ihr Balken verschwindet zugunsten des fertigen Textes, sobald der jeweilige Schritt
     da ist - unabhaengig davon, ob die Schritte technisch nacheinander oder gleichzeitig
-    ablaufen (siehe :func:`dashboard`).
+    ablaufen (siehe :func:`dashboard`). ``total`` > 1 nur fuer Bestand - sichtbarer
+    Fortschritt durch dessen fuenf Zwischenschritte, siehe :data:`_SCHRITT_TOTAL`.
     """
-    return tqdm(total=1, desc=desc, bar_format="{desc} {bar}", position=position, leave=True)
+    return tqdm(total=total, desc=desc, bar_format="{desc} {bar}", position=position, leave=True)
 
 
 def _balken_ersetzen(balken: tqdm, text: str) -> None:
@@ -70,10 +95,14 @@ def dashboard(
     ``Dashboard.laden_async``). Jede Zeile wird durch ihre fertige Statuszeile (Umfang
     und Dauer) ersetzt, sobald der jeweilige Abruf tatsaechlich fertig ist - in der
     Reihenfolge, in der die vier tatsaechlich fertig werden, nicht in der oben
-    genannten. Ist der Verlaufscache aktiv (``CLOCKODO_CACHE_TTL_SEKUNDEN``), erscheint
-    zusaetzlich je Cache-Zugriff eine eigene Zeile mit dessen eigener, meist sehr
-    kurzer Ladezeit - ueber denselben ``fortschritt``-Callback wie die vier Schritte,
-    siehe :data:`_SCHRITT_MUSTER`.
+    genannten. Bestands Balken fuellt sich zusaetzlich sichtbar ueber dessen fuenf
+    gleichzeitige Zweige (Kunden, Personen, Projekt-Rohdaten, Umsatzhistorie,
+    Verbrauchsverlauf), Kostenplans Beschriftung zeigt waehrenddessen den juengsten
+    Jahrgang - beides ohne eine eigene Zeile je Zwischenschritt zu hinterlassen (siehe
+    :data:`_BESTAND_ZWISCHENSCHRITTE`/:data:`_KOSTENPLAN_ZWISCHENSCHRITT_MUSTER`). Ist
+    der Verlaufscache aktiv (``CLOCKODO_CACHE_TTL_SEKUNDEN``), erscheint zusaetzlich je
+    Cache-Zugriff eine eigene Zeile mit dessen eigener, meist sehr kurzer Ladezeit -
+    ueber denselben ``fortschritt``-Callback wie die vier Schritte.
 
     Beim zweiten Aufruf im selben Kernel wird nicht neu geladen, die vier Zeilen
     erscheinen aber trotzdem - mit derselben Anzahl Eintraege wie beim ersten Laden,
@@ -85,7 +114,7 @@ def dashboard(
     global _dashboard
     start = time.perf_counter()
     offene_schritte = {
-        name: _platzhalter_balken(f"{name} laden", position=i)
+        name: _platzhalter_balken(f"{name} laden", position=i, total=_SCHRITT_TOTAL.get(name, 1))
         for i, name in enumerate(SCHRITTE_DASHBOARD_LADEN)
     }
 
@@ -96,6 +125,12 @@ def dashboard(
                 if name in offene_schritte and muster in text:
                     _balken_ersetzen(offene_schritte.pop(name), text)
                     return
+            if "Bestand" in offene_schritte and text in _BESTAND_ZWISCHENSCHRITTE:
+                offene_schritte["Bestand"].update(1)
+                return
+            if "Kostenplan" in offene_schritte and _KOSTENPLAN_ZWISCHENSCHRITT_MUSTER in text:
+                offene_schritte["Kostenplan"].set_description_str(f"Kostenplan laden: {text}")
+                return
             tqdm.write(text)
 
         _dashboard = Dashboard.laden(
@@ -135,27 +170,38 @@ def anmeldungsverlauf(*, ab_jahr: int = 2022) -> Anmeldungsverlauf:
     Anders als :func:`dashboard` unabhaengig vom Baustein Bestand - liest ueber
     :meth:`~umsatzprognose.schulungen.schulungen.SchulungenRepository.anmeldungsverlauf_laden`
     direkt aus der Schulungsanmeldungen-Quelle, ab dem angegebenen Jahr bis zum
-    aktuellen. Beim zweiten Aufruf im selben Kernel wird nicht neu geladen, die
+    aktuellen. Der Balken fuellt sich dabei sichtbar ueber echte Zwischenschritte, ein
+    Jahr nach dem anderen (siehe Docstring von ``anmeldungsverlauf_laden``), statt nur
+    am Ende fertig zu sein - ohne dafuer je Jahr eine eigene Zeile zu hinterlassen; am
+    Ende steht nur die eine Statuszeile aus :func:`anmeldungsverlauf_bericht`. Beim
+    zweiten Aufruf im selben Kernel wird nicht neu geladen, die
     Statuszeile (:func:`anmeldungsverlauf_bericht`) erscheint aber trotzdem - mit der
     tatsaechlich gemessenen (nur sehr kurzen) Dauer *dieses* Zugriffs, statt
     faelschlich die alte, teure Original-Ladedauer erneut zu zeigen.
     """
     global _anmeldungsverlauf, _anmeldungsverlauf_dauer
     start = time.perf_counter()
-    with tqdm(total=1, desc="Anmeldungsverlauf laden", leave=False) as fortschrittsbalken:
+    jahre = list(range(ab_jahr, date.today().year + 1))
+    with tqdm(total=len(jahre), desc="Anmeldungsverlauf laden", leave=False) as fortschrittsbalken:
         neu_geladen = _anmeldungsverlauf is None
         if neu_geladen:
-            jahre = range(ab_jahr, date.today().year + 1)
+
+            def _melden(text: str) -> None:
+                fortschrittsbalken.update(1)
+
             _anmeldungsverlauf = (
-                SchulungenRepository.mit_automatischen_zugangsdaten().anmeldungsverlauf_laden(jahre)
+                SchulungenRepository.mit_automatischen_zugangsdaten().anmeldungsverlauf_laden(
+                    jahre, fortschritt=_melden
+                )
             )
+        else:
+            fortschrittsbalken.update(len(jahre))
         zugriffsdauer = timedelta(seconds=time.perf_counter() - start)
         if neu_geladen:
             _anmeldungsverlauf_dauer = zugriffsdauer
             fortschrittsbalken.write(anmeldungsverlauf_bericht())
         else:
             fortschrittsbalken.write(anmeldungsverlauf_bericht(dauer=zugriffsdauer))
-        fortschrittsbalken.update(1)
     return _anmeldungsverlauf
 
 

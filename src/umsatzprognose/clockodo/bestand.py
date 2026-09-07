@@ -17,6 +17,9 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from collections.abc import Coroutine
+    from typing import Any
+
     from .client import EntryGroupV2
     from .fortschritt import Fortschritt
 
@@ -34,6 +37,24 @@ from .projekte import rohdaten as projekt_rohdaten
 from .umsatz import UmsatzRepository
 from .verbrauchsverlauf import VerbrauchsverlaufRepository
 from .verbrauchsverlauf import rohdaten as monatsverbrauch_rohdaten
+
+
+async def _mit_meldung[T](
+    coro: Coroutine[Any, Any, T], text: str, fortschritt: Fortschritt | None
+) -> T:
+    """Meldet ``text``, sobald ``coro`` individuell fertig ist - unabhaengig davon, ob
+    die uebrigen der fuenf gleichzeitigen Faecher noch laufen.
+
+    ``ClockodoClient`` nutzt echtes async HTTP (``httpx2.AsyncClient``, siehe dessen
+    Docstring), die Event-Loop bleibt also waehrend aller fuenf Abrufe responsiv -
+    anders als beim synchronen Google-Sheets-Client (siehe
+    :mod:`umsatzprognose.google_sheets.client`) zeigt eine Meldung je Zweig hier
+    echten, live sichtbaren Fortschritt statt nur einer nachtraeglichen Behauptung.
+    """
+    ergebnis = await coro
+    if fortschritt is not None:
+        fortschritt(text)
+    return ergebnis
 
 
 class BestandRepository:
@@ -57,6 +78,7 @@ class BestandRepository:
         horizont_monate: int = 3,
         cache_cutoff_monate: int | None = None,
         cache_fortschritt: Fortschritt | None = None,
+        fortschritt: Fortschritt | None = None,
     ) -> Bestand:
         """Der Ladevorgang, synchron - der Einstieg fuer Notebook und Skript.
 
@@ -72,6 +94,7 @@ class BestandRepository:
                 horizont_monate=horizont_monate,
                 cache_cutoff_monate=cache_cutoff_monate,
                 cache_fortschritt=cache_fortschritt,
+                fortschritt=fortschritt,
             )
         )
 
@@ -85,6 +108,7 @@ class BestandRepository:
         horizont_monate: int = 3,
         cache_cutoff_monate: int | None = None,
         cache_fortschritt: Fortschritt | None = None,
+        fortschritt: Fortschritt | None = None,
     ) -> Bestand:
         """Den vollstaendigen Bestand zum Stichtag.
 
@@ -108,6 +132,11 @@ class BestandRepository:
                 Zugriff (Projektanteile, Verbrauchsverlauf) eine eigene Statuszeile mit
                 dessen gemessener Dauer - ohne aktivierten Verlaufscache ohne jede
                 Wirkung, siehe :func:`~.cache.gecacht_oder_neu`.
+            fortschritt: meldet, sofern angegeben, je einem der fuenf gleichzeitigen
+                Faecher (Kunden, Personen, Projekt-Rohdaten, Umsatzhistorie,
+                Verbrauchsverlauf) eine kurze Statuszeile, sobald genau *dieser*
+                Zweig fertig ist - nicht erst, wenn alle fuenf fertig sind (siehe
+                :func:`_mit_meldung`).
         """
         stichtag = stichtag or date.today()
         personen = MitarbeiterRepository(self._client)
@@ -122,21 +151,32 @@ class BestandRepository:
         # koennten die gleichzeitigen Abrufe ueber einen Tageswechsel hinweg
         # verschiedene Fenster erwischen.
         kunden, mitarbeiter, rohe_projekte, umsatzhistorie, monatsgruppen = await gleichzeitig(
-            KundenRepository(self._client).laden_async(),
-            personen.laden_async(jahre=jahre),
-            projekt_rohdaten(
-                self._client,
-                time_until=verbrauch_bis(stichtag),
-                cache_cutoff_monate=cache_cutoff_monate,
-                cache_fortschritt=cache_fortschritt,
+            _mit_meldung(
+                KundenRepository(self._client).laden_async(), "Kunden geladen", fortschritt
             ),
-            UmsatzRepository(self._client).laden_async(
-                stichtag, abgeschlossene=abgeschlossene_monate
+            _mit_meldung(personen.laden_async(jahre=jahre), "Personen geladen", fortschritt),
+            _mit_meldung(
+                projekt_rohdaten(
+                    self._client,
+                    time_until=verbrauch_bis(stichtag),
+                    cache_cutoff_monate=cache_cutoff_monate,
+                    cache_fortschritt=cache_fortschritt,
+                ),
+                "Projekt-Rohdaten geladen",
+                fortschritt,
+            ),
+            _mit_meldung(
+                UmsatzRepository(self._client).laden_async(
+                    stichtag, abgeschlossene=abgeschlossene_monate
+                ),
+                "Umsatzhistorie geladen",
+                fortschritt,
             ),
             self._monatsgruppen(
                 stichtag,
                 horizont_monate=horizont_monate,
                 geladen=mit_verbrauchsverlauf,
+                fortschritt=fortschritt,
                 cache_cutoff_monate=cache_cutoff_monate,
                 cache_fortschritt=cache_fortschritt,
             ),
@@ -163,6 +203,7 @@ class BestandRepository:
         *,
         horizont_monate: int,
         geladen: bool,
+        fortschritt: Fortschritt | None = None,
         cache_cutoff_monate: int | None = None,
         cache_fortschritt: Fortschritt | None = None,
     ) -> list[EntryGroupV2]:
@@ -170,14 +211,20 @@ class BestandRepository:
 
         Als Coroutine und nicht als ``if`` um den ``gleichzeitig``-Aufruf herum: sonst
         stuende die Liste der Abrufe zweimal im Code, und eine der beiden Fassungen
-        wuerde eines Tages nicht mitgepflegt.
+        wuerde eines Tages nicht mitgepflegt. Ohne ``geladen`` kehrt sie sofort zurueck
+        - dafuer keine ``fortschritt``-Meldung, die faelschlich einen echten Abruf
+        behaupten wuerde.
         """
         if not geladen:
             return []
-        return await monatsverbrauch_rohdaten(
-            self._client,
-            stichtag=stichtag,
-            horizont_monate=horizont_monate,
-            cache_cutoff_monate=cache_cutoff_monate,
-            cache_fortschritt=cache_fortschritt,
+        return await _mit_meldung(
+            monatsverbrauch_rohdaten(
+                self._client,
+                stichtag=stichtag,
+                horizont_monate=horizont_monate,
+                cache_cutoff_monate=cache_cutoff_monate,
+                cache_fortschritt=cache_fortschritt,
+            ),
+            "Verbrauchsverlauf geladen",
+            fortschritt,
         )

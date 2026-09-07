@@ -1199,19 +1199,17 @@ def _linearer_trend(werte: Sequence[float]) -> list[float]:
     return [achsenabschnitt + steigung * x for x in range(n)]
 
 
-def anmeldungsverlauf(
-    verlauf: Anmeldungsverlauf, kategorien: Mapping[str, Sequence[str]], *, hoehe: int = 420
-) -> go.Figure:
-    """Teilnehmerzahl oeffentlicher Schulungen je Monat - wie in der internen
-    ZDF-Praesentation ("Anmeldungen bleiben auf niedrigem Niveau"): eine Linie mit
-    Datenpunkten je Kategorie, dazu eine "Gesamt"-Linie und eine lineare Trendlinie
-    (Ausgleichsgerade) derselben Gesamtsumme (siehe :func:`_linearer_trend`).
+def anmeldungsverlauf(verlauf: Anmeldungsverlauf, *, hoehe: int = 420) -> go.Figure:
+    """Teilnehmerzahl oeffentlicher Schulungen je Monat, insgesamt - eine Linie mit
+    Datenpunkten, dazu eine lineare Trendlinie (Ausgleichsgerade), siehe
+    :func:`_linearer_trend`.
 
-    ``kategorien`` bildet Kategoriename auf die zugehoerigen Schulungstypen ab (siehe
-    Moduldocstring von :mod:`umsatzprognose.domaene.anmeldung`) - typischerweise eine im
-    Notebook gepflegte, frei aenderbare Zuordnung, keine Konstante dieser Funktion. Ein
-    Schulungstyp ohne Kategorie landet unter
-    :data:`~umsatzprognose.domaene.anmeldung.KATEGORIE_SONSTIGE`.
+    Bewusst nur die Gesamtzahl, keine Aufschluesselung nach Kategorie oder
+    Schulungstyp mehr im Diagramm (eine fruehere Fassung gruppierte per von Hand
+    gepflegter Zuordnung nach Scrum/Kanban/Sonstige - das veraltete unbemerkt, sobald
+    neue Schulungstypen dazukamen). Der Blick auf einzelne Schulungstypen ist ein
+    eigener Drilldown als Tabelle, siehe
+    :func:`~umsatzprognose.darstellung.tabellen.anmeldungstabelle`.
 
     Anders als :func:`umsatzverlauf` keine Umsatzgroesse, sondern die Teilnehmerzahl aus
     der Spalte ``TN Zahl`` (siehe Moduldocstring von
@@ -1222,14 +1220,14 @@ def anmeldungsverlauf(
     unveraendert, ohne selbst ein Zeitfenster anzuwenden.
 
     Anders als die uebrigen Diagrammfunktionen bewusst ohne ``mit_beschriftung``: eine
-    einzelne Zahl am Ende der Gesamt-Linie hilft bei so wenigen Kategorien und Monaten
-    kaum weiter, der Hover-Tooltip reicht - siehe :func:`umsatzverlauf` fuer den
-    Parameter bei den uebrigen Diagrammen.
+    einzelne Zahl am Ende der Linie hilft bei so wenigen Monaten kaum weiter, der
+    Hover-Tooltip reicht - siehe :func:`umsatzverlauf` fuer den Parameter bei den
+    uebrigen Diagrammen.
     """
     monate = verlauf.monate
     fig = figur(
         "Anmeldungen je Monat",
-        untertitel="Teilnehmerzahl öffentlicher Schulungen je Kategorie, mit Trend",
+        untertitel="Teilnehmerzahl öffentlicher Schulungen, mit Trend",
         hoehe=hoehe,
     )
     if not monate:
@@ -1241,27 +1239,16 @@ def anmeldungsverlauf(
         return fig
 
     beschriftungen = [f"{MONATSNAMEN[monat - 1]} {jahr}" for jahr, monat in monate]
-    gesamt = [0] * len(monate)
-    for i, (kategorie, je_monat) in enumerate(verlauf.je_monat_und_kategorie(kategorien).items()):
-        werte = [je_monat.get(m, 0) for m in monate]
-        gesamt = [g + w for g, w in zip(gesamt, werte, strict=True)]
-        farbe = JAHRESFARBEN[i % len(JAHRESFARBEN)]
-        fig.add_scatter(
-            x=beschriftungen,
-            y=werte,
-            mode="lines+markers",
-            name=kategorie,
-            line={"color": farbe, "width": 2},
-            marker={"size": 6, "color": farbe},
-        )
+    je_monat = verlauf.je_monat()
+    gesamt = [je_monat.get(m, 0) for m in monate]
 
     fig.add_scatter(
         x=beschriftungen,
         y=gesamt,
         mode="lines+markers",
-        name="Gesamt",
+        name="Anmeldungen",
         line={"color": TINTE, "width": 2},
-        marker={"size": 5, "color": TINTE},
+        marker={"size": 6, "color": TINTE},
     )
     fig.add_scatter(
         x=beschriftungen,

@@ -72,12 +72,12 @@ env_list = [ "py312", "py313", "py314", "coverage", "ruff", "mypy", "mypy-notebo
 use_develop = true
 
 [tool.tox.env_run_base]
-extras = [ "dev" ]
+extras = [ "dev", "bericht" ]
 allowlist_externals = [ "pytest" ]
 commands = [["pytest", { replace = "posargs", default = [], extend = true }]]
 
 [tool.tox.env.coverage]
-extras = [ "coverage", "web" ]
+extras = [ "coverage", "web", "bericht" ]
 allowlist_externals = [ "coverage" ]
 commands = [
     ["coverage", "erase"],

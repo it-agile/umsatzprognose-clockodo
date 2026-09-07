@@ -34,6 +34,8 @@ if TYPE_CHECKING:
 
     from google.auth.credentials import Credentials as CredentialsBase
 
+    from umsatzprognose.util import Fortschritt
+
 from googleapiclient.discovery import build
 
 from umsatzprognose.util import in_colab
@@ -109,6 +111,8 @@ def jahre_laden[T](
     abbilden: Callable[[list[list[str]], int], list[T]],
     fehlt_meldung: str,
     fehler_meldung: str,
+    fortschritt: Fortschritt | None = None,
+    fortschritt_text: Callable[[int, list[T]], str] | None = None,
 ) -> tuple[list[T], list[str]]:
     """Je Jahr eine Datei lesen und abbilden - gemeinsamer Ablauf von ``schulungen/`` und
     ``kosten/``, die beide dieselbe jaehrliche Google-Sheets-Datei ueber
@@ -119,6 +123,16 @@ def jahre_laden[T](
     Modul unabhaengig von ``domaene`` bleibt - der Aufrufer macht daraus einen
     ``Hinweis``). ``fehlt_meldung``/``fehler_meldung`` sind Format-Vorlagen mit den
     Platzhaltern ``{jahr}`` bzw. zusaetzlich ``{detail}``.
+
+    ``fortschritt``/``fortschritt_text`` sind optional und nur zusammen wirksam: ohne
+    sie laedt diese Funktion unveraendert wie zuvor. Ein Bereich kommt bei Google
+    Sheets immer als ein einzelner atomarer Abruf zurueck (keine zeilenweisen
+    Zwischenantworten) - eine Zwischenmeldung je *Zeile* ist deshalb nicht moeglich,
+    wohl aber je *Jahr*, weil ueber mehrere Jahre ohnehin sequenziell ein Abruf nach
+    dem anderen laeuft. ``fortschritt_text`` bekommt das gerade verarbeitete Jahr und
+    die bislang kumulierten Objekte (auch bei einem fehlenden/fehlerhaften Jahr
+    unveraendert) und baut daraus den Wortlaut - dieses Modul kennt selbst keinen
+    Namen fuer ``T`` (Anmeldungen, Schulungstermine, Kostenposten, ...).
     """
     objekte: list[T] = []
     meldungen: list[str] = []
@@ -126,12 +140,14 @@ def jahre_laden[T](
         spreadsheet_id = jahre_zu_dateien.get(jahr)
         if spreadsheet_id is None:
             meldungen.append(fehlt_meldung.format(jahr=jahr))
-            continue
-        try:
-            zeilen = client.werte(spreadsheet_id, bereich(jahr))
-            objekte.extend(abbilden(zeilen, jahr))
-        except Exception as fehler:
-            meldungen.append(fehler_meldung.format(jahr=jahr, detail=_fehlerdetail(fehler)))
+        else:
+            try:
+                zeilen = client.werte(spreadsheet_id, bereich(jahr))
+                objekte.extend(abbilden(zeilen, jahr))
+            except Exception as fehler:
+                meldungen.append(fehler_meldung.format(jahr=jahr, detail=_fehlerdetail(fehler)))
+        if fortschritt is not None and fortschritt_text is not None:
+            fortschritt(fortschritt_text(jahr, objekte))
     return objekte, meldungen
 
 

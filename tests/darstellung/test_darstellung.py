@@ -134,13 +134,7 @@ def _historie_fuer_abrufquote(quote: float) -> Verbrauchsverlauf:
     )
 
 
-ANMELDUNGSVERLAUF_KATEGORIEN = {
-    "Scrum": ["CSM 2-tägig"],
-    "Kanban": ["KSD"],
-}
-
-
-def test_anmeldungsverlauf_zeigt_eine_linie_je_kategorie_sowie_gesamt_und_trend():
+def test_anmeldungsverlauf_zeigt_gesamtzahl_und_trend():
     verlauf = Anmeldungsverlauf(
         anmeldungen=(
             Anmeldung(2026, 9, "CSM 2-tägig", 5),
@@ -150,37 +144,21 @@ def test_anmeldungsverlauf_zeigt_eine_linie_je_kategorie_sowie_gesamt_und_trend(
             Anmeldung(2026, 11, "CSM 2-tägig", 4),
         )
     )
-    fig = diagramme.anmeldungsverlauf(verlauf, ANMELDUNGSVERLAUF_KATEGORIEN)
+    fig = diagramme.anmeldungsverlauf(verlauf)
 
     namen = {spur.name for spur in fig.data}
-    assert namen == {"Scrum", "Kanban", "Sonstige", "Gesamt", "Trend"}
+    assert namen == {"Anmeldungen", "Trend"}
     assert all(spur.type == "scatter" for spur in fig.data)
     assert fig.layout.barmode is None
 
-    scrum = next(s for s in fig.data if s.name == "Scrum")
-    assert scrum.mode == "lines+markers"
-    assert list(scrum.x) == ["Sep 2026", "Okt 2026", "Nov 2026"]
-    assert list(scrum.y) == [5, 3, 4]
-
-    kanban = next(s for s in fig.data if s.name == "Kanban")
-    assert list(kanban.y) == [2, 0, 0]
-
-    sonstige = next(s for s in fig.data if s.name == "Sonstige")
-    assert list(sonstige.y) == [1, 0, 0]
-
-    gesamt = next(s for s in fig.data if s.name == "Gesamt")
+    gesamt = next(s for s in fig.data if s.name == "Anmeldungen")
+    assert gesamt.mode == "lines+markers"
+    assert list(gesamt.x) == ["Sep 2026", "Okt 2026", "Nov 2026"]
     assert list(gesamt.y) == [8, 3, 4]
 
     # Ausgleichsgerade durch (0, 8), (1, 3), (2, 4) - von Hand nachgerechnet.
     trend = next(s for s in fig.data if s.name == "Trend")
     assert list(trend.y) == pytest.approx([7.0, 5.0, 3.0])
-
-
-def test_anmeldungsverlauf_ohne_konfigurierte_kategorien_zeigt_nur_sonstige():
-    verlauf = Anmeldungsverlauf(anmeldungen=(Anmeldung(2026, 9, "CSM 2-tägig", 5),))
-    fig = diagramme.anmeldungsverlauf(verlauf, {})
-    namen = {spur.name for spur in fig.data}
-    assert namen == {"Sonstige", "Gesamt", "Trend"}
 
 
 def test_linearer_trend_legt_eine_ausgleichsgerade_durch_die_werte():
@@ -196,7 +174,7 @@ def test_linearer_trend_ohne_werte_ist_leer():
 
 
 def test_anmeldungsverlauf_ohne_daten_zeigt_hinweis_statt_balken():
-    fig = diagramme.anmeldungsverlauf(Anmeldungsverlauf(), ANMELDUNGSVERLAUF_KATEGORIEN)
+    fig = diagramme.anmeldungsverlauf(Anmeldungsverlauf())
     assert fig.data == ()
     assert (
         fig.layout.annotations[0].text == "Keine Anmeldedaten für den gewählten Zeitraum geladen."
@@ -977,6 +955,27 @@ def test_hinweistabelle_kuerzt_lange_id_listen():
     zeile = tabellen.hinweistabelle([hinweis]).iloc[0]
     assert zeile["Betroffen"] == 20
     assert zeile["Projekte"].endswith("…")
+
+
+def test_anmeldungstabelle_zeigt_teilnehmerzahl_je_monat_und_kategorie_mit_summe():
+    verlauf = Anmeldungsverlauf(
+        anmeldungen=(
+            Anmeldung(2026, 9, "CSM 2-tägig", 5),
+            Anmeldung(2026, 9, "KSD", 2),
+            Anmeldung(2026, 9, "Ein ganz neuer Kurs", 1),
+            Anmeldung(2026, 10, "CSM 2-tägig", 3),
+        )
+    )
+    kategorien = {"Scrum": ["CSM 2-tägig"], "Kanban": ["KSD"]}
+
+    tabelle = tabellen.anmeldungstabelle(verlauf, kategorien)
+
+    assert list(tabelle.columns) == ["Monat", "Scrum", "Kanban", "Sonstige", "Summe"]
+    assert tabelle["Monat"].tolist() == ["Sep 2026", "Okt 2026"]
+    assert tabelle["Scrum"].tolist() == [5, 3]
+    assert tabelle["Kanban"].tolist() == [2, 0]
+    assert tabelle["Sonstige"].tolist() == [1, 0]
+    assert tabelle["Summe"].tolist() == [8, 3]
 
 
 def test_dashboard_rechnet_kennzahlen_ohne_den_laufenden_monat():

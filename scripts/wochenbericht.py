@@ -41,6 +41,8 @@ from umsatzprognose import Dashboard, SchulungenRepository
 from umsatzprognose.darstellung import diagramme
 from umsatzprognose.darstellung.dashboard import STANDARD_GEWINN_VERLUST_MONATE
 from umsatzprognose.darstellung.gestaltung import FLAECHE, SCHRIFT, SERIE, TINTE, figur
+from umsatzprognose.domaene.umsatzhistorie import MONATSNAMEN
+from umsatzprognose.domaene.zahlen import euro, prozent
 
 SLACK_CHANNEL_VAR = "SLACK_CHANNEL_ID"
 SLACK_TOKEN_VAR = "SLACK_BOT_TOKEN"
@@ -61,34 +63,6 @@ _CHANNEL_ID_MUSTER = re.compile(r"^[CGDZ][A-Z0-9]{8,}$")
 # weil nicht angefragt.
 ANMELDUNGEN_AB_JAHR = 2022
 ANMELDUNGEN_MONATE_FENSTER = 13
-
-# Deckt sich mit "KATEGORIEN" in notebooks/03_schulungsanmeldungen.ipynb und
-# webapp/app.py - dieselbe, von Hand gepflegte Zuordnung Schulungstyp -> Kategorie.
-KATEGORIEN: dict[str, list[str]] = {
-    "Scrum": [
-        "A-CSD",
-        "A-CSM",
-        "A-CSPO",
-        "CSD",
-        "CSM 2-tägig",
-        "CSM 3-tägig",
-        "CSP-PO",
-        "CSP-SM",
-        "CSPO 2-tägig",
-        "CSPO 3-tägig",
-        "CAL 2",
-        "CAL ETO",
-    ],
-    "Kanban": [
-        "KCP",
-        "KMM",
-        "KSD",
-        "KSI",
-        "KSI 2-tägig",
-        "KSI 3-tägig",
-        "SBK",
-    ],
-}
 
 
 def umsatztabelle_grafik(tabelle: pd.DataFrame) -> go.Figure:
@@ -125,6 +99,65 @@ def umsatztabelle_grafik(tabelle: pd.DataFrame) -> go.Figure:
     return fig
 
 
+# Eine Zeile Kontext je Grafik (Kollegen-Feedback: "etwas mehr Kontext als nur die
+# Grafiken") - dieselben sieben Titel wie in diagrammtitel_und_figuren(), hier als
+# Bildunterschriften im Post statt nur als Bild-Titel im Slack-Anhang.
+DIAGRAMM_ERLAEUTERUNGEN: dict[str, str] = {
+    "Umsatz je Monat": (
+        "Historischer und prognostizierter Umsatz, inklusive Schulungsanmeldungen "
+        "und Kostenprognose."
+    ),
+    "Offenes Auftragsvolumen je Projekt": "Restvolumen der größten Projekte im Prognose-Scope.",
+    "Gewinn/Verlust je Monat": "Umsatz minus Kosten je Monat im gezeigten Betrachtungsfenster.",
+    "Gewinn/Verlust je Monat und Jahr": "Dieselbe Differenz, gruppiert nach Kalenderjahr.",
+    "Kumulierte Umsatzrendite je Jahr": "Gewinn in Prozent des Umsatzes, kumuliert über das Jahr.",
+    "Auslastung je Person": (
+        "Anteil abrechenbarer Stunden an der verfügbaren Kapazität je Person, über "
+        "die geladenen Monate."
+    ),
+    "Anmeldungen je Monat": "Teilnehmerzahl öffentlicher Schulungen je Monat, insgesamt.",
+    "Umsatztabelle": "Dieselben Monatswerte aus dem Umsatzverlauf als Tabelle.",
+}
+
+
+def kontext_text(dashboard: Dashboard) -> str:
+    """Kurzer Fließtext vor den Grafiken: Prognosehorizont, Bandbreite und ein
+    etwaiger Kapazitätsengpass in Worten statt nur in den Diagrammen.
+
+    ``summe()`` ist auf den Konfidenzniveaus 95 %/85 %/50 % ausgewiesen (siehe
+    ``domaene.prognose.KONFIDENZNIVEAUS`` und CLAUDE.md) - ein höheres Niveau steht für
+    ein niedrigeres, konservativeres Quantil (95 % ⇒ "mindestens dieser Betrag"), 50 %
+    für den Median.
+    """
+    prognose = dashboard.prognose
+    if not prognose.vorhanden:
+        return prognose.begruendung
+
+    (von_jahr, von_monat), (bis_jahr, bis_monat) = (
+        prognose.horizontmonate()[0],
+        prognose.horizontmonate()[-1],
+    )
+    zeitraum = (
+        f"{MONATSNAMEN[von_monat - 1]} {von_jahr}"
+        if (von_jahr, von_monat) == (bis_jahr, bis_monat)
+        else f"{MONATSNAMEN[von_monat - 1]} {von_jahr} bis {MONATSNAMEN[bis_monat - 1]} {bis_jahr}"
+    )
+
+    summe = prognose.summe()
+    text = (
+        f"Prognose für {zeitraum}: mindestens {euro(summe[0.95])} mit 95 % Sicherheit, "
+        f"im Median rund {euro(summe[0.50])}."
+    )
+
+    kapazitaet_anteil = prognose.kapazitaet_limitierend_anteil()
+    if kapazitaet_anteil > 0:
+        text += (
+            f" In {prozent(kapazitaet_anteil)} der simulierten Läufe war die "
+            "Personalkapazität der limitierende Faktor, nicht die Nachfrage."
+        )
+    return text
+
+
 def diagrammtitel_und_figuren(
     dashboard: Dashboard, *, gewinn_verlust_monate: int | None
 ) -> list[tuple[str, object]]:
@@ -153,10 +186,8 @@ def diagrammtitel_und_figuren(
             "Kumulierte Umsatzrendite je Jahr",
             dashboard.umsatzrendite_kumuliert(mit_beschriftung=True),
         ),
-        (
-            "Anmeldungen je Monat",
-            diagramme.anmeldungsverlauf(anmeldungsverlauf_fenster, KATEGORIEN),
-        ),
+        ("Auslastung je Person", dashboard.auslastung_je_mitarbeiter()),
+        ("Anmeldungen je Monat", diagramme.anmeldungsverlauf(anmeldungsverlauf_fenster)),
         ("Umsatztabelle", umsatztabelle_grafik(dashboard.umsatztabelle())),
     ]
 
@@ -192,8 +223,18 @@ def posten(
 
     # file_uploads statt einer Schleife aus einzelnen files_upload_v2-Aufrufen: so
     # haengen alle Bilder gemeinsam an einer Nachricht (initial_comment), statt je Bild
-    # eine eigene Unternachricht im Thread zu erzeugen.
-    titel_post = f"Wochenbericht Zahlen, Daten, Fakten - Stand {dashboard.stichtag:%d.%m.%Y}"
+    # eine eigene Unternachricht im Thread zu erzeugen. Deshalb auch die
+    # Bildunterschriften als Aufzaehlung in derselben Nachricht statt je Bild einer
+    # eigenen - Slacks file_uploads kennt keinen Kommentar je Datei.
+    erlaeuterungen = "\n".join(
+        f"• {titel}: {DIAGRAMM_ERLAEUTERUNGEN[titel]}"
+        for titel, _figur in titel_figuren
+        if titel in DIAGRAMM_ERLAEUTERUNGEN
+    )
+    titel_post = (
+        f"Wochenbericht Zahlen, Daten, Fakten - Stand {dashboard.stichtag:%d.%m.%Y}\n\n"
+        f"{kontext_text(dashboard)}\n\n{erlaeuterungen}"
+    )
     client.files_upload_v2(
         channel=kanal,
         initial_comment=titel_post,

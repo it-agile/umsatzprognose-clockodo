@@ -231,7 +231,12 @@ Dashboard-Notebook auch.
   24 Monate oder "alle", nur auf `/`). `ab_jahr` (nur auf `/schulungen`, filtert
   einen unabhängig geladenen `Anmeldungsverlauf`) bleibt ein zusammenhängender
   Zahlenbereich (`Query(ge=STANDARD_AB_JAHR, le=aktuelles Jahr)`), weil Jahre
-  lückenlos sind; seine Dropdown-Optionen sind einfach dieser Bereich.
+  lückenlos sind; seine Dropdown-Optionen sind einfach dieser Bereich. Ohne Angabe
+  gilt nicht starr `STANDARD_AB_JAHR`, sondern `_standard_anzeige_ab_jahr()`: das
+  laufende Jahr, wenn davon schon mindestens `STANDARD_ANZEIGE_MINDESTMONAT` (6)
+  Monate vorüber sind, sonst zusätzlich das Vorjahr – eine Standardansicht mit nur
+  ein oder zwei Monaten wäre zu dünn für einen sinnvollen Blick auf den
+  Anmeldungsverlauf.
   `auslastung_monate` aus `Dashboard.laden_async()` ist **kein** URL-Parameter
   (mehr): keine der drei Seiten zeigt etwas, das davon abhängt – eine feste
   Standardkombination genügt, ein Dropdown ohne sichtbare Wirkung wäre nur
