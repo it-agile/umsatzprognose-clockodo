@@ -20,6 +20,7 @@ if TYPE_CHECKING:
         Auslastungsmonat,
         Auslastungssumme,
         Kostenplan,
+        Kurzarbeitsbewertung,
         Mitarbeiter,
         Monatsumsatz,
         Prognose,
@@ -27,6 +28,7 @@ if TYPE_CHECKING:
         Schulungsplan,
         Umsatzhistorie,
     )
+    from umsatzprognose.util import Monat
 
 from dataclasses import dataclass
 
@@ -1273,6 +1275,98 @@ def anmeldungsverlauf(
 
     _horizontale_legende(fig)
     achsen(fig)
+    fig.update_yaxes(rangemode="tozero")
+    fig.update_xaxes(tickangle=0)
+    return fig
+
+
+def kurzarbeit_grafik(
+    ergebnisse: Mapping[Monat, Kurzarbeitsbewertung],
+    *,
+    mit_beschriftung: bool = False,
+    hoehe: int = 420,
+) -> go.Figure:
+    """Kurzarbeitsbereitschaft je Monat: ein groesserer Balken fuer die Gesamtzahl
+    einbezogener Personen, ein schmalerer davor fuer die tatsaechlich
+    kurzarbeitsfaehigen, dazu die Quote als Linie auf einer zweiten y-Achse - die
+    Marker der Linie sind je nachdem eingefaerbt, ob die Schwelle in diesem Monat
+    erreicht wurde.
+
+    Anders als die uebrigen Diagrammfunktionen mit einer sichtbaren Legende (drei statt
+    einer einzelnen Kategorie: Gesamtanzahl, Kurzarbeitsfaehig, Quote). ``mit_beschriftung``
+    zeigt Werte als Text an Balken/Punkten - fuer den statischen Bildexport im
+    Wochenbericht (``scripts/wochenbericht.py``) ohne Hover-Tooltip; Notebook und Webapp
+    lassen es aus und zeigen die Werte interaktiv per Hover, wie bei den uebrigen
+    Diagrammen (siehe :func:`umsatzverlauf`).
+    """
+    monate = sorted(ergebnisse)
+    beschriftungen = [f"{MONATSNAMEN[monat[1] - 1]} {monat[0]}" for monat in monate]
+    schwelle = ergebnisse[monate[-1]].schwellenwerte.quote_organisation
+
+    gesamtzahlen = [ergebnisse[m].anzahl_einbezogen for m in monate]
+    kurzarbeitsfaehig = [ergebnisse[m].anzahl_kurzarbeitsfaehig for m in monate]
+    quoten = [ergebnisse[m].quote for m in monate]
+    quoten_prozent = [(q or 0.0) * 100 for q in quoten]
+    markerfarben = [
+        ERGEBNIS_POSITIV if (q is not None and q >= schwelle) else ERGEBNIS_NEGATIV for q in quoten
+    ]
+
+    fig = figur(
+        "Kurzarbeitsbereitschaft je Monat",
+        untertitel=f"Kurzarbeitsfähige Personen je Monat, Schwelle {schwelle:.0%}",
+        hoehe=hoehe,
+    )
+    achsen(fig)
+    fig.add_bar(
+        x=beschriftungen,
+        y=gesamtzahlen,
+        name="Gesamtanzahl",
+        width=0.6,
+        marker_color=SERIE_HELL,
+        text=[str(g) for g in gesamtzahlen] if mit_beschriftung else None,
+        textposition="outside",
+    )
+    fig.add_bar(
+        x=beschriftungen,
+        y=kurzarbeitsfaehig,
+        name="Kurzarbeitsfähig",
+        width=0.3,
+        marker_color=SERIE,
+        text=[str(k) for k in kurzarbeitsfaehig] if mit_beschriftung else None,
+        textposition="outside",
+    )
+    fig.add_scatter(
+        x=beschriftungen,
+        y=quoten_prozent,
+        name="Quote",
+        mode="lines+markers",
+        yaxis="y2",
+        line={"color": TREND, "width": 2},
+        marker={"color": markerfarben, "size": 9},
+        text=[f"{q:.0%}" if q is not None else "n/a" for q in quoten] if mit_beschriftung else None,
+        textposition="top center",
+    )
+    fig.add_shape(
+        type="line",
+        xref="paper",
+        x0=0,
+        x1=1,
+        yref="y2",
+        y0=schwelle * 100,
+        y1=schwelle * 100,
+        line={"color": TINTE_GEDAEMPFT, "width": 1, "dash": "dash"},
+    )
+    fig.update_layout(
+        barmode="overlay",
+        showlegend=True,
+        yaxis2={
+            "overlaying": "y",
+            "side": "right",
+            "ticksuffix": "%",
+            "range": [0, 100],
+            "showgrid": False,
+        },
+    )
     fig.update_yaxes(rangemode="tozero")
     fig.update_xaxes(tickangle=0)
     return fig

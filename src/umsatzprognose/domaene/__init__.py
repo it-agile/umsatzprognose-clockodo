@@ -14,6 +14,14 @@ from umsatzprognose.domaene.bestand import Bestand
 from umsatzprognose.domaene.hinweis import Hinweis
 from umsatzprognose.domaene.kosten import Erfasst, Geschaetzt, Kostenplan, Kostenposten
 from umsatzprognose.domaene.kunde import Kunde
+from umsatzprognose.domaene.kurzarbeit import (
+    Kurzarbeitsbewertung,
+    Personenmonat,
+    Rollenzuordnung,
+    Schwellenwerte,
+    bewerten,
+    bewertungen,
+)
 from umsatzprognose.domaene.mitarbeiter import Mitarbeiter, Wochenarbeitszeit
 from umsatzprognose.domaene.prognose import KONFIDENZNIVEAUS, NochKeinePrognose, Prognose
 from umsatzprognose.domaene.projekt import (
@@ -52,18 +60,24 @@ __all__ = [
     "Kostenplan",
     "Kostenposten",
     "Kunde",
+    "Kurzarbeitsbewertung",
     "Mitarbeiter",
     "Monatsumsatz",
     "MonteCarloPrognose",
     "NochKeinePrognose",
+    "Personenmonat",
     "Prognose",
     "Projekt",
     "Projektanteil",
+    "Rollenzuordnung",
     "Schulungsplan",
     "Schulungstermin",
+    "Schwellenwerte",
     "StundenBudget",
     "TeilprojektBudget",
     "Umsatzhistorie",
     "Verbrauchsverlauf",
     "Wochenarbeitszeit",
+    "bewerten",
+    "bewertungen",
 ]

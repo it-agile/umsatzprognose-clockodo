@@ -24,6 +24,8 @@ if TYPE_CHECKING:
     from collections.abc import Coroutine
     from typing import Any
 
+    from .fortschritt import Fortschritt
+
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
 
@@ -47,6 +49,24 @@ def synchron[T](coro: Coroutine[Any, Any, T]) -> T:
 
     with ThreadPoolExecutor(max_workers=1, thread_name_prefix="clockodo") as pool:
         return pool.submit(asyncio.run, coro).result()
+
+
+async def mit_meldung[T](
+    coro: Coroutine[Any, Any, T], text: str, fortschritt: Fortschritt | None
+) -> T:
+    """Meldet ``text``, sobald ``coro`` individuell fertig ist - unabhaengig davon, ob
+    andere gleichzeitig gestartete Abrufe (siehe :func:`gleichzeitig`) noch laufen.
+
+    ``ClockodoClient`` nutzt echtes async HTTP (``httpx2.AsyncClient``), die
+    Event-Loop bleibt also waehrend aller gleichzeitigen Abrufe responsiv - eine
+    Meldung je Zweig zeigt hier echten, live sichtbaren Fortschritt statt nur einer
+    nachtraeglichen Behauptung. Siehe ``BestandRepository.laden_async`` und
+    ``KurzarbeitRepository.laden_async`` fuer die Aufrufer.
+    """
+    ergebnis = await coro
+    if fortschritt is not None:
+        fortschritt(text)
+    return ergebnis
 
 
 async def gleichzeitig(*coroutinen: Coroutine[Any, Any, Any]) -> list[Any]:

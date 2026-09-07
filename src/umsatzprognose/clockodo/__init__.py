@@ -17,6 +17,10 @@ from umsatzprognose.clockodo.client import ClockodoClient, ClockodoError
 from umsatzprognose.clockodo.config import ClockodoCredentials, MissingCredentialsError
 from umsatzprognose.clockodo.fortschritt import Fortschritt
 from umsatzprognose.clockodo.kunden import KundenRepository
+from umsatzprognose.clockodo.kurzarbeit import (
+    KurzarbeitRepository,
+    rollenzuordnung_automatisch,
+)
 from umsatzprognose.clockodo.mitarbeiter import MitarbeiterRepository
 from umsatzprognose.clockodo.nebenlaeufig import gleichzeitig, synchron
 from umsatzprognose.clockodo.projekte import ProjektRepository
@@ -31,11 +35,13 @@ __all__ = [
     "ClockodoError",
     "Fortschritt",
     "KundenRepository",
+    "KurzarbeitRepository",
     "MissingCredentialsError",
     "MitarbeiterRepository",
     "ProjektRepository",
     "UmsatzRepository",
     "VerbrauchsverlaufRepository",
     "gleichzeitig",
+    "rollenzuordnung_automatisch",
     "synchron",
 ]
