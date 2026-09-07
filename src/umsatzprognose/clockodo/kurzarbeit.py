@@ -33,6 +33,7 @@ if TYPE_CHECKING:
     from umsatzprognose.util import Monat
 
     from .client import EntryGroupV2, UserReportV1, UserV3
+    from .fortschritt import Fortschritt
 
 from dotenv import load_dotenv
 
@@ -55,7 +56,7 @@ from .client import (
     stunden_je_person_und_monat,
 )
 from .config import ClockodoCredentials, MissingCredentialsError
-from .nebenlaeufig import gleichzeitig, synchron
+from .nebenlaeufig import gleichzeitig, mit_meldung, synchron
 
 BILLABLE_INTERN = 0
 BILLABLE_ABRECHENBAR = 1
@@ -76,16 +77,27 @@ class KurzarbeitRepository:
         return cls(ClockodoClient(ClockodoCredentials.automatisch()))
 
     def laden(
-        self, *, stichtag: date, anzahl_monate: int = 1
+        self, *, stichtag: date, anzahl_monate: int = 1, fortschritt: Fortschritt | None = None
     ) -> dict[Monat, tuple[Personenmonat, ...]]:
         """Der Abruf, synchron - fuer den Aufruf ausserhalb eines Event-Loops."""
-        return synchron(self.laden_async(stichtag=stichtag, anzahl_monate=anzahl_monate))
+        return synchron(
+            self.laden_async(
+                stichtag=stichtag, anzahl_monate=anzahl_monate, fortschritt=fortschritt
+            )
+        )
 
     async def laden_async(
-        self, *, stichtag: date, anzahl_monate: int = 1
+        self, *, stichtag: date, anzahl_monate: int = 1, fortschritt: Fortschritt | None = None
     ) -> dict[Monat, tuple[Personenmonat, ...]]:
         """Die letzten ``anzahl_monate`` **abgeschlossenen** Monate (Spec 5.7 - der
-        laufende Monat wird nie bewertet)."""
+        laufende Monat wird nie bewertet).
+
+        ``fortschritt``, sofern angegeben, meldet sich je einem der fuenf
+        gleichzeitigen Zweige (Personen, interne/abrechenbare/fakturierte Stunden,
+        Gesamtstunden) sowie je ``/userreports``-Abruf, sobald genau *dieser* Zweig
+        fertig ist - nicht erst, wenn alle fertig sind (siehe
+        :func:`~.nebenlaeufig.mit_meldung`).
+        """
         monate = _abgeschlossene_monate(stichtag, anzahl_monate)
         von = f"{monate[0][0]:04d}-{monate[0][1]:02d}-01T00:00:00Z"
         bis = _monatsende_des_letzten_monats(monate)
@@ -99,20 +111,43 @@ class KurzarbeitRepository:
             ungefiltert,
             *userreports_je_jahr,
         ) = await gleichzeitig(
-            self._client.users(),
-            self._client.entrygroups_je_person_und_monat(
-                billable=BILLABLE_INTERN, time_since=von, time_until=bis
+            mit_meldung(self._client.users(), "Personen geladen", fortschritt),
+            mit_meldung(
+                self._client.entrygroups_je_person_und_monat(
+                    billable=BILLABLE_INTERN, time_since=von, time_until=bis
+                ),
+                "Interne Stunden geladen",
+                fortschritt,
             ),
-            self._client.entrygroups_je_person_und_monat(
-                billable=BILLABLE_ABRECHENBAR, time_since=von, time_until=bis
+            mit_meldung(
+                self._client.entrygroups_je_person_und_monat(
+                    billable=BILLABLE_ABRECHENBAR, time_since=von, time_until=bis
+                ),
+                "Abrechenbare Stunden geladen",
+                fortschritt,
             ),
-            self._client.entrygroups_je_person_und_monat(
-                billable=BILLABLE_FAKTURIERT, time_since=von, time_until=bis
+            mit_meldung(
+                self._client.entrygroups_je_person_und_monat(
+                    billable=BILLABLE_FAKTURIERT, time_since=von, time_until=bis
+                ),
+                "Fakturierte Stunden geladen",
+                fortschritt,
             ),
-            self._client.entrygroups(
-                [GRUPPIERUNG_PERSON, GRUPPIERUNG_MONAT], time_since=von, time_until=bis
+            mit_meldung(
+                self._client.entrygroups(
+                    [GRUPPIERUNG_PERSON, GRUPPIERUNG_MONAT], time_since=von, time_until=bis
+                ),
+                "Gesamtstunden geladen",
+                fortschritt,
             ),
-            *(self._client.userreports(year=jahr) for jahr in jahre),
+            *(
+                mit_meldung(
+                    self._client.userreports(year=jahr),
+                    f"Überstundenstand {jahr} geladen",
+                    fortschritt,
+                )
+                for jahr in jahre
+            ),
         )
         userreports_nach_jahr = dict(zip(jahre, userreports_je_jahr, strict=True))
 

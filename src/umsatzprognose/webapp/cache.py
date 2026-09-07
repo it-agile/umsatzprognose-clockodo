@@ -55,7 +55,14 @@ import humanize
 # demselben Thread ausfuehrt, anders als der Jupyter-Thread-Umweg von synchron().
 from umsatzprognose import Dashboard
 from umsatzprognose.clockodo import KurzarbeitRepository, rollenzuordnung_automatisch
-from umsatzprognose.domaene import Anmeldungsverlauf, Kurzarbeitsbewertung, bewertungen
+from umsatzprognose.domaene import (
+    Anmeldungsverlauf,
+    Kurzarbeitsbewertung,
+    Personenmonat,
+    Rollenzuordnung,
+    Schwellenwerte,
+    bewertungen,
+)
 from umsatzprognose.schulungen import SchulungenRepository
 from umsatzprognose.util import Monat
 
@@ -87,6 +94,7 @@ class _TTLCache[K: Hashable, V]:
         self._eintraege: dict[K, tuple[V, float]] = {}
         self._laeuft: dict[K, asyncio.Task[None]] = {}
         self._fortschritt: dict[K, list[str]] = {}
+        self._letzter_fehler: dict[K, str] = {}
 
     def _frisch(self, schluessel: K) -> V | None:
         eintrag = self._eintraege.get(schluessel)
@@ -112,6 +120,19 @@ class _TTLCache[K: Hashable, V]:
         """
         return list(self._fortschritt.get(schluessel, ()))
 
+    def fehler(self, schluessel: K) -> str | None:
+        """Die Fehlermeldung des zuletzt gescheiterten Ladeversuchs zu ``schluessel``,
+        ``None`` ohne einen solchen - fuer die Ladeseite (siehe ``webapp.app``), sonst
+        blieb ein wiederholt scheiternder Ladevorgang bislang von aussen ununterscheidbar
+        von einem echten, nur noch laufenden: beides zeigte "Daten werden geladen" ohne
+        jeden Hinweis, die eigentliche Meldung landete nur auf der Server-Konsole.
+
+        Wird geloescht, sobald ein Ladevorgang zu demselben Schluessel erfolgreich
+        durchlaeuft - eine alte Fehlermeldung soll nicht neben einem frischen Ergebnis
+        stehen bleiben.
+        """
+        return self._letzter_fehler.get(schluessel)
+
     def anstossen(self, schluessel: K, laden: Callable[[Fortschritt], Awaitable[V]]) -> None:
         """Startet das Laden im Hintergrund, falls noetig - ohne darauf zu warten.
 
@@ -120,7 +141,9 @@ class _TTLCache[K: Hashable, V]:
         trotzdem nur ein einziger Ladevorgang. ``laden`` bekommt einen
         ``fortschritt``-Callback uebergeben (dieselbe Form wie bei
         ``Dashboard.laden_async``) und ruft ihn nach Belieben auf - jeder Aufruf landet
-        sofort in :meth:`fortschritt`.
+        sofort in :meth:`fortschritt`. Ein vorheriger, gescheiterter Versuch zu
+        demselben Schluessel haelt ``anstossen`` nicht ab - jeder Aufruf (also auch
+        jeder erneute Seitenaufruf) loest einen neuen Versuch aus, siehe :meth:`fehler`.
         """
         if self._frisch(schluessel) is not None or schluessel in self._laeuft:
             return
@@ -133,8 +156,10 @@ class _TTLCache[K: Hashable, V]:
                 wert = await laden(zeilen.append)
             except Exception as fehler:
                 print(f"Laden fehlgeschlagen ({schluessel}): {fehler}")
+                self._letzter_fehler[schluessel] = str(fehler) or type(fehler).__name__
             else:
                 self._eintraege[schluessel] = (wert, time.monotonic())
+                self._letzter_fehler.pop(schluessel, None)
             finally:
                 del self._laeuft[schluessel]
                 del self._fortschritt[schluessel]
@@ -154,6 +179,9 @@ class DashboardCache:
 
     def fortschritt(self, *, horizont_monate: int, auslastung_monate: int) -> list[str]:
         return self._cache.fortschritt((horizont_monate, auslastung_monate))
+
+    def fehler(self, *, horizont_monate: int, auslastung_monate: int) -> str | None:
+        return self._cache.fehler((horizont_monate, auslastung_monate))
 
     def anstossen(self, *, horizont_monate: int, auslastung_monate: int) -> None:
         async def laden(fortschritt: Fortschritt) -> Dashboard:
@@ -191,6 +219,9 @@ class AnmeldungsverlaufCache:
     def fortschritt(self) -> list[str]:
         return self._cache.fortschritt(None)
 
+    def fehler(self) -> str | None:
+        return self._cache.fehler(None)
+
     def anstossen(self) -> None:
         async def laden(fortschritt: Fortschritt) -> Anmeldungsverlauf:
             jahre = range(self._ab_jahr, date.today().year + 1)
@@ -213,37 +244,70 @@ class AnmeldungsverlaufCache:
 
 
 class KurzarbeitCache:
-    """Haelt je angefragter ``anzahl_monate`` eine geladene und bewertete
-    Kurzarbeitsbereitschaft vor.
+    """Haelt die geladenen Personenmonat-Rohdaten (und die aufgeloeste
+    Rollenzuordnung) vor, ueber die maximal waehlbare Anzahl Monate
+    (``maximale_monate``) - **nicht** schon die bewertete Kurzarbeitsbereitschaft.
 
-    Muster wie :class:`DashboardCache`, nicht wie :class:`AnmeldungsverlaufCache`:
-    ein anderer ``anzahl_monate`` fragt bei Clockodo tatsaechlich ein anderes
-    Zeitfenster ab (siehe
-    :meth:`~umsatzprognose.clockodo.kurzarbeit.KurzarbeitRepository.laden_async`),
-    ein Zwischenspeichern des breiteren Laufs fuer einen engeren Aufruf waere hier
-    also keine Abkuerzung. Vollstaendig unabhaengig von :class:`DashboardCache` -
-    kein Bezug zur Umsatzprognose (siehe ``spec/spec-kurzarbeit.md`` Abschnitt 2/7).
+    Muster wie :class:`AnmeldungsverlaufCache`, nicht wie :class:`DashboardCache`,
+    fuer die Monatsauswahl: anders als beim vorwaerts simulierenden Dashboard haengt
+    die Bewertung eines einzelnen Monats (siehe
+    :mod:`umsatzprognose.domaene.kurzarbeit`) ausschliesslich von dessen eigenen
+    Personenmonat-Daten ab, nicht davon, wie viele Monate insgesamt angefragt wurden -
+    ein engerer Zeitraum ("3 Monate" statt "12 Monate") ist deshalb immer eine
+    Teilmenge des einen, breitesten geladenen Laufs.
+
+    Die Bewertung selbst (:func:`~umsatzprognose.domaene.kurzarbeit.bewertungen`) ist
+    reine Berechnung ohne I/O - :meth:`bereit` ruft sie deshalb bei **jeder** Anfrage
+    frisch mit den vom Aufruf uebergebenen ``schwellenwerte`` auf, genau wie
+    ``gewinn_verlust_monate`` bei :class:`DashboardCache` nur einen anderen
+    Ausschnitt derselben geladenen Historie liest. Weder ein Wechsel der
+    ``anzahl_monate`` noch ein Wechsel der ``schwellenwerte`` (z. B. ueber einen
+    Regler in der Weboberflaeche) loest deshalb einen neuen Ladevorgang bei Clockodo
+    aus. Vollstaendig unabhaengig von :class:`DashboardCache` - kein Bezug zur
+    Umsatzprognose (siehe ``spec/spec-kurzarbeit.md`` Abschnitt 2/7).
     """
 
-    def __init__(self, *, ttl_sekunden: int | None = None) -> None:
-        self._cache = _TTLCache[int, dict[Monat, Kurzarbeitsbewertung]](ttl_sekunden=ttl_sekunden)
+    def __init__(self, *, maximale_monate: int, ttl_sekunden: int | None = None) -> None:
+        self._maximale_monate = maximale_monate
+        self._cache = _TTLCache[
+            None, tuple[dict[Monat, tuple[Personenmonat, ...]], Rollenzuordnung]
+        ](ttl_sekunden=ttl_sekunden)
 
-    def bereit(self, *, anzahl_monate: int) -> dict[Monat, Kurzarbeitsbewertung] | None:
-        return self._cache.bereit(anzahl_monate)
+    def bereit(
+        self, *, anzahl_monate: int, schwellenwerte: Schwellenwerte
+    ) -> dict[Monat, Kurzarbeitsbewertung] | None:
+        eintrag = self._cache.bereit(None)
+        if eintrag is None:
+            return None
+        rohdaten, rollenzuordnung = eintrag
+        eingeschraenkt = _juengste_monate(rohdaten, anzahl_monate)
+        return bewertungen(
+            eingeschraenkt, rollenzuordnung=rollenzuordnung, schwellenwerte=schwellenwerte
+        )
 
-    def fortschritt(self, *, anzahl_monate: int) -> list[str]:
-        return self._cache.fortschritt(anzahl_monate)
+    def fortschritt(self) -> list[str]:
+        return self._cache.fortschritt(None)
 
-    def anstossen(self, *, anzahl_monate: int) -> None:
-        async def laden(fortschritt: Fortschritt) -> dict[Monat, Kurzarbeitsbewertung]:
+    def fehler(self) -> str | None:
+        return self._cache.fehler(None)
+
+    def anstossen(self) -> None:
+        async def laden(
+            fortschritt: Fortschritt,
+        ) -> tuple[dict[Monat, tuple[Personenmonat, ...]], Rollenzuordnung]:
             start = time.perf_counter()
             rohdaten = await KurzarbeitRepository.mit_automatischen_zugangsdaten().laden_async(
-                stichtag=date.today(), anzahl_monate=anzahl_monate
+                stichtag=date.today(), anzahl_monate=self._maximale_monate, fortschritt=fortschritt
             )
             rollenzuordnung = rollenzuordnung_automatisch()
-            ergebnisse = bewertungen(rohdaten, rollenzuordnung=rollenzuordnung)
             dauer = timedelta(seconds=time.perf_counter() - start)
-            fortschritt(f"{len(ergebnisse)} Monate bewertet (in {humanize.naturaldelta(dauer)}).")
-            return ergebnisse
+            fortschritt(f"{len(rohdaten)} Monate geladen (in {humanize.naturaldelta(dauer)}).")
+            return rohdaten, rollenzuordnung
 
-        self._cache.anstossen(anzahl_monate, laden)
+        self._cache.anstossen(None, laden)
+
+
+def _juengste_monate[V](daten: dict[Monat, V], anzahl_monate: int) -> dict[Monat, V]:
+    """Die juengsten ``anzahl_monate`` Eintraege aus einem breiter geladenen Ergebnis."""
+    monate = sorted(daten)[-anzahl_monate:]
+    return {monat: daten[monat] for monat in monate}

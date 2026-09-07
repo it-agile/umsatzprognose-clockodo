@@ -17,7 +17,7 @@ import pytest
 
 from umsatzprognose.clockodo import KurzarbeitRepository
 from umsatzprognose.darstellung import Dashboard
-from umsatzprognose.domaene import Anmeldungsverlauf, Personenmonat, Rollenzuordnung
+from umsatzprognose.domaene import Anmeldungsverlauf, Personenmonat, Rollenzuordnung, Schwellenwerte
 from umsatzprognose.schulungen import SchulungenRepository
 from umsatzprognose.webapp import cache as webapp_cache
 from umsatzprognose.webapp.cache import (
@@ -184,6 +184,42 @@ def test_anstossen_meldet_einen_fehlgeschlagenen_ladevorgang_statt_ihn_zu_verlie
     asyncio.run(ablauf())
     assert cache.bereit(horizont_monate=3, auslastung_monate=12) is None
     assert "kaputt" in capsys.readouterr().out
+    assert cache.fehler(horizont_monate=3, auslastung_monate=12) == "kaputt"
+
+
+def test_fehler_ist_leer_ohne_gescheiterten_ladevorgang():
+    cache = DashboardCache(ttl_sekunden=60)
+    assert cache.fehler(horizont_monate=3, auslastung_monate=12) is None
+
+
+def test_ein_erfolgreicher_ladevorgang_loescht_einen_vorherigen_fehler(monkeypatch):
+    fertig = asyncio.Event()
+
+    async def _schlaegt_fehl(
+        *, stichtag=None, horizont_monate=3, auslastung_monate=12, fortschritt=None
+    ):
+        raise ValueError("kaputt")
+
+    async def _gelingt(*, stichtag=None, horizont_monate=3, auslastung_monate=12, fortschritt=None):
+        fertig.set()
+        return _FakeDashboard(horizont_monate=horizont_monate, auslastung_monate=auslastung_monate)
+
+    cache = DashboardCache(ttl_sekunden=60)
+
+    async def ablauf():
+        monkeypatch.setattr(Dashboard, "laden_async", _schlaegt_fehl)
+        cache.anstossen(horizont_monate=3, auslastung_monate=12)
+        for _ in range(100):
+            await asyncio.sleep(0)
+        assert cache.fehler(horizont_monate=3, auslastung_monate=12) == "kaputt"
+
+        monkeypatch.setattr(Dashboard, "laden_async", _gelingt)
+        cache.anstossen(horizont_monate=3, auslastung_monate=12)
+        await _bis_geladen(fertig)
+
+    asyncio.run(ablauf())
+    assert cache.bereit(horizont_monate=3, auslastung_monate=12) is not None
+    assert cache.fehler(horizont_monate=3, auslastung_monate=12) is None
 
 
 @pytest.fixture
@@ -270,7 +306,7 @@ def kurzarbeit_ladezaehler(monkeypatch):
     aufrufe: list[int] = []
     fertig = asyncio.Event()
 
-    async def _fake_laden_async(self, *, stichtag=None, anzahl_monate=1):
+    async def _fake_laden_async(self, *, stichtag=None, anzahl_monate=1, fortschritt=None):
         aufrufe.append(anzahl_monate)
         fertig.set()
         return {
@@ -300,32 +336,159 @@ def kurzarbeit_ladezaehler(monkeypatch):
 
 def test_kurzarbeit_cache_bewertet_die_geladenen_rohdaten(kurzarbeit_ladezaehler):
     aufrufe, fertig = kurzarbeit_ladezaehler
-    cache = KurzarbeitCache(ttl_sekunden=60)
+    cache = KurzarbeitCache(maximale_monate=12, ttl_sekunden=60)
 
     async def ablauf():
-        assert cache.bereit(anzahl_monate=6) is None
-        cache.anstossen(anzahl_monate=6)
+        assert cache.bereit(anzahl_monate=6, schwellenwerte=Schwellenwerte()) is None
+        cache.anstossen()
         await _bis_geladen(fertig)
-        return cache.bereit(anzahl_monate=6)
+        return cache.bereit(anzahl_monate=6, schwellenwerte=Schwellenwerte())
 
     ergebnisse = asyncio.run(ablauf())
-    assert aufrufe == [6]
+    # Geladen wird immer mit der konfigurierten maximale_monate, nicht mit der
+    # angefragten anzahl_monate (siehe Klassendocstring von KurzarbeitCache).
+    assert aufrufe == [12]
     assert ergebnisse is not None
     assert ergebnisse[(2026, 8)].anzahl_kurzarbeitsfaehig == 1
 
 
-def test_kurzarbeit_cache_fuer_andere_anzahl_monate_laedt_einen_eigenen_eintrag(
-    kurzarbeit_ladezaehler,
-):
-    aufrufe, fertig = kurzarbeit_ladezaehler
-    cache = KurzarbeitCache(ttl_sekunden=60)
+def test_kurzarbeit_cache_zeigt_zwischenschritte_waehrend_des_ladens(monkeypatch):
+    """``KurzarbeitRepository.laden_async()`` meldet sich je Zweig (siehe dessen
+    Docstring) - diese Zwischenmeldungen landen sofort in
+    ``KurzarbeitCache.fortschritt``, genau wie beim ``DashboardCache``."""
+    gemeldet = asyncio.Event()
+    weiter = asyncio.Event()
+
+    async def _fake_laden_async(self, *, stichtag=None, anzahl_monate=1, fortschritt=None):
+        fortschritt("Personen geladen")
+        gemeldet.set()
+        await weiter.wait()
+        return {}
+
+    monkeypatch.setattr(KurzarbeitRepository, "laden_async", _fake_laden_async)
+    monkeypatch.setattr(
+        KurzarbeitRepository,
+        "mit_automatischen_zugangsdaten",
+        classmethod(lambda cls: cls.__new__(cls)),  # type: ignore[call-overload]
+    )
+    monkeypatch.setattr(webapp_cache, "rollenzuordnung_automatisch", lambda: Rollenzuordnung())
+    cache = KurzarbeitCache(maximale_monate=12, ttl_sekunden=60)
 
     async def ablauf():
-        cache.anstossen(anzahl_monate=6)
-        await _bis_geladen(fertig)
-        fertig.clear()
-        cache.anstossen(anzahl_monate=12)
-        await _bis_geladen(fertig)
+        assert cache.fortschritt() == []
+        cache.anstossen()
+        await asyncio.wait_for(gemeldet.wait(), timeout=1)
+        waehrend_des_ladens = cache.fortschritt()
 
-    asyncio.run(ablauf())
-    assert aufrufe == [6, 12]
+        weiter.set()
+        await asyncio.sleep(0)  # dem Hintergrund-Task die Gelegenheit geben, fertig zu werden
+        nach_abschluss = cache.fortschritt()
+        return waehrend_des_ladens, nach_abschluss
+
+    waehrend_des_ladens, nach_abschluss = asyncio.run(ablauf())
+    assert waehrend_des_ladens == ["Personen geladen"]
+    assert nach_abschluss == []
+    assert cache.bereit(anzahl_monate=6, schwellenwerte=Schwellenwerte()) is not None
+
+
+def test_kurzarbeit_cache_wechsel_der_anzahl_monate_loest_keinen_neuen_ladevorgang_aus(
+    monkeypatch,
+):
+    """Ein Dropdown-Wechsel (6 -> 3 Monate) schneidet nur in-memory heraus, statt
+    erneut bei Clockodo zu laden - Muster wie AnmeldungsverlaufCache, nicht wie
+    DashboardCache (siehe Klassendocstring von KurzarbeitCache)."""
+    aufrufe: list[int] = []
+    fertig = asyncio.Event()
+
+    async def _fake_laden_async(self, *, stichtag=None, anzahl_monate=1, fortschritt=None):
+        aufrufe.append(anzahl_monate)
+        fertig.set()
+        return {
+            (2026, 6): (
+                Personenmonat(
+                    mitarbeiter_id=1,
+                    name="Anna Beispiel",
+                    jahr=2026,
+                    monat=6,
+                    interne_stunden=0.0,
+                    externe_stunden=160.0,
+                    gesamt_stunden=160.0,
+                    ueberstundenstand=0.0,
+                ),
+            ),
+            (2026, 7): (
+                Personenmonat(
+                    mitarbeiter_id=1,
+                    name="Anna Beispiel",
+                    jahr=2026,
+                    monat=7,
+                    interne_stunden=0.0,
+                    externe_stunden=160.0,
+                    gesamt_stunden=160.0,
+                    ueberstundenstand=0.0,
+                ),
+            ),
+            (2026, 8): (
+                Personenmonat(
+                    mitarbeiter_id=1,
+                    name="Anna Beispiel",
+                    jahr=2026,
+                    monat=8,
+                    interne_stunden=40.0,
+                    externe_stunden=120.0,
+                    gesamt_stunden=160.0,
+                    ueberstundenstand=0.0,
+                ),
+            ),
+        }
+
+    monkeypatch.setattr(KurzarbeitRepository, "laden_async", _fake_laden_async)
+    monkeypatch.setattr(
+        KurzarbeitRepository,
+        "mit_automatischen_zugangsdaten",
+        classmethod(lambda cls: cls.__new__(cls)),  # type: ignore[call-overload]
+    )
+    monkeypatch.setattr(webapp_cache, "rollenzuordnung_automatisch", lambda: Rollenzuordnung())
+    cache = KurzarbeitCache(maximale_monate=12, ttl_sekunden=60)
+
+    async def ablauf():
+        cache.anstossen()
+        await _bis_geladen(fertig)
+        drei_monate = cache.bereit(anzahl_monate=3, schwellenwerte=Schwellenwerte())
+        ein_monat = cache.bereit(anzahl_monate=1, schwellenwerte=Schwellenwerte())
+        return drei_monate, ein_monat
+
+    drei_monate, ein_monat = asyncio.run(ablauf())
+    # Nur ein einziger Ladevorgang, mit der konfigurierten maximale_monate - nicht
+    # je einer fuer 3 und fuer 1 Monat.
+    assert aufrufe == [12]
+    assert sorted(drei_monate) == [(2026, 6), (2026, 7), (2026, 8)]
+    assert sorted(ein_monat) == [(2026, 8)]
+
+
+def test_kurzarbeit_cache_wechsel_der_schwellenwerte_loest_keinen_neuen_ladevorgang_aus(
+    kurzarbeit_ladezaehler,
+):
+    """Ein Regler-Wechsel (z. B. auf der Weboberflaeche) bewertet dieselben
+    geladenen Rohdaten nur neu, statt erneut bei Clockodo zu laden - siehe
+    Klassendocstring von KurzarbeitCache."""
+    aufrufe, fertig = kurzarbeit_ladezaehler
+    cache = KurzarbeitCache(maximale_monate=12, ttl_sekunden=60)
+
+    async def ablauf():
+        cache.anstossen()
+        await _bis_geladen(fertig)
+        milde = cache.bereit(
+            anzahl_monate=6, schwellenwerte=Schwellenwerte(anteil_interne_arbeit=0.1)
+        )
+        streng = cache.bereit(
+            anzahl_monate=6, schwellenwerte=Schwellenwerte(anteil_interne_arbeit=0.9)
+        )
+        return milde, streng
+
+    milde, streng = asyncio.run(ablauf())
+    assert aufrufe == [12]
+    # Die geladene Person hat 40 von 160 Stunden intern (25 %) - unterhalb einer
+    # 90-%-Schwelle, oberhalb einer 10-%-Schwelle.
+    assert milde[(2026, 8)].anzahl_kurzarbeitsfaehig == 1
+    assert streng[(2026, 8)].anzahl_kurzarbeitsfaehig == 0

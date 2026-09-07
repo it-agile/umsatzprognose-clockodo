@@ -188,3 +188,41 @@ def test_laden_ruft_die_erwarteten_endpunkte_gleichzeitig_ab():
     aufgerufene_pfade = [r.url.path for r in requests]
     assert aufgerufene_pfade.count("/api/v2/entrygroups") == 4  # intern, 2x extern, ungefiltert
     assert aufgerufene_pfade.count("/api/userreports") == 1
+
+
+def test_laden_meldet_fortschritt_je_zweig_statt_nur_am_ende():
+    def entrygroups(request):
+        billable = request.url.params.get("filter[billable]")
+        gruppierung = tuple(request.url.params.get_list("grouping[]"))
+        if gruppierung == ("users_id", "month") and billable is None:
+            return _entrygroups_person_monat("301", "202608", duration=3600 * 160, revenue=0.0)
+        antworten = {
+            "0": _entrygroups_person_monat("301", "202608", duration=3600 * 40, revenue=0.0),
+            "1": _entrygroups_person_monat("301", "202608", duration=3600 * 100, revenue=0.0),
+            "2": _entrygroups_person_monat("301", "202608", duration=3600 * 20, revenue=0.0),
+        }
+        return antworten[billable]
+
+    client, _requests = client_mit_routen(
+        {
+            "/v3/users": _benutzer_antwort(),
+            "/v2/entrygroups": entrygroups,
+            "/userreports": _userreports_antwort(
+                overtime_carryover=0.0, month_details=[{"nr": 8, "diff": 3.0}]
+            ),
+        }
+    )
+    gemeldet: list[str] = []
+
+    KurzarbeitRepository(client).laden(
+        stichtag=STICHTAG, anzahl_monate=1, fortschritt=gemeldet.append
+    )
+
+    assert set(gemeldet) == {
+        "Personen geladen",
+        "Interne Stunden geladen",
+        "Abrechenbare Stunden geladen",
+        "Fakturierte Stunden geladen",
+        "Gesamtstunden geladen",
+        "Überstundenstand 2026 geladen",
+    }

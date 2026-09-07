@@ -33,14 +33,19 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     import pandas as pd
 
+    from umsatzprognose.util import Monat
+
 import plotly.graph_objects as go
 import plotly.io as pio
 from slack_sdk import WebClient
 
 from umsatzprognose import Dashboard, SchulungenRepository
+from umsatzprognose.clockodo import KurzarbeitRepository, rollenzuordnung_automatisch
 from umsatzprognose.darstellung import diagramme
 from umsatzprognose.darstellung.dashboard import STANDARD_GEWINN_VERLUST_MONATE
 from umsatzprognose.darstellung.gestaltung import FLAECHE, SCHRIFT, SERIE, TINTE, figur
+from umsatzprognose.domaene import Kurzarbeitsbewertung, bewertungen
+from umsatzprognose.domaene.umsatzhistorie import MONATSNAMEN
 
 SLACK_CHANNEL_VAR = "SLACK_CHANNEL_ID"
 SLACK_TOKEN_VAR = "SLACK_BOT_TOKEN"
@@ -55,6 +60,11 @@ STANDARD_HORIZONT_MONATE = 3
 # die ID der DM-Konversation (Slack-Client: Konversation oeffnen, "Copy link" - der
 # "D..."-Teil der URL), nicht die eigene Mitglieds-ID ("U...").
 _CHANNEL_ID_MUSTER = re.compile(r"^[CGDZ][A-Z0-9]{8,}$")
+
+# Deckt sich mit "anzahl_monate" in notebooks/04_kurzarbeit.ipynb und
+# STANDARD_KURZARBEIT_MONATE in webapp/app.py - hier ohne eigenes Secret, weil nicht
+# angefragt.
+KURZARBEIT_ANZAHL_MONATE = 6
 
 # Deckt sich mit "monate_fenster"/"ab_jahr" in notebooks/03_schulungsanmeldungen.ipynb -
 # derselbe Betrachtungszeitraum für den Anmeldungsverlauf, hier ohne eigenes Secret,
@@ -125,8 +135,42 @@ def umsatztabelle_grafik(tabelle: pd.DataFrame) -> go.Figure:
     return fig
 
 
+def kurzarbeit_laden(dashboard: Dashboard) -> dict[Monat, Kurzarbeitsbewertung]:
+    """Laedt die Kurzarbeit-Rohdaten und bewertet sie - eigenstaendig, unabhaengig vom
+    Bestand (Spec Abschnitt 2/7, siehe ``notebooks/04_kurzarbeit.ipynb``).
+
+    Synchron statt ``laden_async``: dieses Skript laeuft ausserhalb eines Event-Loops,
+    genau der Fall, fuer den ``KurzarbeitRepository.laden`` gedacht ist.
+    """
+    rohdaten = KurzarbeitRepository.mit_automatischen_zugangsdaten().laden(
+        stichtag=dashboard.stichtag, anzahl_monate=KURZARBEIT_ANZAHL_MONATE
+    )
+    return bewertungen(rohdaten, rollenzuordnung=rollenzuordnung_automatisch())
+
+
+def kurzarbeit_erlaeuterung(ergebnisse: dict[Monat, Kurzarbeitsbewertung]) -> str:
+    """Ein Satz zum juengsten bewerteten Monat - die Erläuterung neben der Grafik."""
+    jahr, monat_nr = sorted(ergebnisse)[-1]
+    bewertung = ergebnisse[(jahr, monat_nr)]
+    monatsname = f"{MONATSNAMEN[monat_nr - 1]} {jahr}"
+    if bewertung.vorbereitet is None:
+        return f"Kurzarbeitsbereitschaft ({monatsname}): keine Auswertung möglich."
+    status = "Voraussetzung erfüllt" if bewertung.vorbereitet else "Voraussetzung nicht erfüllt"
+    quote = f"{bewertung.quote:.0%}" if bewertung.quote is not None else "n/a"
+    # Slack-mrkdwn kennt keine Textfarbe (anders als die Grafik mit
+    # ERGEBNIS_POSITIV/ERGEBNIS_NEGATIV) - Fettung ist die naheliegende Entsprechung
+    # fuer denselben Zweck: erfuellt/nicht erfuellt auf den ersten Blick unterscheiden.
+    return (
+        f"Kurzarbeitsbereitschaft ({monatsname}): *{status}* (Quote {quote}, Schwelle "
+        f"{bewertung.schwellenwerte.quote_organisation:.0%})."
+    )
+
+
 def diagrammtitel_und_figuren(
-    dashboard: Dashboard, *, gewinn_verlust_monate: int | None
+    dashboard: Dashboard,
+    kurzarbeit_ergebnisse: dict[Monat, Kurzarbeitsbewertung],
+    *,
+    gewinn_verlust_monate: int | None,
 ) -> list[tuple[str, object]]:
     """Titel und Figur je Diagramm, in der Reihenfolge des Posts."""
     jahre = range(ANMELDUNGEN_AB_JAHR, dashboard.stichtag.year + 1)
@@ -154,6 +198,10 @@ def diagrammtitel_und_figuren(
             dashboard.umsatzrendite_kumuliert(mit_beschriftung=True),
         ),
         (
+            "Kurzarbeitsbereitschaft je Monat",
+            diagramme.kurzarbeit_grafik(kurzarbeit_ergebnisse, mit_beschriftung=True),
+        ),
+        (
             "Anmeldungen je Monat",
             diagramme.anmeldungsverlauf(anmeldungsverlauf_fenster, KATEGORIEN),
         ),
@@ -177,8 +225,9 @@ def posten(
             "„Copy link“ - der Teil nach der letzten '/'), nicht die eigene Mitglieds-ID."
         )
 
+    kurzarbeit_ergebnisse = kurzarbeit_laden(dashboard)
     titel_figuren = diagrammtitel_und_figuren(
-        dashboard, gewinn_verlust_monate=gewinn_verlust_monate
+        dashboard, kurzarbeit_ergebnisse, gewinn_verlust_monate=gewinn_verlust_monate
     )
     # "/" im Titel ("Gewinn/Verlust je Monat") waere im Dateinamen ein Pfadtrenner -
     # der Slack-Titel bleibt davon unberuehrt, nur der lokale Dateiname wird bereinigt.
@@ -193,7 +242,10 @@ def posten(
     # file_uploads statt einer Schleife aus einzelnen files_upload_v2-Aufrufen: so
     # haengen alle Bilder gemeinsam an einer Nachricht (initial_comment), statt je Bild
     # eine eigene Unternachricht im Thread zu erzeugen.
-    titel_post = f"Wochenbericht Zahlen, Daten, Fakten - Stand {dashboard.stichtag:%d.%m.%Y}"
+    titel_post = (
+        f"Wochenbericht Zahlen, Daten, Fakten - Stand {dashboard.stichtag:%d.%m.%Y}\n\n"
+        f"{kurzarbeit_erlaeuterung(kurzarbeit_ergebnisse)}"
+    )
     client.files_upload_v2(
         channel=kanal,
         initial_comment=titel_post,

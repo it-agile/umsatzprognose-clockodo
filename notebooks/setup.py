@@ -177,23 +177,35 @@ def kurzarbeit_rohdaten(
     (:func:`~umsatzprognose.domaene.kurzarbeit.bewertungen`) und braucht deshalb keinen
     eigenen Ladevorgang; sie steht im Notebook selbst, damit Schwellenwerte dort ohne
     Neuabruf geaendert werden koennen.
+
+    Der Balken fuellt sich dabei sichtbar ueber echte Zwischenschritte (fuenf
+    gleichzeitige Zweige plus ein ``/userreports``-Abruf je Jahr, siehe Docstring von
+    ``KurzarbeitRepository.laden_async``), ohne dafuer eine eigene Zeile zu
+    hinterlassen. ``total=None`` statt einer festen Zahl, weil die Anzahl der
+    Jahres-Abrufe vorher nicht bekannt ist (haengt von ``anzahl_monate`` ab).
     """
     global _kurzarbeit_rohdaten, _kurzarbeit_rohdaten_dauer
     start = time.perf_counter()
-    with tqdm(total=1, desc="Kurzarbeit-Rohdaten laden", leave=False) as fortschrittsbalken:
+    with tqdm(total=None, desc="Kurzarbeit-Rohdaten laden", leave=False) as fortschrittsbalken:
         neu_geladen = _kurzarbeit_rohdaten is None
         if neu_geladen:
+
+            def _melden(text: str) -> None:
+                fortschrittsbalken.update(1)
+
             _kurzarbeit_rohdaten = KurzarbeitRepository.mit_automatischen_zugangsdaten().laden(
                 stichtag=date.today() if stichtag is None else stichtag,
                 anzahl_monate=anzahl_monate,
+                fortschritt=_melden,
             )
+        else:
+            fortschrittsbalken.update(1)
         zugriffsdauer = timedelta(seconds=time.perf_counter() - start)
         if neu_geladen:
             _kurzarbeit_rohdaten_dauer = zugriffsdauer
             fortschrittsbalken.write(kurzarbeit_rohdaten_bericht())
         else:
             fortschrittsbalken.write(kurzarbeit_rohdaten_bericht(dauer=zugriffsdauer))
-        fortschrittsbalken.update(1)
     return _kurzarbeit_rohdaten
 
 

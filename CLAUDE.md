@@ -272,9 +272,15 @@ Dashboard-Notebook auch.
   vom gewaehlten `ab_jahr` dieselben, ein engerer Beginn ("seit 2024" statt "seit
   2022") ist immer eine Teilmenge dieses einen geladenen Bereichs -
   `Anmeldungsverlauf.ab_jahr()` filtert dafuer nur noch in-memory, ganz ohne
-  erneuten Abruf. `KurzarbeitCache` folgt derselben Logik wie `DashboardCache`: ein
-  eigener Eintrag je angefragter `anzahl_monate`, weil ein anderer Wert tatsaechlich
-  ein anderes Zeitfenster bei Clockodo abfragt.
+  erneuten Abruf. `KurzarbeitCache` folgt derselben Logik wie `AnmeldungsverlaufCache`,
+  nicht wie `DashboardCache`: anders als beim vorwaerts simulierenden Dashboard haengt
+  die Bewertung eines einzelnen Monats ausschliesslich von dessen eigenen
+  Personenmonat-Daten ab, nicht davon, wie viele Monate insgesamt angefragt wurden -
+  ein engerer Zeitraum ist deshalb immer eine Teilmenge eines breiteren. Der Cache
+  laedt deshalb **immer** mit der groessten waehlbaren `anzahl_monate`
+  (`MAXIMALE_KURZARBEIT_MONATE`, aktuell 12) und schneidet engere Dropdown-Auswahlen
+  nur noch in-memory heraus (`_juengste_monate()`) - ein Wechsel zwischen 1/3/6/12
+  Monaten loest also nie einen neuen Ladevorgang bei Clockodo aus.
 - **Caching, nicht blockierend**: `webapp/cache.py` erneuert seine Eintraege nach
   Ablauf einer TTL (`WEBAPP_CACHE_TTL_SEKUNDEN`, Standard eine Stunde). Anders
   als `notebooks/setup.py` – eine Modulvariable je Kernel – bedient ein Webserver
@@ -305,11 +311,14 @@ Dashboard-Notebook auch.
   service-artig und funktioniert unverändert aus einem Serverprozess heraus.
 - Gehört zum optionalen `web`-Extra (`fastapi`, `jinja2`, `uvicorn`) – keine
   Basisabhängigkeit, weil nur dieses Paket sie braucht. Start lokal: `uvx tox -e web`
-  bzw. `uv run --extra web uvicorn umsatzprognose.webapp.app:app --reload`. `--reload`
-  beobachtet standardmäßig das gesamte Arbeitsverzeichnis, auch z. B. `.tox/` – läuft
-  parallel `uvx tox`, startet das ständig neu; für aktive Entwicklung an `webapp/`
-  deshalb besser `--reload-dir src/umsatzprognose/webapp`, wer nur die Seiten ansehen
-  will, lässt `--reload` ganz weg.
+  bzw. `uv run --extra web uvicorn umsatzprognose.webapp.app:app`. **Bewusst ohne
+  `--reload`** als Standard (siehe Moduldocstring von `webapp/app.py`): `--reload`
+  startet zusätzlich einen Reloader-Prozess, der den ohnehin schweren Modulimport
+  (FastAPI/Pydantic, pandas, googleapiclient) ein zweites Mal durchläuft und den Start
+  spürbar verlangsamt. Für aktive Entwicklung an `webapp/` weiterhin per Posargs
+  zuschaltbar, dann aber mit `--reload-dir src/umsatzprognose/webapp` eingeschränkt –
+  ohne diese Einschränkung beobachtet `--reload` das gesamte Arbeitsverzeichnis, auch
+  z. B. `.tox/`, was bei parallel laufendem `uvx tox` zu ständigen Neustarts führt.
 
 ## Keine gelesenen Werte im Repository
 
@@ -472,9 +481,12 @@ Manche Routen begrenzen auf wenige Anfragen pro Minute (`"... limit exceeded (N
 requests per 1 minute)"`) - beim gleichzeitigen Abruf vieler Endpunkte
 (`nebenlaeufig.gleichzeitig()`) real erreichbar, siehe Web-Frontend oben. `get()`
 wiederholt einen 429 deshalb bis zu `RATE_LIMIT_MAX_VERSUCHE`-mal nach
-`RATE_LIMIT_WARTEZEIT_SEKUNDEN` (plus Streuung, gegen gleichzeitig wartende Aufrufe,
-die sonst exakt zusammen erneut anfragen würden), bevor doch ein `ClockodoError`
-geworfen wird.
+`RATE_LIMIT_WARTEZEIT_SEKUNDEN` (plus Streuung über das gesamte Wartefenster, nicht
+nur ein paar Sekunden – gegen mehrere gleichzeitig wartende Zweige derselben
+`gleichzeitig()`-Abfrage, die sich sonst mit fast identischer Wartezeit gegenseitig
+das Kontingent wieder auffüllen und so trotz mehrerer Wiederholungen weiter
+scheitern, live beobachtet bei `KurzarbeitRepository`s vier gleichzeitigen
+entrygroups-Aufrufen), bevor doch ein `ClockodoError` geworfen wird.
 
 Abweichungen von `spec/clocodo-api.yaml`, verifiziert über echte Antworten:
 

@@ -11,4 +11,7 @@
     {% endfor %}
 </ul>
 {% endif %}
+{% if fehler %}
+<p class="fehler">Der letzte Ladeversuch ist fehlgeschlagen: {{ fehler }}<br>Ein neuer Versuch läuft automatisch beim nächsten Neuladen dieser Seite.</p>
+{% endif %}
 {% endblock %}

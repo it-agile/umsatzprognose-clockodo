@@ -6,14 +6,42 @@
     an welcher Bedingung sie scheitern. Unabhängig von der Umsatzprognose.
 </p>
 <form method="get" class="parameter">
-    <label>Zurückliegende Monate
+    <label>Zurückliegender Zeitraum:
         <select name="anzahl_monate" onchange="this.form.submit()">
             {% for wert in anzahl_monate_optionen %}
-            <option value="{{ wert }}" {{ "selected" if wert == anzahl_monate }}>{{ wert }}</option>
+            <option value="{{ wert }}" {{ "selected" if wert == anzahl_monate }}>{{ anzahl_monate_beschriftungen[wert] }}</option>
             {% endfor %}
         </select>
     </label>
+    <details class="regler-abschnitt" {{ "open" if schwellenwerte_abweichend }}>
+        <summary>Schwellenwerte <span class="zusammenfassung">(Anteil interne Arbeit ≥ {{ anteil_interne_arbeit_prozent }} %, Überstundenstand &lt; {{ ueberstunden_stunden }} Std., Quote der Organisation ≥ {{ quote_organisation_prozent }} %)</span></summary>
+        <div class="regler-gruppe">
+            <label>Anteil interne Arbeit ≥
+                <input type="range" name="anteil_interne_arbeit_prozent" min="0" max="100" step="1"
+                       value="{{ anteil_interne_arbeit_prozent }}"
+                       oninput="this.nextElementSibling.textContent = this.value + ' %'"
+                       onchange="this.form.submit()">
+                <output>{{ anteil_interne_arbeit_prozent }} %</output>
+            </label>
+            <label>Überstundenstand &lt;
+                <input type="range" name="ueberstunden_stunden" min="0" max="40" step="1"
+                       value="{{ ueberstunden_stunden }}"
+                       oninput="this.nextElementSibling.textContent = this.value + ' Std.'"
+                       onchange="this.form.submit()">
+                <output>{{ ueberstunden_stunden }} Std.</output>
+            </label>
+            <label>Quote der Organisation ≥
+                <input type="range" name="quote_organisation_prozent" min="0" max="100" step="1"
+                       value="{{ quote_organisation_prozent }}"
+                       oninput="this.nextElementSibling.textContent = this.value + ' %'"
+                       onchange="this.form.submit()">
+                <output>{{ quote_organisation_prozent }} %</output>
+            </label>
+            <a class="zuruecksetzen" href="/kurzarbeit?anzahl_monate={{ anzahl_monate }}">Schwellenwerte zurücksetzen</a>
+        </div>
+    </details>
 </form>
+{{ kurzarbeit_grafik | safe }}
 <table>
     <thead>
         <tr>
@@ -32,7 +60,7 @@
         {% for zeile in zeilen %}
         <tr>
             <td>{{ zeile.bezeichnung }}</td>
-            <td>{{ zeile.status }}</td>
+            <td class="{{ zeile.status_klasse }}">{{ zeile.status }}</td>
             <td>{{ zeile.quote }}</td>
             <td>{{ zeile.bewertung.anzahl_kurzarbeitsfaehig }} / {{ zeile.bewertung.anzahl_einbezogen }}</td>
             <td>{{ zeile.bewertung.anzahl_scheitert_interne_arbeit }}</td>
@@ -44,16 +72,4 @@
         {% endfor %}
     </tbody>
 </table>
-<p class="ladehinweis">
-    Schwellenwerte: Anteil interne Arbeit ≥ {{ "%.0f"|format(schwellenwerte.anteil_interne_arbeit * 100) }} %,
-    Überstundenstand &lt; {{ "%.0f"|format(schwellenwerte.ueberstunden_stunden) }} Std.,
-    Quote der Organisation ≥ {{ "%.0f"|format(schwellenwerte.quote_organisation * 100) }} %.
-</p>
-{% if hinweise %}
-<ul class="fortschritt">
-    {% for hinweis in hinweise %}
-    <li>{{ hinweis }}</li>
-    {% endfor %}
-</ul>
-{% endif %}
 {% endblock %}

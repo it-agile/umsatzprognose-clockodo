@@ -94,8 +94,13 @@ DEFAULT_TIMEOUT = 60.0
 # exceeded (N requests per 1 minute)") - besonders beim gleichzeitigen Abruf vieler
 # Endpunkte (siehe .nebenlaeufig.gleichzeitig) real erreichbar. RATE_LIMIT_MAX_VERSUCHE
 # zaehlt den ersten Versuch mit; RATE_LIMIT_WARTEZEIT_SEKUNDEN orientiert sich am
-# Ein-Minuten-Fenster von Clockodos Limit, die Streuung (siehe .get) verhindert, dass
-# mehrere gleichzeitig wartende Aufrufe exakt zusammen erneut anfragen.
+# Ein-Minuten-Fenster von Clockodos Limit. Die Streuung (siehe .get) reicht bewusst
+# ueber das gesamte Wartefenster (nicht nur ein paar Sekunden): mehrere gleichzeitig
+# wartende Zweige derselben ``gleichzeitig()``-Abfrage (z. B. die vier
+# entrygroups-Aufrufe von KurzarbeitRepository) treffen sonst mit fast identischer
+# Wartezeit erneut zusammen ein und fuellen das Kontingent gegenseitig wieder auf,
+# bevor der naechste eigene Versuch drankommt - live beobachtet als wiederholter 429
+# trotz mehrerer Wiederholungen.
 RATE_LIMIT_STATUS = 429
 RATE_LIMIT_MAX_VERSUCHE = 4
 RATE_LIMIT_WARTEZEIT_SEKUNDEN = 15.0
@@ -403,7 +408,9 @@ class ClockodoClient:
                 response = await client.get(path, params=dict(params) if params else None)
             if response.status_code != RATE_LIMIT_STATUS or versuch >= RATE_LIMIT_MAX_VERSUCHE:
                 break
-            await asyncio.sleep(RATE_LIMIT_WARTEZEIT_SEKUNDEN + random.uniform(0, 5))
+            await asyncio.sleep(
+                RATE_LIMIT_WARTEZEIT_SEKUNDEN + random.uniform(0, RATE_LIMIT_WARTEZEIT_SEKUNDEN)
+            )
         if response.is_error:
             raise ClockodoError(
                 f"{response.status_code} fuer {response.request.url}\n{response.text[:1000]}"

@@ -53,13 +53,19 @@ Besuchenden eintreffen.
 
 Start lokal (nach ``uv sync --extra web``)::
 
-    uv run uvicorn umsatzprognose.webapp.app:app --reload
+    uv run uvicorn umsatzprognose.webapp.app:app
 
-``--reload`` beobachtet dabei standardmaessig das gesamte Arbeitsverzeichnis,
-einschliesslich z. B. ``.tox/`` - laeuft dort parallel ``uvx tox``, startet das
-staendig neu. Fuer aktive Entwicklung an ``webapp/`` deshalb besser
-``--reload-dir src/umsatzprognose/webapp``; wer nur die Seiten ansehen will, laesst
-``--reload`` ganz weg.
+**Bewusst ohne ``--reload``** (auch als Standard von ``uvx tox -e web``, siehe
+``[tool.tox.env.web]`` in ``pyproject.toml``): ``--reload`` startet zusaetzlich zum
+eigentlichen Serverprozess einen Reloader-Prozess, der beim Start denselben schweren
+Modulimport (FastAPI/Pydantic, pandas, googleapiclient - insgesamt gut eine Sekunde)
+ein zweites Mal durchlaeuft und den Start dadurch spuerbar verlangsamt, ohne dass die
+meisten Besuchenden je von der Auto-Reload-Funktion profitieren. Fuer aktive
+Entwicklung an ``webapp/`` laesst sich ``--reload --reload-dir
+src/umsatzprognose/webapp`` weiterhin ueber Posargs anhaengen (z. B. ``uvx tox -e web
+-- --reload --reload-dir src/umsatzprognose/webapp``) - ohne ``--reload-dir``
+beobachtet ``--reload`` sonst das gesamte Arbeitsverzeichnis, einschliesslich z. B.
+``.tox/``, was bei parallel laufendem ``uvx tox`` zu staendigen Neustarts fuehrt.
 """
 
 from __future__ import annotations
@@ -85,6 +91,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from umsatzprognose.darstellung import diagramme
+from umsatzprognose.domaene import Schwellenwerte
 
 from .cache import AnmeldungsverlaufCache, DashboardCache, KurzarbeitCache
 
@@ -134,19 +141,45 @@ KurzarbeitMonate = Annotated[_KurzarbeitMonateWert, Query()]
 PROGNOSE_MONATE_OPTIONEN = get_args(_HorizontMonateWert)
 HISTORISCHE_MONATE_OPTIONEN = get_args(_GewinnVerlustMonateWert)
 KURZARBEIT_MONATE_OPTIONEN = get_args(_KurzarbeitMonateWert)
+KURZARBEIT_MONATE_BESCHRIFTUNGEN: dict[_KurzarbeitMonateWert, str] = {
+    "1": "1 Monat",
+    "3": "3 Monate",
+    "6": "6 Monate",
+    "12": "1 Jahr",
+}
 
 STANDARD_HORIZONT_MONATE: _HorizontMonateWert = "3"
 STANDARD_AUSLASTUNG_MONATE = 12
 STANDARD_GEWINN_VERLUST_MONATE: _GewinnVerlustMonateWert = "12"
 STANDARD_AB_JAHR = 2022
 STANDARD_KURZARBEIT_MONATE: _KurzarbeitMonateWert = "6"
+# KurzarbeitCache laedt immer diese (groesste) Kombination und schneidet engere
+# Anfragen nur noch in-memory heraus (siehe Klassendocstring) - ein Dropdown-Wechsel
+# loest so nie einen erneuten Ladevorgang bei Clockodo aus.
+MAXIMALE_KURZARBEIT_MONATE = max(int(wert) for wert in KURZARBEIT_MONATE_OPTIONEN)
 
 AbJahr = Annotated[int, Query(ge=STANDARD_AB_JAHR, le=date.today().year)]
 AB_JAHR_OPTIONEN = tuple(range(STANDARD_AB_JAHR, date.today().year + 1))
 
+# Die drei Schwellenwerte der Kurzarbeit-Regel (siehe domaene.kurzarbeit.Schwellenwerte,
+# spec/spec-kurzarbeit.md Abschnitt 5.5 - "Parameter von aussen") als Regler in der
+# Weboberflaeche. Anteil interne Arbeit/Quote der Organisation sind Prozentangaben -
+# volle Prozentpunkte (step=1) genuegen, ein Nachkommawert waere Schein-Praezision.
+# Ueberstundenstand ist keine Prozentangabe, aber ebenfalls in vollen Stunden sinnvoll.
+# 0-100 % ist der volle, unstrittige Wertebereich; bei den Ueberstunden ist 0-40 Std.
+# grosszuegig um den Standard (14 Std.) herum bemessen, ohne den Regler unhandlich zu
+# machen.
+AnteilInterneArbeitProzent = Annotated[int, Query(ge=0, le=100)]
+QuoteOrganisationProzent = Annotated[int, Query(ge=0, le=100)]
+UeberstundenStunden = Annotated[int, Query(ge=0, le=40)]
+
+STANDARD_ANTEIL_INTERNE_ARBEIT_PROZENT = 24
+STANDARD_QUOTE_ORGANISATION_PROZENT = 30
+STANDARD_UEBERSTUNDEN_STUNDEN = 14
+
 _dashboard_cache = DashboardCache()
 _anmeldungsverlauf_cache = AnmeldungsverlaufCache(ab_jahr=STANDARD_AB_JAHR)
-_kurzarbeit_cache = KurzarbeitCache()
+_kurzarbeit_cache = KurzarbeitCache(maximale_monate=MAXIMALE_KURZARBEIT_MONATE)
 _templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
 
 
@@ -163,7 +196,7 @@ async def _vorladen(app: FastAPI) -> AsyncIterator[None]:
         horizont_monate=int(STANDARD_HORIZONT_MONATE), auslastung_monate=STANDARD_AUSLASTUNG_MONATE
     )
     _anmeldungsverlauf_cache.anstossen()
-    _kurzarbeit_cache.anstossen(anzahl_monate=int(STANDARD_KURZARBEIT_MONATE))
+    _kurzarbeit_cache.anstossen()
     yield
 
 
@@ -199,15 +232,31 @@ def _antwort(
     )
 
 
-def _ladeseite(request: Request, *, seite: str, fortschritt: list[str]) -> HTMLResponse:
+def _ladeseite(
+    request: Request, *, seite: str, fortschritt: list[str], fehler: str | None = None
+) -> HTMLResponse:
     """Kurze Zwischenseite, waehrend :mod:`.cache` im Hintergrund laedt - siehe Moduldocstring.
 
     ``fortschritt`` zeigt die bisher gemeldeten Statuszeilen des laufenden
     Ladevorgangs (siehe ``DashboardCache.fortschritt``/``AnmeldungsverlaufCache.
     fortschritt``) - dieselbe Sicht wie in den Notebooks, nur per Meta-Refresh
     nachgeholt statt live nachgeschoben (siehe Moduldocstring von ``.cache``).
+
+    ``fehler``, sofern angegeben, macht einen zuletzt gescheiterten Ladeversuch
+    sichtbar (siehe ``_TTLCache.fehler``) - ohne das sah ein wiederholt scheiternder
+    Ladevorgang von aussen genauso aus wie ein noch laufender ("Daten werden
+    geladen", endlos), die eigentliche Meldung stand nur auf der Server-Konsole. Der
+    naechste Seitenaufruf (per Meta-Refresh) loest ohnehin automatisch einen neuen
+    Versuch aus.
     """
-    return _antwort(request, seite=seite, name="laedt.html", stichtag=None, fortschritt=fortschritt)
+    return _antwort(
+        request,
+        seite=seite,
+        name="laedt.html",
+        stichtag=None,
+        fortschritt=fortschritt,
+        fehler=fehler,
+    )
 
 
 def _dashboard_oder_ladeseite(
@@ -227,7 +276,10 @@ def _dashboard_oder_ladeseite(
     fortschritt = _dashboard_cache.fortschritt(
         horizont_monate=horizont_monate, auslastung_monate=auslastung_monate
     )
-    return _ladeseite(request, seite=seite, fortschritt=fortschritt)
+    fehler = _dashboard_cache.fehler(
+        horizont_monate=horizont_monate, auslastung_monate=auslastung_monate
+    )
+    return _ladeseite(request, seite=seite, fortschritt=fortschritt, fehler=fehler)
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -311,7 +363,10 @@ async def schulungen(request: Request, ab_jahr: AbJahr = STANDARD_AB_JAHR) -> HT
     if verlauf is None:
         _anmeldungsverlauf_cache.anstossen()
         return _ladeseite(
-            request, seite="schulungen", fortschritt=_anmeldungsverlauf_cache.fortschritt()
+            request,
+            seite="schulungen",
+            fortschritt=_anmeldungsverlauf_cache.fortschritt(),
+            fehler=_anmeldungsverlauf_cache.fehler(),
         )
 
     verlauf_ab_jahr = verlauf.ab_jahr(ab_jahr)
@@ -343,28 +398,53 @@ def _kurzarbeit_status_text(bewertung: Kurzarbeitsbewertung) -> str:
     return "Voraussetzung erfüllt" if bewertung.vorbereitet else "Voraussetzung nicht erfüllt"
 
 
+def _kurzarbeit_status_klasse(bewertung: Kurzarbeitsbewertung) -> str:
+    """CSS-Klasse fuer die Statusanzeige - dieselbe Farbfamilie wie ERGEBNIS_POSITIV/
+    ERGEBNIS_NEGATIV in der Grafik (siehe .status-positiv/.status-negativ in
+    basis.html), damit Text und Grafik dieselbe Unterscheidung erfuellt/nicht erfuellt
+    zeigen. Leer ohne Quote (Spec 5.6) - "keine Auswertung möglich" ist ein dritter,
+    unentschiedener Zustand und soll nicht wie "nicht erfuellt" rot erscheinen."""
+    if bewertung.vorbereitet is None:
+        return ""
+    return "status-positiv" if bewertung.vorbereitet else "status-negativ"
+
+
 def _kurzarbeit_quote_text(bewertung: Kurzarbeitsbewertung) -> str:
     return f"{bewertung.quote:.1%}" if bewertung.quote is not None else "n/a"
 
 
 @app.get("/kurzarbeit", response_class=HTMLResponse)
 async def kurzarbeit(
-    request: Request, anzahl_monate: KurzarbeitMonate = STANDARD_KURZARBEIT_MONATE
+    request: Request,
+    anzahl_monate: KurzarbeitMonate = STANDARD_KURZARBEIT_MONATE,
+    anteil_interne_arbeit_prozent: AnteilInterneArbeitProzent = (
+        STANDARD_ANTEIL_INTERNE_ARBEIT_PROZENT
+    ),
+    ueberstunden_stunden: UeberstundenStunden = STANDARD_UEBERSTUNDEN_STUNDEN,
+    quote_organisation_prozent: QuoteOrganisationProzent = STANDARD_QUOTE_ORGANISATION_PROZENT,
 ) -> HTMLResponse:
     """Deckt sich mit notebooks/04_kurzarbeit.ipynb: die Kurzarbeitsbereitschaft je Monat.
 
-    Vollstaendig unabhaengig von :class:`DashboardCache` - kein Bezug zur
-    Umsatzprognose (Spec Abschnitt 2/7). Zeigt ausschliesslich Aggregatzahlen, keine
-    Einzelwerte je Person.
+    Die drei Schwellenwerte (Spec Abschnitt 5.5) sind hier ueber Regler waehlbar -
+    reine In-Memory-Neubewertung derselben geladenen Rohdaten (siehe Klassendocstring
+    von :class:`~.cache.KurzarbeitCache`), kein erneuter Clockodo-Abruf. Vollstaendig
+    unabhaengig von :class:`DashboardCache` - kein Bezug zur Umsatzprognose (Spec
+    Abschnitt 2/7). Zeigt ausschliesslich Aggregatzahlen, keine Einzelwerte je Person.
     """
     monate_zahl = int(anzahl_monate)
-    ergebnisse = _kurzarbeit_cache.bereit(anzahl_monate=monate_zahl)
+    schwellenwerte = Schwellenwerte(
+        anteil_interne_arbeit=anteil_interne_arbeit_prozent / 100,
+        ueberstunden_stunden=float(ueberstunden_stunden),
+        quote_organisation=quote_organisation_prozent / 100,
+    )
+    ergebnisse = _kurzarbeit_cache.bereit(anzahl_monate=monate_zahl, schwellenwerte=schwellenwerte)
     if ergebnisse is None:
-        _kurzarbeit_cache.anstossen(anzahl_monate=monate_zahl)
+        _kurzarbeit_cache.anstossen()
         return _ladeseite(
             request,
             seite="kurzarbeit",
-            fortschritt=_kurzarbeit_cache.fortschritt(anzahl_monate=monate_zahl),
+            fortschritt=_kurzarbeit_cache.fortschritt(),
+            fehler=_kurzarbeit_cache.fehler(),
         )
 
     monate = sorted(ergebnisse)
@@ -372,13 +452,19 @@ async def kurzarbeit(
         {
             "bezeichnung": f"{_KURZARBEIT_MONATSNAMEN[monat[1] - 1]} {monat[0]}",
             "status": _kurzarbeit_status_text(ergebnisse[monat]),
+            "status_klasse": _kurzarbeit_status_klasse(ergebnisse[monat]),
             "quote": _kurzarbeit_quote_text(ergebnisse[monat]),
             "bewertung": ergebnisse[monat],
         }
         for monat in monate
     ]
-    schwellenwerte = ergebnisse[monate[-1]].schwellenwerte
-    alle_hinweise = [hinweis for monat in monate for hinweis in ergebnisse[monat].hinweise]
+    # Bleibt aufgeklappt, sobald einer der Regler vom Standard abweicht - sonst
+    # verschwaende die eigene Auswahl nach jedem Neuladen der Seite (onchange).
+    schwellenwerte_abweichend = (
+        anteil_interne_arbeit_prozent != STANDARD_ANTEIL_INTERNE_ARBEIT_PROZENT
+        or ueberstunden_stunden != STANDARD_UEBERSTUNDEN_STUNDEN
+        or quote_organisation_prozent != STANDARD_QUOTE_ORGANISATION_PROZENT
+    )
 
     return _antwort(
         request,
@@ -387,7 +473,11 @@ async def kurzarbeit(
         stichtag=date.today(),
         anzahl_monate=anzahl_monate,
         anzahl_monate_optionen=KURZARBEIT_MONATE_OPTIONEN,
+        anzahl_monate_beschriftungen=KURZARBEIT_MONATE_BESCHRIFTUNGEN,
+        anteil_interne_arbeit_prozent=anteil_interne_arbeit_prozent,
+        ueberstunden_stunden=ueberstunden_stunden,
+        quote_organisation_prozent=quote_organisation_prozent,
+        schwellenwerte_abweichend=schwellenwerte_abweichend,
         zeilen=zeilen,
-        schwellenwerte=schwellenwerte,
-        hinweise=alle_hinweise,
+        kurzarbeit_grafik=_figur_html(diagramme.kurzarbeit_grafik(ergebnisse), mit_plotlyjs=True),
     )
