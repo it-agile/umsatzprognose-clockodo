@@ -75,7 +75,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Annotated, Literal, get_args
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator
+    from collections.abc import AsyncIterator, Callable
 
     import pandas as pd
     import plotly.graph_objects as go
@@ -84,6 +84,7 @@ if TYPE_CHECKING:
     from umsatzprognose.domaene import Kurzarbeitsbewertung
 
 from contextlib import asynccontextmanager
+from functools import partial
 
 from fastapi import FastAPI, Query, Request
 from fastapi.responses import HTMLResponse
@@ -279,27 +280,60 @@ def _ladeseite(
     )
 
 
+def _bereit_oder_ladeseite[T](
+    request: Request,
+    *,
+    seite: str,
+    bereit: Callable[[], T | None],
+    anstossen: Callable[[], None],
+    fortschritt: Callable[[], list[str]],
+    fehler: Callable[[], str | None],
+) -> T | HTMLResponse:
+    """Liefert den gecachten Wert, sonst stoesst sie das Laden im Hintergrund an und
+    liefert die Ladeseite - das gemeinsame "nicht blockierend geladen"-Muster aller
+    vier Seiten (siehe Moduldocstring). ``bereit``/``anstossen``/``fortschritt``/
+    ``fehler`` sind parameterlose Callables - ein Aufrufer mit mehreren
+    Cache-Schluesseln (z. B. ``DashboardCache`` ueber ``horizont_monate``/
+    ``auslastung_monate``) bindet diese vorher per :func:`functools.partial`."""
+    wert = bereit()
+    if wert is not None:
+        return wert
+    anstossen()
+    return _ladeseite(request, seite=seite, fortschritt=fortschritt(), fehler=fehler())
+
+
 def _dashboard_oder_ladeseite(
     request: Request, *, seite: str, horizont_monate: int, auslastung_monate: int
 ) -> Dashboard | HTMLResponse:
     """Liefert das gecachte ``Dashboard`` fuer diese Parameterkombination, sonst die
-    Ladeseite - gemeinsam fuer ``uebersicht()`` und ``dashboard_seite()``, die
-    beide denselben ``DashboardCache``-Schluessel (``horizont_monate``,
-    ``auslastung_monate``) verwenden."""
-    dashboard = _dashboard_cache.bereit(
-        horizont_monate=horizont_monate, auslastung_monate=auslastung_monate
+    Ladeseite - gemeinsam fuer ``uebersicht()`` und ``dashboard_seite()``, die beide
+    denselben ``DashboardCache``-Schluessel (``horizont_monate``, ``auslastung_monate``)
+    verwenden. Bindet diese beiden Schluesselwerte einmal per :func:`~functools.partial`
+    und delegiert an :func:`_bereit_oder_ladeseite`."""
+    return _bereit_oder_ladeseite(
+        request,
+        seite=seite,
+        bereit=partial(
+            _dashboard_cache.bereit,
+            horizont_monate=horizont_monate,
+            auslastung_monate=auslastung_monate,
+        ),
+        anstossen=partial(
+            _dashboard_cache.anstossen,
+            horizont_monate=horizont_monate,
+            auslastung_monate=auslastung_monate,
+        ),
+        fortschritt=partial(
+            _dashboard_cache.fortschritt,
+            horizont_monate=horizont_monate,
+            auslastung_monate=auslastung_monate,
+        ),
+        fehler=partial(
+            _dashboard_cache.fehler,
+            horizont_monate=horizont_monate,
+            auslastung_monate=auslastung_monate,
+        ),
     )
-    if dashboard is not None:
-        return dashboard
-
-    _dashboard_cache.anstossen(horizont_monate=horizont_monate, auslastung_monate=auslastung_monate)
-    fortschritt = _dashboard_cache.fortschritt(
-        horizont_monate=horizont_monate, auslastung_monate=auslastung_monate
-    )
-    fehler = _dashboard_cache.fehler(
-        horizont_monate=horizont_monate, auslastung_monate=auslastung_monate
-    )
-    return _ladeseite(request, seite=seite, fortschritt=fortschritt, fehler=fehler)
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -380,15 +414,17 @@ async def schulungen(request: Request, ab_jahr: AbJahr = None) -> HTMLResponse:
     engerer Beginn zeigt deshalb sofort ein anderes Ergebnis, ohne neu zu laden. Ohne
     Angabe gilt :func:`_standard_anzeige_ab_jahr` statt starr :data:`STANDARD_AB_JAHR`.
     """
-    verlauf = _anmeldungsverlauf_cache.bereit()
-    if verlauf is None:
-        _anmeldungsverlauf_cache.anstossen()
-        return _ladeseite(
-            request,
-            seite="schulungen",
-            fortschritt=_anmeldungsverlauf_cache.fortschritt(),
-            fehler=_anmeldungsverlauf_cache.fehler(),
-        )
+    ergebnis = _bereit_oder_ladeseite(
+        request,
+        seite="schulungen",
+        bereit=_anmeldungsverlauf_cache.bereit,
+        anstossen=_anmeldungsverlauf_cache.anstossen,
+        fortschritt=_anmeldungsverlauf_cache.fortschritt,
+        fehler=_anmeldungsverlauf_cache.fehler,
+    )
+    if isinstance(ergebnis, HTMLResponse):
+        return ergebnis
+    verlauf = ergebnis
 
     jahr = ab_jahr if ab_jahr is not None else _standard_anzeige_ab_jahr()
     verlauf_ab_jahr = verlauf.ab_jahr(jahr)
@@ -463,15 +499,19 @@ async def kurzarbeit(
         ueberstunden_stunden=float(ueberstunden_stunden),
         quote_organisation=quote_organisation_prozent / 100,
     )
-    ergebnisse = _kurzarbeit_cache.bereit(anzahl_monate=monate_zahl, schwellenwerte=schwellenwerte)
-    if ergebnisse is None:
-        _kurzarbeit_cache.anstossen()
-        return _ladeseite(
-            request,
-            seite="kurzarbeit",
-            fortschritt=_kurzarbeit_cache.fortschritt(),
-            fehler=_kurzarbeit_cache.fehler(),
-        )
+    ergebnis = _bereit_oder_ladeseite(
+        request,
+        seite="kurzarbeit",
+        bereit=partial(
+            _kurzarbeit_cache.bereit, anzahl_monate=monate_zahl, schwellenwerte=schwellenwerte
+        ),
+        anstossen=_kurzarbeit_cache.anstossen,
+        fortschritt=_kurzarbeit_cache.fortschritt,
+        fehler=_kurzarbeit_cache.fehler,
+    )
+    if isinstance(ergebnis, HTMLResponse):
+        return ergebnis
+    ergebnisse = ergebnis
 
     monate = sorted(ergebnisse)
     zeilen = [

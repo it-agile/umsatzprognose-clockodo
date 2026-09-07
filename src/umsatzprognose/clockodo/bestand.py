@@ -17,9 +17,6 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from collections.abc import Coroutine
-    from typing import Any
-
     from .client import EntryGroupV2
     from .fortschritt import Fortschritt
 
@@ -31,30 +28,12 @@ from .client import ClockodoClient, horizontende, verbrauch_bis
 from .config import ClockodoCredentials
 from .kunden import KundenRepository
 from .mitarbeiter import MitarbeiterRepository
-from .nebenlaeufig import gleichzeitig, synchron
+from .nebenlaeufig import gleichzeitig, mit_meldung, synchron
 from .projekte import ProjektRepository
 from .projekte import rohdaten as projekt_rohdaten
 from .umsatz import UmsatzRepository
 from .verbrauchsverlauf import VerbrauchsverlaufRepository
 from .verbrauchsverlauf import rohdaten as monatsverbrauch_rohdaten
-
-
-async def _mit_meldung[T](
-    coro: Coroutine[Any, Any, T], text: str, fortschritt: Fortschritt | None
-) -> T:
-    """Meldet ``text``, sobald ``coro`` individuell fertig ist - unabhaengig davon, ob
-    die uebrigen der fuenf gleichzeitigen Faecher noch laufen.
-
-    ``ClockodoClient`` nutzt echtes async HTTP (``httpx2.AsyncClient``, siehe dessen
-    Docstring), die Event-Loop bleibt also waehrend aller fuenf Abrufe responsiv -
-    anders als beim synchronen Google-Sheets-Client (siehe
-    :mod:`umsatzprognose.google_sheets.client`) zeigt eine Meldung je Zweig hier
-    echten, live sichtbaren Fortschritt statt nur einer nachtraeglichen Behauptung.
-    """
-    ergebnis = await coro
-    if fortschritt is not None:
-        fortschritt(text)
-    return ergebnis
 
 
 class BestandRepository:
@@ -136,7 +115,7 @@ class BestandRepository:
                 Faecher (Kunden, Personen, Projekt-Rohdaten, Umsatzhistorie,
                 Verbrauchsverlauf) eine kurze Statuszeile, sobald genau *dieser*
                 Zweig fertig ist - nicht erst, wenn alle fuenf fertig sind (siehe
-                :func:`_mit_meldung`).
+                :func:`~.nebenlaeufig.mit_meldung`).
         """
         stichtag = stichtag or date.today()
         personen = MitarbeiterRepository(self._client)
@@ -150,12 +129,18 @@ class BestandRepository:
         # Der Stichtag wird hier festgelegt und nicht in den Abrufen aufgeloest: sonst
         # koennten die gleichzeitigen Abrufe ueber einen Tageswechsel hinweg
         # verschiedene Fenster erwischen.
-        kunden, mitarbeiter, rohe_projekte, umsatzhistorie, monatsgruppen = await gleichzeitig(
-            _mit_meldung(
+        (
+            kunden,
+            (mitarbeiter, personen_hinweise),
+            rohe_projekte,
+            umsatzhistorie,
+            monatsgruppen,
+        ) = await gleichzeitig(
+            mit_meldung(
                 KundenRepository(self._client).laden_async(), "Kunden geladen", fortschritt
             ),
-            _mit_meldung(personen.laden_async(jahre=jahre), "Personen geladen", fortschritt),
-            _mit_meldung(
+            mit_meldung(personen.laden_async(jahre=jahre), "Personen geladen", fortschritt),
+            mit_meldung(
                 projekt_rohdaten(
                     self._client,
                     time_until=verbrauch_bis(stichtag),
@@ -165,7 +150,7 @@ class BestandRepository:
                 "Projekt-Rohdaten geladen",
                 fortschritt,
             ),
-            _mit_meldung(
+            mit_meldung(
                 UmsatzRepository(self._client).laden_async(
                     stichtag, abgeschlossene=abgeschlossene_monate
                 ),
@@ -184,7 +169,9 @@ class BestandRepository:
 
         # Erst hier treffen sie sich: die Projekte tragen Kunde und Person als Objekt.
         projekte = ProjektRepository(self._client, kunden, mitarbeiter)
-        geladene_projekte = projekte.abbilden(*rohe_projekte, mit_anteilen=mit_anteilen)
+        geladene_projekte, projekte_hinweise = projekte.abbilden(
+            *rohe_projekte, mit_anteilen=mit_anteilen
+        )
 
         return Bestand(
             stichtag=stichtag,
@@ -194,7 +181,7 @@ class BestandRepository:
             verbrauchsverlaeufe=VerbrauchsverlaufRepository.abbilden(
                 monatsgruppen, geladene_projekte
             ),
-            abbildungshinweise=personen.hinweise + projekte.hinweise,
+            abbildungshinweise=personen_hinweise + projekte_hinweise,
         )
 
     async def _monatsgruppen(
@@ -217,7 +204,7 @@ class BestandRepository:
         """
         if not geladen:
             return []
-        return await _mit_meldung(
+        return await mit_meldung(
             monatsverbrauch_rohdaten(
                 self._client,
                 stichtag=stichtag,

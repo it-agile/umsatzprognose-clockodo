@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping, Sequence
+    from typing import Any
 
     import pandas as pd
 
@@ -32,6 +33,7 @@ if TYPE_CHECKING:
     )
     from umsatzprognose.util import Monat
 
+import textwrap
 from dataclasses import dataclass
 
 import plotly.graph_objects as go
@@ -221,7 +223,7 @@ def umsatzverlauf(
     achsen(fig)
     fig.update_layout(bargap=0.3, bargroupgap=0.08, barcornerradius=4, barmode="group")
     fig.update_yaxes(tickformat=",.0f", ticksuffix=" €", rangemode="tozero")
-    fig.update_xaxes(tickangle=TICKWINKEL)
+    _tickangle_setzen(fig)
     return fig
 
 
@@ -236,6 +238,13 @@ def _legendeintrag(fig: go.Figure, name: str, farbe: str, *, deckkraft: float = 
         showlegend=True,
         hoverinfo="skip",
     )
+
+
+def _tickangle_setzen(fig: go.Figure, **kwargs: Any) -> None:
+    """Schliesst die x-Achse ab: :data:`TICKWINKEL` plus optionale weitere
+    ``update_xaxes``-Kwargs (z. B. ``categoryorder``/``categoryarray`` fuer eine feste
+    Monatsreihenfolge) - gemeinsamer letzter Schritt aller Diagramme mit Monatsachse."""
+    fig.update_xaxes(tickangle=TICKWINKEL, **kwargs)
 
 
 def _horizontale_legende(fig: go.Figure) -> None:
@@ -852,7 +861,7 @@ def gewinn_verlust_monatlich(
     achsen(fig)
     fig.update_layout(bargap=0.3, barcornerradius=4)
     fig.update_yaxes(tickformat=",.0f", ticksuffix=" €")
-    fig.update_xaxes(tickangle=TICKWINKEL)
+    _tickangle_setzen(fig)
     return fig
 
 
@@ -908,7 +917,7 @@ def gewinn_verlust_je_jahr(
     _horizontale_legende(fig)
     achsen(fig)
     fig.update_yaxes(tickformat=",.0f", ticksuffix=" €")
-    fig.update_xaxes(categoryorder="array", categoryarray=list(MONATSNAMEN), tickangle=TICKWINKEL)
+    _tickangle_setzen(fig, categoryorder="array", categoryarray=list(MONATSNAMEN))
     return fig
 
 
@@ -966,7 +975,7 @@ def umsatzrendite_kumuliert(
     _horizontale_legende(fig)
     achsen(fig)
     fig.update_yaxes(tickformat=",.1f", ticksuffix=" %")
-    fig.update_xaxes(categoryorder="array", categoryarray=list(MONATSNAMEN), tickangle=TICKWINKEL)
+    _tickangle_setzen(fig, categoryorder="array", categoryarray=list(MONATSNAMEN))
     return fig
 
 
@@ -1177,14 +1186,12 @@ def _gekuerzt(text: str, laenge: int) -> str:
 
 
 def _umgebrochen(text: str, breite: int = 80) -> str:
-    zeilen, zeile = [], ""
-    for wort in text.split():
-        if len(zeile) + len(wort) + 1 > breite:
-            zeilen.append(zeile)
-            zeile = wort
-        else:
-            zeile = f"{zeile} {wort}".strip()
-    zeilen.append(zeile)
+    """Zeilenumbruch fuer die Plotly-Annotation - ``break_long_words=False`` und
+    ``break_on_hyphens=False``, weil hier nur an Leerraum umgebrochen werden soll, nie
+    innerhalb eines (auch zusammengesetzten) Wortes."""
+    zeilen = textwrap.wrap(
+        " ".join(text.split()), width=breite, break_long_words=False, break_on_hyphens=False
+    )
     return "<br>".join(zeilen)
 
 
@@ -1270,7 +1277,7 @@ def anmeldungsverlauf(verlauf: Anmeldungsverlauf, *, hoehe: int = 420) -> go.Fig
     _horizontale_legende(fig)
     achsen(fig)
     fig.update_yaxes(rangemode="tozero")
-    fig.update_xaxes(tickangle=TICKWINKEL)
+    _tickangle_setzen(fig)
     return fig
 
 
@@ -1365,7 +1372,7 @@ def kurzarbeit_grafik(
         },
     )
     fig.update_yaxes(rangemode="tozero")
-    fig.update_xaxes(tickangle=TICKWINKEL)
+    _tickangle_setzen(fig)
     return fig
 
 

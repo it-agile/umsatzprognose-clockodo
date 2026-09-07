@@ -23,7 +23,7 @@ if TYPE_CHECKING:
 from collections import defaultdict
 from dataclasses import dataclass, field
 
-from .umsatzhistorie import fehlende_monate_hinweis
+from .umsatzhistorie import hinweise_mit_fehlenden_monaten
 
 
 @dataclass(frozen=True)
@@ -82,10 +82,10 @@ class Schulungsplan:
         niederschlaegt.
         """
         vorhanden = {t.schluessel for t in self._relevante_termine()}
-        fachlich = fehlende_monate_hinweis(
-            "Für diese Monate liegt keine Schulungsanmeldung vor - der Umsatz aus "
+        return hinweise_mit_fehlenden_monaten(
+            self.abbildungshinweise,
+            text="Für diese Monate liegt keine Schulungsanmeldung vor - der Umsatz aus "
             "Schulungsanmeldungen wird mit 0 angenommen",
-            horizontmonate,
-            vorhanden,
+            monate=horizontmonate,
+            vorhandene_monate=vorhanden,
         )
-        return self.abbildungshinweise + fachlich

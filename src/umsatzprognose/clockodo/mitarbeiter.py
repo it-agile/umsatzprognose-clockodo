@@ -73,13 +73,16 @@ class MitarbeiterRepository:
 
     def __init__(self, client: ClockodoClient) -> None:
         self._client = client
-        self.hinweise: tuple[Hinweis, ...] = ()
 
-    def laden(self, *, jahre: Sequence[int] = ()) -> dict[int, Mitarbeiter]:
+    def laden(
+        self, *, jahre: Sequence[int] = ()
+    ) -> tuple[dict[int, Mitarbeiter], tuple[Hinweis, ...]]:
         """Der Abruf, synchron - fuer den Aufruf ausserhalb eines Event-Loops."""
         return synchron(self.laden_async(jahre=jahre))
 
-    async def laden_async(self, *, jahre: Sequence[int] = ()) -> dict[int, Mitarbeiter]:
+    async def laden_async(
+        self, *, jahre: Sequence[int] = ()
+    ) -> tuple[dict[int, Mitarbeiter], tuple[Hinweis, ...]]:
         """Personen, Sollzeiten, Abwesenheiten und Feiertage gleichzeitig holen.
 
         Vier Zwecke, keine Abhaengigkeit zwischen ihnen: ``/v3/users`` nennt die
@@ -110,17 +113,18 @@ class MitarbeiterRepository:
         sollzeiten: list[TargetHourV1],
         abwesenheiten: list[AbsenceV4] | None = None,
         feiertage: list[UsersNonbusinessDayV2] | None = None,
-    ) -> dict[int, Mitarbeiter]:
-        """Alle vier Antworten zu Personen nach ID - setzt :attr:`hinweise`."""
+    ) -> tuple[dict[int, Mitarbeiter], tuple[Hinweis, ...]]:
+        """Alle vier Antworten zu Personen nach ID, zusammen mit den dabei entstandenen
+        Hinweisen - reine Funktion, kein Instanzzustand."""
         if abwesenheiten is None:
             abwesenheiten = []
         if feiertage is None:
             feiertage = []
 
-        arbeitszeiten = self._arbeitszeiten(sollzeiten)
+        arbeitszeiten, hinweise = self._arbeitszeiten(sollzeiten)
         abwesenheiten_je_person = self._abwesenheiten(abwesenheiten)
         feiertage_je_person = self._feiertage(feiertage)
-        return {
+        ergebnis = {
             int(person["id"]): Mitarbeiter(
                 id=int(person["id"]),
                 name=str(person["name"]) if person.get("name") else None,
@@ -132,8 +136,12 @@ class MitarbeiterRepository:
             for person in personen
             if person.get("id") is not None
         }
+        return ergebnis, hinweise
 
-    def _arbeitszeiten(self, sollzeiten: list[TargetHourV1]) -> dict[int, list[Wochenarbeitszeit]]:
+    @staticmethod
+    def _arbeitszeiten(
+        sollzeiten: list[TargetHourV1],
+    ) -> tuple[dict[int, list[Wochenarbeitszeit]], tuple[Hinweis, ...]]:
         je_person: dict[int, list[Wochenarbeitszeit]] = defaultdict(list)
         andere_typen: list[int] = []
 
@@ -155,15 +163,18 @@ class MitarbeiterRepository:
                 )
             )
 
-        if andere_typen:
-            self.hinweise = (
+        hinweise = (
+            (
                 Hinweis(
                     "Personen mit einer Sollarbeitszeit, die nicht wöchentlich "
                     "vereinbart ist - ihre Kapazität ist nicht hinterlegt",
                     tuple(sorted({str(typ) for typ in andere_typen})),
                 ),
             )
-        return je_person
+            if andere_typen
+            else ()
+        )
+        return je_person, hinweise
 
     def _abwesenheiten(self, abwesenheiten: list[AbsenceV4]) -> dict[int, list[Abwesenheit]]:
         """Rohe Abwesenheiten zu Personen - ungefiltert nach Typ und Status."""

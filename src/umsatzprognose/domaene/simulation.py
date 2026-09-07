@@ -90,8 +90,11 @@ def _traegt_noch_bei(projekt: Projekt, monat: Monat) -> bool:
 
 
 @dataclass(frozen=True)
-class MonteCarloPrognose(Prognose):
+class MonteCarloPrognose:
     """Das Ergebnis der Monte-Carlo-Simulation.
+
+    Erfuellt das :class:`~.prognose.Prognose`-Protocol strukturell, ohne davon zu
+    erben (siehe dessen Moduldocstring).
 
     Traegt nur fertig aggregierte Kennzahlen - die 10.000 Einzellaeufe selbst werden
     nicht aufgehoben, sie waeren als Speicherlast ohne Gegenwert. Eine dieser
@@ -139,40 +142,30 @@ class MonteCarloPrognose(Prognose):
         return dict(self._kapazitaet_je_projekt)
 
 
-def simulieren(
-    bestand: Bestand,
-    monate: int = 3,
-    *,
-    laeufe: int = 10000,
-    zufall: np.random.Generator | None = None,
-) -> Prognose:
-    """Die Monte-Carlo-Simulation.
+@dataclass(frozen=True)
+class _Aufbau:
+    """Die laufunabhaengigen Groessen vor der Monte-Carlo-Schleife - einmal aus den
+    Fachobjekten gelesen statt bei jedem der ``laeufe`` Laeufe neu, siehe
+    :func:`_aufbauen`."""
 
-    Aufgerufen ueber :meth:`~umsatzprognose.domaene.bestand.Bestand.simulieren`, nicht
-    direkt - der Bestand ist der fachlich richtige Einstieg (siehe dessen Docstring).
+    horizont: tuple[Monat, ...]
+    skalierung_monat1: float
+    startvolumen: np.ndarray
+    hat_satz: np.ndarray
+    saetze: np.ndarray
+    saetze_sicher: np.ndarray
+    anteil_matrix: np.ndarray
+    kapazitaet: np.ndarray
+    traegt_bei: np.ndarray
+    gebucht: np.ndarray
 
-    Args:
-        bestand: das Portfolio zum Stichtag.
-        monate: Laenge des Horizonts, 1 bis 3.
-        laeufe: Anzahl der Monte-Carlo-Laeufe, 10.000.
-        zufall: der Zufallsgenerator; wer den Startwert setzt, ist der Aufrufer - ein
-            Lauf muss wiederholbar sein (siehe
-            :meth:`~umsatzprognose.domaene.abrufquote.Abrufquotenverteilung.ziehen`).
-    """
-    if monate < 1:
-        raise ValueError(f"Der Horizont braucht mindestens einen Monat, nicht {monate}")
 
-    verteilung = bestand.abrufquotenverteilung()
-    scope = bestand.im_prognose_scope
-    if not verteilung.vorhanden or not scope:
-        return NochKeinePrognose()
-
-    zufall = zufall if zufall is not None else np.random.default_rng()
+def _aufbauen(bestand: Bestand, scope: tuple[Projekt, ...], monate: int) -> _Aufbau:
+    """Baut die laufunabhaengigen Arrays vor der Monte-Carlo-Schleife in
+    :func:`simulieren` (siehe Moduldocstring, Abschnitt Kapazitaeten)."""
     horizont = _horizontmonate(bestand.stichtag, monate)
     skalierung_monat1 = _anteil_verbleibender_arbeitstage(bestand.stichtag)
 
-    # Statische Groessen: einmal aus den Fachobjekten gelesen und als Array angelegt,
-    # nicht bei jedem der ``laeufe`` Laeufe neu.
     startvolumen = np.array([p.restvolumen_prognosewirksam or 0.0 for p in scope])
     saetze = np.array([p.effektiver_stundensatz or 0.0 for p in scope])
     # Satz 0 und ``None`` werden identisch behandelt: beide
@@ -231,70 +224,137 @@ def simulieren(
             if betrag:
                 gebucht[j, i] = betrag
 
-    # Lauf-Zustand: alle ``laeufe`` Restvolumen-Verlaeufe gleichzeitig als Array
-    # (laeufe, Projekte im Scope) statt 10.000 Dictionaries.
-    restvolumen = np.tile(startvolumen, (laeufe, 1))
-    monatssummen = np.zeros((len(horizont), laeufe))
-    kapazitaet_limitiert_je_lauf = np.zeros(laeufe, dtype=bool)
-    stunden_je_projekt = np.zeros((laeufe, len(scope)))
+    return _Aufbau(
+        horizont=horizont,
+        skalierung_monat1=skalierung_monat1,
+        startvolumen=startvolumen,
+        hat_satz=hat_satz,
+        saetze=saetze,
+        saetze_sicher=saetze_sicher,
+        anteil_matrix=anteil_matrix,
+        kapazitaet=kapazitaet,
+        traegt_bei=traegt_bei,
+        gebucht=gebucht,
+    )
 
-    for index, _monat in enumerate(horizont):
-        skalierung = skalierung_monat1 if index == 0 else 1.0
 
-        # Schritt 1+2: gewuenschter Verbrauch je Lauf und Projekt, auf das
-        # Restvolumen begrenzt; Schritt 3 (Euro -> Stunden), wo ein Satz das erlaubt.
-        gilt = traegt_bei[index] & (restvolumen > 0)
-        quote = verteilung.ziehen_array((laeufe, len(scope)), zufall) * skalierung
-        gewuenscht_euro = np.where(gilt, np.minimum(restvolumen, quote * restvolumen), 0.0)
-        gewuenscht_stunden = np.where(hat_satz, gewuenscht_euro / saetze_sicher, 0.0)
-
-        # Schritt 3 (Aufteilung) + Schritt 4 (Kapazitaetsdeckel je Person, ueber alle
-        # ihre Projekte). Die Ruecktransformation von der Kuerzung je Person auf einen
-        # Kuerzungsfaktor je Projekt geht ueber dieselbe Matrix, nur transponiert - so
-        # bleibt der (Laeufe, Projekte, Personen)-Tensor, den eine dritte Achse
-        # bräuchte, ungebaut (siehe Modul-Docstring).
-        bedarf_je_person = gewuenscht_stunden @ anteil_matrix
-        verfuegbar = kapazitaet[index] * skalierung
-        ueberschritten = bedarf_je_person > verfuegbar
-        bedarf_sicher = np.where(bedarf_je_person > 0, bedarf_je_person, 1.0)
-        faktor_je_person = np.where(ueberschritten, verfuegbar / bedarf_sicher, 1.0)
-        kapazitaet_limitiert_je_lauf |= ueberschritten.any(axis=1)
-
-        effektiver_faktor = faktor_je_person @ anteil_matrix.T
-        gelieferte_stunden = gewuenscht_stunden * effektiver_faktor
-
-        # Schritt 5+6: zurueck in Euro, Untergrenze aus bereits Gebuchtem, Restvolumen
-        # fortschreiben.
-        geliefert = np.where(hat_satz, gelieferte_stunden * saetze, gewuenscht_euro)
-        tatsaechlich = np.maximum(geliefert, gebucht[index])
-        restvolumen = np.maximum(0.0, restvolumen - tatsaechlich)
-        monatssummen[index] = tatsaechlich.sum(axis=1)
-        # Aus ``tatsaechlich`` zurueckgerechnet statt ``gelieferte_stunden`` verwendet:
-        # nur ``tatsaechlich`` kennt die Untergrenze aus bereits Gebuchtem
-        # (``gebucht[index]`` oben), damit bleiben Euro- und Stunden-Sicht auf
-        # demselben Betrag konsistent.
-        stunden_je_projekt += np.where(hat_satz, tatsaechlich / saetze_sicher, 0.0)
-
+def _ergebnis(
+    aufbau: _Aufbau,
+    scope: tuple[Projekt, ...],
+    *,
+    laeufe: int,
+    monatssummen: np.ndarray,
+    kapazitaet_limitiert_je_lauf: np.ndarray,
+    stunden_je_projekt: np.ndarray,
+) -> MonteCarloPrognose:
+    """Baut die :class:`MonteCarloPrognose` aus den Ergebnis-Arrays der Monte-Carlo-
+    Schleife in :func:`simulieren`."""
     laufsummen = monatssummen.sum(axis=0)
 
     monatswerte = {
         niveau: tuple(
-            float(np.quantile(monatssummen[index], 1.0 - niveau)) for index in range(len(horizont))
+            float(np.quantile(monatssummen[index], 1.0 - niveau))
+            for index in range(len(aufbau.horizont))
         )
         for niveau in KONFIDENZNIVEAUS
     }
     summe = {niveau: float(np.quantile(laufsummen, 1.0 - niveau)) for niveau in KONFIDENZNIVEAUS}
-    gebucht_je_monat = tuple(float(x) for x in gebucht.sum(axis=1))
+    gebucht_je_monat = tuple(float(x) for x in aufbau.gebucht.sum(axis=1))
     kapazitaet_je_projekt = {
         p.id: float(np.quantile(stunden_je_projekt[:, i], 0.5)) for i, p in enumerate(scope)
     }
 
     return MonteCarloPrognose(
-        _horizontmonate=horizont,
+        _horizontmonate=aufbau.horizont,
         laeufe=laeufe,
         _monatswerte=monatswerte,
         _summe=summe,
         _gebucht=gebucht_je_monat,
         _kapazitaet_limitierend_anteil=float(kapazitaet_limitiert_je_lauf.sum() / laeufe),
         _kapazitaet_je_projekt=kapazitaet_je_projekt,
+    )
+
+
+def simulieren(
+    bestand: Bestand,
+    monate: int = 3,
+    *,
+    laeufe: int = 10000,
+    zufall: np.random.Generator | None = None,
+) -> Prognose:
+    """Die Monte-Carlo-Simulation.
+
+    Aufgerufen ueber :meth:`~umsatzprognose.domaene.bestand.Bestand.simulieren`, nicht
+    direkt - der Bestand ist der fachlich richtige Einstieg (siehe dessen Docstring).
+
+    Args:
+        bestand: das Portfolio zum Stichtag.
+        monate: Laenge des Horizonts, 1 bis 3.
+        laeufe: Anzahl der Monte-Carlo-Laeufe, 10.000.
+        zufall: der Zufallsgenerator; wer den Startwert setzt, ist der Aufrufer - ein
+            Lauf muss wiederholbar sein (siehe
+            :meth:`~umsatzprognose.domaene.abrufquote.Abrufquotenverteilung.ziehen`).
+    """
+    if monate < 1:
+        raise ValueError(f"Der Horizont braucht mindestens einen Monat, nicht {monate}")
+
+    verteilung = bestand.abrufquotenverteilung()
+    scope = bestand.im_prognose_scope
+    if not verteilung.vorhanden or not scope:
+        return NochKeinePrognose()
+
+    zufall = zufall if zufall is not None else np.random.default_rng()
+    aufbau = _aufbauen(bestand, scope, monate)
+
+    # Lauf-Zustand: alle ``laeufe`` Restvolumen-Verlaeufe gleichzeitig als Array
+    # (laeufe, Projekte im Scope) statt 10.000 Dictionaries.
+    restvolumen = np.tile(aufbau.startvolumen, (laeufe, 1))
+    monatssummen = np.zeros((len(aufbau.horizont), laeufe))
+    kapazitaet_limitiert_je_lauf = np.zeros(laeufe, dtype=bool)
+    stunden_je_projekt = np.zeros((laeufe, len(scope)))
+
+    for index, _monat in enumerate(aufbau.horizont):
+        skalierung = aufbau.skalierung_monat1 if index == 0 else 1.0
+
+        # Schritt 1+2: gewuenschter Verbrauch je Lauf und Projekt, auf das
+        # Restvolumen begrenzt; Schritt 3 (Euro -> Stunden), wo ein Satz das erlaubt.
+        gilt = aufbau.traegt_bei[index] & (restvolumen > 0)
+        quote = verteilung.ziehen_array((laeufe, len(scope)), zufall) * skalierung
+        gewuenscht_euro = np.where(gilt, np.minimum(restvolumen, quote * restvolumen), 0.0)
+        gewuenscht_stunden = np.where(aufbau.hat_satz, gewuenscht_euro / aufbau.saetze_sicher, 0.0)
+
+        # Schritt 3 (Aufteilung) + Schritt 4 (Kapazitaetsdeckel je Person, ueber alle
+        # ihre Projekte). Die Ruecktransformation von der Kuerzung je Person auf einen
+        # Kuerzungsfaktor je Projekt geht ueber dieselbe Matrix, nur transponiert - so
+        # bleibt der (Laeufe, Projekte, Personen)-Tensor, den eine dritte Achse
+        # bräuchte, ungebaut (siehe Modul-Docstring).
+        bedarf_je_person = gewuenscht_stunden @ aufbau.anteil_matrix
+        verfuegbar = aufbau.kapazitaet[index] * skalierung
+        ueberschritten = bedarf_je_person > verfuegbar
+        bedarf_sicher = np.where(bedarf_je_person > 0, bedarf_je_person, 1.0)
+        faktor_je_person = np.where(ueberschritten, verfuegbar / bedarf_sicher, 1.0)
+        kapazitaet_limitiert_je_lauf |= ueberschritten.any(axis=1)
+
+        effektiver_faktor = faktor_je_person @ aufbau.anteil_matrix.T
+        gelieferte_stunden = gewuenscht_stunden * effektiver_faktor
+
+        # Schritt 5+6: zurueck in Euro, Untergrenze aus bereits Gebuchtem, Restvolumen
+        # fortschreiben.
+        geliefert = np.where(aufbau.hat_satz, gelieferte_stunden * aufbau.saetze, gewuenscht_euro)
+        tatsaechlich = np.maximum(geliefert, aufbau.gebucht[index])
+        restvolumen = np.maximum(0.0, restvolumen - tatsaechlich)
+        monatssummen[index] = tatsaechlich.sum(axis=1)
+        # Aus ``tatsaechlich`` zurueckgerechnet statt ``gelieferte_stunden`` verwendet:
+        # nur ``tatsaechlich`` kennt die Untergrenze aus bereits Gebuchtem
+        # (``gebucht[index]`` oben), damit bleiben Euro- und Stunden-Sicht auf
+        # demselben Betrag konsistent.
+        stunden_je_projekt += np.where(aufbau.hat_satz, tatsaechlich / aufbau.saetze_sicher, 0.0)
+
+    return _ergebnis(
+        aufbau,
+        scope,
+        laeufe=laeufe,
+        monatssummen=monatssummen,
+        kapazitaet_limitiert_je_lauf=kapazitaet_limitiert_je_lauf,
+        stunden_je_projekt=stunden_je_projekt,
     )

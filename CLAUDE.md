@@ -27,6 +27,34 @@ uvx tox -e web                 # Web-Frontend lokal starten (siehe Abschnitt "We
 `mypy-notebooks`) läuft bei `uvx tox` ohne weitere Angabe; `jupyter` und `web` sind
 zusätzliche Umgebungen und laufen nur mit `-e jupyter` bzw. `-e web`.
 
+## Code-Qualität – Prüf-Checkliste
+
+Bei Code-Reviews und beim Schreiben neuen Codes in `src/`, `tests/`, `scripts/` und
+`notebooks/` gilt diese Checkliste, gemessen an den eigenen Ansprüchen des Projekts
+(siehe die Architektur-Kernregeln unten), nicht an einem generischen Idealbild –
+ein Muster, das eine bereits dokumentierte, bewusste Entscheidung umsetzt (z. B.
+`frozen=True`-Dataclasses, das `Prognose`-ABC-Paar), ist damit keine Verletzung:
+
+- **Funktionale Ansätze bevorzugen**: reine Funktionen statt unnötigem Klassenzustand,
+  Comprehensions/Generatorausdrücke statt imperativer Schleifen, wo das klarer ist.
+- **`typing.Protocol` für Interface-Logik statt konkreter Kopplung oder ABCs**,
+  zusammen mit der mypy-Typprüfung (`uv run mypy` bzw. `uvx tox -e mypy`/
+  `mypy-notebooks`) als Absicherung.
+- **Composition over inheritance** als generelles Prinzip – Vererbung nur, wo sie
+  echten Mehrwert gegenüber Zusammensetzen aus Attributen/Parametern bietet.
+- **SOLID**: SRP (ein Änderungsgrund je Klasse/Modul), OCP (Erweiterung ohne
+  Änderung), LSP (abgeleitete Klassen echt substituierbar), ISP (schlanke,
+  klientenspezifische Schnittstellen), DIP (Abhängigkeit auf Abstraktionen, nicht auf
+  Konkretes).
+- **Packaging-Prinzipien** für den Zuschnitt der sechs Pakete plus `util/` (siehe
+  Abschnitt „Aufbau"): REP (Wiederverwendungsgranularität = Veröffentlichungsgranularität),
+  CCP (gemeinsam geänderte Klassen im selben Paket), CRP (gemeinsam benutzte Klassen im
+  selben Paket), ADP (azyklischer Abhängigkeitsgraph zwischen den Paketen), SDP
+  (Abhängigkeiten zeigen Richtung Stabilität), SAP (Abstraktheit steigt mit
+  Stabilität).
+- **Code vereinfachen** – nur echte Vereinfachungen ohne Verhaltensänderung, keine
+  kosmetischen Vorlieben.
+
 ## Aufbau
 
 Sechs Pakete mit genau einer erlaubten Abhängigkeitsrichtung. `clockodo/`,
@@ -338,10 +366,13 @@ Erlaubt bleibt die Beschreibung des **Verhaltens**: Envelope, Feldnamen, Typen,
 Sonderfälle, Statuscodes, Grenzen der API. Testfixtures bilden die **Struktur** der
 echten Antwort nach, mit frei erfundenen IDs, Namen und Beträgen. Notebooks werden
 **ohne Zellausgaben** committet – durchgesetzt durch den Pre-Commit-Hook
-`.githooks/pre-commit` (reine Standardbibliothek, kein zusätzliches Paket): er entfernt
-Ausgaben und Ausführungszähler aus staged `.ipynb`-Dateien, staged sie neu und bricht
-den ersten Commit-Versuch ab, damit die Bereinigung sichtbar bleibt statt unbemerkt
-unter den Ursprungsstand zu rutschen. Aktivierung ist pro Klon nötig (kein Git-Standard):
+`.githooks/pre-commit`: sein Notebook-Teil (reine Standardbibliothek, kein
+zusätzliches Paket) entfernt Ausgaben und Ausführungszähler aus staged
+`.ipynb`-Dateien. Derselbe Hook formatiert zusätzlich staged `.py`-Dateien mit
+`ruff format` (über `uv run`, braucht also das `ruff`-Extra) – beide Teile staged
+veränderte Dateien neu und brechen den ersten Commit-Versuch ab, damit die
+Bereinigung/Formatierung sichtbar bleibt statt unbemerkt unter den Ursprungsstand zu
+rutschen. Aktivierung ist pro Klon nötig (kein Git-Standard):
 `git config core.hooksPath .githooks`.
 
 ## Was das Modul fachlich tut

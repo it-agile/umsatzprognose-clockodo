@@ -52,6 +52,20 @@ def fehlende_monate_hinweis(
     return (Hinweis(text, tuple(f"{MONATSNAMEN[monat - 1]} {jahr}" for jahr, monat in fehlend)),)
 
 
+def hinweise_mit_fehlenden_monaten(
+    abbildungshinweise: tuple[Hinweis, ...],
+    *,
+    text: str,
+    monate: Sequence[Monat],
+    vorhandene_monate: Iterable[Monat],
+) -> tuple[Hinweis, ...]:
+    """Abbildungshinweise plus ein :func:`fehlende_monate_hinweis` - der gemeinsame
+    Kern hinter ``Kostenplan.hinweise()`` und ``Schulungsplan.hinweise()`` (siehe dort
+    fuer den jeweils eigenen ``text`` und die jeweils eigene Bestimmung von
+    ``vorhandene_monate``)."""
+    return abbildungshinweise + fehlende_monate_hinweis(text, monate, vorhandene_monate)
+
+
 @dataclass(frozen=True)
 class Monatsumsatz:
     """Umsatz und geleistete Stunden eines Kalendermonats."""

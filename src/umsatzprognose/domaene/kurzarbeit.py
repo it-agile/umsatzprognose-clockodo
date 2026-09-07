@@ -32,9 +32,19 @@ if TYPE_CHECKING:
 
     from umsatzprognose.util import Monat
 
+from collections import defaultdict
 from dataclasses import dataclass, field
 
 from .hinweis import Hinweis
+
+# Die sechs sich gegenseitig ausschliessenden Kategorien einer Person in einem Monat
+# (Spec 5.3/5.6) - Schluessel fuer :func:`_kategorie` und die Sammlung in :func:`bewerten`.
+_NICHT_BESTIMMBAR = "nicht_bestimmbar"
+_AUSGESCHLOSSEN = "ausgeschlossen"
+_KURZARBEITSFAEHIG = "kurzarbeitsfaehig"
+_SCHEITERT_BEIDE = "scheitert_beide"
+_SCHEITERT_INTERN = "scheitert_intern"
+_SCHEITERT_UEBERSTUNDEN = "scheitert_ueberstunden"
 
 
 @dataclass(frozen=True)
@@ -163,6 +173,28 @@ class Kurzarbeitsbewertung:
         return None if quote is None else quote >= self.schwellenwerte.quote_organisation
 
 
+def _kategorie(
+    person: Personenmonat, *, rollenzuordnung: Rollenzuordnung, schwellenwerte: Schwellenwerte
+) -> str:
+    """Die Kategorie einer Person in einem Monat (Spec 5.3/5.6) - eine reine
+    Klassifikationsfunktion ohne Zaehlerzustand, siehe :func:`bewerten`."""
+    if person.ueberstundenstand is None or person.alle_arbeitsstunden == 0:
+        return _NICHT_BESTIMMBAR
+    if rollenzuordnung.ausgeschlossen(person.name):
+        return _AUSGESCHLOSSEN
+
+    anteil_intern = person.interne_stunden / person.alle_arbeitsstunden
+    erfuellt_intern = anteil_intern >= schwellenwerte.anteil_interne_arbeit
+    erfuellt_ueberstunden = person.ueberstundenstand < schwellenwerte.ueberstunden_stunden
+    if erfuellt_intern and erfuellt_ueberstunden:
+        return _KURZARBEITSFAEHIG
+    if not erfuellt_intern and not erfuellt_ueberstunden:
+        return _SCHEITERT_BEIDE
+    if not erfuellt_intern:
+        return _SCHEITERT_INTERN
+    return _SCHEITERT_UEBERSTUNDEN
+
+
 def bewerten(
     personenmonate: Sequence[Personenmonat],
     *,
@@ -177,36 +209,19 @@ def bewerten(
     rollenzuordnung = rollenzuordnung if rollenzuordnung is not None else Rollenzuordnung()
     schwellenwerte = schwellenwerte if schwellenwerte is not None else Schwellenwerte()
     jahr, monat_nr = monat
-    anzahl_kurzarbeitsfaehig = 0
-    anzahl_scheitert_intern = 0
-    anzahl_scheitert_ueberstunden = 0
-    anzahl_scheitert_beide = 0
-    ausgeschlossene_ids: list[str] = []
+
+    ids_je_kategorie: dict[str, list[str]] = defaultdict(list)
     unklassifizierte_ids: list[str] = []
-    nicht_bestimmbare_ids: list[str] = []
-
     for person in personenmonate:
-        if person.ueberstundenstand is None or person.alle_arbeitsstunden == 0:
-            nicht_bestimmbare_ids.append(str(person.mitarbeiter_id))
-            continue
-
-        if person.unklassifizierte_stunden > 0:
+        kategorie = _kategorie(
+            person, rollenzuordnung=rollenzuordnung, schwellenwerte=schwellenwerte
+        )
+        ids_je_kategorie[kategorie].append(str(person.mitarbeiter_id))
+        if kategorie != _NICHT_BESTIMMBAR and person.unklassifizierte_stunden > 0:
             unklassifizierte_ids.append(str(person.mitarbeiter_id))
 
-        anteil_intern = person.interne_stunden / person.alle_arbeitsstunden
-        erfuellt_intern = anteil_intern >= schwellenwerte.anteil_interne_arbeit
-        erfuellt_ueberstunden = person.ueberstundenstand < schwellenwerte.ueberstunden_stunden
-
-        if rollenzuordnung.ausgeschlossen(person.name):
-            ausgeschlossene_ids.append(str(person.mitarbeiter_id))
-        elif erfuellt_intern and erfuellt_ueberstunden:
-            anzahl_kurzarbeitsfaehig += 1
-        elif not erfuellt_intern and not erfuellt_ueberstunden:
-            anzahl_scheitert_beide += 1
-        elif not erfuellt_intern:
-            anzahl_scheitert_intern += 1
-        else:
-            anzahl_scheitert_ueberstunden += 1
+    ausgeschlossene_ids = ids_je_kategorie[_AUSGESCHLOSSEN]
+    nicht_bestimmbare_ids = ids_je_kategorie[_NICHT_BESTIMMBAR]
 
     hinweise = tuple(
         Hinweis(text, tuple(betroffene))
@@ -234,10 +249,10 @@ def bewerten(
         jahr=jahr,
         monat=monat_nr,
         schwellenwerte=schwellenwerte,
-        anzahl_kurzarbeitsfaehig=anzahl_kurzarbeitsfaehig,
-        anzahl_scheitert_interne_arbeit=anzahl_scheitert_intern,
-        anzahl_scheitert_ueberstunden=anzahl_scheitert_ueberstunden,
-        anzahl_scheitert_beide=anzahl_scheitert_beide,
+        anzahl_kurzarbeitsfaehig=len(ids_je_kategorie[_KURZARBEITSFAEHIG]),
+        anzahl_scheitert_interne_arbeit=len(ids_je_kategorie[_SCHEITERT_INTERN]),
+        anzahl_scheitert_ueberstunden=len(ids_je_kategorie[_SCHEITERT_UEBERSTUNDEN]),
+        anzahl_scheitert_beide=len(ids_je_kategorie[_SCHEITERT_BEIDE]),
         anzahl_ausgeschlossen=len(ausgeschlossene_ids),
         anzahl_nicht_bestimmbar=len(nicht_bestimmbare_ids),
         hinweise=hinweise,

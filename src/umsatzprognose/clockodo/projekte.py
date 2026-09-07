@@ -100,7 +100,6 @@ class ProjektRepository:
         self._client = client
         self._kunden = kunden or {}
         self._mitarbeiter = mitarbeiter or {}
-        self.hinweise: tuple[Hinweis, ...] = ()
 
     def laden(
         self,
@@ -108,7 +107,7 @@ class ProjektRepository:
         mit_anteilen: bool = True,
         time_since: str = HISTORIE_VON,
         time_until: str | None = None,
-    ) -> tuple[Projekt, ...]:
+    ) -> tuple[tuple[Projekt, ...], tuple[Hinweis, ...]]:
         """Der Abruf, synchron - fuer den Aufruf ausserhalb eines Event-Loops."""
         return synchron(
             self.laden_async(
@@ -122,7 +121,7 @@ class ProjektRepository:
         mit_anteilen: bool = True,
         time_since: str = HISTORIE_VON,
         time_until: str | None = None,
-    ) -> tuple[Projekt, ...]:
+    ) -> tuple[tuple[Projekt, ...], tuple[Hinweis, ...]]:
         """Alle Projekte der Anlage - auch die inaktiven.
 
         Gefiltert wird nicht hier, sondern in der Domaene
@@ -146,8 +145,9 @@ class ProjektRepository:
         gruppen: list[EntryGroupV2],
         *,
         mit_anteilen: bool = True,
-    ) -> tuple[Projekt, ...]:
-        """Stammdaten und Verbrauch zu Projekten verrechnen - setzt :attr:`hinweise`.
+    ) -> tuple[tuple[Projekt, ...], tuple[Hinweis, ...]]:
+        """Stammdaten und Verbrauch zu Projekten verrechnen, zusammen mit den dabei
+        entstandenen Hinweisen - reine Funktion, kein Instanzzustand.
 
         Getrennt vom Abruf, weil die Kunden- und Personennamen aus zwei weiteren
         Antworten stammen: so koennen alle Abrufe gleichzeitig laufen und erst hier
@@ -159,9 +159,10 @@ class ProjektRepository:
             self._projekt(rohprojekt, verbrauch, mit_anteilen=mit_anteilen)
             for rohprojekt in projekte
         )
-        self._melde_verbrauch_ohne_projekt(gruppen)
-        self._melde_verbrauch_ohne_stammdaten(verbrauch, gebaut)
-        return gebaut
+        hinweise = self._verbrauch_ohne_projekt_hinweis(
+            gruppen
+        ) + self._verbrauch_ohne_stammdaten_hinweis(verbrauch, gebaut)
+        return gebaut, hinweise
 
     def _projekt(
         self,
@@ -220,13 +221,14 @@ class ProjektRepository:
             eintrag["sub_groups"].extend(gruppe.get("sub_groups") or [])
         return verbrauch
 
-    def _melde_verbrauch_ohne_projekt(self, gruppen: list[EntryGroupV2]) -> None:
+    @staticmethod
+    def _verbrauch_ohne_projekt_hinweis(gruppen: list[EntryGroupV2]) -> tuple[Hinweis, ...]:
         ohne_projekt = [g for g in gruppen if int(g["group"]) == 0]
         umsatz = sum(float(g.get("revenue") or 0.0) for g in ohne_projekt)
         zeit = sum(float(g.get("duration") or 0.0) for g in ohne_projekt) / SEKUNDEN_JE_STUNDE
         if not (umsatz or zeit):
-            return
-        self.hinweise += (
+            return ()
+        return (
             Hinweis(
                 f"Auf einen Kunden ohne Projekt gebucht: {stunden(zeit)} und "
                 f"{euro(umsatz)} - beides gehört keinem Projekt und damit keiner "
@@ -234,18 +236,20 @@ class ProjektRepository:
             ),
         )
 
-    def _melde_verbrauch_ohne_stammdaten(
-        self, verbrauch: Mapping[int, dict[str, Any]], projekte: tuple[Projekt, ...]
-    ) -> None:
+    @staticmethod
+    def _verbrauch_ohne_stammdaten_hinweis(
+        verbrauch: Mapping[int, dict[str, Any]], projekte: tuple[Projekt, ...]
+    ) -> tuple[Hinweis, ...]:
         bekannt = {p.id for p in projekte}
         verwaist = sorted(set(verbrauch) - bekannt)
-        if verwaist:
-            self.hinweise += (
-                Hinweis(
-                    "Gebuchter Umsatz auf Projekte, die es in den Stammdaten nicht gibt",
-                    tuple(str(waise) for waise in verwaist),
-                ),
-            )
+        if not verwaist:
+            return ()
+        return (
+            Hinweis(
+                "Gebuchter Umsatz auf Projekte, die es in den Stammdaten nicht gibt",
+                tuple(str(waise) for waise in verwaist),
+            ),
+        )
 
 
 def projekt_id(rohprojekt: Mapping[str, Any]) -> int:

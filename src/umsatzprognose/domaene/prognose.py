@@ -8,40 +8,44 @@ Simulation selbst,
 Bandbreite; beide werden ueber
 :meth:`umsatzprognose.domaene.bestand.Bestand.simulieren` erreicht, das je nach Datenlage
 zwischen ihnen entscheidet.
+
+``Prognose`` ist ein :class:`~typing.Protocol`, keine gemeinsame Basisklasse: beide
+Implementierungen erfuellen es rein strukturell (von mypy geprueft), ohne davon zu
+erben - nirgends im Code wird per ``isinstance`` gegen ``Prognose`` geprueft, eine
+nominale Vererbungsbeziehung waere hier nur ballast.
 """
 
 from __future__ import annotations
 
-from abc import ABC, abstractmethod
 from dataclasses import dataclass
+from typing import Protocol
 
 # die Bandbreite wird auf diesen Niveaus ausgewiesen.
 KONFIDENZNIVEAUS = (0.95, 0.85, 0.50)
 
 
-class Prognose(ABC):
+class Prognose(Protocol):
     """Das Ergebnis eines Prognoselaufs ueber den Bestand."""
 
     @property
-    @abstractmethod
     def vorhanden(self) -> bool:
         """Ob belastbare Zahlen vorliegen."""
+        ...
 
     @property
-    @abstractmethod
     def begruendung(self) -> str:
         """Eine Zeile fuer die Darstellung - was die Prognose sagt oder warum nicht."""
+        ...
 
-    @abstractmethod
     def horizontmonate(self) -> tuple[tuple[int, int], ...]:
         """Die Monate des Horizonts (Jahr, Monat), in der Reihenfolge von :meth:`monatswerte`
         und :meth:`gebucht`."""
+        ...
 
-    @abstractmethod
     def monatswerte(self) -> dict[float, list[float]]:
         """Je Konfidenzniveau ein Umsatzwert pro Monat des Horizonts."""
+        ...
 
-    @abstractmethod
     def gebucht(self) -> list[float]:
         """Bereits gebuchter Betrag je Horizontmonat.
 
@@ -49,20 +53,20 @@ class Prognose(ABC):
         nicht von dem danach trennen (Monatsgruppierung ohne Tagesgrenze), und was vor
         dem Stichtag schon feststand, zeigt die Historie getrennt.
         """
+        ...
 
-    @abstractmethod
     def summe(self) -> dict[float, float]:
         """Je Konfidenzniveau der Umsatz ueber den gesamten Horizont."""
+        ...
 
-    @abstractmethod
     def kapazitaet_limitierend_anteil(self) -> float:
         """Anteil der Laeufe, in denen die Kapazitaet der Engpass war.
 
         Die Groesse unterscheidet einen Nachfrage- von einem Kapazitaetsengpass und ist
         ein geforderter Output, nicht ein Nebenprodukt.
         """
+        ...
 
-    @abstractmethod
     def kapazitaet_je_projekt(self) -> dict[int, float]:
         """Median der ueber den Horizont gelieferten Stunden je Projekt-ID.
 
@@ -71,11 +75,15 @@ class Prognose(ABC):
         Stundensatz (Pauschalleistungen) tragen 0 bei, weil fuer sie kein
         Stundenbedarf ableitbar ist.
         """
+        ...
 
 
 @dataclass(frozen=True)
-class NochKeinePrognose(Prognose):
-    """Es gibt keine Prognose, und zwar aus einem benennbaren Grund."""
+class NochKeinePrognose:
+    """Es gibt keine Prognose, und zwar aus einem benennbaren Grund.
+
+    Erfuellt :class:`Prognose` strukturell, ohne davon zu erben (siehe Moduldocstring).
+    """
 
     fehlt: str = (
         "Für den Bestand gibt es keine Bandbreite: entweder liegt kein Projekt im "

@@ -221,26 +221,25 @@ class Mitarbeiter:
         """
         erster_tag = date(jahr, monat, 1)
         letzter_tag = date(jahr, monat, monthrange(jahr, monat)[1])
+        alle_tage = [
+            erster_tag + timedelta(days=i) for i in range((letzter_tag - erster_tag).days + 1)
+        ]
 
+        zaehlende_abwesenheiten = [a for a in self.abwesenheiten if a.zaehlt_als_kapazitaetsabzug]
         belegte_tage = {
             f.datum for f in self.feiertage if f.datum.year == jahr and f.datum.month == monat
+        } | {
+            tag
+            for tag in alle_tage
+            for abwesenheit in zaehlende_abwesenheiten
+            if abwesenheit.beginnt <= tag <= abwesenheit.endet
         }
-        for abwesenheit in self.abwesenheiten:
-            if not abwesenheit.zaehlt_als_kapazitaetsabzug:
-                continue
-            start = max(abwesenheit.beginnt, erster_tag)
-            ende = min(abwesenheit.endet, letzter_tag)
-            tag = start
-            while tag <= ende:
-                belegte_tage.add(tag)
-                tag += timedelta(days=1)
 
         stunden = 0.0
-        tag = erster_tag
-        while tag <= letzter_tag:
-            if tag not in belegte_tage:
-                arbeitszeit = self.wochenarbeitszeit(tag)
-                if arbeitszeit is not None:
-                    stunden += arbeitszeit.stunden_je_wochentag[tag.weekday()]
-            tag += timedelta(days=1)
+        for tag in alle_tage:
+            if tag in belegte_tage:
+                continue
+            arbeitszeit = self.wochenarbeitszeit(tag)
+            if arbeitszeit is not None:
+                stunden += arbeitszeit.stunden_je_wochentag[tag.weekday()]
         return stunden

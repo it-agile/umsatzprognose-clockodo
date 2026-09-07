@@ -149,6 +149,105 @@ class _Stoppuhr:
         self.dauer = timedelta(seconds=time.perf_counter() - self._start)
 
 
+async def _bestand_laden(
+    *,
+    stichtag: date,
+    mit_anteilen: bool,
+    mit_verbrauchsverlauf: bool,
+    abgeschlossene_monate: int,
+    horizont_monate: int,
+    melden: Fortschritt,
+    beginnt: Fortschritt,
+) -> tuple[Bestand, timedelta]:
+    beginnt("Bestand")
+    with _Stoppuhr() as t:
+        bestand = await BestandRepository.mit_automatischen_zugangsdaten().laden_async(
+            stichtag=stichtag,
+            mit_anteilen=mit_anteilen,
+            mit_verbrauchsverlauf=mit_verbrauchsverlauf,
+            abgeschlossene_monate=abgeschlossene_monate,
+            horizont_monate=horizont_monate,
+            cache_fortschritt=melden,
+            fortschritt=melden,
+        )
+    melden(_bestand_bericht(bestand, t.dauer))
+    return bestand, t.dauer
+
+
+async def _kostenplan_laden(
+    kosten_repo: KostenRepository, bestand: Bestand, *, horizont_monate: int, melden: Fortschritt
+) -> tuple[Kostenplan, timedelta]:
+    with _Stoppuhr() as t:
+        kostenplan = await asyncio.to_thread(
+            kosten_repo.laden,
+            stichtag=bestand.stichtag,
+            horizont_monate=horizont_monate,
+            historie_monate=_historie_monate(bestand, anzahl=None),
+            fortschritt=melden,
+        )
+    melden(_kostenplan_bericht(kostenplan, t.dauer))
+    return kostenplan, t.dauer
+
+
+async def _auslastung_laden(
+    bestand: Bestand, *, auslastung_monate: int, melden: Fortschritt
+) -> tuple[tuple[Auslastungsmonat, ...], timedelta]:
+    with _Stoppuhr() as t:
+        auslastung = await AuslastungRepository.mit_automatischen_zugangsdaten().laden_async(
+            _aktive_mitarbeiter(bestand), stichtag=bestand.stichtag, monate=auslastung_monate
+        )
+    melden(_auslastung_bericht(auslastung, t.dauer))
+    return auslastung, t.dauer
+
+
+async def _bestand_und_abhaengige_laden(
+    *,
+    stichtag: date,
+    mit_anteilen: bool,
+    mit_verbrauchsverlauf: bool,
+    abgeschlossene_monate: int,
+    horizont_monate: int,
+    auslastung_monate: int,
+    kosten_repo: KostenRepository,
+    melden: Fortschritt,
+    beginnt: Fortschritt,
+) -> tuple[Bestand, timedelta, Kostenplan, timedelta, tuple[Auslastungsmonat, ...], timedelta]:
+    """Bestand, danach (echt davon abhaengig) Kostenplan und Auslastung gleichzeitig -
+    siehe Docstring von :meth:`Dashboard.laden_async` fuer die Begruendung der
+    Reihenfolge."""
+    bestand, bestand_dauer = await _bestand_laden(
+        stichtag=stichtag,
+        mit_anteilen=mit_anteilen,
+        mit_verbrauchsverlauf=mit_verbrauchsverlauf,
+        abgeschlossene_monate=abgeschlossene_monate,
+        horizont_monate=horizont_monate,
+        melden=melden,
+        beginnt=beginnt,
+    )
+
+    beginnt("Kostenplan")
+    beginnt("Auslastung")
+    (kostenplan, kostenplan_dauer), (auslastung, auslastung_dauer) = await gleichzeitig(
+        _kostenplan_laden(kosten_repo, bestand, horizont_monate=horizont_monate, melden=melden),
+        _auslastung_laden(bestand, auslastung_monate=auslastung_monate, melden=melden),
+    )
+    return bestand, bestand_dauer, kostenplan, kostenplan_dauer, auslastung, auslastung_dauer
+
+
+async def _schulungsplan_laden(
+    *, stichtag: date, horizont_monate: int, melden: Fortschritt, beginnt: Fortschritt
+) -> tuple[Schulungsplan, timedelta]:
+    beginnt("Schulungsplan")
+    with _Stoppuhr() as t:
+        schulungsplan = await asyncio.to_thread(
+            SchulungenRepository.mit_automatischen_zugangsdaten().laden,
+            stichtag=stichtag,
+            horizont_monate=horizont_monate,
+        )
+    melden(_schulungsplan_bericht(schulungsplan, t.dauer))
+    return schulungsplan, t.dauer
+
+
 @dataclass(frozen=True)
 class Ladedauern:
     """Wie lange der Abruf jedes einzelnen Repositories gedauert hat.
@@ -288,97 +387,33 @@ class Dashboard:
             stichtag, kosten_repo.fruehestes_konfiguriertes_jahr
         )
 
-        def _melden(text: str) -> None:
+        def melden(text: str) -> None:
             if fortschritt is not None:
                 fortschritt(text)
 
-        def _beginnt(name: str) -> None:
+        def beginnt(name: str) -> None:
             if schritt_beginnt is not None:
                 schritt_beginnt(name)
-
-        # Schulungsplan haengt an nichts weiter als stichtag/horizont_monate und startet
-        # deshalb sofort neben Bestand, statt erst auf ihn zu warten. Kostenplan und
-        # Auslastung haengen dagegen echt von bestand ab (Kostenplan ueber dessen
-        # Stichtag/Umsatzhistorie, Auslastung ueber dessen Mitarbeiter) und koennen darum
-        # erst starten, wenn Bestand fertig ist - dann aber gleichzeitig miteinander, egal
-        # ob Schulungsplan zu dem Zeitpunkt schon fertig ist oder noch laeuft.
-        # SchulungenRepository.laden() und kosten_repo.laden() sind synchrone
-        # Google-Sheets-Aufrufe (siehe Moduldocstring von
-        # umsatzprognose.google_sheets.client), keine Coroutinen - asyncio.to_thread()
-        # gibt ihnen dafuer je einen eigenen Thread, waehrend Bestand und Auslastung als
-        # echte Coroutinen nebenher laufen.
-
-        async def _bestand_und_abhaengige_laden() -> tuple[
-            Bestand, timedelta, Kostenplan, timedelta, tuple[Auslastungsmonat, ...], timedelta
-        ]:
-            _beginnt("Bestand")
-            with _Stoppuhr() as t:
-                bestand = await BestandRepository.mit_automatischen_zugangsdaten().laden_async(
-                    stichtag=stichtag,
-                    mit_anteilen=mit_anteilen,
-                    mit_verbrauchsverlauf=mit_verbrauchsverlauf,
-                    abgeschlossene_monate=abgeschlossene_monate,
-                    horizont_monate=horizont_monate,
-                    cache_fortschritt=_melden,
-                    fortschritt=_melden,
-                )
-            bestand_dauer = t.dauer
-            _melden(_bestand_bericht(bestand, bestand_dauer))
-
-            _beginnt("Kostenplan")
-            _beginnt("Auslastung")
-
-            async def _kostenplan_laden() -> tuple[Kostenplan, timedelta]:
-                with _Stoppuhr() as t:
-                    kostenplan = await asyncio.to_thread(
-                        kosten_repo.laden,
-                        stichtag=bestand.stichtag,
-                        horizont_monate=horizont_monate,
-                        historie_monate=_historie_monate(bestand, anzahl=None),
-                        fortschritt=_melden,
-                    )
-                _melden(_kostenplan_bericht(kostenplan, t.dauer))
-                return kostenplan, t.dauer
-
-            async def _auslastung_laden() -> tuple[tuple[Auslastungsmonat, ...], timedelta]:
-                with _Stoppuhr() as t:
-                    auslastung = (
-                        await AuslastungRepository.mit_automatischen_zugangsdaten().laden_async(
-                            _aktive_mitarbeiter(bestand),
-                            stichtag=bestand.stichtag,
-                            monate=auslastung_monate,
-                        )
-                    )
-                _melden(_auslastung_bericht(auslastung, t.dauer))
-                return auslastung, t.dauer
-
-            (kostenplan, kostenplan_dauer), (auslastung, auslastung_dauer) = await gleichzeitig(
-                _kostenplan_laden(), _auslastung_laden()
-            )
-            return (
-                bestand,
-                bestand_dauer,
-                kostenplan,
-                kostenplan_dauer,
-                auslastung,
-                auslastung_dauer,
-            )
-
-        async def _schulungsplan_laden() -> tuple[Schulungsplan, timedelta]:
-            _beginnt("Schulungsplan")
-            with _Stoppuhr() as t:
-                schulungsplan = await asyncio.to_thread(
-                    SchulungenRepository.mit_automatischen_zugangsdaten().laden,
-                    stichtag=stichtag,
-                    horizont_monate=horizont_monate,
-                )
-            _melden(_schulungsplan_bericht(schulungsplan, t.dauer))
-            return schulungsplan, t.dauer
 
         (
             (bestand, bestand_dauer, kostenplan, kostenplan_dauer, auslastung, auslastung_dauer),
             (schulungsplan, schulungsplan_dauer),
-        ) = await gleichzeitig(_bestand_und_abhaengige_laden(), _schulungsplan_laden())
+        ) = await gleichzeitig(
+            _bestand_und_abhaengige_laden(
+                stichtag=stichtag,
+                mit_anteilen=mit_anteilen,
+                mit_verbrauchsverlauf=mit_verbrauchsverlauf,
+                abgeschlossene_monate=abgeschlossene_monate,
+                horizont_monate=horizont_monate,
+                auslastung_monate=auslastung_monate,
+                kosten_repo=kosten_repo,
+                melden=melden,
+                beginnt=beginnt,
+            ),
+            _schulungsplan_laden(
+                stichtag=stichtag, horizont_monate=horizont_monate, melden=melden, beginnt=beginnt
+            ),
+        )
 
         ladedauern = Ladedauern(
             bestand=bestand_dauer,

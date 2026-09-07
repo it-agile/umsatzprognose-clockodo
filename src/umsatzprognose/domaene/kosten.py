@@ -27,7 +27,7 @@ if TYPE_CHECKING:
 from collections import defaultdict
 from dataclasses import dataclass, field
 
-from .umsatzhistorie import fehlende_monate_hinweis
+from .umsatzhistorie import hinweise_mit_fehlenden_monaten
 
 
 @dataclass(frozen=True)
@@ -122,9 +122,10 @@ class Kostenplan:
         niederschlaegt.
         """
         vorhanden = {p.schluessel for p in self.posten}
-        fachlich = fehlende_monate_hinweis(
-            "Für diese Monate liegt keine Kostenprognose vor - die Kosten werden mit 0 angenommen",
-            monate,
-            vorhanden,
+        return hinweise_mit_fehlenden_monaten(
+            self.abbildungshinweise,
+            text="Für diese Monate liegt keine Kostenprognose vor - die Kosten werden mit "
+            "0 angenommen",
+            monate=monate,
+            vorhandene_monate=vorhanden,
         )
-        return self.abbildungshinweise + fachlich

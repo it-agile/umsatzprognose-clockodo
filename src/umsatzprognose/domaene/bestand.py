@@ -168,50 +168,14 @@ class Bestand:
         """Was zur geschaetzten Verteilung und zu den Buchungen im Horizont zu sagen ist."""
         if not self.verbrauchsverlaeufe:
             return ()
-
-        gefunden: list[Hinweis] = []
-        verteilung = self.abrufquotenverteilung()
-        if not verteilung.vorhanden:
-            gefunden.append(
-                Hinweis(
-                    "Die Abrufquote-Verteilung konnte nicht geschätzt werden - kein "
-                    "Projekt-Monat mit offenem Restvolumen zu Monatsbeginn"
-                )
+        return tuple(
+            hinweis
+            for hinweis in (
+                _abrufquote_hinweis(self.abrufquotenverteilung()),
+                _kuenftige_buchungen_hinweis(self.verbrauchsverlaeufe, self.stichtag),
             )
-        else:
-            gefunden.append(
-                Hinweis(
-                    f"Die Abrufquote-Verteilung ist aus {verteilung.anzahl} Projekt-Monaten "
-                    f"geschätzt (Median {verteilung.median:.2f}, "
-                    f"{verteilung.anteil_ohne_abruf:.0%} davon ohne Abruf). Das Budget ist "
-                    "nur in seinem heutigen Stand bekannt - nachträglich erhöhte Budgets "
-                    "lassen ältere Quoten zu niedrig ausfallen"
-                )
-            )
-
-        # Buchungen in Monaten nach dem Stichtagsmonat sind die Untergrenze
-        # der Bandbreite und kein Verbrauch - sie sind vom Restvolumen nicht abgezogen.
-        kuenftig = {
-            verlauf.projekt: summe
-            for verlauf in self.verbrauchsverlaeufe
-            if (
-                summe := sum(
-                    monat.umsatz
-                    for monat in verlauf.monate
-                    if monat.schluessel > (self.stichtag.year, self.stichtag.month)
-                )
-            )
-        }
-        if kuenftig:
-            gefunden.append(
-                Hinweis(
-                    "Nach dem Stichtagsmonat datierte Buchungen über "
-                    f"{euro(sum(kuenftig.values()))} - sie sind Untergrenze der Bandbreite "
-                    "und nicht Verbrauch",
-                    tuple(projekt.bezeichnung for projekt in kuenftig),
-                )
-            )
-        return tuple(gefunden)
+            if hinweis is not None
+        )
 
     def abrufquotenverteilung(self) -> Abrufquotenverteilung:
         """Die empirische Verteilung der Abrufquote.
@@ -264,3 +228,46 @@ def _hinweis_wenn(betroffene_projekte: Iterable[Projekt], text: str) -> Hinweis 
     """Ein :class:`Hinweis` fuer ``betroffene_projekte``, ``None`` wenn die Liste leer ist."""
     betroffene = tuple(p.name if p.name else str(p.id) for p in betroffene_projekte)
     return Hinweis(text, betroffene) if betroffene else None
+
+
+def _abrufquote_hinweis(verteilung: Abrufquotenverteilung) -> Hinweis:
+    """Immer vorhanden, sobald ueberhaupt Verbrauchsverlaeufe existieren (siehe
+    :meth:`Bestand._hinweise_zur_abrufquote`) - Inhalt je nachdem, ob die Verteilung
+    geschaetzt werden konnte."""
+    if not verteilung.vorhanden:
+        return Hinweis(
+            "Die Abrufquote-Verteilung konnte nicht geschätzt werden - kein "
+            "Projekt-Monat mit offenem Restvolumen zu Monatsbeginn"
+        )
+    return Hinweis(
+        f"Die Abrufquote-Verteilung ist aus {verteilung.anzahl} Projekt-Monaten "
+        f"geschätzt (Median {verteilung.median:.2f}, "
+        f"{verteilung.anteil_ohne_abruf:.0%} davon ohne Abruf). Das Budget ist "
+        "nur in seinem heutigen Stand bekannt - nachträglich erhöhte Budgets "
+        "lassen ältere Quoten zu niedrig ausfallen"
+    )
+
+
+def _kuenftige_buchungen_hinweis(
+    verbrauchsverlaeufe: Iterable[Verbrauchsverlauf], stichtag: date
+) -> Hinweis | None:
+    """Buchungen in Monaten nach dem Stichtagsmonat sind die Untergrenze der Bandbreite
+    und kein Verbrauch - sie sind vom Restvolumen nicht abgezogen."""
+    kuenftig = {
+        verlauf.projekt: summe
+        for verlauf in verbrauchsverlaeufe
+        if (
+            summe := sum(
+                monat.umsatz
+                for monat in verlauf.monate
+                if monat.schluessel > (stichtag.year, stichtag.month)
+            )
+        )
+    }
+    if not kuenftig:
+        return None
+    return Hinweis(
+        f"Nach dem Stichtagsmonat datierte Buchungen über {euro(sum(kuenftig.values()))} - "
+        "sie sind Untergrenze der Bandbreite und nicht Verbrauch",
+        tuple(projekt.bezeichnung for projekt in kuenftig),
+    )

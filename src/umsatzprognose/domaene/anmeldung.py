@@ -37,7 +37,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping, Sequence
+    from collections.abc import Callable, Iterable, Mapping, Sequence
     from datetime import date
 
     from umsatzprognose.util import Monat
@@ -58,6 +58,18 @@ def _kategorie_zuordnung(kategorien: Kategorisierung) -> dict[str, str]:
     """Kehrt eine Kategorie-zu-Schulungstypen-Zuordnung zu einer Schulungstyp-zu-Kategorie-
     Zuordnung um - fuer den Nachschlag je Anmeldung."""
     return {typ: kategorie for kategorie, typen in kategorien.items() for typ in typen}
+
+
+def _teilnehmerzahl_je[K](
+    anmeldungen: Iterable[Anmeldung], schluessel: Callable[[Anmeldung], K]
+) -> dict[K, int]:
+    """Teilnehmerzahl aufsummiert je ``schluessel(a)`` - der gemeinsame Kern hinter
+    :meth:`Anmeldungsverlauf.summe_je_typ`, :meth:`~.je_monat` und
+    :meth:`~.je_monat_und_typ`."""
+    summen: Counter[K] = Counter()
+    for a in anmeldungen:
+        summen[schluessel(a)] += a.teilnehmerzahl
+    return summen
 
 
 @dataclass(frozen=True)
@@ -102,10 +114,7 @@ class Anmeldungsverlauf:
         """Teilnehmerzahl je Schulungstyp, ueber den gesamten abgedeckten Zeitraum -
         der Drilldown hinter der Gesamtzahl aus :meth:`je_monat`, siehe
         :func:`~umsatzprognose.darstellung.tabellen.anmeldungstabelle`."""
-        summen: Counter[str] = Counter()
-        for a in self.anmeldungen:
-            summen[a.schulungstyp] += a.teilnehmerzahl
-        return summen
+        return _teilnehmerzahl_je(self.anmeldungen, lambda a: a.schulungstyp)
 
     def je_monat_und_kategorie(self, kategorien: Kategorisierung) -> dict[str, dict[Monat, int]]:
         """Teilnehmerzahl je Monat, gruppiert nach den uebergebenen Kategorien - der
@@ -129,18 +138,13 @@ class Anmeldungsverlauf:
 
     def je_monat(self) -> dict[Monat, int]:
         """Summe der Teilnehmerzahl je Monat, ueber alle Schulungstypen hinweg."""
-        summen: Counter[Monat] = Counter()
-        for a in self.anmeldungen:
-            summen[a.schluessel] += a.teilnehmerzahl
-        return summen
+        return _teilnehmerzahl_je(self.anmeldungen, lambda a: a.schluessel)
 
     def je_monat_und_typ(self, schulungstyp: str) -> dict[Monat, int]:
         """Teilnehmerzahl je Monat fuer einen einzelnen Schulungstyp."""
-        summen: Counter[Monat] = Counter()
-        for a in self.anmeldungen:
-            if a.schulungstyp == schulungstyp:
-                summen[a.schluessel] += a.teilnehmerzahl
-        return summen
+        return _teilnehmerzahl_je(
+            (a for a in self.anmeldungen if a.schulungstyp == schulungstyp), lambda a: a.schluessel
+        )
 
     def letzte(self, *, monate: int, stichtag: date) -> Anmeldungsverlauf:
         """Nur die ``monate`` Kalendermonate bis einschliesslich des Stichtagsmonats.

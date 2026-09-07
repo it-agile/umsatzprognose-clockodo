@@ -147,13 +147,14 @@ def umsatztabelle(
             beschriftung = f"{MONATSNAMEN[monat - 1]} {jahr}"
             if zeilen and zeilen[-1]["Monat"] == beschriftung:
                 summe_wert = basis + wert + schulungsbetrag
-                zeilen[-1]["Prognostiziert"] = euro(wert)
-                zeilen[-1]["Schulungsanmeldungen"] = (
-                    euro(schulungsbetrag) if schulungsbetrag else ""
-                )
-                zeilen[-1]["Summe"] = euro(summe_wert)
-                zeilen[-1]["Kosten"] = euro(kosten) if kosten is not None else ""
-                zeilen[-1]["Gewinn"] = euro(summe_wert - kosten) if kosten is not None else ""
+                zeilen[-1] = {
+                    **zeilen[-1],
+                    "Prognostiziert": euro(wert),
+                    "Schulungsanmeldungen": euro(schulungsbetrag) if schulungsbetrag else "",
+                    "Summe": euro(summe_wert),
+                    "Kosten": euro(kosten) if kosten is not None else "",
+                    "Gewinn": euro(summe_wert - kosten) if kosten is not None else "",
+                }
             else:
                 summe_wert = wert + schulungsbetrag
                 zeilen.append(

@@ -56,7 +56,7 @@ def test_sollarbeitszeit_kommt_nicht_aus_default_target_hours(benutzer_antwort, 
     # default_target_hours ist ein Schalter (hier False bei der aktiven Person). Die
     # Stunden stehen in /targethours, mit Gueltigkeitszeitraum.
     client, _ = client_mit_routen({"/v3/users": benutzer_antwort, "/targethours": sollzeit_antwort})
-    personen = MitarbeiterRepository(client).laden()
+    personen, _ = MitarbeiterRepository(client).laden()
 
     person = personen[301]
     assert person.aktiv
@@ -73,7 +73,7 @@ def test_ohne_jahre_bleiben_abwesenheiten_und_feiertage_ungeladen(
     client, requests = client_mit_routen(
         {"/v3/users": benutzer_antwort, "/targethours": sollzeit_antwort}
     )
-    personen = MitarbeiterRepository(client).laden()
+    personen, _ = MitarbeiterRepository(client).laden()
 
     assert personen[301].abwesenheiten == ()
     assert personen[301].feiertage == ()
@@ -93,7 +93,7 @@ def test_abwesenheiten_werden_der_person_zugeordnet(
             "/v2/usersNonbusinessDays": feiertage_antwort,
         }
     )
-    personen = MitarbeiterRepository(client).laden(jahre=[2026])
+    personen, _ = MitarbeiterRepository(client).laden(jahre=[2026])
 
     abwesenheiten = personen[301].abwesenheiten
     assert len(abwesenheiten) == 2
@@ -118,7 +118,7 @@ def test_feiertage_werden_der_person_zugeordnet(
             "/v2/usersNonbusinessDays": feiertage_antwort,
         }
     )
-    personen = MitarbeiterRepository(client).laden(jahre=[2026])
+    personen, _ = MitarbeiterRepository(client).laden(jahre=[2026])
 
     feiertage = personen[301].feiertage
     assert len(feiertage) == 2
@@ -160,8 +160,8 @@ def test_projekte_bekommen_kunde_verbrauch_und_anteile(
         }
     )
     kunden = KundenRepository(client).laden()
-    personen = MitarbeiterRepository(client).laden()
-    projekte = ProjektRepository(client, kunden, personen).laden()
+    personen, _ = MitarbeiterRepository(client).laden()
+    projekte, _ = ProjektRepository(client, kunden, personen).laden()
 
     gefunden = {p.id: p for p in projekte}
     assert len(gefunden) == 3  # auch inaktive Projekte werden geladen
@@ -187,8 +187,8 @@ def test_person_ohne_stammdatensatz_verliert_ihre_stunden_nicht(
             "/v2/entrygroups": entrygroup_antwort,
         }
     )
-    personen = MitarbeiterRepository(client).laden()
-    projekte = ProjektRepository(client, {}, personen).laden()
+    personen, _ = MitarbeiterRepository(client).laden()
+    projekte, _ = ProjektRepository(client, {}, personen).laden()
 
     coaching = next(p for p in projekte if p.id == 101)
     unbekannt = next(a for a in coaching.anteile if a.mitarbeiter.id == 399)
@@ -204,11 +204,11 @@ def test_buchungen_ohne_projekt_werden_nicht_zu_projekt_null(projekt_antwort, en
         {"/v4/projects": projekt_antwort, "/v2/entrygroups": entrygroup_antwort}
     )
     repository = ProjektRepository(client)
-    projekte = repository.laden()
+    projekte, hinweise = repository.laden()
 
     assert 0 not in {p.id for p in projekte}
-    assert any("ohne Projekt" in h.text for h in repository.hinweise)
-    assert any("6,0 h" in h.text for h in repository.hinweise)
+    assert any("ohne Projekt" in h.text for h in hinweise)
+    assert any("6,0 h" in h.text for h in hinweise)
 
 
 def test_verbrauch_auf_unbekanntes_projekt_wird_gemeldet(entrygroup_antwort):
@@ -216,16 +216,16 @@ def test_verbrauch_auf_unbekanntes_projekt_wird_gemeldet(entrygroup_antwort):
         {"/v4/projects": {"data": []}, "/v2/entrygroups": entrygroup_antwort}
     )
     repository = ProjektRepository(client)
-    repository.laden()
+    _, hinweise = repository.laden()
 
-    assert any("Stammdaten" in h.text for h in repository.hinweise)
+    assert any("Stammdaten" in h.text for h in hinweise)
 
 
 def test_ohne_anteile_wird_der_verbrauch_trotzdem_gelesen(projekt_antwort, entrygroup_antwort):
     client, _ = client_mit_routen(
         {"/v4/projects": projekt_antwort, "/v2/entrygroups": entrygroup_antwort}
     )
-    projekte = ProjektRepository(client).laden(mit_anteilen=False)
+    projekte, _ = ProjektRepository(client).laden(mit_anteilen=False)
 
     coaching = next(p for p in projekte if p.id == 101)
     assert coaching.anteile == ()
@@ -250,7 +250,7 @@ def test_monatsverbrauch_wird_je_projekt_und_chronologisch_abgebildet(
     projekt_antwort, projekt_monats_antwort
 ):
     client, requests = client_mit_routen({"/v2/entrygroups": projekt_monats_antwort})
-    projekte = ProjektRepository(client).abbilden(projekt_antwort["data"], [])
+    projekte, _ = ProjektRepository(client).abbilden(projekt_antwort["data"], [])
     verlaeufe = VerbrauchsverlaufRepository(client).laden(
         projekte, stichtag=STICHTAG, horizont_monate=3
     )
