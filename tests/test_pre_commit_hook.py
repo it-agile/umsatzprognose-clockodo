@@ -1,10 +1,11 @@
-"""Tests fuer den pre-commit-Hook, der Zellausgaben aus Notebooks entfernt.
+"""Tests fuer den pre-commit-Hook, der Zellausgaben aus Notebooks entfernt und staged
+Python-Dateien mit ``ruff format`` formatiert.
 
 `.githooks/pre-commit` hat keine `.py`-Endung (Git verlangt den exakten Dateinamen
 ``pre-commit``) und wird deshalb ueber ``importlib`` statt eines normalen ``import``
-geladen. Die Git-Interaktion (``staged_notebooks()``, ``main()``) wird hier nicht
+geladen. Die Git-Interaktion (``staged_dateien()``, ``main()``) wird hier nicht
 getestet - dafuer bräuchte es ein echtes Git-Repository als Fixture; geprueft wird die
-eigentliche Kernlogik, ``zellausgaben_entfernen()``.
+eigentliche Kernlogik, ``zellausgaben_entfernen()`` und ``python_dateien_formatieren()``.
 """
 
 from __future__ import annotations
@@ -84,6 +85,29 @@ def test_bereits_saubere_datei_bleibt_unveraendert(tmp_path):
 
     assert veraendert is False
     assert pfad.read_text(encoding="utf-8") == inhalt
+
+
+def test_python_dateien_formatieren_formatiert_unformatierten_code(tmp_path):
+    pfad = tmp_path / "modul.py"
+    pfad.write_text("x=1\n", encoding="utf-8")
+
+    veraendert = _hook.python_dateien_formatieren([str(pfad)])
+
+    assert veraendert == [str(pfad)]
+    assert pfad.read_text(encoding="utf-8") == "x = 1\n"
+
+
+def test_python_dateien_formatieren_laesst_bereits_formatierten_code_unveraendert(tmp_path):
+    pfad = tmp_path / "modul.py"
+    pfad.write_text("x = 1\n", encoding="utf-8")
+
+    veraendert = _hook.python_dateien_formatieren([str(pfad)])
+
+    assert veraendert == []
+
+
+def test_python_dateien_formatieren_ohne_dateien_tut_nichts():
+    assert _hook.python_dateien_formatieren([]) == []
 
 
 def test_markdown_zellen_bleiben_unangetastet(tmp_path):
