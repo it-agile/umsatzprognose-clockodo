@@ -437,6 +437,15 @@ wiederholt einen 429 deshalb bis zu `RATE_LIMIT_MAX_VERSUCHE`-mal nach
 die sonst exakt zusammen erneut anfragen würden), bevor doch ein `ClockodoError`
 geworfen wird.
 
+**Ein 504 (Gateway Timeout) wird ebenfalls wiederholt, kürzer und seltener als ein
+429.** Bei großen, ungecachten `/v2/entrygroups`-Abfragen über mehrere Jahre (z. B.
+`entrygroups_je_monat` ohne Verlaufscache) antwortet Clockodo vereinzelt mit einer
+HTML-Fehlerseite statt JSON, weil das Aggregieren zu lange dauert - kein dauerhafter
+Zustand wie bei der Ratenbegrenzung, deshalb `GATEWAY_TIMEOUT_MAX_VERSUCHE`-mal nach nur
+`GATEWAY_TIMEOUT_WARTEZEIT_SEKUNDEN` (plus derselben Streuung). Beide Wiederholungsfälle
+laufen über dieselbe Fallunterscheidung, `_wartezeit_vor_wiederholung()` in
+`client.py`.
+
 Abweichungen von `spec/clocodo-api.yaml`, verifiziert über echte Antworten:
 
 - `EntryGroupV2.group` ist als `string` deklariert, kommt aber bei `group == 0` und bei

@@ -100,6 +100,16 @@ RATE_LIMIT_STATUS = 429
 RATE_LIMIT_MAX_VERSUCHE = 4
 RATE_LIMIT_WARTEZEIT_SEKUNDEN = 15.0
 
+# Ein 504 (Gateway Timeout, HTML statt JSON im Body) kommt bei Clockodo vereinzelt bei
+# grossen, unkomprimierten /v2/entrygroups-Abfragen vor (z. B. entrygroups_je_monat
+# ueber mehrere Jahre) - kein dauerhafter Fehler, sondern ein einzelner Aussetzer beim
+# Aggregieren. GATEWAY_TIMEOUT_WARTEZEIT_SEKUNDEN ist deshalb kuerzer als bei
+# RATE_LIMIT_WARTEZEIT_SEKUNDEN: es geht nicht um ein festes Zeitfenster, sondern nur
+# darum, dem naechsten Versuch eine kurze Verschnaufpause zu geben.
+GATEWAY_TIMEOUT_STATUS = 504
+GATEWAY_TIMEOUT_MAX_VERSUCHE = 3
+GATEWAY_TIMEOUT_WARTEZEIT_SEKUNDEN = 5.0
+
 SEKUNDEN_JE_STUNDE = 3600.0
 
 # Untere Grenze des Verbrauchsfensters. ``revenue_kumuliert`` ist der
@@ -334,6 +344,18 @@ class ClockodoError(RuntimeError):
     """
 
 
+def _wartezeit_vor_wiederholung(status_code: int, versuch: int) -> float | None:
+    """Wartezeit vor dem naechsten Versuch, oder ``None`` wenn nicht wiederholt wird.
+
+    ``versuch`` zaehlt den gerade abgeschlossenen Versuch mit (der erste ist 1).
+    """
+    if status_code == RATE_LIMIT_STATUS and versuch < RATE_LIMIT_MAX_VERSUCHE:
+        return RATE_LIMIT_WARTEZEIT_SEKUNDEN + random.uniform(0, 5)
+    if status_code == GATEWAY_TIMEOUT_STATUS and versuch < GATEWAY_TIMEOUT_MAX_VERSUCHE:
+        return GATEWAY_TIMEOUT_WARTEZEIT_SEKUNDEN + random.uniform(0, 5)
+    return None
+
+
 class ClockodoClient:
     """Lesender Zugriff auf die Endpunkte, die die Prognose braucht.
 
@@ -359,11 +381,11 @@ class ClockodoClient:
     async def get(self, path: str, params: Mapping[str, Any] | None = None) -> Any:
         """Ein GET gegen die API. Wirft bei HTTP-Fehlern einen :class:`ClockodoError`.
 
-        Ein 429 (Ratenbegrenzung, siehe :data:`RATE_LIMIT_STATUS`) ist kein
-        :class:`ClockodoError`, sondern ein Hinweis, kurz zu warten - bis zu
-        :data:`RATE_LIMIT_MAX_VERSUCHE` Mal wird deshalb nach
-        :data:`RATE_LIMIT_WARTEZEIT_SEKUNDEN` (plus etwas Streuung) wiederholt, bevor
-        doch ein :class:`ClockodoError` geworfen wird.
+        Ein 429 (Ratenbegrenzung, siehe :data:`RATE_LIMIT_STATUS`) oder ein 504
+        (Gateway Timeout, siehe :data:`GATEWAY_TIMEOUT_STATUS`) ist kein
+        :class:`ClockodoError`, sondern ein Hinweis, kurz zu warten und erneut zu
+        versuchen - siehe :func:`_wartezeit_vor_wiederholung`. Bleibt es beim Fehler,
+        wird doch ein :class:`ClockodoError` geworfen.
         """
         versuch = 0
         while True:
@@ -375,9 +397,10 @@ class ClockodoClient:
                 transport=self._transport,
             ) as client:
                 response = await client.get(path, params=dict(params) if params else None)
-            if response.status_code != RATE_LIMIT_STATUS or versuch >= RATE_LIMIT_MAX_VERSUCHE:
+            wartezeit = _wartezeit_vor_wiederholung(response.status_code, versuch)
+            if wartezeit is None:
                 break
-            await asyncio.sleep(RATE_LIMIT_WARTEZEIT_SEKUNDEN + random.uniform(0, 5))
+            await asyncio.sleep(wartezeit)
         if response.is_error:
             raise ClockodoError(
                 f"{response.status_code} fuer {response.request.url}\n{response.text[:1000]}"
