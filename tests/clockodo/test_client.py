@@ -15,6 +15,7 @@ import pytest
 from conftest import CREDS, client_mit
 from umsatzprognose.clockodo import ClockodoClient, ClockodoCredentials, ClockodoError, cache
 from umsatzprognose.clockodo.client import (
+    GATEWAY_TIMEOUT_MAX_VERSUCHE,
     RATE_LIMIT_MAX_VERSUCHE,
     EntryGroupV2,
     entrygroups_zusammenfuehren,
@@ -227,6 +228,35 @@ def test_get_wirft_nach_ausgeschoepften_versuchen_weiterhin_den_clockodoerror(mo
         synchron(client.entrygroups(["projects"]))
 
     assert len(requests) == RATE_LIMIT_MAX_VERSUCHE
+
+
+def test_get_wiederholt_bei_gateway_timeout_und_liefert_dann_die_antwort(monkeypatch):
+    monkeypatch.setattr("umsatzprognose.clockodo.client.asyncio.sleep", _ohne_wartezeit)
+    aufrufe = {"anzahl": 0}
+
+    def handler(request):
+        aufrufe["anzahl"] += 1
+        if aufrufe["anzahl"] < 2:
+            return httpx2.Response(504, text="<html>Gateway Timeout</html>")
+        return httpx2.Response(200, json={"data": [{"id": 1}]})
+
+    client, requests = client_mit(handler)
+    projekte, _paging = synchron(client.projects())
+
+    assert projekte == [{"id": 1}]
+    assert len(requests) == 2
+
+
+def test_get_wirft_nach_ausgeschoepften_versuchen_weiterhin_den_gateway_timeout(monkeypatch):
+    monkeypatch.setattr("umsatzprognose.clockodo.client.asyncio.sleep", _ohne_wartezeit)
+    client, requests = client_mit(
+        lambda _: httpx2.Response(504, text="<html>Gateway Timeout</html>")
+    )
+
+    with pytest.raises(ClockodoError, match="504"):
+        synchron(client.entrygroups(["projects"]))
+
+    assert len(requests) == GATEWAY_TIMEOUT_MAX_VERSUCHE
 
 
 def test_zu_lange_anwendungskennung_wird_abgelehnt():
