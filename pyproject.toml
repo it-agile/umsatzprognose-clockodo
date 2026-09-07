@@ -77,7 +77,10 @@ allowlist_externals = [ "pytest" ]
 commands = [["pytest", { replace = "posargs", default = [], extend = true }]]
 
 [tool.tox.env.coverage]
-extras = [ "coverage", "web", "bericht" ]
+# "ruff" zusaetzlich zu coverage/web/bericht: tests/test_pre_commit_hook.py ruft ueber
+# den Hook `uv run --active ruff format` auf und braucht ruff deshalb in genau der
+# Umgebung, in der pytest laeuft (siehe .githooks/pre-commit).
+extras = [ "coverage", "ruff", "web", "bericht" ]
 allowlist_externals = [ "coverage" ]
 commands = [
     ["coverage", "erase"],

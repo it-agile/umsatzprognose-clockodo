@@ -369,7 +369,9 @@ echten Antwort nach, mit frei erfundenen IDs, Namen und Beträgen. Notebooks wer
 `.githooks/pre-commit`: sein Notebook-Teil (reine Standardbibliothek, kein
 zusätzliches Paket) entfernt Ausgaben und Ausführungszähler aus staged
 `.ipynb`-Dateien. Derselbe Hook formatiert zusätzlich staged `.py`-Dateien mit
-`ruff format` (über `uv run`, braucht also das `ruff`-Extra) – beide Teile staged
+`ruff format` (direkt, wenn schon auf PATH, sonst über `uv run ruff` – braucht also
+das `ruff`-Extra in der jeweils aktiven Umgebung, deshalb auch Teil von
+`[tool.tox.env.coverage]`) – beide Teile staged
 veränderte Dateien neu und brechen den ersten Commit-Versuch ab, damit die
 Bereinigung/Formatierung sichtbar bleibt statt unbemerkt unter den Ursprungsstand zu
 rutschen. Aktivierung ist pro Klon nötig (kein Git-Standard):

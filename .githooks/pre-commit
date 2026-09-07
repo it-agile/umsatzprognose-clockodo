@@ -7,10 +7,15 @@ Werte über Diagramme oder Tabellen als Zellausgabe ins öffentliche Repository
 gelangen - siehe CLAUDE.md, Abschnitt "Keine gelesenen Werte im Repository". Er ist
 reine Standardbibliothek, kein zusätzliches Paket nötig - dieser Teil muss auch ohne
 `uv sync --extra notebook` laufen. Der Formatierungs-Teil braucht dagegen `ruff`
-(`uv sync --extra ruff` bzw. `--extra dev`) und ruft es ueber `uv run` auf, statt ein
-lokal aktiviertes venv vorauszusetzen - ein Git-Hook laeuft nicht zwangslaeufig mit
-aktiviertem venv im PATH, `uv run` findet die Projektumgebung trotzdem ueber
-`pyproject.toml`/`uv.lock`.
+(`uv sync --extra ruff` bzw. `--extra dev`): steht es schon direkt auf PATH (etwa in
+einem aktivierten venv oder einem tox-Environment, in dem dieser Hook-Teil selbst
+getestet wird, siehe `[tool.tox.env.coverage]`), wird es direkt aufgerufen; sonst
+faellt der Hook auf `uv run ruff` zurueck, das die Projektumgebung selbst ueber
+`pyproject.toml`/`uv.lock` aufloest - fuer den Fall eines Git-Hooks ohne aktiviertes
+venv im PATH. Ein zuerst versuchtes `uv run --active` (das genau dieselbe
+Umgebungswahl adressieren soll) scheiterte an einer zu alten lokal installierten
+uv-Version, die das Flag noch nicht kennt - der direkte PATH-Aufruf ist zudem
+einfacher und ohne jede Versionsanforderung an `uv` selbst.
 
 Findet der Hook Zellausgaben in einem staged Notebook oder formatiert `ruff format`
 eine staged Python-Datei um, entfernt/formatiert er sie, staged die veraenderte Datei
@@ -24,6 +29,7 @@ Einmalig pro Klon aktivieren: `git config core.hooksPath .githooks`
 from __future__ import annotations
 
 import json
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -42,6 +48,13 @@ def staged_dateien(*, suffix: str) -> list[str]:
     return [zeile for zeile in ergebnis.stdout.splitlines() if zeile.endswith(suffix)]
 
 
+def _ruff_befehl() -> list[str]:
+    """`ruff` direkt, wenn es schon auf PATH steht (aktiviertes venv, tox-Environment
+    dieses Hooks selbst) - sonst ueber `uv run`, das die Projektumgebung selbst ueber
+    `pyproject.toml`/`uv.lock` aufloest (normaler Git-Hook ohne aktiviertes venv)."""
+    return ["ruff"] if shutil.which("ruff") is not None else ["uv", "run", "ruff"]
+
+
 def python_dateien_formatieren(dateien: list[str]) -> list[str]:
     """Formatiert `dateien` mit `ruff format`, gibt die tatsaechlich veraenderten
     zurueck - ein Vorher/Nachher-Vergleich, weil `ruff format` selbst nicht meldet,
@@ -50,7 +63,7 @@ def python_dateien_formatieren(dateien: list[str]) -> list[str]:
     if not vorhandene:
         return []
     vorher = {pfad: Path(pfad).read_bytes() for pfad in vorhandene}
-    subprocess.run(["uv", "run", "ruff", "format", *vorhandene], check=True)
+    subprocess.run([*_ruff_befehl(), "format", *vorhandene], check=True)
     return [pfad for pfad, alt in vorher.items() if Path(pfad).read_bytes() != alt]
 
 
