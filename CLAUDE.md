@@ -67,7 +67,9 @@ der sechs Pakete darf `util/` importieren.
   Ziehung mit Zurücklegen), `bestand.py` (`Bestand`, das Aggregat), `simulation.py`
   (`simulieren()`, `MonteCarloPrognose` – der Rechenkern, siehe unten), `prognose.py`
   (`Prognose`-ABC, `NochKeinePrognose`), `hinweis.py`, `zahlen.py` (deutsche
-  Zahlformate ohne `locale`).
+  Zahlformate ohne `locale`), `kurzarbeit.py` (`Personenmonat`, `Rollenzuordnung`,
+  `Schwellenwerte`, `Kurzarbeitsbewertung`, `bewerten()`/`bewertungen()` – siehe
+  „Was das Modul fachlich tut" unten, eigenständiger Baustein ohne Bezug zum Rest).
 - `src/umsatzprognose/clockodo/` – **alles, was Clockodo weiß, weiß nur dieses Paket.**
   `config.py` (Zugangsdaten, benannte Konstruktoren `automatisch`, `aus_umgebung`,
   `aus_colab_secrets`), `client.py` (`ClockodoClient`: HTTP, Paginierung, verifizierte
@@ -75,7 +77,10 @@ der sechs Pakete darf `util/` importieren.
   (`synchron`, `gleichzeitig`, siehe unten), `cache.py` (optionaler lokaler
   Verlaufscache für die beiden Vollhistorien-Abrufe, siehe unten), dazu je Endpunkt ein
   Repository: `kunden.py`, `mitarbeiter.py`, `projekte.py`, `umsatz.py`,
-  `verbrauchsverlauf.py` und `bestand.py` (`BestandRepository`, der eine Einstieg).
+  `verbrauchsverlauf.py` und `bestand.py` (`BestandRepository`, der eine Einstieg),
+  dazu additiv `kurzarbeit.py` (`KurzarbeitRepository`,
+  `rollenzuordnung_automatisch()` – eigenständiger Baustein, kein Teil von
+  `BestandRepository`s sieben gleichzeitigen Abrufen).
 - `src/umsatzprognose/google_sheets/` – **der gemeinsame Google-Sheets-Zugriff, den
   `schulungen/` und `kosten/` beide nutzen.** `config.py` (`GoogleSheetsConfig`,
   dieselben benannten Konstruktoren wie bei `ClockodoCredentials`, liest u. a.
@@ -107,12 +112,13 @@ der sechs Pakete darf `util/` importieren.
   (leeres) `__init__.py` - ohne das würden gleichnamige Testdateien in
   verschiedenen Unterordnern (z. B. je ein `test_config.py` unter `clockodo/` und
   unter `util/`) mit demselben Modulnamen kollidieren.
-- `notebooks/` – vier Notebooks mit verschiedenen Zielgruppen plus ein gemeinsames
+- `notebooks/` – fünf Notebooks mit verschiedenen Zielgruppen plus ein gemeinsames
   Start-Modul, siehe unten.
 - `spec/spec-umsatzprognose-clockodo-modul.md` – die Spezifikation des Bausteins Bestand.
 - `spec/spec-schulungsanmeldungen.md` – die Spezifikation des Bausteins
   Schulungsanmeldungen.
 - `spec/spec-kosten.md` – die Spezifikation des Bausteins Kosten.
+- `spec/spec-kurzarbeit.md` – die Spezifikation des Bausteins Kurzarbeitsbereitschaft.
 - `spec/clocodo-api.yaml` – OpenAPI-Beschreibung der Clockodo-API.
 
 ### Kernregeln
@@ -197,6 +203,10 @@ als undefiniert erscheinen. `setup.py` wird nicht eigenständig geöffnet.
   Anmeldungsverlauf öffentlicher Schulungen (Teilnehmerzahl je Monat und Kategorie,
   `setup.anmeldungsverlauf()`), nicht der Umsatz. Die Kategorie-Zuordnung
   (`KATEGORIEN`) ist frei konfigurierbar und steht im Notebook, nicht im Paket.
+- `notebooks/04_kurzarbeit.ipynb` – wie `03_schulungsanmeldungen.ipynb` vollständig
+  unabhängig, hier vom Baustein Kurzarbeitsbereitschaft
+  (`setup.kurzarbeit_rohdaten()`, Rollenzuordnung/Schwellenwerte als eigene,
+  editierbare Zelle). Kein Bezug zu `Dashboard` oder zur Umsatzprognose.
 
 ### Web-Frontend
 
@@ -213,7 +223,7 @@ Dashboard-Notebook auch.
   Plotly-Figuren aus `darstellung/diagramme.py` und die pandas-Tabellen aus
   `darstellung/tabellen.py` lassen sich unverändert per `to_html()` einbetten, ohne
   eine eigene JSON-API zu brauchen.
-- **Drei navigierbare Seiten**, verlinkt über eine gemeinsame Navigation
+- **Vier navigierbare Seiten**, verlinkt über eine gemeinsame Navigation
   (`webapp/templates/basis.html`), jede mit dem Inhalt genau einer Notebook-Zelle
   statt einer eigenen Auswahl: `/` deckt sich mit `notebooks/00_datencheck.ipynb`
   (Gewinn/Verlust je Monat, Gewinn/Verlust je Jahr, kumulierte Umsatzrendite);
@@ -221,7 +231,13 @@ Dashboard-Notebook auch.
   Monatstabelle `Dashboard.umsatztabelle()`, offenes Auftragsvolumen je Projekt);
   `/schulungen` mit `notebooks/03_schulungsanmeldungen.ipynb` (der
   Anmeldungsverlauf über `diagramme.anmeldungsverlauf()`, samt der dort gepflegten
-  `KATEGORIEN`-Zuordnung, als Konstante in `webapp/app.py` übernommen).
+  `KATEGORIEN`-Zuordnung, als Konstante in `webapp/app.py` übernommen); `/kurzarbeit`
+  mit `notebooks/04_kurzarbeit.ipynb` (Baustein Kurzarbeitsbereitschaft,
+  `spec/spec-kurzarbeit.md` – rückblickend je Monat, ob die Organisation die
+  Voraussetzungen für Kurzarbeit erfüllt hätte, ausschließlich Aggregatzahlen).
+  Anders als die anderen drei Seiten **kein Bezug zu `Dashboard`/`DashboardCache`** –
+  ein eigenständiger `KurzarbeitCache`, weil der Baustein kein Umsatz- oder
+  Kostensignal ist, sondern ein Kapazitäts-/Personalsignal (Spec Abschnitt 2/7).
 - **Parameter der Notebook-Ladezellen sind hier URL-Parameter, wählbar über ein
   Dropdown** statt eines freien Zahlenbereichs (via `typing.Literal` - zugleich die
   Dropdown-Optionsliste über `typing.get_args()`, siehe `HorizontMonate`,
@@ -256,7 +272,9 @@ Dashboard-Notebook auch.
   vom gewaehlten `ab_jahr` dieselben, ein engerer Beginn ("seit 2024" statt "seit
   2022") ist immer eine Teilmenge dieses einen geladenen Bereichs -
   `Anmeldungsverlauf.ab_jahr()` filtert dafuer nur noch in-memory, ganz ohne
-  erneuten Abruf.
+  erneuten Abruf. `KurzarbeitCache` folgt derselben Logik wie `DashboardCache`: ein
+  eigener Eintrag je angefragter `anzahl_monate`, weil ein anderer Wert tatsaechlich
+  ein anderes Zeitfenster bei Clockodo abfragt.
 - **Caching, nicht blockierend**: `webapp/cache.py` erneuert seine Eintraege nach
   Ablauf einer TTL (`WEBAPP_CACHE_TTL_SEKUNDEN`, Standard eine Stunde). Anders
   als `notebooks/setup.py` – eine Modulvariable je Kernel – bedient ein Webserver
@@ -350,6 +368,27 @@ Vergangenheit. `Gewinn` (Gesamtumsatz aus Bestand und Schulungsanmeldungen minus
 Kosten) wird ausschließlich in der Darstellungsschicht gebildet
 (`tabellen.umsatztabelle()`, `diagramme.umsatzverlauf()`) – es gibt kein eigenes
 Domänenobjekt, das Umsatz und Kosten gegeneinander verrechnet.
+
+Der **Baustein Kurzarbeitsbereitschaft** (`spec/spec-kurzarbeit.md`,
+`domaene.kurzarbeit`, `clockodo.kurzarbeit.KurzarbeitRepository`) steht **komplett
+losgelöst** von den drei vorigen Bausteinen: kein Umsatz- oder Kostensignal, sondern
+ein Kapazitäts-/Personalsignal, das rückblickend je abgeschlossenem Kalendermonat
+prüft, ob die Organisation die Voraussetzungen für Kurzarbeit erfüllt hätte (Quote
+kurzarbeitsfähiger Personen ≥ 30 %, je Person Anteil interner Arbeit ≥ 24 % und
+kumulierter Überstundenstand < 14 Std. – alle drei Schwellenwerte als Parameter,
+siehe `domaene.kurzarbeit.Schwellenwerte`). Wie bei Schulungsanmeldungen/Kosten keine
+Simulation, keine Bandbreite. Die Rollenzuordnung (wer aus Geschäftsführung/Vertrieb
+nie in den Zähler kurzarbeitsfähiger Personen eingeht) ist eine personenbezogene
+Angabe und wird zur Laufzeit aus der Umgebungsvariable `KURZARBEIT_ROLLENZUORDNUNG`
+gelesen (`clockodo.kurzarbeit.rollenzuordnung_automatisch()`), nie im Repository
+geführt. Der kumulierte Überstundenstand lässt sich nicht direkt aus
+`/userreports` lesen: `month_details[].diff` ist live verifiziert **nicht**
+kumuliert, sondern nur die Abweichung des einzelnen Monats – `KurzarbeitRepository`
+bildet ihn deshalb selbst aus `overtime_carryover` plus der aufsummierten
+Monats-`diff`-Werte (siehe Spec Abschnitt 8). Kein Anschluss an `Dashboard` (Spec
+Abschnitt 2/7) – ein eigenständiges Notebook (`notebooks/04_kurzarbeit.ipynb`, wie
+beim Anmeldungsverlauf) und eine eigenständige Webapp-Seite (`/kurzarbeit`, eigener
+`KurzarbeitCache`) zeigen ausschließlich Aggregatzahlen, nie Einzelwerte je Person.
 
 ## Rechenkern (Monte Carlo, 10.000 Läufe)
 

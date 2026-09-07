@@ -15,12 +15,15 @@ from datetime import date
 
 import pytest
 
+from umsatzprognose.clockodo import KurzarbeitRepository
 from umsatzprognose.darstellung import Dashboard
-from umsatzprognose.domaene import Anmeldungsverlauf
+from umsatzprognose.domaene import Anmeldungsverlauf, Personenmonat, Rollenzuordnung
 from umsatzprognose.schulungen import SchulungenRepository
+from umsatzprognose.webapp import cache as webapp_cache
 from umsatzprognose.webapp.cache import (
     AnmeldungsverlaufCache,
     DashboardCache,
+    KurzarbeitCache,
     standard_ttl_sekunden,
 )
 
@@ -260,3 +263,69 @@ def test_standard_ttl_sekunden_liest_env(monkeypatch):
 def test_standard_ttl_sekunden_bei_ungueltigem_wert_ist_der_standard(monkeypatch):
     monkeypatch.setenv("WEBAPP_CACHE_TTL_SEKUNDEN", "nicht-numerisch")
     assert standard_ttl_sekunden() == 60 * 60
+
+
+@pytest.fixture
+def kurzarbeit_ladezaehler(monkeypatch):
+    aufrufe: list[int] = []
+    fertig = asyncio.Event()
+
+    async def _fake_laden_async(self, *, stichtag=None, anzahl_monate=1):
+        aufrufe.append(anzahl_monate)
+        fertig.set()
+        return {
+            (2026, 8): (
+                Personenmonat(
+                    mitarbeiter_id=1,
+                    name="Anna Beispiel",
+                    jahr=2026,
+                    monat=8,
+                    interne_stunden=40.0,
+                    externe_stunden=120.0,
+                    gesamt_stunden=160.0,
+                    ueberstundenstand=0.0,
+                ),
+            )
+        }
+
+    monkeypatch.setattr(KurzarbeitRepository, "laden_async", _fake_laden_async)
+    monkeypatch.setattr(
+        KurzarbeitRepository,
+        "mit_automatischen_zugangsdaten",
+        classmethod(lambda cls: cls.__new__(cls)),  # type: ignore[call-overload]
+    )
+    monkeypatch.setattr(webapp_cache, "rollenzuordnung_automatisch", lambda: Rollenzuordnung())
+    return aufrufe, fertig
+
+
+def test_kurzarbeit_cache_bewertet_die_geladenen_rohdaten(kurzarbeit_ladezaehler):
+    aufrufe, fertig = kurzarbeit_ladezaehler
+    cache = KurzarbeitCache(ttl_sekunden=60)
+
+    async def ablauf():
+        assert cache.bereit(anzahl_monate=6) is None
+        cache.anstossen(anzahl_monate=6)
+        await _bis_geladen(fertig)
+        return cache.bereit(anzahl_monate=6)
+
+    ergebnisse = asyncio.run(ablauf())
+    assert aufrufe == [6]
+    assert ergebnisse is not None
+    assert ergebnisse[(2026, 8)].anzahl_kurzarbeitsfaehig == 1
+
+
+def test_kurzarbeit_cache_fuer_andere_anzahl_monate_laedt_einen_eigenen_eintrag(
+    kurzarbeit_ladezaehler,
+):
+    aufrufe, fertig = kurzarbeit_ladezaehler
+    cache = KurzarbeitCache(ttl_sekunden=60)
+
+    async def ablauf():
+        cache.anstossen(anzahl_monate=6)
+        await _bis_geladen(fertig)
+        fertig.clear()
+        cache.anstossen(anzahl_monate=12)
+        await _bis_geladen(fertig)
+
+    asyncio.run(ablauf())
+    assert aufrufe == [6, 12]

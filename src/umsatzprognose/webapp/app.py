@@ -75,6 +75,7 @@ if TYPE_CHECKING:
     import plotly.graph_objects as go
 
     from umsatzprognose.darstellung import Dashboard
+    from umsatzprognose.domaene import Kurzarbeitsbewertung
 
 from contextlib import asynccontextmanager
 
@@ -85,7 +86,7 @@ from fastapi.templating import Jinja2Templates
 
 from umsatzprognose.darstellung import diagramme
 
-from .cache import AnmeldungsverlaufCache, DashboardCache
+from .cache import AnmeldungsverlaufCache, DashboardCache, KurzarbeitCache
 
 # Deckt sich mit derselben Notebook-Zelle ("projekte_ohne_auftragsvolumen" in
 # notebooks/01_dashboard.ipynb).
@@ -126,21 +127,26 @@ KATEGORIEN: dict[str, list[str]] = {
 # Dropdown zurueck, statt sie ein zweites Mal aufzuschreiben.
 _HorizontMonateWert = Literal["3", "4", "5", "6"]
 _GewinnVerlustMonateWert = Literal["3", "6", "12", "24", "alle"]
+_KurzarbeitMonateWert = Literal["1", "3", "6", "12"]
 HorizontMonate = Annotated[_HorizontMonateWert, Query()]
 GewinnVerlustMonate = Annotated[_GewinnVerlustMonateWert, Query()]
+KurzarbeitMonate = Annotated[_KurzarbeitMonateWert, Query()]
 PROGNOSE_MONATE_OPTIONEN = get_args(_HorizontMonateWert)
 HISTORISCHE_MONATE_OPTIONEN = get_args(_GewinnVerlustMonateWert)
+KURZARBEIT_MONATE_OPTIONEN = get_args(_KurzarbeitMonateWert)
 
 STANDARD_HORIZONT_MONATE: _HorizontMonateWert = "3"
 STANDARD_AUSLASTUNG_MONATE = 12
 STANDARD_GEWINN_VERLUST_MONATE: _GewinnVerlustMonateWert = "12"
 STANDARD_AB_JAHR = 2022
+STANDARD_KURZARBEIT_MONATE: _KurzarbeitMonateWert = "6"
 
 AbJahr = Annotated[int, Query(ge=STANDARD_AB_JAHR, le=date.today().year)]
 AB_JAHR_OPTIONEN = tuple(range(STANDARD_AB_JAHR, date.today().year + 1))
 
 _dashboard_cache = DashboardCache()
 _anmeldungsverlauf_cache = AnmeldungsverlaufCache(ab_jahr=STANDARD_AB_JAHR)
+_kurzarbeit_cache = KurzarbeitCache()
 _templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
 
 
@@ -157,6 +163,7 @@ async def _vorladen(app: FastAPI) -> AsyncIterator[None]:
         horizont_monate=int(STANDARD_HORIZONT_MONATE), auslastung_monate=STANDARD_AUSLASTUNG_MONATE
     )
     _anmeldungsverlauf_cache.anstossen()
+    _kurzarbeit_cache.anstossen(anzahl_monate=int(STANDARD_KURZARBEIT_MONATE))
     yield
 
 
@@ -318,4 +325,69 @@ async def schulungen(request: Request, ab_jahr: AbJahr = STANDARD_AB_JAHR) -> HT
         anmeldungsverlauf=_figur_html(
             diagramme.anmeldungsverlauf(verlauf_ab_jahr, KATEGORIEN), mit_plotlyjs=True
         ),
+    )
+
+
+# Deckt sich mit MONATSNAMEN in notebooks/04_kurzarbeit.ipynb. Bewusst hier dupliziert
+# statt aus darstellung.umsatzhistorie importiert - der Baustein Kurzarbeit bleibt
+# unabhaengig von pandas/darstellung (Spec Abschnitt 5.8).
+_KURZARBEIT_MONATSNAMEN = (
+    "Januar", "Februar", "März", "April", "Mai", "Juni",
+    "Juli", "August", "September", "Oktober", "November", "Dezember",
+)  # fmt: skip
+
+
+def _kurzarbeit_status_text(bewertung: Kurzarbeitsbewertung) -> str:
+    if bewertung.vorbereitet is None:
+        return "keine Auswertung möglich"
+    return "Voraussetzung erfüllt" if bewertung.vorbereitet else "Voraussetzung nicht erfüllt"
+
+
+def _kurzarbeit_quote_text(bewertung: Kurzarbeitsbewertung) -> str:
+    return f"{bewertung.quote:.1%}" if bewertung.quote is not None else "n/a"
+
+
+@app.get("/kurzarbeit", response_class=HTMLResponse)
+async def kurzarbeit(
+    request: Request, anzahl_monate: KurzarbeitMonate = STANDARD_KURZARBEIT_MONATE
+) -> HTMLResponse:
+    """Deckt sich mit notebooks/04_kurzarbeit.ipynb: die Kurzarbeitsbereitschaft je Monat.
+
+    Vollstaendig unabhaengig von :class:`DashboardCache` - kein Bezug zur
+    Umsatzprognose (Spec Abschnitt 2/7). Zeigt ausschliesslich Aggregatzahlen, keine
+    Einzelwerte je Person.
+    """
+    monate_zahl = int(anzahl_monate)
+    ergebnisse = _kurzarbeit_cache.bereit(anzahl_monate=monate_zahl)
+    if ergebnisse is None:
+        _kurzarbeit_cache.anstossen(anzahl_monate=monate_zahl)
+        return _ladeseite(
+            request,
+            seite="kurzarbeit",
+            fortschritt=_kurzarbeit_cache.fortschritt(anzahl_monate=monate_zahl),
+        )
+
+    monate = sorted(ergebnisse)
+    zeilen = [
+        {
+            "bezeichnung": f"{_KURZARBEIT_MONATSNAMEN[monat[1] - 1]} {monat[0]}",
+            "status": _kurzarbeit_status_text(ergebnisse[monat]),
+            "quote": _kurzarbeit_quote_text(ergebnisse[monat]),
+            "bewertung": ergebnisse[monat],
+        }
+        for monat in monate
+    ]
+    schwellenwerte = ergebnisse[monate[-1]].schwellenwerte
+    alle_hinweise = [hinweis for monat in monate for hinweis in ergebnisse[monat].hinweise]
+
+    return _antwort(
+        request,
+        seite="kurzarbeit",
+        name="kurzarbeit.html",
+        stichtag=date.today(),
+        anzahl_monate=anzahl_monate,
+        anzahl_monate_optionen=KURZARBEIT_MONATE_OPTIONEN,
+        zeilen=zeilen,
+        schwellenwerte=schwellenwerte,
+        hinweise=alle_hinweise,
     )

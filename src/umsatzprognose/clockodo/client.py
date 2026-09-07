@@ -200,6 +200,32 @@ class UsersNonbusinessDayV2(TypedDict):
     days: list[NonbusinessDayV2]
 
 
+class UserReportMonthDetailV1(TypedDict):
+    """Ein Monatseintrag aus ``UserReportV1.month_details``.
+
+    ``diff`` ist trotz des Namens **nicht** der kumulierte Stand, sondern nur die
+    Abweichung dieses einzelnen Monats - siehe Moduldocstring von
+    :mod:`umsatzprognose.clockodo.kurzarbeit` und Abschnitt 8 von
+    ``spec/spec-kurzarbeit.md`` (live verifiziert).
+    """
+
+    nr: int
+    diff: float
+
+
+class UserReportV1(TypedDict):
+    """Ein Eintrag aus ``/userreports?type=1`` (Monatsbericht) - nur die hier
+    verwendeten Felder.
+
+    ``overtime_carryover`` ist der Überstunden-Saldo zum Jahresbeginn (in Sekunden);
+    ``diff`` (hier nicht deklariert, ungenutzt) ist der kumulierte Jahresstand.
+    """
+
+    users_id: int
+    overtime_carryover: float
+    month_details: list[UserReportMonthDetailV1] | None
+
+
 class EntryGroupV2(TypedDict):
     """Eine Gruppe aus ``/v2/entrygroups``, rekursiv ueber ``sub_groups``.
 
@@ -593,6 +619,16 @@ class ClockodoClient:
             time_until=time_until,
             billable=billable,
         )
+
+    async def userreports(self, *, year: int, typ: int = 1) -> list[UserReportV1]:
+        """Berichte aus dem unversionierten ``/userreports``, Standard ``typ=1`` (Monat).
+
+        Envelope-Key ist ``userreports``, es gibt kein ``paging``. ``typ`` ist
+        Clockodos ``UserReportType``-Enum (0 Jahr, 1 Monat, 2 Woche, 3 Tag,
+        4 Tag mit Arbeitszeit) - nur ``typ=1`` liefert ``month_details``.
+        """
+        payload = await self.get("/userreports", {"year": year, "type": typ})
+        return cast("list[UserReportV1]", payload["userreports"])
 
     async def absences(self, year: int) -> list[AbsenceV4]:
         """Abwesenheiten eines Jahres aus ``/v4/absences``."""

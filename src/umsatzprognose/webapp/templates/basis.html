@@ -27,6 +27,7 @@
         <a href="/{{ anfrage_query }}" class="{{ 'aktiv' if aktive_seite == 'start' }}">Datencheck</a>
         <a href="/dashboard{{ anfrage_query }}" class="{{ 'aktiv' if aktive_seite == 'dashboard' }}">Dashboard</a>
         <a href="/schulungen{{ anfrage_query }}" class="{{ 'aktiv' if aktive_seite == 'schulungen' }}">Schulungen</a>
+        <a href="/kurzarbeit{{ anfrage_query }}" class="{{ 'aktiv' if aktive_seite == 'kurzarbeit' }}">Kurzarbeit</a>
     </nav>
     <h1>{% if stichtag %}Stand der Auswertung: {{ stichtag.strftime("%d.%m.%Y") }}{% else %}Daten werden geladen …{% endif %}</h1>
     {% block inhalt %}{% endblock %}

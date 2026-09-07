@@ -1,0 +1,59 @@
+{% extends "basis.html" %}
+{% block inhalt %}
+<p>
+    Rückblickend je abgeschlossenem Kalendermonat: Voraussetzungen für Kurzarbeit
+    erfüllt? Ausschließlich Aggregatzahlen - für einzelne Personen bleibt unsichtbar,
+    an welcher Bedingung sie scheitern. Unabhängig von der Umsatzprognose.
+</p>
+<form method="get" class="parameter">
+    <label>Zurückliegende Monate
+        <select name="anzahl_monate" onchange="this.form.submit()">
+            {% for wert in anzahl_monate_optionen %}
+            <option value="{{ wert }}" {{ "selected" if wert == anzahl_monate }}>{{ wert }}</option>
+            {% endfor %}
+        </select>
+    </label>
+</form>
+<table>
+    <thead>
+        <tr>
+            <th>Monat</th>
+            <th>Status</th>
+            <th>Quote</th>
+            <th>Kurzarbeitsfähig</th>
+            <th>Interne Arbeit</th>
+            <th>Überstunden</th>
+            <th>Beides</th>
+            <th>Ausgeschlossen</th>
+            <th>Nicht bestimmbar</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for zeile in zeilen %}
+        <tr>
+            <td>{{ zeile.bezeichnung }}</td>
+            <td>{{ zeile.status }}</td>
+            <td>{{ zeile.quote }}</td>
+            <td>{{ zeile.bewertung.anzahl_kurzarbeitsfaehig }} / {{ zeile.bewertung.anzahl_einbezogen }}</td>
+            <td>{{ zeile.bewertung.anzahl_scheitert_interne_arbeit }}</td>
+            <td>{{ zeile.bewertung.anzahl_scheitert_ueberstunden }}</td>
+            <td>{{ zeile.bewertung.anzahl_scheitert_beide }}</td>
+            <td>{{ zeile.bewertung.anzahl_ausgeschlossen }}</td>
+            <td>{{ zeile.bewertung.anzahl_nicht_bestimmbar }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+<p class="ladehinweis">
+    Schwellenwerte: Anteil interne Arbeit ≥ {{ "%.0f"|format(schwellenwerte.anteil_interne_arbeit * 100) }} %,
+    Überstundenstand &lt; {{ "%.0f"|format(schwellenwerte.ueberstunden_stunden) }} Std.,
+    Quote der Organisation ≥ {{ "%.0f"|format(schwellenwerte.quote_organisation * 100) }} %.
+</p>
+{% if hinweise %}
+<ul class="fortschritt">
+    {% for hinweis in hinweise %}
+    <li>{{ hinweis }}</li>
+    {% endfor %}
+</ul>
+{% endif %}
+{% endblock %}

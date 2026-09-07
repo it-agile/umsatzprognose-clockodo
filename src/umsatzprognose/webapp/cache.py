@@ -54,8 +54,10 @@ import humanize
 # thread-lokal) - hier reicht das, weil ein einzelner uvicorn-Prozess alles auf
 # demselben Thread ausfuehrt, anders als der Jupyter-Thread-Umweg von synchron().
 from umsatzprognose import Dashboard
-from umsatzprognose.domaene import Anmeldungsverlauf
+from umsatzprognose.clockodo import KurzarbeitRepository, rollenzuordnung_automatisch
+from umsatzprognose.domaene import Anmeldungsverlauf, Kurzarbeitsbewertung, bewertungen
 from umsatzprognose.schulungen import SchulungenRepository
+from umsatzprognose.util import Monat
 
 TTL_ENV = "WEBAPP_CACHE_TTL_SEKUNDEN"
 STANDARD_TTL_SEKUNDEN = 60 * 60
@@ -208,3 +210,40 @@ class AnmeldungsverlaufCache:
             return verlauf
 
         self._cache.anstossen(None, laden)
+
+
+class KurzarbeitCache:
+    """Haelt je angefragter ``anzahl_monate`` eine geladene und bewertete
+    Kurzarbeitsbereitschaft vor.
+
+    Muster wie :class:`DashboardCache`, nicht wie :class:`AnmeldungsverlaufCache`:
+    ein anderer ``anzahl_monate`` fragt bei Clockodo tatsaechlich ein anderes
+    Zeitfenster ab (siehe
+    :meth:`~umsatzprognose.clockodo.kurzarbeit.KurzarbeitRepository.laden_async`),
+    ein Zwischenspeichern des breiteren Laufs fuer einen engeren Aufruf waere hier
+    also keine Abkuerzung. Vollstaendig unabhaengig von :class:`DashboardCache` -
+    kein Bezug zur Umsatzprognose (siehe ``spec/spec-kurzarbeit.md`` Abschnitt 2/7).
+    """
+
+    def __init__(self, *, ttl_sekunden: int | None = None) -> None:
+        self._cache = _TTLCache[int, dict[Monat, Kurzarbeitsbewertung]](ttl_sekunden=ttl_sekunden)
+
+    def bereit(self, *, anzahl_monate: int) -> dict[Monat, Kurzarbeitsbewertung] | None:
+        return self._cache.bereit(anzahl_monate)
+
+    def fortschritt(self, *, anzahl_monate: int) -> list[str]:
+        return self._cache.fortschritt(anzahl_monate)
+
+    def anstossen(self, *, anzahl_monate: int) -> None:
+        async def laden(fortschritt: Fortschritt) -> dict[Monat, Kurzarbeitsbewertung]:
+            start = time.perf_counter()
+            rohdaten = await KurzarbeitRepository.mit_automatischen_zugangsdaten().laden_async(
+                stichtag=date.today(), anzahl_monate=anzahl_monate
+            )
+            rollenzuordnung = rollenzuordnung_automatisch()
+            ergebnisse = bewertungen(rohdaten, rollenzuordnung=rollenzuordnung)
+            dauer = timedelta(seconds=time.perf_counter() - start)
+            fortschritt(f"{len(ergebnisse)} Monate bewertet (in {humanize.naturaldelta(dauer)}).")
+            return ergebnisse
+
+        self._cache.anstossen(anzahl_monate, laden)
