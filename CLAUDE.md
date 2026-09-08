@@ -83,8 +83,9 @@ Stellen in `domaene/`, `clockodo/`, `schulungen/` und `kosten/` gebraucht wird. 
 der sechs Pakete darf `util/` importieren.
 
 - `src/umsatzprognose/domaene/` – die Fachobjekte, unveränderlich (`frozen=True`) und
-  ohne jede Bibliotheksabhängigkeit außer `numpy` (nur in `simulation.py`) und dem
-  abhängigkeitsfreien `util/`. `projekt.py`
+  ohne jede Bibliotheksabhängigkeit außer `numpy` (in `simulation.py` und, für die
+  vektorisierte Ziehung, in `abrufquote.py`) und dem abhängigkeitsfreien `util/`.
+  `projekt.py`
   (`Projekt`, `Budget` – Restvolumen roh und prognosewirksam, effektiver Stundensatz,
   Prognose-Scope, `anteil_je_mitarbeiter()`), `kunde.py`, `mitarbeiter.py`
   (`Mitarbeiter.verfuegbare_kapazitaet()`, `Wochenarbeitszeit`, `Abwesenheit`,

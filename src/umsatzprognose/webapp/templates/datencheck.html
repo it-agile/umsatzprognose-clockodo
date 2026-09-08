@@ -1,4 +1,5 @@
 {% extends "basis.html" %}
+{% from "_regler.html" import regler_abschnitt %}
 {% block inhalt %}
 <form method="get" class="parameter">
     <label>Historische Monate
@@ -15,18 +16,16 @@
             {% endfor %}
         </select>
     </label>
-    <details class="regler-abschnitt" {{ "open" if verbrauchsplan_abweichend }}>
-        <summary>Verbrauchsplan-Übersteuerung <span class="zusammenfassung">(optional)</span></summary>
-        <div class="regler-gruppe">
-            <label>Eine Zeile je Projekt, Format "Projektname: JJJJ-MM":
-                <textarea name="verbrauchsplan" rows="3" placeholder="Beispielprojekt: 2026-12">{{ verbrauchsplan }}</textarea>
-            </label>
-            <div class="regler-aktionen">
-                <button type="submit">Anwenden</button>
-                <a class="zuruecksetzen" href="/?horizont_monate={{ horizont_monate }}&gewinn_verlust_monate={{ gewinn_verlust_monate }}">Verbrauchsplan zurücksetzen</a>
-            </div>
-        </div>
-    </details>
+    {{ regler_abschnitt(
+        "verbrauchsplan",
+        "Verbrauchsplan-Übersteuerung",
+        'Eine Zeile je Projekt, Format "Projektname: JJJJ-MM":',
+        "Beispielprojekt: 2026-12",
+        verbrauchsplan,
+        verbrauchsplan_abweichend,
+        "/?horizont_monate=" ~ horizont_monate ~ "&gewinn_verlust_monate=" ~ gewinn_verlust_monate,
+        "Verbrauchsplan zurücksetzen"
+    ) }}
 </form>
 {{ gewinn_verlust_monatlich | safe }}
 {{ gewinn_verlust_je_jahr | safe }}

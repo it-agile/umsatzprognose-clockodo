@@ -20,10 +20,12 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable, Sequence
+    from collections.abc import Callable, Iterable, Sequence
     from datetime import date
 
+from collections import defaultdict
 from dataclasses import dataclass
+from typing import Protocol
 
 from umsatzprognose.util import Monat, vormonat
 
@@ -35,7 +37,7 @@ MONATSNAMEN = (
 )  # fmt: skip
 
 
-def fehlende_monate_hinweis(
+def _fehlende_monate_hinweis(
     text: str, monate: Sequence[Monat], vorhanden: Iterable[Monat]
 ) -> tuple[Hinweis, ...]:
     """Ein :class:`Hinweis` fuer die Monate aus ``monate``, die nicht in ``vorhanden`` stehen.
@@ -59,11 +61,34 @@ def hinweise_mit_fehlenden_monaten(
     monate: Sequence[Monat],
     vorhandene_monate: Iterable[Monat],
 ) -> tuple[Hinweis, ...]:
-    """Abbildungshinweise plus ein :func:`fehlende_monate_hinweis` - der gemeinsame
+    """Abbildungshinweise plus ein fehlende-Monate-:class:`Hinweis` - der gemeinsame
     Kern hinter ``Kostenplan.hinweise()`` und ``Schulungsplan.hinweise()`` (siehe dort
     fuer den jeweils eigenen ``text`` und die jeweils eigene Bestimmung von
     ``vorhandene_monate``)."""
-    return abbildungshinweise + fehlende_monate_hinweis(text, monate, vorhandene_monate)
+    return abbildungshinweise + _fehlende_monate_hinweis(text, monate, vorhandene_monate)
+
+
+class _MitSchluessel(Protocol):
+    @property
+    def schluessel(self) -> Monat: ...
+
+
+def betrag_je_monat[Posten: _MitSchluessel](
+    posten: Iterable[Posten],
+    monate: Sequence[Monat],
+    *,
+    betrag: Callable[[Posten], float],
+) -> list[float]:
+    """Summe von ``betrag(p)`` je Monat aus ``monate``, 0 ohne passenden Posten.
+
+    Gemeinsames Muster von ``Kostenplan.kosten_je_monat`` und
+    ``Schulungsplan.umsatz_je_monat``: beide gruppieren eine flache Liste von Posten
+    nach ``schluessel`` und projizieren die Summe auf die angefragten Monate.
+    """
+    summen: defaultdict[Monat, float] = defaultdict(float)
+    for p in posten:
+        summen[p.schluessel] += betrag(p)
+    return [summen[monat] for monat in monate]
 
 
 @dataclass(frozen=True)

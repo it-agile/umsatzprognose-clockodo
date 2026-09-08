@@ -433,6 +433,15 @@ def _kosten_und_ergebnis(
     )
 
 
+def _schulung_je_monat(
+    schulungsplan: Schulungsplan | None, horizont: Sequence[tuple[int, int]]
+) -> list[float]:
+    """Schulungsumsatz je Horizontmonat, 0 je Monat ohne ``schulungsplan``."""
+    if schulungsplan is None:
+        return [0.0] * len(horizont)
+    return list(schulungsplan.umsatz_je_monat(horizont))
+
+
 def _horizont_gesamtumsatz(
     prognose: Prognose,
     *,
@@ -458,11 +467,7 @@ def _horizont_gesamtumsatz(
     if not horizont:
         return {}
     median = prognose.monatswerte()[0.50]
-    schulung = (
-        list(schulungsplan.umsatz_je_monat(horizont))
-        if schulungsplan is not None
-        else [0.0] * len(horizont)
-    )
+    schulung = _schulung_je_monat(schulungsplan, horizont)
     basis0 = verbrauch_laufender_monat.umsatz if verbrauch_laufender_monat else 0.0
     gesamt = [basis0 + median[0] + schulung[0]] + [
         m + s for m, s in zip(median[1:], schulung[1:], strict=True)
@@ -507,11 +512,7 @@ def _prognosehorizont(
     median, p85, p95 = monatswerte[0.50], monatswerte[0.85], monatswerte[0.95]
 
     basis0 = verbrauch_laufender_monat.umsatz if verbrauch_laufender_monat else 0.0
-    schulung = (
-        list(schulungsplan.umsatz_je_monat(horizont))
-        if schulungsplan is not None
-        else [0.0] * len(horizont)
-    )
+    schulung = _schulung_je_monat(schulungsplan, horizont)
     schulung_basis = [basis0, *([0.0] * (len(horizont) - 1))]
     sockel = [basis0 + schulung[0]] + [
         g + s for g, s in zip(gebucht[1:], schulung[1:], strict=True)

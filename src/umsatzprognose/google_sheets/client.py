@@ -200,8 +200,6 @@ def _colab_credentials() -> CredentialsBase:
     unsuccessful`` fehlschlaegt (https://github.com/googlecolab/colabtools/issues/4343,
     Stand 2026 weiterhin offen).
     """
-    import os
-
     import google.auth
     from google.colab import auth
 

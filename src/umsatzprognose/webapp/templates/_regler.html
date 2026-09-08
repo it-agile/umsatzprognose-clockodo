@@ -1,0 +1,20 @@
+{# Gemeinsamer Baustein fuer die drei textarea-basierten Uebersteuerungs-Regler auf
+   / und /dashboard (Verbrauchsplan auf beiden Seiten, Projektfilter "ohne Budget" nur
+   auf /dashboard) - identisches Markup, nur Feldname, Beschriftungen und der
+   Zuruecksetzen-Link unterscheiden sich je Aufrufstelle. Der Schwellenwert-Regler auf
+   /kurzarbeit hat eine andere Form (drei Zahlenfelder statt einer Textarea) und teilt
+   sich dieses Makro deshalb bewusst nicht. #}
+{% macro regler_abschnitt(feldname, ueberschrift, hinweistext, platzhalter, wert, abweichend, zuruecksetzen_url, zuruecksetzen_text, form_id=none) %}
+<details class="regler-abschnitt" {{ "open" if abweichend }}>
+    <summary>{{ ueberschrift }} <span class="zusammenfassung">(optional)</span></summary>
+    <div class="regler-gruppe">
+        <label>{{ hinweistext }}
+            <textarea name="{{ feldname }}"{% if form_id %} form="{{ form_id }}"{% endif %} rows="3" placeholder="{{ platzhalter }}">{{ wert }}</textarea>
+        </label>
+        <div class="regler-aktionen">
+            <button type="submit"{% if form_id %} form="{{ form_id }}"{% endif %}>Anwenden</button>
+            <a class="zuruecksetzen" href="{{ zuruecksetzen_url }}">{{ zuruecksetzen_text }}</a>
+        </div>
+    </div>
+</details>
+{% endmacro %}

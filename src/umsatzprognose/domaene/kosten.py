@@ -24,10 +24,9 @@ if TYPE_CHECKING:
 
     from .hinweis import Hinweis
 
-from collections import defaultdict
 from dataclasses import dataclass, field
 
-from .umsatzhistorie import hinweise_mit_fehlenden_monaten
+from .umsatzhistorie import betrag_je_monat, hinweise_mit_fehlenden_monaten
 
 
 @dataclass(frozen=True)
@@ -98,10 +97,7 @@ class Kostenplan:
 
     def kosten_je_monat(self, monate: Sequence[Monat]) -> list[float]:
         """Gesamtkosten je uebergebenem Monat, 0 ohne passenden Posten."""
-        summen: defaultdict[Monat, float] = defaultdict(float)
-        for posten in self.posten:
-            summen[posten.schluessel] += posten.kosten
-        return [summen[monat] for monat in monate]
+        return betrag_je_monat(self.posten, monate, betrag=lambda p: p.kosten)
 
     def summe(self, monate: Sequence[Monat]) -> float:
         return sum(self.kosten_je_monat(monate))
