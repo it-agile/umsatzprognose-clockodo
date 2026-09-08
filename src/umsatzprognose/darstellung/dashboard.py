@@ -38,7 +38,7 @@ if TYPE_CHECKING:
     )
 
 from umsatzprognose.clockodo import AuslastungRepository, BestandRepository, gleichzeitig, synchron
-from umsatzprognose.domaene import Auslastungssumme
+from umsatzprognose.domaene import Auslastungssumme, NochKeinePrognose
 from umsatzprognose.domaene.projekt import sonderfall
 from umsatzprognose.kosten import KostenRepository
 from umsatzprognose.schulungen import SchulungenRepository
@@ -278,7 +278,9 @@ class Dashboard:
         ladedauern: Ladedauern | None = None,
     ) -> None:
         self.bestand = bestand
-        self.prognose: Prognose | None = None
+        self.prognose: Prognose = NochKeinePrognose(
+            fehlt="Die Prognose wurde noch nicht simuliert."
+        )
         self.schulungsplan: Schulungsplan = schulungsplan
         self.kostenplan: Kostenplan = kostenplan
         self.auslastung: tuple[Auslastungsmonat, ...] = auslastung
@@ -626,7 +628,7 @@ class Dashboard:
 
     def _horizont_kosten(self) -> list[float]:
         """Kosten je Horizontmonat der laufenden Prognose, leer ohne Simulation."""
-        if self.prognose is None or not self.prognose.vorhanden:
+        if not self.prognose.vorhanden:
             return []
         return self.kostenplan.kosten_je_monat(self.prognose.horizontmonate())
 
@@ -657,7 +659,7 @@ class Dashboard:
     def kapazitaet_je_projekt(self, top: int = STANDARD_TOP) -> go.Figure:
         """Wie sich die simulierte Kapazitaet auf die Projekte im Scope verteilt."""
         projekte = {p.id: p for p in self.bestand.im_prognose_scope}
-        kapazitaet = self.prognose.kapazitaet_je_projekt() if self.prognose is not None else {}
+        kapazitaet = self.prognose.kapazitaet_je_projekt()
         kapazitaeten = sorted(
             ((projekte[pid], stunden) for pid, stunden in kapazitaet.items() if pid in projekte),
             key=lambda paar: paar[1],
@@ -720,7 +722,7 @@ class Dashboard:
         """Was zu den Zahlen zu wissen ist - Datenlage und offene fachliche Fragen."""
         hinweise = self.bestand.hinweise()
         monate = list(_historie_monate(self.bestand))
-        if self.prognose is not None and self.prognose.vorhanden:
+        if self.prognose.vorhanden:
             horizont = self.prognose.horizontmonate()
             if self.schulungsplan is not None:
                 hinweise += self.schulungsplan.hinweise(horizont)

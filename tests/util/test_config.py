@@ -73,7 +73,7 @@ def _fake_colab_userdata(monkeypatch, get):
     """
     fake_userdata = types.SimpleNamespace(get=get)
     fake_colab = types.ModuleType("google.colab")
-    fake_colab.userdata = fake_userdata  # type: ignore[attr-defined]
+    fake_colab.__dict__["userdata"] = fake_userdata
     monkeypatch.setitem(sys.modules, "google.colab", fake_colab)
     monkeypatch.setitem(
         sys.modules, "google", sys.modules.get("google", types.ModuleType("google"))

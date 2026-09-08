@@ -43,7 +43,7 @@ def umgebungsvariable_bool(name: str, *, standard: bool = False) -> bool:
 
 def colab_secret(name: str, *, fehlerklasse: type[Exception]) -> str:
     """Ein Colab-Secret lesen und im Fehlerfall sagen, was zu tun ist."""
-    from google.colab import userdata
+    from google.colab import userdata  # ty: ignore[unresolved-import]
 
     try:
         value = userdata.get(name)

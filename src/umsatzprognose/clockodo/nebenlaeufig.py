@@ -48,7 +48,7 @@ def synchron[T](coro: Coroutine[Any, Any, T]) -> T:
         return asyncio.run(coro)
 
     with ThreadPoolExecutor(max_workers=1, thread_name_prefix="clockodo") as pool:
-        return pool.submit(asyncio.run, coro).result()
+        return pool.submit(asyncio.run, coro).result()  # ty: ignore[invalid-return-type]
 
 
 async def mit_meldung[T](

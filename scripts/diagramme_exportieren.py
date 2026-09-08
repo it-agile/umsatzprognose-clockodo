@@ -37,7 +37,7 @@ import argparse
 import sys
 from datetime import date
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -394,7 +394,13 @@ def exportieren(
         datei_balken = [
             _platzhalter_balken(f"  {pfad}", position=i) for i, pfad in enumerate(pfade)
         ]
-        pio.write_images(fig=geordnete_figuren, file=pfade, width=1400, height=800, scale=2)
+        pio.write_images(
+            fig=cast("list[dict[str, object] | go.Figure]", geordnete_figuren),
+            file=cast("list[str | Path]", pfade),
+            width=1400,
+            height=800,
+            scale=2,
+        )
         for balken, pfad in zip(datei_balken, pfade, strict=True):
             _balken_ersetzen(balken, f"  {pfad}")
     return pfade

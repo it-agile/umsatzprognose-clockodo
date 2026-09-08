@@ -99,7 +99,7 @@ def test_aus_umgebung_wirft_bei_fehlender_variable(monkeypatch):
 def test_aus_colab_secrets_liest_nur_jahre_ohne_oauth_client(monkeypatch):
     fake_userdata = types.SimpleNamespace(get=lambda name: '{"2027": "sheet-2027"}')
     fake_colab = types.ModuleType("google.colab")
-    fake_colab.userdata = fake_userdata  # type: ignore[attr-defined]
+    fake_colab.__dict__["userdata"] = fake_userdata
     monkeypatch.setitem(sys.modules, "google.colab", fake_colab)
     monkeypatch.setitem(
         sys.modules, "google", sys.modules.get("google", types.ModuleType("google"))

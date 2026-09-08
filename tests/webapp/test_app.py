@@ -31,7 +31,7 @@ from umsatzprognose.domaene import (
 fastapi = pytest.importorskip("fastapi")
 from fastapi.testclient import TestClient  # noqa: E402
 
-from umsatzprognose.webapp import app as app_modul  # noqa: E402
+import umsatzprognose.webapp.app as app_modul  # noqa: E402
 
 STICHTAG = date(2026, 8, 24)
 KUNDE = Kunde(id=1, name="Testkunde")

@@ -195,19 +195,21 @@ def _kategorie(
     return _SCHEITERT_UEBERSTUNDEN
 
 
+_STANDARD_ROLLENZUORDNUNG = Rollenzuordnung()
+_STANDARD_SCHWELLENWERTE = Schwellenwerte()
+
+
 def bewerten(
     personenmonate: Sequence[Personenmonat],
     *,
     monat: Monat,
-    rollenzuordnung: Rollenzuordnung | None = None,
-    schwellenwerte: Schwellenwerte | None = None,
+    rollenzuordnung: Rollenzuordnung = _STANDARD_ROLLENZUORDNUNG,
+    schwellenwerte: Schwellenwerte = _STANDARD_SCHWELLENWERTE,
 ) -> Kurzarbeitsbewertung:
     """Bewertet die Rohdaten genau eines Kalendermonats.
 
     Fuer mehrere Monate siehe :func:`bewertungen`.
     """
-    rollenzuordnung = rollenzuordnung if rollenzuordnung is not None else Rollenzuordnung()
-    schwellenwerte = schwellenwerte if schwellenwerte is not None else Schwellenwerte()
     jahr, monat_nr = monat
 
     ids_je_kategorie: dict[str, list[str]] = defaultdict(list)
@@ -262,12 +264,10 @@ def bewerten(
 def bewertungen(
     daten: Mapping[Monat, Sequence[Personenmonat]],
     *,
-    rollenzuordnung: Rollenzuordnung | None = None,
-    schwellenwerte: Schwellenwerte | None = None,
+    rollenzuordnung: Rollenzuordnung = _STANDARD_ROLLENZUORDNUNG,
+    schwellenwerte: Schwellenwerte = _STANDARD_SCHWELLENWERTE,
 ) -> dict[Monat, Kurzarbeitsbewertung]:
     """Bewertet mehrere Kalendermonate - ruft :func:`bewerten` je Monat auf."""
-    rollenzuordnung = rollenzuordnung if rollenzuordnung is not None else Rollenzuordnung()
-    schwellenwerte = schwellenwerte if schwellenwerte is not None else Schwellenwerte()
     return {
         monat: bewerten(
             personenmonate,

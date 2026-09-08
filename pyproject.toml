@@ -77,9 +77,6 @@ allowlist_externals = [ "pytest" ]
 commands = [["pytest", { replace = "posargs", default = [], extend = true }]]
 
 [tool.tox.env.coverage]
-# "ruff" zusaetzlich zu coverage/web/bericht: tests/test_pre_commit_hook.py ruft ueber
-# den Hook `uv run --active ruff format` auf und braucht ruff deshalb in genau der
-# Umgebung, in der pytest laeuft (siehe .githooks/pre-commit).
 extras = [ "coverage", "ruff", "web", "bericht" ]
 allowlist_externals = [ "coverage" ]
 commands = [
@@ -96,14 +93,20 @@ allowlist_externals = [ "ruff" ]
 commands = [[ "ruff", "check", { replace = "posargs", default = ["src", "tests", "notebooks"], extend = true }]]
 
 [tool.tox.env.mypy]
-extras = [ "mypy" ]
+extras = [ "mypy", "web", "bericht" ]
 allowlist_externals = [ "mypy" ]
-commands = [[ "mypy", { replace = "posargs", default = ["src", "tests"], extend = true }]]
+commands = [[ "mypy", { replace = "posargs", default = ["src", "tests", "scripts"], extend = true }]]
 
 [tool.tox.env.mypy-notebooks]
 extras = [ "mypy", "notebook" ]
 allowlist_externals = [ "nbqa" ]
 commands = [[ "nbqa", "mypy", { replace = "posargs", default = ["notebooks"], extend = true }]]
+
+[tool.tox.env.ty]
+extras = [ "dev", "bericht", "web", "notebook" ]
+allowlist_externals = [ "uvx" ]
+ignore_outcome = true
+commands = [[ "uvx", "ty", "check", { replace = "posargs", default = ["src", "tests", "scripts", "notebooks"], extend = true } ]]
 
 [tool.tox.env.jupyter]
 extras = [ "notebook" ]
@@ -132,9 +135,6 @@ mccabe.max-complexity = 10
 
 [tool.ruff.lint.per-file-ignores]
 "*.ipynb" = ["E402"]
-# Tests greifen bewusst auf private Hilfsfunktionen des jeweils gespiegelten
-# src-Moduls zu (siehe CLAUDE.md, Abschnitt "Aufbau", tests/-Struktur) - SLF001
-# soll nur Zugriffe *zwischen* den sechs Bausteinen verhindern, nicht das.
 "tests/*" = ["SLF001"]
 
 [tool.ruff.format]
@@ -142,15 +142,11 @@ docstring-code-format = true
 indent-style = "space"
 line-ending = "auto"
 quote-style = "double"
-# Explizit der Default, aber bewusst dokumentiert: MONATSNAMEN
-# (domaene/umsatzhistorie.py) und select oben in dieser Datei verlassen sich
-# beide auf einen manuellen Komma-Abschluss samt `# fmt: skip`, um eine
-# handsortierte Mehrzeilen-Gruppierung statt des ansonsten erzwungenen
-# Ein-Element-pro-Zeile-Layouts zu behalten.
 skip-magic-trailing-comma = false
 
 [tool.mypy]
-packages = ["src","tests"]
+mypy_path = ["src", "scripts"]
+packages = ["umsatzprognose", "tests"]
 ignore_missing_imports = true
 follow_imports = "silent"
 python_version = "3.12"
@@ -165,21 +161,17 @@ show_error_codes = true
 warn_unused_configs = true
 
 [[tool.mypy.overrides]]
-# Nur fuer das Paket selbst, nicht fuer tests/: dort erzwingen vollstaendige
-# Signaturen ueberwiegend Boilerplate an pytest-Fixtures/Mocks ohne Mehrwert -
-# die Protocol/DIP-Absicherung, die CLAUDE.md mypy zuschreibt, gilt dem
-# Produktivcode.
 module = "umsatzprognose.*"
 disallow_untyped_defs = true
 disallow_incomplete_defs = true
+
+[tool.ty.environment]
+extra-paths = ["scripts", "notebooks"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
 filterwarnings = [
-    # Kommt aus starlette.testclient selbst (fastapi/starlette, Teil des optionalen
-    # web-Extras), nicht aus eigenem Code - starlette referenziert dort noch den
-    # veralteten Alias, den eine neuere anyio-Version bemängelt.
     "ignore:The anyio\\.abc\\.BlockingPortal alias is deprecated:DeprecationWarning",
 ]
 

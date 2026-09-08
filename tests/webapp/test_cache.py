@@ -92,7 +92,7 @@ def test_fortschritt_zeigt_gemeldete_zeilen_waehrend_des_ladens_und_ist_danach_l
     weiter = asyncio.Event()
 
     async def _fake_laden_async(
-        *, stichtag=None, horizont_monate=3, auslastung_monate=12, fortschritt=None
+        *, stichtag=None, horizont_monate=3, auslastung_monate=12, fortschritt
     ):
         fortschritt(f"Bestand geladen: {horizont_monate}/{auslastung_monate}")
         gemeldet.set()
@@ -359,7 +359,7 @@ def test_kurzarbeit_cache_zeigt_zwischenschritte_waehrend_des_ladens(monkeypatch
     gemeldet = asyncio.Event()
     weiter = asyncio.Event()
 
-    async def _fake_laden_async(self, *, stichtag=None, anzahl_monate=1, fortschritt=None):
+    async def _fake_laden_async(self, *, stichtag=None, anzahl_monate=1, fortschritt):
         fortschritt("Personen geladen")
         gemeldet.set()
         await weiter.wait()

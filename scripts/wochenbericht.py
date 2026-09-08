@@ -28,9 +28,15 @@ import os
 import re
 import tempfile
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Protocol, cast
 
 if TYPE_CHECKING:
+    from datetime import date
+
+    import pandas as pd
+    import plotly.graph_objects as go
+
+    from umsatzprognose.domaene import Prognose
     from umsatzprognose.util import Monat
 
 import plotly.io as pio
@@ -47,6 +53,30 @@ from umsatzprognose.darstellung.dashboard import STANDARD_GEWINN_VERLUST_MONATE
 from umsatzprognose.domaene import Kurzarbeitsbewertung, bewertungen
 from umsatzprognose.domaene.umsatzhistorie import MONATSNAMEN
 from umsatzprognose.domaene.zahlen import euro, prozent
+
+
+class _Dashboardauszug(Protocol):
+    """Der Ausschnitt von :class:`~umsatzprognose.darstellung.dashboard.Dashboard`, den
+    dieses Skript tatsaechlich braucht - als Protocol statt der konkreten Klasse, damit
+    Tests einen leichtgewichtigen Stand-in verwenden koennen (siehe
+    ``tests/scripts/test_wochenbericht.py::_FakeDashboard``), ohne eine echte Simulation
+    aufzusetzen."""
+
+    @property
+    def stichtag(self) -> date: ...
+
+    prognose: Prognose
+
+    def umsatzverlauf(self, *, mit_beschriftung: bool = False) -> go.Figure: ...
+    def restvolumen_je_projekt(self) -> go.Figure: ...
+    def gewinn_verlust_monatlich(
+        self, *, monate: int | None = None, mit_beschriftung: bool = False
+    ) -> go.Figure: ...
+    def gewinn_verlust_je_jahr(self, *, mit_beschriftung: bool = False) -> go.Figure: ...
+    def umsatzrendite_kumuliert(self, *, mit_beschriftung: bool = False) -> go.Figure: ...
+    def auslastung_je_mitarbeiter(self) -> go.Figure: ...
+    def umsatztabelle(self) -> pd.DataFrame: ...
+
 
 SLACK_CHANNEL_VAR = "SLACK_CHANNEL_ID"
 SLACK_TOKEN_VAR = "SLACK_BOT_TOKEN"
@@ -99,7 +129,7 @@ DIAGRAMM_ERLAEUTERUNGEN: dict[str, str] = {
 }
 
 
-def kontext_text(dashboard: Dashboard) -> str:
+def kontext_text(dashboard: _Dashboardauszug) -> str:
     """Kurzer Fließtext vor den Grafiken: Prognosehorizont, Bandbreite und ein
     etwaiger Kapazitätsengpass in Worten statt nur in den Diagrammen.
 
@@ -141,7 +171,7 @@ def kontext_text(dashboard: Dashboard) -> str:
     return text
 
 
-def kurzarbeit_laden(dashboard: Dashboard) -> dict[Monat, Kurzarbeitsbewertung]:
+def kurzarbeit_laden(dashboard: _Dashboardauszug) -> dict[Monat, Kurzarbeitsbewertung]:
     """Laedt die Kurzarbeit-Rohdaten und bewertet sie - eigenstaendig, unabhaengig vom
     Bestand (siehe ``notebooks/04_kurzarbeit.ipynb``).
 
@@ -173,11 +203,11 @@ def kurzarbeit_erlaeuterung(ergebnisse: dict[Monat, Kurzarbeitsbewertung]) -> st
 
 
 def diagrammtitel_und_figuren(
-    dashboard: Dashboard,
+    dashboard: _Dashboardauszug,
     kurzarbeit_ergebnisse: dict[Monat, Kurzarbeitsbewertung] | None,
     *,
     gewinn_verlust_monate: int | None,
-) -> list[tuple[str, object]]:
+) -> list[tuple[str, go.Figure]]:
     """Titel und Figur je Diagramm, in der Reihenfolge des Posts.
 
     ``kurzarbeit_ergebnisse`` ``None`` (Baustein ausgeschaltet, siehe
@@ -193,7 +223,7 @@ def diagrammtitel_und_figuren(
     )
     # mit_beschriftung=True nur hier: ein statischer Bildexport ohne Hover-Tooltip
     # braucht die Werte als Text, Notebooks und Webapp zeigen sie interaktiv per Hover.
-    eintraege: list[tuple[str, object]] = [
+    eintraege: list[tuple[str, go.Figure]] = [
         ("Umsatz je Monat", dashboard.umsatzverlauf(mit_beschriftung=True)),
         ("Offenes Auftragsvolumen je Projekt", dashboard.restvolumen_je_projekt()),
         (
@@ -230,7 +260,7 @@ def diagrammtitel_und_figuren(
 def posten(
     client: WebClient,
     kanal: str,
-    dashboard: Dashboard,
+    dashboard: _Dashboardauszug,
     verzeichnis: Path,
     *,
     gewinn_verlust_monate: int | None,
@@ -254,7 +284,11 @@ def posten(
     # fuer jedes Bild eine eigene Chromium-Instanz neu - siehe
     # scripts/diagramme_exportieren.py fuer denselben Fix mit Zeitmessung.
     pio.write_images(
-        fig=[figur for _titel, figur in titel_figuren], file=bilder, width=1400, height=800, scale=2
+        fig=cast("list[dict[str, object] | go.Figure]", [figur for _titel, figur in titel_figuren]),
+        file=cast("list[str | Path]", bilder),
+        width=1400,
+        height=800,
+        scale=2,
     )
 
     # file_uploads statt einer Schleife aus einzelnen files_upload_v2-Aufrufen: so

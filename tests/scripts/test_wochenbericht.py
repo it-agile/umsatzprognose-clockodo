@@ -21,7 +21,7 @@ import plotly.graph_objects as go
 import pytest
 
 from umsatzprognose.darstellung import diagramme
-from umsatzprognose.domaene import Kurzarbeitsbewertung, Schwellenwerte
+from umsatzprognose.domaene import Kurzarbeitsbewertung, NochKeinePrognose, Prognose, Schwellenwerte
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -42,7 +42,7 @@ _KURZARBEIT_ERGEBNISSE = {
 
 class _FakeDashboard:
     stichtag = date(2026, 9, 1)
-    prognose: object = None
+    prognose: Prognose = NochKeinePrognose()
 
     def umsatzverlauf(self, *, mit_beschriftung: bool = False) -> go.Figure:
         return go.Figure()
@@ -135,7 +135,7 @@ def test_posten_lehnt_ungueltige_channel_id_ab_vor_jedem_api_zugriff():
         wochenbericht.posten(
             client=cast("WebClient", object()),
             kanal="U0123456789",
-            dashboard=object(),
+            dashboard=cast("wochenbericht._Dashboardauszug", object()),
             verzeichnis=Path("/tmp"),
             gewinn_verlust_monate=None,
         )
@@ -155,10 +155,10 @@ def test_posten_laesst_kurzarbeit_weg_wenn_ausgeschaltet(monkeypatch, tmp_path):
     monkeypatch.setattr(wochenbericht, "SchulungenRepository", _FakeSchulungenRepository)
     monkeypatch.setattr(diagramme, "anmeldungsverlauf", lambda *a, **kw: go.Figure())
     monkeypatch.setattr(wochenbericht, "kurzarbeit_aktiv", lambda: False)
-    monkeypatch.setattr(wochenbericht.pio, "write_images", lambda **kw: None)
+    monkeypatch.setattr(wochenbericht.pio, "write_images", lambda **kw: None)  # type: ignore[attr-defined]
 
     dashboard = _FakeDashboard()
-    dashboard.prognose = _FakeNochKeinePrognose()
+    dashboard.prognose = NochKeinePrognose()
     client = _FakeSlackClient()
 
     wochenbericht.posten(
@@ -198,11 +198,6 @@ def test_umgebungsvariable_liefert_gesetzten_wert(monkeypatch):
     assert wochenbericht._umgebungsvariable("WOCHENBERICHT_TEST_WERT") == "wert"
 
 
-class _FakeNochKeinePrognose:
-    vorhanden = False
-    begruendung = "Kein Projekt im Prognose-Scope."
-
-
 class _FakePrognose:
     def __init__(
         self,
@@ -212,6 +207,7 @@ class _FakePrognose:
         kapazitaet_limitierend_anteil: float = 0.0,
     ) -> None:
         self.vorhanden = True
+        self.begruendung = ""
         self._horizontmonate = horizontmonate
         self._summe = summe
         self._kapazitaet_limitierend_anteil = kapazitaet_limitierend_anteil
@@ -219,16 +215,25 @@ class _FakePrognose:
     def horizontmonate(self) -> tuple[tuple[int, int], ...]:
         return self._horizontmonate
 
+    def monatswerte(self) -> dict[float, list[float]]:
+        return {}
+
+    def gebucht(self) -> list[float]:
+        return []
+
     def summe(self) -> dict[float, float]:
         return self._summe
 
     def kapazitaet_limitierend_anteil(self) -> float:
         return self._kapazitaet_limitierend_anteil
 
+    def kapazitaet_je_projekt(self) -> dict[int, float]:
+        return {}
+
 
 def test_kontext_text_ohne_prognose_liefert_deren_begruendung():
     dashboard = _FakeDashboard()
-    dashboard.prognose = _FakeNochKeinePrognose()
+    dashboard.prognose = NochKeinePrognose(fehlt="Kein Projekt im Prognose-Scope.")
 
     assert wochenbericht.kontext_text(dashboard) == "Kein Projekt im Prognose-Scope."
 

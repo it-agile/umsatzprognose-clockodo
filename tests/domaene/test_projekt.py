@@ -2,9 +2,15 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from umsatzprognose.util import Monat
+
 from datetime import date
 
 from umsatzprognose.domaene import (
+    Budget,
     Gesamtbudget,
     IntervallBudget,
     KeinBudget,
@@ -17,10 +23,38 @@ from umsatzprognose.domaene import (
 )
 from umsatzprognose.domaene.projekt import auftragsvolumen, sonderfall, verwertbar
 
+_STANDARD_BUDGET = Gesamtbudget(betrag=100000.0)
 
-def projekt(**felder) -> Projekt:
-    standard = {"id": 1, "aktiv": True, "budget": Gesamtbudget(betrag=100000.0)}
-    return Projekt(**{**standard, **felder})
+
+def projekt(
+    *,
+    id: int = 1,
+    name: str | None = None,
+    kunde: Kunde | None = None,
+    aktiv: bool = True,
+    abgeschlossen: bool = False,
+    budget: Budget = _STANDARD_BUDGET,
+    verbrauchtes_volumen: float = 0.0,
+    verbrauchte_stunden: float = 0.0,
+    anteile: tuple[Projektanteil, ...] = (),
+    stundensatz_uebersteuerung: float | None = None,
+    verbrauchsplan_zielmonat: Monat | None = None,
+    automatischer_abschluss: date | None = None,
+) -> Projekt:
+    return Projekt(
+        id=id,
+        name=name,
+        kunde=kunde,
+        aktiv=aktiv,
+        abgeschlossen=abgeschlossen,
+        budget=budget,
+        verbrauchtes_volumen=verbrauchtes_volumen,
+        verbrauchte_stunden=verbrauchte_stunden,
+        anteile=anteile,
+        stundensatz_uebersteuerung=stundensatz_uebersteuerung,
+        verbrauchsplan_zielmonat=verbrauchsplan_zielmonat,
+        automatischer_abschluss=automatischer_abschluss,
+    )
 
 
 def test_budget_ohne_betrag_ist_kein_auftragsvolumen():

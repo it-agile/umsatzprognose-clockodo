@@ -62,6 +62,7 @@ from umsatzprognose.darstellung.gestaltung import (
     achsen,
     figur,
 )
+from umsatzprognose.domaene import NochKeinePrognose
 from umsatzprognose.domaene.umsatzhistorie import MONATSNAMEN
 from umsatzprognose.domaene.zahlen import STUNDEN_JE_TAG, euro, prozent, tage, tausend_euro
 
@@ -71,10 +72,12 @@ from umsatzprognose.domaene.zahlen import STUNDEN_JE_TAG, euro, prozent, tage, t
 MAXIMALE_KUNDENLAENGE = 22
 MAXIMALE_PROJEKTLAENGE = 38
 
+_KEINE_PROGNOSE = NochKeinePrognose()
+
 
 def umsatzverlauf(
     historie: Umsatzhistorie,
-    prognose: Prognose | None = None,
+    prognose: Prognose = _KEINE_PROGNOSE,
     schulungsplan: Schulungsplan | None = None,
     kostenplan: Kostenplan | None = None,
     *,
@@ -131,7 +134,7 @@ def umsatzverlauf(
         f"Durchschnitt der {len(historie.abgeschlossene())} abgeschlossenen "
         f"Monate: {euro(durchschnitt, nachkommastellen=0)}"
     )
-    if prognose is not None and prognose.vorhanden:
+    if prognose.vorhanden:
         anteil = prognose.kapazitaet_limitierend_anteil()
         if anteil > 0:
             untertitel += f". Kapazität war in {anteil:.0%} der Läufe der limitierende Faktor"
@@ -154,21 +157,20 @@ def umsatzverlauf(
     )
 
     horizont_gesamtumsatz: dict[tuple[int, int], float] = {}
-    if prognose is not None:
-        if prognose.vorhanden:
-            horizont_gesamtumsatz = _prognosehorizont(
-                fig,
-                prognose,
-                verbrauch_laufender_monat=laufender,
-                schulungsplan=schulungsplan,
-            )
-        else:
-            _keine_prognose_hinweis(fig, prognose)
+    if prognose.vorhanden:
+        horizont_gesamtumsatz = _prognosehorizont(
+            fig,
+            prognose,
+            verbrauch_laufender_monat=laufender,
+            schulungsplan=schulungsplan,
+        )
+    else:
+        _keine_prognose_hinweis(fig, prognose)
 
-    horizont_gebucht = prognose.gebucht() if prognose is not None and prognose.vorhanden else []
+    horizont_gebucht = prognose.gebucht() if prognose.vorhanden else []
     horizont_schulung = (
         schulungsplan.umsatz_je_monat(prognose.horizontmonate())
-        if prognose is not None and prognose.vorhanden and schulungsplan is not None
+        if prognose.vorhanden and schulungsplan is not None
         else []
     )
     kosten_balken = KostenBalkenErgebnis()
@@ -224,7 +226,7 @@ def _umsatzverlauf_legende(
     *,
     laufender: Monatsumsatz | None,
     horizont_gebucht: Sequence[float],
-    prognose: Prognose | None,
+    prognose: Prognose,
     horizont_schulung: Sequence[float],
     kosten_balken: KostenBalkenErgebnis,
 ) -> None:
@@ -234,7 +236,7 @@ def _umsatzverlauf_legende(
     _legendeintrag(fig, "Abgerechnet", SERIE)
     if laufender or any(horizont_gebucht):
         _legendeintrag(fig, "Nicht abgerechnet", SERIE_HELL)
-    if prognose is not None and prognose.vorhanden:
+    if prognose.vorhanden:
         _legendeintrag(fig, "Prognostiziert", SERIE_HELL, deckkraft=PROGNOSE_DECKKRAFT)
     if any(horizont_schulung):
         _legendeintrag(fig, "Schulungsanmeldungen", SCHULUNG)
@@ -308,11 +310,11 @@ def _monatsbeschriftung(jahr: int, monat: int) -> str:
 
 
 def _alle_monatsschluessel(
-    monate: Sequence[Monatsumsatz], prognose: Prognose | None
+    monate: Sequence[Monatsumsatz], prognose: Prognose
 ) -> list[tuple[int, int]]:
     """Die Monate der Historie, ergaenzt um den Prognosehorizont (ohne Dopplung)."""
     schluessel = [m.schluessel for m in monate]
-    if prognose is not None and prognose.vorhanden:
+    if prognose.vorhanden:
         schluessel += [m for m in prognose.horizontmonate() if m not in schluessel]
     return schluessel
 
@@ -402,7 +404,7 @@ class KostenBalkenErgebnis:
 def _kosten_und_ergebnis(
     fig: go.Figure,
     monate: Sequence[Monatsumsatz],
-    prognose: Prognose | None,
+    prognose: Prognose,
     kostenplan: Kostenplan,
     horizont_gesamtumsatz: dict[tuple[int, int], float],
 ) -> KostenBalkenErgebnis:
@@ -617,7 +619,7 @@ def _keine_prognose_hinweis(fig: go.Figure, prognose: Prognose) -> None:
 def _historie_und_horizont_werte(
     monate: Sequence[Monatsumsatz],
     kosten: Sequence[float],
-    prognose: Prognose | None,
+    prognose: Prognose,
     horizont_kosten: Sequence[float],
     schulungsplan: Schulungsplan | None,
     verbrauch_laufender_monat: Monatsumsatz | None,
@@ -644,7 +646,7 @@ def _historie_und_horizont_werte(
     ergebnis = [u - k for u, k in zip(umsatz, kosten, strict=True)]
     deckkraft = [1.0] * len(monate)
 
-    if prognose is not None and prognose.vorhanden:
+    if prognose.vorhanden:
         horizont = prognose.horizontmonate()
         gesamtumsatz = _horizont_gesamtumsatz(
             prognose,
@@ -665,7 +667,7 @@ def _historie_und_horizont_werte(
 
 def _je_jahr(
     monate: Sequence[Monatsumsatz],
-    prognose: Prognose | None,
+    prognose: Prognose,
     umsatz: Sequence[float],
     ergebnis: Sequence[float],
     deckkraft: Sequence[float],
@@ -677,7 +679,7 @@ def _je_jahr(
     deckkraft)``.
     """
     schluessel = [m.schluessel for m in monate]
-    if prognose is not None and prognose.vorhanden:
+    if prognose.vorhanden:
         schluessel += list(prognose.horizontmonate())
 
     jahre: dict[int, list[tuple[int, float, float, float]]] = {}
@@ -826,7 +828,7 @@ def gewinn_verlust_monatlich(
     monate: Sequence[Monatsumsatz],
     kosten: Sequence[float],
     *,
-    prognose: Prognose | None = None,
+    prognose: Prognose = _KEINE_PROGNOSE,
     horizont_kosten: Sequence[float] = (),
     schulungsplan: Schulungsplan | None = None,
     verbrauch_laufender_monat: Monatsumsatz | None = None,
@@ -857,7 +859,7 @@ def gewinn_verlust_monatlich(
         monate, kosten, prognose, horizont_kosten, schulungsplan, verbrauch_laufender_monat
     )
     gesamt = sum(ergebnis)
-    horizont = prognose.horizontmonate() if prognose is not None and prognose.vorhanden else ()
+    horizont = prognose.horizontmonate() if prognose.vorhanden else ()
 
     untertitel = f"Summe über {len(monate)} Monate: {euro(gesamt, nachkommastellen=0)}"
     fig = figur("Gewinn/Verlust je Monat", untertitel=untertitel, hoehe=hoehe)
@@ -875,7 +877,7 @@ def gewinn_verlust_monatlich(
     )
     if mit_beschriftung:
         _balken_beschriften(fig, "Ergebnis")
-    if prognose is not None and not prognose.vorhanden:
+    if not prognose.vorhanden:
         _keine_prognose_hinweis(fig, prognose)
     if horizont:
         _datensicherheit_legende(fig, vorlaeufig=True, prognose=len(horizont) > 1)
@@ -891,7 +893,7 @@ def gewinn_verlust_je_jahr(
     monate: Sequence[Monatsumsatz],
     kosten: Sequence[float],
     *,
-    prognose: Prognose | None = None,
+    prognose: Prognose = _KEINE_PROGNOSE,
     horizont_kosten: Sequence[float] = (),
     schulungsplan: Schulungsplan | None = None,
     verbrauch_laufender_monat: Monatsumsatz | None = None,
@@ -947,7 +949,7 @@ def umsatzrendite_kumuliert(
     monate: Sequence[Monatsumsatz],
     kosten: Sequence[float],
     *,
-    prognose: Prognose | None = None,
+    prognose: Prognose = _KEINE_PROGNOSE,
     horizont_kosten: Sequence[float] = (),
     schulungsplan: Schulungsplan | None = None,
     verbrauch_laufender_monat: Monatsumsatz | None = None,

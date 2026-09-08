@@ -154,7 +154,7 @@ def test_letzte_verlangt_monate_als_keyword() -> None:
     """``monate`` ist keyword-only, damit an der Aufrufstelle lesbar bleibt, was die
     Zahl bedeutet - eine nackte ``13`` waere sonst leicht mit einem Jahr zu verwechseln."""
     with pytest.raises(TypeError):
-        Anmeldungsverlauf().letzte(13, stichtag=date(2026, 9, 15))  # type: ignore[call-arg]
+        Anmeldungsverlauf().letzte(13, stichtag=date(2026, 9, 15))  # type: ignore
 
 
 def test_letzte_behaelt_abbildungshinweise() -> None:

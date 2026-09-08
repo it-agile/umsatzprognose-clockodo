@@ -25,8 +25,11 @@ if TYPE_CHECKING:
 
 import pandas as pd
 
+from umsatzprognose.domaene import NochKeinePrognose
 from umsatzprognose.domaene.umsatzhistorie import MONATSNAMEN
 from umsatzprognose.domaene.zahlen import euro
+
+_KEINE_PROGNOSE = NochKeinePrognose()
 
 # Diese Tabellen sind zum Lesen gedacht - kein abgeschnittener Hinweistext.
 pd.set_option("display.max_colwidth", None)
@@ -75,7 +78,7 @@ def projekttabelle(projekte: Sequence[Projekt]) -> pd.DataFrame:
 
 def umsatztabelle(
     historie: Umsatzhistorie,
-    prognose: Prognose | None = None,
+    prognose: Prognose = _KEINE_PROGNOSE,
     schulungsplan: Schulungsplan | None = None,
     kostenplan: Kostenplan | None = None,
 ) -> pd.DataFrame:
@@ -125,7 +128,7 @@ def umsatztabelle(
         for monat, kosten in zip(historie.monate, kosten_historie, strict=True)
     ]
 
-    if prognose is not None and prognose.vorhanden:
+    if prognose.vorhanden:
         horizont = prognose.horizontmonate()
         median = prognose.monatswerte()[0.50]
         gebucht = prognose.gebucht()

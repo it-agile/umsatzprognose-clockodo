@@ -24,8 +24,14 @@ uvx tox -e web                 # Web-Frontend lokal starten (siehe Abschnitt "We
 
 `tox` ist nicht Projektabhängigkeit, sondern läuft über `uvx` (`[tool.tox]` in
 `pyproject.toml`). `env_list` (`py312`, `py313`, `py314`, `coverage`, `ruff`, `mypy`,
-`mypy-notebooks`) läuft bei `uvx tox` ohne weitere Angabe; `jupyter` und `web` sind
-zusätzliche Umgebungen und laufen nur mit `-e jupyter` bzw. `-e web`.
+`mypy-notebooks`) läuft bei `uvx tox` ohne weitere Angabe; `jupyter`, `web` und `ty`
+sind zusätzliche Umgebungen und laufen nur mit `-e jupyter`, `-e web` bzw. `-e ty`.
+
+Werkzeugkonfiguration (ruff, mypy, ty, pytest, coverage, tox) sammelt sich in
+`pyproject.toml` (`[tool.*]`-Abschnitte) statt in eigenen Dateien wie `ruff.toml`,
+`mypy.ini` oder `ty.toml` – ein einziger Ort für die gesamte Projektkonfiguration statt
+verteilter Konfigurationsdateien. Nur wenn ein Werkzeug `pyproject.toml` gar nicht
+unterstützt, bekommt es eine eigene Datei.
 
 ## Code-Qualität – Prüf-Checkliste
 

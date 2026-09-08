@@ -314,7 +314,7 @@ def entrygroups_zusammenfuehren(*gruppenlisten: list[EntryGroupV2]) -> list[Entr
             schluessel = gruppe["group"]
             vorhanden = zusammengefasst.get(schluessel)
             if vorhanden is None:
-                zusammengefasst[schluessel] = dict(gruppe)  # type: ignore[assignment]
+                zusammengefasst[schluessel] = dict(gruppe)  # type: ignore[assignment]  # ty: ignore[invalid-assignment]
                 continue
             vorhanden["duration"] = vorhanden.get("duration", 0) + gruppe.get("duration", 0)
             vorhanden["revenue"] = vorhanden.get("revenue", 0.0) + gruppe.get("revenue", 0.0)
