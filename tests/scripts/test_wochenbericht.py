@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import sys
 from datetime import date
+from decimal import Decimal
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
@@ -203,7 +204,7 @@ class _FakePrognose:
         self,
         *,
         horizontmonate: tuple[tuple[int, int], ...],
-        summe: dict[float, float],
+        summe: dict[float, Decimal],
         kapazitaet_limitierend_anteil: float = 0.0,
     ) -> None:
         self.vorhanden = True
@@ -215,13 +216,13 @@ class _FakePrognose:
     def horizontmonate(self) -> tuple[tuple[int, int], ...]:
         return self._horizontmonate
 
-    def monatswerte(self) -> dict[float, list[float]]:
+    def monatswerte(self) -> dict[float, list[Decimal]]:
         return {}
 
-    def gebucht(self) -> list[float]:
+    def gebucht(self) -> list[Decimal]:
         return []
 
-    def summe(self) -> dict[float, float]:
+    def summe(self) -> dict[float, Decimal]:
         return self._summe
 
     def kapazitaet_limitierend_anteil(self) -> float:
@@ -245,7 +246,11 @@ def test_kontext_text_nennt_zeitraum_und_bandbreite_je_monat():
     dashboard = _FakeDashboard()
     dashboard.prognose = _FakePrognose(
         horizontmonate=((2026, 9), (2026, 10), (2026, 11)),
-        summe={0.95: 100_000.0, 0.85: 120_000.0, 0.50: 150_000.0},
+        summe={
+            0.95: Decimal("100000.0"),
+            0.85: Decimal("120000.0"),
+            0.50: Decimal("150000.0"),
+        },
     )
 
     text = wochenbericht.kontext_text(dashboard)
@@ -261,7 +266,7 @@ def test_kontext_text_nennt_kapazitaetsengpass_wenn_vorhanden():
     dashboard = _FakeDashboard()
     dashboard.prognose = _FakePrognose(
         horizontmonate=((2026, 9),),
-        summe={0.95: 10.0, 0.85: 12.0, 0.50: 15.0},
+        summe={0.95: Decimal("10.0"), 0.85: Decimal("12.0"), 0.50: Decimal("15.0")},
         kapazitaet_limitierend_anteil=0.42,
     )
 

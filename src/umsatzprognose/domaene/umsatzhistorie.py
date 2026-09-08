@@ -25,6 +25,7 @@ if TYPE_CHECKING:
 
 from collections import defaultdict
 from dataclasses import dataclass
+from decimal import Decimal
 from typing import Protocol
 
 from umsatzprognose.util import Monat, vormonat
@@ -77,15 +78,15 @@ def betrag_je_monat[Posten: _MitSchluessel](
     posten: Iterable[Posten],
     monate: Sequence[Monat],
     *,
-    betrag: Callable[[Posten], float],
-) -> list[float]:
+    betrag: Callable[[Posten], Decimal],
+) -> list[Decimal]:
     """Summe von ``betrag(p)`` je Monat aus ``monate``, 0 ohne passenden Posten.
 
     Gemeinsames Muster von ``Kostenplan.kosten_je_monat`` und
     ``Schulungsplan.umsatz_je_monat``: beide gruppieren eine flache Liste von Posten
     nach ``schluessel`` und projizieren die Summe auf die angefragten Monate.
     """
-    summen: defaultdict[Monat, float] = defaultdict(float)
+    summen: defaultdict[Monat, Decimal] = defaultdict(Decimal)
     for p in posten:
         summen[p.schluessel] += betrag(p)
     return [summen[monat] for monat in monate]
@@ -97,7 +98,7 @@ class Monatsumsatz:
 
     jahr: int
     monat: int
-    umsatz: float = 0.0
+    umsatz: Decimal = Decimal("0")
     stunden: float = 0.0
 
     def __str__(self) -> str:
@@ -178,11 +179,11 @@ class Umsatzhistorie:
         monate = (*abgeschlossene, laufender) if laufender is not None else abgeschlossene
         return type(self)(stichtag=self.stichtag, monate=monate)
 
-    def summe(self, anzahl: int | None = None) -> float:
+    def summe(self, anzahl: int | None = None) -> Decimal:
         """Umsatz der abgeschlossenen Monate."""
-        return sum(m.umsatz for m in self.abgeschlossene(anzahl))
+        return sum((m.umsatz for m in self.abgeschlossene(anzahl)), Decimal("0"))
 
-    def durchschnitt(self, anzahl: int | None = None) -> float:
+    def durchschnitt(self, anzahl: int | None = None) -> Decimal:
         """Mittlerer Monatsumsatz der abgeschlossenen Monate, 0 wenn es keine gibt."""
         monate = self.abgeschlossene(anzahl)
-        return self.summe(anzahl) / len(monate) if monate else 0.0
+        return self.summe(anzahl) / len(monate) if monate else Decimal("0")

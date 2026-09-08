@@ -8,6 +8,7 @@ Kein Test spricht mit der echten Google Sheets API - statt eines echten
 from __future__ import annotations
 
 from datetime import date
+from decimal import Decimal
 
 import pytest
 
@@ -61,8 +62,8 @@ def test_zeilen_zu_terminen_findet_spalten_ueber_die_kopfzeile() -> None:
     ]
     termine = _zeilen_zu_terminen(zeilen)
     assert [(t.jahr, t.monat, t.umsatz) for t in termine] == [
-        (2026, 10, 1500.0),
-        (2026, 10, 750.0),
+        (2026, 10, Decimal("1500.0")),
+        (2026, 10, Decimal("750.0")),
     ]
 
 
@@ -90,7 +91,7 @@ def test_zeilen_zu_terminen_findet_kopfzeile_hinter_einer_vorausgehenden_zeile()
         ["Python-Grundkurs", "2026", "10", "A. Beispiel", "1.500,00 €", ""],
     ]
     termine = _zeilen_zu_terminen(zeilen)
-    assert [(t.jahr, t.monat, t.umsatz) for t in termine] == [(2026, 10, 1500.0)]
+    assert [(t.jahr, t.monat, t.umsatz) for t in termine] == [(2026, 10, Decimal("1500.0"))]
 
 
 def test_jahr_spalte_ermitteln_nimmt_die_kopfzeilen_spalte_wenn_vorhanden() -> None:
@@ -108,7 +109,7 @@ def test_zeilen_zu_terminen_findet_jahr_spalte_trotz_vertipptem_kopfzeilentext()
     kopfzeile = ["x^", "Monat", "Schulung", "Trainer", "Datum", "Umsatz gesamt", "Bemerkungen"]
     zeilen = [kopfzeile, ["2024", "10", "Scrum Master", "A. Beispiel", "", "1.500,00 €", ""]]
     termine = _zeilen_zu_terminen(zeilen)
-    assert [(t.jahr, t.monat, t.umsatz) for t in termine] == [(2024, 10, 1500.0)]
+    assert [(t.jahr, t.monat, t.umsatz) for t in termine] == [(2024, 10, Decimal("1500.0"))]
 
 
 def test_zeilen_zu_anmeldungen_findet_spalten_ueber_die_kopfzeile() -> None:

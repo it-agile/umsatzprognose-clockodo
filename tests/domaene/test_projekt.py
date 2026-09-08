@@ -8,6 +8,7 @@ if TYPE_CHECKING:
     from umsatzprognose.util import Monat
 
 from datetime import date
+from decimal import Decimal
 
 from umsatzprognose.domaene import (
     Budget,
@@ -23,7 +24,7 @@ from umsatzprognose.domaene import (
 )
 from umsatzprognose.domaene.projekt import auftragsvolumen, sonderfall, verwertbar
 
-_STANDARD_BUDGET = Gesamtbudget(betrag=100000.0)
+_STANDARD_BUDGET = Gesamtbudget(betrag=Decimal("100000.0"))
 
 
 def projekt(
@@ -34,10 +35,10 @@ def projekt(
     aktiv: bool = True,
     abgeschlossen: bool = False,
     budget: Budget = _STANDARD_BUDGET,
-    verbrauchtes_volumen: float = 0.0,
+    verbrauchtes_volumen: Decimal = Decimal("0"),
     verbrauchte_stunden: float = 0.0,
     anteile: tuple[Projektanteil, ...] = (),
-    stundensatz_uebersteuerung: float | None = None,
+    stundensatz_uebersteuerung: Decimal | None = None,
     verbrauchsplan_zielmonat: Monat | None = None,
     automatischer_abschluss: date | None = None,
 ) -> Projekt:
@@ -77,36 +78,36 @@ def test_stundenbudget_wird_nicht_als_euro_gelesen():
 def test_intervallbudget_und_teilprojektbudget_bleiben_unbenutzt():
     # interval ist laut clocodo-api.yaml ein Integer-Enum: 0 wochenweise, 1 monatlich,
     # 2 quartalsweise, 3 jaehrlich.
-    assert auftragsvolumen(IntervallBudget(betrag=1000.0, intervall=1)) is None
-    assert auftragsvolumen(TeilprojektBudget(betrag=1000.0)) is None
+    assert auftragsvolumen(IntervallBudget(betrag=Decimal("1000.0"), intervall=1)) is None
+    assert auftragsvolumen(TeilprojektBudget(betrag=Decimal("1000.0"))) is None
 
 
 def test_wochenbudget_faellt_nicht_durch_die_null():
     # 0 ist ein gueltiges Intervall und falsy - eine Pruefung auf den Wahrheitswert
     # wuerde das Wochenbudget still als Gesamtbudget lesen.
-    wochenbudget = IntervallBudget(betrag=1000.0, intervall=0)
+    wochenbudget = IntervallBudget(betrag=Decimal("1000.0"), intervall=0)
     assert sonderfall(wochenbudget) == "Budget je Intervall statt Gesamtbudget"
     assert auftragsvolumen(wochenbudget) is None
 
 
 def test_restvolumen_ist_budget_minus_verbrauch():
-    p = projekt(verbrauchtes_volumen=30000.0)
-    assert p.restvolumen_roh == 70000.0
-    assert p.restvolumen_prognosewirksam == 70000.0
+    p = projekt(verbrauchtes_volumen=Decimal("30000.0"))
+    assert p.restvolumen_roh == Decimal("70000.0")
+    assert p.restvolumen_prognosewirksam == Decimal("70000.0")
     assert not p.budget_ueberschritten
 
 
 def test_ueberschreitung_bleibt_roh_sichtbar_und_wird_prognostisch_gekappt():
     # budget.hard ist false, der Verbrauch kann das Budget uebersteigen. Fuer die
     # Prognose gilt trotzdem: kein zukuenftiger Umsatz.
-    p = projekt(verbrauchtes_volumen=130000.0)
-    assert p.restvolumen_roh == -30000.0
-    assert p.restvolumen_prognosewirksam == 0.0
+    p = projekt(verbrauchtes_volumen=Decimal("130000.0"))
+    assert p.restvolumen_roh == Decimal("-30000.0")
+    assert p.restvolumen_prognosewirksam == Decimal("0")
     assert p.budget_ueberschritten
 
 
 def test_ohne_budget_gibt_es_kein_restvolumen_und_keine_null():
-    p = projekt(budget=KeinBudget(), verbrauchtes_volumen=5000.0)
+    p = projekt(budget=KeinBudget(), verbrauchtes_volumen=Decimal("5000.0"))
     assert p.restvolumen_roh is None
     assert p.restvolumen_prognosewirksam is None
     assert not p.budget_ueberschritten
@@ -144,29 +145,31 @@ def test_ohne_deadline_gibt_es_keinen_automatischen_abschluss():
 
 
 def test_effektiver_stundensatz_aus_umsatz_und_zeit():
-    p = projekt(verbrauchtes_volumen=15000.0, verbrauchte_stunden=100.0)
-    assert p.effektiver_stundensatz == 150.0
+    p = projekt(verbrauchtes_volumen=Decimal("15000.0"), verbrauchte_stunden=100.0)
+    assert p.effektiver_stundensatz == Decimal("150.0")
 
 
 def test_pauschalleistung_ohne_zeit_hat_keinen_stundensatz():
     # Acht Gruppen dieser Installation haben Umsatz bei duration == 0. Eine Division
     # durch null waere hier kein Randfall, sondern der Regelfall fuer Pauschalen.
-    pauschal = projekt(verbrauchtes_volumen=5000.0, verbrauchte_stunden=0.0)
+    pauschal = projekt(verbrauchtes_volumen=Decimal("5000.0"), verbrauchte_stunden=0.0)
     assert pauschal.effektiver_stundensatz is None
 
 
 def test_gebuchte_zeit_ohne_umsatz_ergibt_stundensatz_null():
     # Anders als der Pauschalfall: hier ist verbrauchte_stunden > 0, nur der Umsatz
     # ist 0. Das waere eine Division durch null.
-    ohne_umsatz = projekt(verbrauchtes_volumen=0.0, verbrauchte_stunden=40.0)
-    assert ohne_umsatz.effektiver_stundensatz == 0.0
+    ohne_umsatz = projekt(verbrauchtes_volumen=Decimal("0"), verbrauchte_stunden=40.0)
+    assert ohne_umsatz.effektiver_stundensatz == Decimal("0")
 
 
 def test_stundensatz_uebersteuerung_hat_vorrang_vor_dem_abgeleiteten_wert():
     ohne_umsatz = projekt(
-        verbrauchtes_volumen=0.0, verbrauchte_stunden=40.0, stundensatz_uebersteuerung=95.0
+        verbrauchtes_volumen=Decimal("0"),
+        verbrauchte_stunden=40.0,
+        stundensatz_uebersteuerung=Decimal("95.0"),
     )
-    assert ohne_umsatz.effektiver_stundensatz == 95.0
+    assert ohne_umsatz.effektiver_stundensatz == Decimal("95.0")
 
 
 def test_anteile_je_person_summieren_sich_zu_eins():

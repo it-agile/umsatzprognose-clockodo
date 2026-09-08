@@ -8,6 +8,7 @@ if TYPE_CHECKING:
     from umsatzprognose.util import Monat
 
 from datetime import date
+from decimal import Decimal
 
 import numpy as np
 import pytest
@@ -26,7 +27,7 @@ from umsatzprognose.domaene import (
 )
 
 STICHTAG = date(2026, 8, 24)
-_STANDARD_BUDGET = Gesamtbudget(betrag=100000.0)
+_STANDARD_BUDGET = Gesamtbudget(betrag=Decimal("100000.0"))
 
 
 def projekt(
@@ -37,10 +38,10 @@ def projekt(
     aktiv: bool = True,
     abgeschlossen: bool = False,
     budget: Budget = _STANDARD_BUDGET,
-    verbrauchtes_volumen: float = 0.0,
+    verbrauchtes_volumen: Decimal = Decimal("0"),
     verbrauchte_stunden: float = 0.0,
     anteile: tuple[Projektanteil, ...] = (),
-    stundensatz_uebersteuerung: float | None = None,
+    stundensatz_uebersteuerung: Decimal | None = None,
     verbrauchsplan_zielmonat: Monat | None = None,
     automatischer_abschluss: date | None = None,
 ) -> Projekt:
@@ -63,7 +64,7 @@ def projekt(
 def verlauf(*monate: tuple[int, int, float], **projektfelder) -> Verbrauchsverlauf:
     return Verbrauchsverlauf.fuer(
         projekt(**projektfelder),
-        (Monatsumsatz(jahr=j, monat=m, umsatz=u) for j, m, u in monate),
+        (Monatsumsatz(jahr=j, monat=m, umsatz=Decimal(str(u))) for j, m, u in monate),
     )
 
 
@@ -154,7 +155,11 @@ def test_quote_ueber_eins_bleibt_stehen():
 def test_ein_restvolumen_von_null_ist_keine_quote():
     with pytest.raises(ValueError, match="Restvolumen"):
         Abrufquote(
-            projekt=projekt(), jahr=2026, monat=7, verbrauch=0.0, restvolumen_zu_monatsbeginn=0.0
+            projekt=projekt(),
+            jahr=2026,
+            monat=7,
+            verbrauch=Decimal("0"),
+            restvolumen_zu_monatsbeginn=Decimal("0"),
         )
 
 
@@ -171,8 +176,8 @@ def verteilung(*werte: float) -> Abrufquotenverteilung:
             projekt=projekt(),
             jahr=2026,
             monat=1 + nummer,
-            verbrauch=wert * 1000.0,
-            restvolumen_zu_monatsbeginn=1000.0,
+            verbrauch=Decimal(str(wert * 1000.0)),
+            restvolumen_zu_monatsbeginn=Decimal("1000.0"),
         )
         for nummer, wert in enumerate(werte)
     )
@@ -254,8 +259,8 @@ def test_abrufquote_beschriftung_und_str_zeigen_projekt_und_wert():
         projekt=projekt(name="Beispielprojekt"),
         jahr=2026,
         monat=6,
-        verbrauch=3000.0,
-        restvolumen_zu_monatsbeginn=10000.0,
+        verbrauch=Decimal("3000.0"),
+        restvolumen_zu_monatsbeginn=Decimal("10000.0"),
     )
 
     assert quote.beschriftung == "Beispielprojekt, Jun 2026"

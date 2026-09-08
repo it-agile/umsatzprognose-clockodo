@@ -8,6 +8,7 @@ Kein Test spricht mit der echten Google Sheets API - statt eines echten
 from __future__ import annotations
 
 from datetime import date
+from decimal import Decimal
 
 import pytest
 
@@ -65,8 +66,8 @@ def test_zeilen_zu_posten_findet_spalten_ueber_die_kopfzeile() -> None:
     ]
     posten = _zeilen_zu_posten(zeilen, 2026)
     assert [(p.jahr, p.monat, p.kosten) for p in posten] == [
-        (2026, 1, 950.0),
-        (2026, 2, 800.0),
+        (2026, 1, Decimal("950.0")),
+        (2026, 2, Decimal("800.0")),
     ]
 
 
@@ -79,8 +80,13 @@ def test_zeilen_zu_posten_ersetzt_nur_den_allgemeinkosten_anteil_bei_erfassung()
     ]
     posten = _zeilen_zu_posten(zeilen, 2026)
     assert [(p.pauschale, p.allgemeinkosten, p.erfassung, p.kosten) for p in posten] == [
-        (950.0, 50.0, Erfasst(120.0), 1020.0),  # 950 - 50 + 120
-        (800.0, 0.0, Geschaetzt(), 800.0),
+        (
+            Decimal("950.0"),
+            Decimal("50.0"),
+            Erfasst(Decimal("120.0")),
+            Decimal("1020.0"),
+        ),  # 950 - 50 + 120
+        (Decimal("800.0"), Decimal("0.0"), Geschaetzt(), Decimal("800.0")),
     ]
 
 
@@ -90,7 +96,7 @@ def test_zeilen_zu_posten_ohne_kostenerfassung_spalte_faellt_immer_auf_die_pausc
     zeilen = [KOPFZEILE, ["Januar", "100,00 €", "800,00 €", "50,00 €", "950,00 €"]]
     posten = _zeilen_zu_posten(zeilen, 2026)
     assert posten[0].erfassung == Geschaetzt()
-    assert posten[0].kosten == 950.0
+    assert posten[0].kosten == Decimal("950.0")
 
 
 def test_zeilen_zu_posten_ueberspringt_zeilen_ohne_erkennbaren_monat() -> None:
@@ -107,8 +113,8 @@ def test_zeilen_zu_posten_findet_monatsspalte_ohne_kopfzeilen_bezeichnung() -> N
     ]
     posten = _zeilen_zu_posten(zeilen, 2022)
     assert [(p.jahr, p.monat, p.kosten) for p in posten] == [
-        (2022, 1, 950.0),
-        (2022, 2, 800.0),
+        (2022, 1, Decimal("950.0")),
+        (2022, 2, Decimal("800.0")),
     ]
 
 
@@ -122,8 +128,8 @@ def test_zeilen_zu_posten_findet_monatsspalte_an_verschobener_position() -> None
     ]
     posten = _zeilen_zu_posten(zeilen, 2022)
     assert [(p.jahr, p.monat, p.kosten) for p in posten] == [
-        (2022, 1, 950.0),
-        (2022, 2, 800.0),
+        (2022, 1, Decimal("950.0")),
+        (2022, 2, Decimal("800.0")),
     ]
 
 
@@ -156,7 +162,7 @@ def test_zeilen_zu_posten_findet_kopfzeile_nach_vorausgehender_tabelle() -> None
         ["Januar", "", "800,00 €", "50,00 €", "950,00 €"],
     ]
     posten = _zeilen_zu_posten(zeilen, 2022)
-    assert [(p.jahr, p.monat, p.kosten) for p in posten] == [(2022, 1, 950.0)]
+    assert [(p.jahr, p.monat, p.kosten) for p in posten] == [(2022, 1, Decimal("950.0"))]
 
 
 def test_monat_spalte_ermitteln_bevorzugt_die_kopfzeile() -> None:

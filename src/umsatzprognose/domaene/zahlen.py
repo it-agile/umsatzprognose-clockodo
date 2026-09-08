@@ -2,11 +2,17 @@
 
 Deutsche Schreibweise mit Punkt als Tausender- und Komma als Dezimaltrennzeichen, ohne
 ``locale``:.
+
+Euro-Betraege laufen als :class:`~decimal.Decimal`, nicht als ``float`` - ein
+Rundungsfehler in einer Geldgroesse waere in einem oeffentlichen Repository nur schwer
+zu rechtfertigen. Reine Verhaeltnis- und Stundengroessen (``stunden``, ``tage``,
+``prozent``) bleiben ``float``, weil sie keine Geldbetraege sind.
 """
 
 from __future__ import annotations
 
 import re
+from decimal import Decimal
 
 _PLATZHALTER = "\x00"
 _UNERLAUBTE_ZEICHEN = re.compile(r"[^\d,.]")
@@ -14,17 +20,17 @@ _UNERLAUBTE_ZEICHEN = re.compile(r"[^\d,.]")
 STUNDEN_JE_TAG = 7.0
 
 
-def _deutsch(wert: float, nachkommastellen: int) -> str:
+def _deutsch(wert: float | Decimal, nachkommastellen: int) -> str:
     englisch = f"{wert:,.{nachkommastellen}f}"
     return englisch.replace(",", _PLATZHALTER).replace(".", ",").replace(_PLATZHALTER, ".")
 
 
-def euro(betrag: float, *, nachkommastellen: int = 2) -> str:
+def euro(betrag: Decimal, *, nachkommastellen: int = 2) -> str:
     """Etwa ``729.212,45 EUR``."""
     return f"{_deutsch(betrag, nachkommastellen)} EUR"
 
 
-def tausend_euro(betrag: float) -> str:
+def tausend_euro(betrag: Decimal) -> str:
     """Etwa ``729 Tsd. EUR`` - fuer Kennzahlen, in denen Cent nur stoeren."""
     return f"{_deutsch(betrag / 1000, 0)} Tsd. EUR"
 
@@ -44,7 +50,11 @@ def prozent(anteil: float, *, nachkommastellen: int = 0) -> str:
     return f"{_deutsch(anteil * 100, nachkommastellen)} %"
 
 
-def euro_parsen(text: str) -> float:
-    """``"12.345,67 €"`` -> ``12345.67``; leer oder ohne Ziffern -> ``0.0``."""
+def euro_parsen(text: str) -> Decimal:
+    """``"12.345,67 €"`` -> ``Decimal("12345.67")``; leer oder ohne Ziffern -> ``Decimal("0")``.
+
+    Parst direkt in ``Decimal``, ohne den Umweg ueber ``float`` - der wuerde die
+    Nachkommastellen schon vor der Umwandlung mit einem Binaerrundungsfehler behaften.
+    """
     bereinigt = _UNERLAUBTE_ZEICHEN.sub("", text).replace(".", "").replace(",", ".")
-    return float(bereinigt) if bereinigt else 0.0
+    return Decimal(bereinigt) if bereinigt else Decimal("0")

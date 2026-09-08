@@ -21,6 +21,7 @@ import humanize
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
+    from decimal import Decimal
 
     import pandas as pd
     import plotly.graph_objects as go
@@ -508,9 +509,13 @@ class Dashboard:
         monate = len(historie.abgeschlossene())
         return diagramme.kennzahlen(
             [
-                (f"Umsatz letzte {monate} Monate", historie.summe(), "EUR"),
-                ("Durchschnitt je Monat", historie.durchschnitt(), "EUR"),
-                ("Offenes Auftragsvolumen", self.bestand.restvolumen_prognosewirksam, "EUR"),
+                (f"Umsatz letzte {monate} Monate", float(historie.summe()), "EUR"),
+                ("Durchschnitt je Monat", float(historie.durchschnitt()), "EUR"),
+                (
+                    "Offenes Auftragsvolumen",
+                    float(self.bestand.restvolumen_prognosewirksam),
+                    "EUR",
+                ),
                 ("Projekte in der Prognose", len(self.bestand.im_prognose_scope), ""),
             ]
         )
@@ -626,7 +631,7 @@ class Dashboard:
             mit_beschriftung=mit_beschriftung,
         )
 
-    def _horizont_kosten(self) -> list[float]:
+    def _horizont_kosten(self) -> list[Decimal]:
         """Kosten je Horizontmonat der laufenden Prognose, leer ohne Simulation."""
         if not self.prognose.vorhanden:
             return []
@@ -693,15 +698,15 @@ class Dashboard:
         projekte = self.bestand.im_prognose_scope
         return tabellen.projekttabelle(projekte[:top] if top else projekte)
 
-    def stundensatz_uebersteuern(self, werte: dict[str, float]) -> None:
+    def stundensatz_uebersteuern(self, werte: dict[str, Decimal]) -> None:
         """Für benannte Projekte von Hand einen Stundensatz hinterlegen.
 
         Für Projekte, deren Stundensatz laut Hinweisen 0 ist - gebuchte Zeit ohne
         Umsatz -, lässt sich hier eine plausible Zahl nachtragen, statt dass die
         spätere Umrechnung von Euro in Stunden dort durch null teilt. ``werte``
         verwendet denselben Projektnamen wie in der Hinweistabelle, zum Beispiel
-        ``{"Website-Relaunch": 95.0}``. Wirkt auf alle danach aufgerufenen Ansichten
-        dieses Dashboards.
+        ``{"Website-Relaunch": Decimal("95.0")}``. Wirkt auf alle danach aufgerufenen
+        Ansichten dieses Dashboards.
         """
         self.bestand = self.bestand.mit_stundensatz_uebersteuerungen(werte)
 

@@ -68,6 +68,7 @@ if TYPE_CHECKING:
 
 from collections.abc import Mapping
 from datetime import date
+from decimal import Decimal
 
 from umsatzprognose.domaene import (
     Budget,
@@ -182,7 +183,7 @@ class ProjektRepository:
             aktiv=bool(rohprojekt.get("active")),
             abgeschlossen=bool(rohprojekt.get("completed")),
             budget=budget(rohprojekt),
-            verbrauchtes_volumen=float(gebucht.get("revenue", 0.0)),
+            verbrauchtes_volumen=gebucht.get("revenue", Decimal("0")),
             verbrauchte_stunden=float(gebucht.get("stunden", 0.0)),
             anteile=self._anteile(gebucht) if mit_anteilen else (),
             automatischer_abschluss=automatischer_abschluss(rohprojekt),
@@ -198,7 +199,7 @@ class ProjektRepository:
                     # statt eines KeyError: ein fehlender Name darf keine Stunde kosten.
                     mitarbeiter=self._mitarbeiter.get(users_id, Mitarbeiter(id=users_id)),
                     stunden=float(untergruppe.get("duration") or 0.0) / SEKUNDEN_JE_STUNDE,
-                    umsatz=float(untergruppe.get("revenue") or 0.0),
+                    umsatz=Decimal(str(untergruppe.get("revenue") or 0.0)),
                 )
             )
         return tuple(anteile)
@@ -214,9 +215,9 @@ class ProjektRepository:
             # Summiert statt zugewiesen: eine Gruppierung liefert je Projekt eine
             # Gruppe, ein doppelter Schluessel wuerde sonst still eine Zeile verwerfen.
             eintrag = verbrauch.setdefault(
-                projects_id, {"revenue": 0.0, "stunden": 0.0, "sub_groups": []}
+                projects_id, {"revenue": Decimal("0"), "stunden": 0.0, "sub_groups": []}
             )
-            eintrag["revenue"] += float(gruppe.get("revenue") or 0.0)
+            eintrag["revenue"] += Decimal(str(gruppe.get("revenue") or 0.0))
             eintrag["stunden"] += float(gruppe.get("duration") or 0.0) / SEKUNDEN_JE_STUNDE
             eintrag["sub_groups"].extend(gruppe.get("sub_groups") or [])
         return verbrauch
@@ -224,7 +225,7 @@ class ProjektRepository:
     @staticmethod
     def _verbrauch_ohne_projekt_hinweis(gruppen: list[EntryGroupV2]) -> tuple[Hinweis, ...]:
         ohne_projekt = [g for g in gruppen if int(g["group"]) == 0]
-        umsatz = sum(float(g.get("revenue") or 0.0) for g in ohne_projekt)
+        umsatz = sum((Decimal(str(g.get("revenue") or 0.0)) for g in ohne_projekt), Decimal("0"))
         zeit = sum(float(g.get("duration") or 0.0) for g in ohne_projekt) / SEKUNDEN_JE_STUNDE
         if not (umsatz or zeit):
             return ()
@@ -282,9 +283,9 @@ def budget(rohprojekt: ProjectV4) -> Budget:
     amount = rohbudget.get("amount")
     if amount is None:
         return KeinBudget()
-    betrag = float(amount)
     if rohbudget.get("monetary") is False:
-        return StundenBudget(stunden=betrag)
+        return StundenBudget(stunden=float(amount))
+    betrag = Decimal(str(amount))
     intervall = rohbudget.get("interval")
     if intervall is not None:
         return IntervallBudget(betrag=betrag, intervall=intervall)

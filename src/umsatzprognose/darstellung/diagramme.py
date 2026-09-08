@@ -35,6 +35,7 @@ if TYPE_CHECKING:
 
 import textwrap
 from dataclasses import dataclass
+from decimal import Decimal
 
 import plotly.graph_objects as go
 
@@ -142,7 +143,7 @@ def umsatzverlauf(
     fig = figur("Umsatz je Monat", untertitel=untertitel, hoehe=hoehe)
     fig.add_bar(
         x=[m.beschriftung for m in monate],
-        y=[m.umsatz for m in monate],
+        y=[float(m.umsatz) for m in monate],
         offsetgroup="umsatz",
         marker={
             "color": [
@@ -156,7 +157,7 @@ def umsatzverlauf(
         name="Historie",
     )
 
-    horizont_gesamtumsatz: dict[tuple[int, int], float] = {}
+    horizont_gesamtumsatz: dict[tuple[int, int], Decimal] = {}
     if prognose.vorhanden:
         horizont_gesamtumsatz = _prognosehorizont(
             fig,
@@ -167,8 +168,8 @@ def umsatzverlauf(
     else:
         _keine_prognose_hinweis(fig, prognose)
 
-    horizont_gebucht = prognose.gebucht() if prognose.vorhanden else []
-    horizont_schulung = (
+    horizont_gebucht: list[Decimal] = prognose.gebucht() if prognose.vorhanden else []
+    horizont_schulung: list[Decimal] = (
         schulungsplan.umsatz_je_monat(prognose.horizontmonate())
         if prognose.vorhanden and schulungsplan is not None
         else []
@@ -199,7 +200,7 @@ def umsatzverlauf(
             beschriftung = _monatsbeschriftung(jahr, monat)
             fig.add_annotation(
                 x=beschriftung,
-                y=betrag,
+                y=float(betrag),
                 text=tausend_euro(betrag),
                 showarrow=False,
                 yshift=10,
@@ -225,9 +226,9 @@ def _umsatzverlauf_legende(
     fig: go.Figure,
     *,
     laufender: Monatsumsatz | None,
-    horizont_gebucht: Sequence[float],
+    horizont_gebucht: Sequence[Decimal],
     prognose: Prognose,
-    horizont_schulung: Sequence[float],
+    horizont_schulung: Sequence[Decimal],
     kosten_balken: KostenBalkenErgebnis,
 ) -> None:
     """Legendeneintraege fuer :func:`umsatzverlauf`, ausgelagert um dessen Komplexitaet
@@ -359,10 +360,14 @@ def _balken_beschriften(
     """
 
     def _spur_beschriften(spur: go.Bar) -> None:
+        # ``spur.y`` traegt die schon an plotly uebergebenen ``float``-Werte zurueck
+        # (siehe Moduldocstring zur Decimal/float-Grenze) - fuer die Beschriftung hier
+        # zurueck in ``Decimal`` gewandelt, ueber ``str()`` statt direkt, um keinen
+        # zweiten Binaerrundungsfehler oben drauf zu setzen.
         ausgenommen = (uebersprungen or {}).get(spur.name, set())
         spur.update(
             text=[
-                tausend_euro(wert)
+                tausend_euro(Decimal(str(wert)))
                 if x not in ausgenommen and abs(wert) >= BALKENTEXT_SCHWELLE
                 else ""
                 for x, wert in zip(spur.x, spur.y, strict=True)
@@ -379,7 +384,7 @@ def _balken_beschriften(
                 fig.add_annotation(
                     x=x,
                     y=0,
-                    text=tausend_euro(wert),
+                    text=tausend_euro(Decimal(str(wert))),
                     showarrow=False,
                     yshift=-30,
                     font={"color": TINTE, "size": 13},
@@ -406,7 +411,7 @@ def _kosten_und_ergebnis(
     monate: Sequence[Monatsumsatz],
     prognose: Prognose,
     kostenplan: Kostenplan,
-    horizont_gesamtumsatz: dict[tuple[int, int], float],
+    horizont_gesamtumsatz: dict[tuple[int, int], Decimal],
 ) -> KostenBalkenErgebnis:
     """Kosten- und Ergebnis-Balken ueber die volle Breite - Historie und Prognosehorizont.
 
@@ -430,11 +435,13 @@ def _kosten_und_ergebnis(
         return KostenBalkenErgebnis()
     hat_erfassung = kostenplan.hat_erfassung_je_monat(schluessel)
     gesamtumsatz = {m.schluessel: m.umsatz for m in monate} | horizont_gesamtumsatz
-    ergebnis = [gesamtumsatz.get(s, 0.0) - k for s, k in zip(schluessel, kosten, strict=True)]
+    ergebnis = [
+        gesamtumsatz.get(s, Decimal("0")) - k for s, k in zip(schluessel, kosten, strict=True)
+    ]
     beschriftungen = [_monatsbeschriftung(jahr, monat) for jahr, monat in schluessel]
     fig.add_bar(
         x=beschriftungen,
-        y=kosten,
+        y=[float(k) for k in kosten],
         offsetgroup="kosten",
         marker={"color": [KOSTEN if e else KOSTEN_HELL for e in hat_erfassung]},
         customdata=[[euro(betrag)] for betrag in kosten],
@@ -444,7 +451,7 @@ def _kosten_und_ergebnis(
     )
     fig.add_bar(
         x=beschriftungen,
-        y=ergebnis,
+        y=[float(e) for e in ergebnis],
         offsetgroup="ergebnis",
         marker={"color": [ERGEBNIS_POSITIV if b >= 0 else ERGEBNIS_NEGATIV for b in ergebnis]},
         customdata=[[euro(betrag)] for betrag in ergebnis],
@@ -459,10 +466,10 @@ def _kosten_und_ergebnis(
 
 def _schulung_je_monat(
     schulungsplan: Schulungsplan | None, horizont: Sequence[tuple[int, int]]
-) -> list[float]:
+) -> list[Decimal]:
     """Schulungsumsatz je Horizontmonat, 0 je Monat ohne ``schulungsplan``."""
     if schulungsplan is None:
-        return [0.0] * len(horizont)
+        return [Decimal("0")] * len(horizont)
     return list(schulungsplan.umsatz_je_monat(horizont))
 
 
@@ -471,7 +478,7 @@ def _horizont_gesamtumsatz(
     *,
     verbrauch_laufender_monat: Monatsumsatz | None = None,
     schulungsplan: Schulungsplan | None = None,
-) -> dict[tuple[int, int], float]:
+) -> dict[tuple[int, int], Decimal]:
     """Gesamtumsatz je Horizontmonat - bereits Realisiertes/Gebuchtes plus Median-Prognose.
 
     Reine Berechnung ohne Zeichnen, im Unterschied zu :func:`_prognosehorizont`, die
@@ -492,7 +499,7 @@ def _horizont_gesamtumsatz(
         return {}
     median = prognose.monatswerte()[0.50]
     schulung = _schulung_je_monat(schulungsplan, horizont)
-    basis0 = verbrauch_laufender_monat.umsatz if verbrauch_laufender_monat else 0.0
+    basis0 = verbrauch_laufender_monat.umsatz if verbrauch_laufender_monat else Decimal("0")
     gesamt = [basis0 + median[0] + schulung[0]] + [
         m + s for m, s in zip(median[1:], schulung[1:], strict=True)
     ]
@@ -505,7 +512,7 @@ def _prognosehorizont(
     *,
     verbrauch_laufender_monat: Monatsumsatz | None,
     schulungsplan: Schulungsplan | None = None,
-) -> dict[tuple[int, int], float]:
+) -> dict[tuple[int, int], Decimal]:
     """Haengt die Horizontmonate als zweigeteilte Balken an eine bestehende Figur an.
 
     Der erste Horizontmonat ist der laufende Monat: dessen "bereits gebucht"-Anteil
@@ -535,9 +542,9 @@ def _prognosehorizont(
     gebucht = prognose.gebucht()
     median, p85, p95 = monatswerte[0.50], monatswerte[0.85], monatswerte[0.95]
 
-    basis0 = verbrauch_laufender_monat.umsatz if verbrauch_laufender_monat else 0.0
+    basis0 = verbrauch_laufender_monat.umsatz if verbrauch_laufender_monat else Decimal("0")
     schulung = _schulung_je_monat(schulungsplan, horizont)
-    schulung_basis = [basis0, *([0.0] * (len(horizont) - 1))]
+    schulung_basis = [basis0, *([Decimal("0")] * (len(horizont) - 1))]
     sockel = [basis0 + schulung[0]] + [
         g + s for g, s in zip(gebucht[1:], schulung[1:], strict=True)
     ]
@@ -546,8 +553,8 @@ def _prognosehorizont(
     if any(schulung):
         fig.add_bar(
             x=beschriftungen,
-            y=schulung,
-            base=schulung_basis,
+            y=[float(s) for s in schulung],
+            base=[float(b) for b in schulung_basis],
             offsetgroup="umsatz",
             marker={"color": SCHULUNG},
             customdata=[[euro(betrag)] for betrag in schulung],
@@ -559,8 +566,8 @@ def _prognosehorizont(
     if any(gebucht[1:]):
         fig.add_bar(
             x=beschriftungen[1:],
-            y=gebucht[1:],
-            base=schulung[1:],
+            y=[float(g) for g in gebucht[1:]],
+            base=[float(s) for s in schulung[1:]],
             offsetgroup="umsatz",
             marker={"color": SERIE_HELL},
             customdata=[[euro(betrag)] for betrag in gebucht[1:]],
@@ -571,8 +578,8 @@ def _prognosehorizont(
 
     fig.add_bar(
         x=beschriftungen,
-        y=prognostiziert,
-        base=sockel,
+        y=[float(p) for p in prognostiziert],
+        base=[float(s) for s in sockel],
         offsetgroup="umsatz",
         marker={"color": SERIE_HELL, "opacity": PROGNOSE_DECKKRAFT},
         customdata=list(zip([euro(m) for m in median], [euro(p) for p in p85], strict=True)),
@@ -587,7 +594,7 @@ def _prognosehorizont(
             "type": "data",
             "symmetric": False,
             "array": [0.0] * len(beschriftungen),
-            "arrayminus": [m - p for m, p in zip(median, p95, strict=True)],
+            "arrayminus": [float(m - p) for m, p in zip(median, p95, strict=True)],
             "color": TINTE_GEDAEMPFT,
             "thickness": 1.5,
             "width": 5,
@@ -618,12 +625,12 @@ def _keine_prognose_hinweis(fig: go.Figure, prognose: Prognose) -> None:
 
 def _historie_und_horizont_werte(
     monate: Sequence[Monatsumsatz],
-    kosten: Sequence[float],
+    kosten: Sequence[Decimal],
     prognose: Prognose,
-    horizont_kosten: Sequence[float],
+    horizont_kosten: Sequence[Decimal],
     schulungsplan: Schulungsplan | None,
     verbrauch_laufender_monat: Monatsumsatz | None,
-) -> tuple[list[str], list[float], list[float], list[float]]:
+) -> tuple[list[str], list[Decimal], list[Decimal], list[float]]:
     """Umsatz und Ergebnis (Umsatz minus Kosten) je Monat, Historie gefolgt vom Horizont.
 
     Gemeinsame Grundlage fuer :func:`gewinn_verlust_monatlich`, :func:`gewinn_verlust_je_jahr`
@@ -668,10 +675,10 @@ def _historie_und_horizont_werte(
 def _je_jahr(
     monate: Sequence[Monatsumsatz],
     prognose: Prognose,
-    umsatz: Sequence[float],
-    ergebnis: Sequence[float],
+    umsatz: Sequence[Decimal],
+    ergebnis: Sequence[Decimal],
     deckkraft: Sequence[float],
-) -> dict[int, list[tuple[int, float, float, float]]]:
+) -> dict[int, list[tuple[int, Decimal, Decimal, float]]]:
     """Ordnet die parallelen Werte-Listen nach Kalenderjahr, je Jahr chronologisch.
 
     Gemeinsame Grundlage fuer :func:`gewinn_verlust_je_jahr` und
@@ -682,7 +689,7 @@ def _je_jahr(
     if prognose.vorhanden:
         schluessel += list(prognose.horizontmonate())
 
-    jahre: dict[int, list[tuple[int, float, float, float]]] = {}
+    jahre: dict[int, list[tuple[int, Decimal, Decimal, float]]] = {}
     for (jahr, monat), u, e, deck in zip(schluessel, umsatz, ergebnis, deckkraft, strict=True):
         jahre.setdefault(jahr, []).append((monat, u, e, deck))
     return jahre
@@ -698,13 +705,13 @@ _LINIENABSCHNITTE = (
 )
 
 
-def _jahreslinien(
+def _jahreslinien[T: (Decimal, float)](
     fig: go.Figure,
-    jahre: dict[int, list[tuple[int, float, float, float]]],
+    jahre: dict[int, list[tuple[int, Decimal, Decimal, float]]],
     *,
-    werte: Callable[[list[tuple[int, float, float, float]]], list[float]],
-    formatieren: Callable[[float], str],
-) -> dict[int, list[tuple[str, float, str]]]:
+    werte: Callable[[list[tuple[int, Decimal, Decimal, float]]], list[T]],
+    formatieren: Callable[[T], str],
+) -> dict[int, list[tuple[str, T, str]]]:
     """Zeichnet fuer jedes Jahr eine Linie in bis zu drei Abschnitten (siehe
     :data:`_LINIENABSCHNITTE`): Daten (durchgezogen, volle Deckkraft), vorlaeufige
     Daten des laufenden Monats (durchgezogen, mittlere Deckkraft) und simulierte
@@ -727,7 +734,7 @@ def _jahreslinien(
         Zahlen zwischen den Jahren vergleichbar.
     """
     beschriftungen_je_jahr: dict[int, list[str]] = {}
-    werte_je_jahr: dict[int, list[float]] = {}
+    werte_je_jahr: dict[int, list[T]] = {}
     monate_je_jahr: dict[int, list[int]] = {}
     farbe_je_jahr: dict[int, str] = {}
     eigene_monate_je_jahr: dict[int, set[int]] = {}
@@ -751,7 +758,7 @@ def _jahreslinien(
                 continue
             fig.add_scatter(
                 x=beschriftungen[start:neues_ende],
-                y=y[start:neues_ende],
+                y=[float(v) for v in y[start:neues_ende]],
                 mode="lines+markers",
                 line={"color": farbe, "width": 2, "dash": dash},
                 marker={"size": 6, "opacity": deckkraft},
@@ -798,10 +805,10 @@ def _jahreslinien(
     }
 
 
-def _endpunkte_beschriften(
+def _endpunkte_beschriften[T: (Decimal, float)](
     fig: go.Figure,
-    letzte_punkte: dict[int, list[tuple[str, float, str]]],
-    formatieren: Callable[[float], str],
+    letzte_punkte: dict[int, list[tuple[str, T, str]]],
+    formatieren: Callable[[T], str],
 ) -> None:
     """Beschriftet die Punkte aus :func:`_jahreslinien` (Ist/Simulation-Grenze und/oder
     Linienende).
@@ -815,7 +822,7 @@ def _endpunkte_beschriften(
         for beschriftung, wert, farbe in punkte:
             fig.add_annotation(
                 x=beschriftung,
-                y=wert,
+                y=float(wert),
                 text=f"{jahr}: {formatieren(wert)}",
                 showarrow=False,
                 xanchor="left",
@@ -826,10 +833,10 @@ def _endpunkte_beschriften(
 
 def gewinn_verlust_monatlich(
     monate: Sequence[Monatsumsatz],
-    kosten: Sequence[float],
+    kosten: Sequence[Decimal],
     *,
     prognose: Prognose = _KEINE_PROGNOSE,
-    horizont_kosten: Sequence[float] = (),
+    horizont_kosten: Sequence[Decimal] = (),
     schulungsplan: Schulungsplan | None = None,
     verbrauch_laufender_monat: Monatsumsatz | None = None,
     hoehe: int = 380,
@@ -858,14 +865,14 @@ def gewinn_verlust_monatlich(
     beschriftungen, _umsatz, ergebnis, deckkraft = _historie_und_horizont_werte(
         monate, kosten, prognose, horizont_kosten, schulungsplan, verbrauch_laufender_monat
     )
-    gesamt = sum(ergebnis)
+    gesamt = sum(ergebnis, Decimal("0"))
     horizont = prognose.horizontmonate() if prognose.vorhanden else ()
 
     untertitel = f"Summe über {len(monate)} Monate: {euro(gesamt, nachkommastellen=0)}"
     fig = figur("Gewinn/Verlust je Monat", untertitel=untertitel, hoehe=hoehe)
     fig.add_bar(
         x=beschriftungen,
-        y=ergebnis,
+        y=[float(e) for e in ergebnis],
         marker={
             "color": [ERGEBNIS_POSITIV if e >= 0 else ERGEBNIS_NEGATIV for e in ergebnis],
             "opacity": deckkraft,
@@ -891,10 +898,10 @@ def gewinn_verlust_monatlich(
 
 def gewinn_verlust_je_jahr(
     monate: Sequence[Monatsumsatz],
-    kosten: Sequence[float],
+    kosten: Sequence[Decimal],
     *,
     prognose: Prognose = _KEINE_PROGNOSE,
-    horizont_kosten: Sequence[float] = (),
+    horizont_kosten: Sequence[Decimal] = (),
     schulungsplan: Schulungsplan | None = None,
     verbrauch_laufender_monat: Monatsumsatz | None = None,
     hoehe: int = 380,
@@ -947,10 +954,10 @@ def gewinn_verlust_je_jahr(
 
 def umsatzrendite_kumuliert(
     monate: Sequence[Monatsumsatz],
-    kosten: Sequence[float],
+    kosten: Sequence[Decimal],
     *,
     prognose: Prognose = _KEINE_PROGNOSE,
-    horizont_kosten: Sequence[float] = (),
+    horizont_kosten: Sequence[Decimal] = (),
     schulungsplan: Schulungsplan | None = None,
     verbrauch_laufender_monat: Monatsumsatz | None = None,
     hoehe: int = 380,
@@ -972,12 +979,14 @@ def umsatzrendite_kumuliert(
     )
     jahre = _je_jahr(monate, prognose, umsatz, ergebnis, deckkraft)
 
-    def rendite_je_monat(punkte: list[tuple[int, float, float, float]]) -> list[float]:
+    def rendite_je_monat(punkte: list[tuple[int, Decimal, Decimal, float]]) -> list[float]:
+        # Eine reine Verhaeltniszahl (Gewinn/Umsatz) und keine Geldgroesse - deshalb ab
+        # hier bewusst in ``float`` gerechnet, wie die uebrigen Quoten der Domaene.
         kumulierter_umsatz = kumuliertes_ergebnis = 0.0
         werte = []
         for _monat, monatsumsatz, monatsergebnis, _deck in punkte:
-            kumulierter_umsatz += monatsumsatz
-            kumuliertes_ergebnis += monatsergebnis
+            kumulierter_umsatz += float(monatsumsatz)
+            kumuliertes_ergebnis += float(monatsergebnis)
             anteil = kumuliertes_ergebnis / kumulierter_umsatz if kumulierter_umsatz else 0.0
             werte.append(anteil * 100)
         return werte
@@ -1069,7 +1078,7 @@ def restvolumen_je_projekt(
     ruhiger als eine zusaetzliche Achse.
     """
     gezeigt = list(projekte[:top])
-    gesamt = sum(p.restvolumen_prognosewirksam or 0.0 for p in projekte)
+    gesamt = sum((p.restvolumen_prognosewirksam or Decimal("0") for p in projekte), Decimal("0"))
     untertitel = _rangliste_untertitel(
         len(projekte), len(gezeigt), f"Projekte mit zusammen {euro(gesamt, nachkommastellen=0)}"
     )
@@ -1084,11 +1093,11 @@ def restvolumen_je_projekt(
     umgekehrt = list(reversed(gezeigt))
     _liegende_rangliste(
         fig,
-        werte=[p.restvolumen_prognosewirksam or 0.0 for p in umgekehrt],
-        text=[tausend_euro(p.restvolumen_prognosewirksam or 0.0) for p in umgekehrt],
+        werte=[float(p.restvolumen_prognosewirksam or Decimal("0")) for p in umgekehrt],
+        text=[tausend_euro(p.restvolumen_prognosewirksam or Decimal("0")) for p in umgekehrt],
         ticktext=[_achsenbeschriftung(p) for p in umgekehrt],
         customdata=[
-            [p.bezeichnung, euro(p.auftragsvolumen or 0.0), euro(p.verbrauchtes_volumen)]
+            [p.bezeichnung, euro(p.auftragsvolumen or Decimal("0")), euro(p.verbrauchtes_volumen)]
             for p in umgekehrt
         ],
         hovertemplate=(

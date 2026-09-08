@@ -14,6 +14,7 @@ if TYPE_CHECKING:
     from .mitarbeiter import Mitarbeiter
 
 from dataclasses import dataclass
+from decimal import Decimal
 
 
 @dataclass(frozen=True)
@@ -22,4 +23,4 @@ class Projektanteil:
 
     mitarbeiter: Mitarbeiter
     stunden: float
-    umsatz: float = 0.0
+    umsatz: Decimal = Decimal("0")

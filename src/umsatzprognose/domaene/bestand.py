@@ -34,6 +34,7 @@ if TYPE_CHECKING:
     from .verbrauchsverlauf import Verbrauchsverlauf
 
 from dataclasses import dataclass, field, replace
+from decimal import Decimal
 
 from .abrufquote import Abrufquotenverteilung
 from .hinweis import Hinweis
@@ -76,18 +77,27 @@ class Bestand:
         """Die Projekte, die in die Prognose eingehen - groesstes Restvolumen zuerst."""
         scope = [p for p in self.projekte if p.im_prognose_scope]
         return tuple(
-            sorted(scope, key=lambda p: p.restvolumen_prognosewirksam or 0.0, reverse=True)
+            sorted(
+                scope,
+                key=lambda p: p.restvolumen_prognosewirksam or Decimal("0"),
+                reverse=True,
+            )
         )
 
     @property
-    def auftragsvolumen(self) -> float:
+    def auftragsvolumen(self) -> Decimal:
         """Summe der Auftragsvolumina im Prognose-Scope."""
-        return sum(p.auftragsvolumen or 0.0 for p in self.im_prognose_scope)
+        return sum(
+            (p.auftragsvolumen or Decimal("0") for p in self.im_prognose_scope), Decimal("0")
+        )
 
     @property
-    def restvolumen_prognosewirksam(self) -> float:
+    def restvolumen_prognosewirksam(self) -> Decimal:
         """Summe des noch abrufbaren Volumens - die Ausgangsgroesse der Simulation."""
-        return sum(p.restvolumen_prognosewirksam or 0.0 for p in self.im_prognose_scope)
+        return sum(
+            (p.restvolumen_prognosewirksam or Decimal("0") for p in self.im_prognose_scope),
+            Decimal("0"),
+        )
 
     def projekte_von_kunde(self, kunde: Kunde) -> tuple[Projekt, ...]:
         return tuple(p for p in self.projekte if p.kunde and p.kunde.id == kunde.id)
@@ -98,7 +108,7 @@ class Bestand:
             p for p in self.projekte if any(a.mitarbeiter.id == mitarbeiter.id for a in p.anteile)
         )
 
-    def mit_stundensatz_uebersteuerungen(self, werte: Mapping[str, float]) -> Bestand:
+    def mit_stundensatz_uebersteuerungen(self, werte: Mapping[str, Decimal]) -> Bestand:
         """Neuer Bestand mit von Hand hinterlegten Stundensätzen für benannte Projekte.
 
         Fachobjekte bleiben unveränderlich - diese Methode ersetzt deshalb keinen
@@ -283,16 +293,20 @@ def _kuenftige_buchungen_hinweis(
         for verlauf in verbrauchsverlaeufe
         if (
             summe := sum(
-                monat.umsatz
-                for monat in verlauf.monate
-                if monat.schluessel > (stichtag.year, stichtag.month)
+                (
+                    monat.umsatz
+                    for monat in verlauf.monate
+                    if monat.schluessel > (stichtag.year, stichtag.month)
+                ),
+                Decimal("0"),
             )
         )
     }
     if not kuenftig:
         return None
     return Hinweis(
-        f"Nach dem Stichtagsmonat datierte Buchungen über {euro(sum(kuenftig.values()))} - "
+        f"Nach dem Stichtagsmonat datierte Buchungen über "
+        f"{euro(sum(kuenftig.values(), Decimal('0')))} - "
         "sie sind Untergrenze der Bandbreite und nicht Verbrauch",
         tuple(projekt.bezeichnung for projekt in kuenftig),
     )

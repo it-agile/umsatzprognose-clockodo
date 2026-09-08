@@ -60,6 +60,16 @@ ein Muster, das eine bereits dokumentierte, bewusste Entscheidung umsetzt (z. B.
   Stabilität).
 - **Code vereinfachen** – nur echte Vereinfachungen ohne Verhaltensänderung, keine
   kosmetischen Vorlieben.
+- **`__slots__` statt `__dict__`, wo sinnvoll**: bei den unveränderlichen
+  `@dataclass(frozen=True)`-Fachobjekten in `domaene/` per `slots=True` am
+  Dataclass-Decorator (ab Python 3.10 direkt unterstützt) – spart Speicher und
+  verhindert versehentlich neu angelegte Attribute. Ausnahme:
+  `domaene.abrufquote.Abrufquotenverteilung` bleibt ohne `slots=True`, weil ihre
+  `cached_property`-Felder (`_werte`, `_werte_array`) bewusst in ein beschreibbares
+  Instanz-`__dict__` schreiben, um `__setattr__` der frozen Dataclass zu umgehen (siehe
+  Kommentar dort) – `__slots__` und ein von `cached_property` gebrauchtes `__dict__`
+  schließen sich gegenseitig aus, sofern `__dict__` nicht explizit als eigener Slot
+  aufgeführt wird – das würde den Speichervorteil von `__slots__` dort zunichtemachen.
 
 ## Aufbau
 
@@ -169,6 +179,17 @@ der sechs Pakete darf `util/` importieren.
 - **Die Fachobjekte bleiben unveränderlich.** Der Lauf-Zustand der Simulation
   (Restvolumen je Projekt und Lauf, als numpy-Array) liegt neben den Objekten, nicht in
   ihnen – siehe Moduldocstring von `simulation.py`.
+- **Euro-Beträge laufen als `decimal.Decimal`, nicht als `float`.** Alle Geldgrößen der
+  Fachobjekte (Budget, `verbrauchtes_volumen`, `Monatsumsatz.umsatz`,
+  `Abrufquote.verbrauch`/`restvolumen_zu_monatsbeginn`, Kostenposten, Schulungstermine,
+  `Prognose.monatswerte()`/`gebucht()`/`summe()`) sowie `zahlen.euro()`/`tausend_euro()`/
+  `euro_parsen()` sind `Decimal` – ein Rundungsfehler in einer Geldgröße wäre in einem
+  öffentlichen Repository nur schwer zu rechtfertigen, und `euro_parsen()` geht direkt
+  vom deutschen Zahlentext in `Decimal`, ohne den Umweg über `float`. Reine
+  Verhältnis-, Stunden- und Prozentgrößen (Abrufquote-`wert`, Kapazität, Deckkraft)
+  bleiben `float`. Einzige Ausnahme von der Decimal-Regel: die vektorisierte
+  Monte-Carlo-Schleife in `simulation.py` rechnet intern mit `float`-numpy-Arrays (siehe
+  Rechenkern) und wandelt an ihren Rändern um.
 - **Die Abrufe laufen gleichzeitig, die Abbildung nacheinander.** Die sieben Antworten
   einer Prognose hängen nicht voneinander ab; aufeinander angewiesen ist erst das
   Zusammensetzen, weil Projekte Kunde und Person als Objekt tragen und
@@ -502,6 +523,13 @@ Datenquelle.
 `Bestand.simulieren()` delegiert an `domaene.simulation.simulieren()`. Gerechnet wird
 **in Euro als Leitgröße**, Stunden nur als Zwischenschritt für den Kapazitätsdeckel
 (`/targethours` liefert Stunden je Wochentag, keine Taglänge).
+
+Euro-Größen laufen an den Fachobjekten als `Decimal`, in der Monte-Carlo-Schleife selbst
+aber als `float` (numpy-Arrays) – mit `Decimal`-Objektarrays trügen weder `np.quantile`
+noch die übrigen Vektoroperationen performant mit. `_aufbauen()` wandelt beim Einlesen
+der Fachobjekte in `float` um, `_ergebnis()` beim Verlassen der Schleife per
+`simulation._euro()` zurück in `Decimal`, auf den Cent gerundet – jenseits davon trägt
+eine Summe zehntausender float-Additionen ohnehin keine belastbare Genauigkeit mehr.
 
 Der Horizont **beginnt mit dem laufenden Monat**, genauer am Stichtag. Monat 1 ist nur
 der Rest des Monats; gezogene Abrufquote und Kapazität werden mit dem Anteil der

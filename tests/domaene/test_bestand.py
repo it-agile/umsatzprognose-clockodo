@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import date
+from decimal import Decimal
 
 from umsatzprognose.domaene import (
     Bestand,
@@ -24,8 +25,8 @@ GROSS = Projekt(
     name="Gross",
     kunde=ITA,
     aktiv=True,
-    budget=Gesamtbudget(betrag=100000.0),
-    verbrauchtes_volumen=20000.0,
+    budget=Gesamtbudget(betrag=Decimal("100000.0")),
+    verbrauchtes_volumen=Decimal("20000.0"),
     verbrauchte_stunden=100.0,
     anteile=(Projektanteil(ANNA, stunden=100.0),),
 )
@@ -34,8 +35,8 @@ KLEIN = Projekt(
     name="Klein",
     kunde=ITA,
     aktiv=True,
-    budget=Gesamtbudget(betrag=50000.0),
-    verbrauchtes_volumen=40000.0,
+    budget=Gesamtbudget(betrag=Decimal("50000.0")),
+    verbrauchtes_volumen=Decimal("40000.0"),
     verbrauchte_stunden=50.0,
     anteile=(Projektanteil(BERT, stunden=50.0),),
 )
@@ -43,12 +44,12 @@ UEBERZOGEN = Projekt(
     id=3,
     name="Überzogen",
     aktiv=True,
-    budget=Gesamtbudget(betrag=10000.0),
-    verbrauchtes_volumen=12000.0,
+    budget=Gesamtbudget(betrag=Decimal("10000.0")),
+    verbrauchtes_volumen=Decimal("12000.0"),
     verbrauchte_stunden=60.0,
 )
 OHNE_BUDGET = Projekt(id=4, name="Schulungsprodukt", aktiv=True)
-INAKTIV = Projekt(id=5, name="Alt", aktiv=False, budget=Gesamtbudget(betrag=99999.0))  # fmt: skip
+INAKTIV = Projekt(id=5, name="Alt", aktiv=False, budget=Gesamtbudget(betrag=Decimal("99999.0")))
 
 
 def bestand(*projekte: Projekt, **felder) -> Bestand:
@@ -92,13 +93,18 @@ def test_hinweise_nennen_die_offenen_faelle():
 
 
 def test_abgeschlossene_aber_aktive_projekte_werden_gemeldet():
-    beendet = Projekt(id=9, aktiv=True, abgeschlossen=True, budget=Gesamtbudget(betrag=1000.0))
+    beendet = Projekt(
+        id=9, aktiv=True, abgeschlossen=True, budget=Gesamtbudget(betrag=Decimal("1000.0"))
+    )
     assert any("abgeschlossen" in h.text for h in bestand(beendet).hinweise())
 
 
 def test_projekte_ohne_zeit_und_ohne_beteiligte_werden_gemeldet():
     pauschal = Projekt(
-        id=8, aktiv=True, budget=Gesamtbudget(betrag=1000.0), verbrauchtes_volumen=500.0
+        id=8,
+        aktiv=True,
+        budget=Gesamtbudget(betrag=Decimal("1000.0")),
+        verbrauchtes_volumen=Decimal("500.0"),
     )
     texte = [h.text for h in bestand(pauschal).hinweise()]
     assert any("ohne erfasste Zeit" in t for t in texte)
@@ -110,8 +116,8 @@ def test_stundensatz_null_wird_gemeldet():
         id=6,
         name="Interne Zeit",
         aktiv=True,
-        budget=Gesamtbudget(betrag=1000.0),
-        verbrauchtes_volumen=0.0,
+        budget=Gesamtbudget(betrag=Decimal("1000.0")),
+        verbrauchtes_volumen=Decimal("0"),
         verbrauchte_stunden=40.0,
     )
     texte = {h.text: h.betroffene for h in bestand(ohne_umsatz).hinweise()}
@@ -124,19 +130,21 @@ def test_stundensatz_uebersteuerung_nimmt_den_hinweis_zurueck():
         id=6,
         name="Interne Zeit",
         aktiv=True,
-        budget=Gesamtbudget(betrag=1000.0),
-        verbrauchtes_volumen=0.0,
+        budget=Gesamtbudget(betrag=Decimal("1000.0")),
+        verbrauchtes_volumen=Decimal("0"),
         verbrauchte_stunden=40.0,
     )
-    korrigiert = bestand(ohne_umsatz).mit_stundensatz_uebersteuerungen({"Interne Zeit": 95.0})
+    korrigiert = bestand(ohne_umsatz).mit_stundensatz_uebersteuerungen(
+        {"Interne Zeit": Decimal("95.0")}
+    )
     assert not any("Stundensatz 0" in h.text for h in korrigiert.hinweise())
     projekt = next(p for p in korrigiert.projekte if p.id == 6)
-    assert projekt.effektiver_stundensatz == 95.0
+    assert projekt.effektiver_stundensatz == Decimal("95.0")
 
 
 def test_stundensatz_uebersteuerung_laesst_unbenannte_projekte_unveraendert():
     b = bestand(GROSS, KLEIN)
-    korrigiert = b.mit_stundensatz_uebersteuerungen({"Nicht vorhanden": 50.0})
+    korrigiert = b.mit_stundensatz_uebersteuerungen({"Nicht vorhanden": Decimal("50.0")})
     assert korrigiert.projekte == b.projekte
 
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import date
+from decimal import Decimal
 
 from umsatzprognose.domaene import Monatsumsatz, Umsatzhistorie
 
@@ -20,7 +21,7 @@ def test_fenster_umfasst_zwoelf_abgeschlossene_monate_plus_den_laufenden():
 def test_fehlende_monate_werden_mit_null_aufgefuellt():
     # Monate ohne Buchungen fehlen in der Antwort. Eine Luecke im Diagramm saehe aus
     # wie ein fehlender Monat, nicht wie ein Monat ohne Umsatz.
-    historie = Umsatzhistorie.zum_stichtag([Monatsumsatz(2026, 6, 300000.0)], STICHTAG)
+    historie = Umsatzhistorie.zum_stichtag([Monatsumsatz(2026, 6, Decimal("300000.0"))], STICHTAG)
     juli = next(m for m in historie.monate if m.schluessel == (2026, 7))
     assert juli.umsatz == 0.0
     assert len(historie.monate) == 13
@@ -30,7 +31,8 @@ def test_laufender_monat_zaehlt_nicht_in_summe_und_durchschnitt():
     # Am Stichtag ist der laufende Monat unvollstaendig; im Durchschnitt wuerde er
     # das Ergebnis nach unten ziehen.
     historie = Umsatzhistorie.zum_stichtag(
-        [Monatsumsatz(2026, 7, 300000.0), Monatsumsatz(2026, 8, 150000.0)], STICHTAG
+        [Monatsumsatz(2026, 7, Decimal("300000.0")), Monatsumsatz(2026, 8, Decimal("150000.0"))],
+        STICHTAG,
     )
     assert historie.laufender is not None
     assert historie.laufender.schluessel == (2026, 8)
@@ -39,7 +41,7 @@ def test_laufender_monat_zaehlt_nicht_in_summe_und_durchschnitt():
 
 
 def test_aeltere_monate_ausserhalb_des_fensters_fallen_weg():
-    historie = Umsatzhistorie.zum_stichtag([Monatsumsatz(2019, 1, 999.0)], STICHTAG)
+    historie = Umsatzhistorie.zum_stichtag([Monatsumsatz(2019, 1, Decimal("999.0"))], STICHTAG)
     assert all(m.jahr >= 2025 for m in historie.monate)
     assert historie.summe() == 0.0
 

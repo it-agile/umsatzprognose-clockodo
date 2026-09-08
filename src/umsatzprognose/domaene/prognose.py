@@ -17,8 +17,12 @@ nominale Vererbungsbeziehung waere hier nur ballast.
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING, Protocol
+
+if TYPE_CHECKING:
+    from decimal import Decimal
+
 from dataclasses import dataclass
-from typing import Protocol
 
 # die Bandbreite wird auf diesen Niveaus ausgewiesen.
 KONFIDENZNIVEAUS = (0.95, 0.85, 0.50)
@@ -42,11 +46,11 @@ class Prognose(Protocol):
         und :meth:`gebucht`."""
         ...
 
-    def monatswerte(self) -> dict[float, list[float]]:
+    def monatswerte(self) -> dict[float, list[Decimal]]:
         """Je Konfidenzniveau ein Umsatzwert pro Monat des Horizonts."""
         ...
 
-    def gebucht(self) -> list[float]:
+    def gebucht(self) -> list[Decimal]:
         """Bereits gebuchter Betrag je Horizontmonat.
 
         Fuer den Stichtagsmonat immer 0: dort laesst sich der Anteil vor dem Stichtag
@@ -55,7 +59,7 @@ class Prognose(Protocol):
         """
         ...
 
-    def summe(self) -> dict[float, float]:
+    def summe(self) -> dict[float, Decimal]:
         """Je Konfidenzniveau der Umsatz ueber den gesamten Horizont."""
         ...
 
@@ -102,13 +106,13 @@ class NochKeinePrognose:
     def horizontmonate(self) -> tuple[tuple[int, int], ...]:
         return ()
 
-    def monatswerte(self) -> dict[float, list[float]]:
+    def monatswerte(self) -> dict[float, list[Decimal]]:
         return {}
 
-    def gebucht(self) -> list[float]:
+    def gebucht(self) -> list[Decimal]:
         return []
 
-    def summe(self) -> dict[float, float]:
+    def summe(self) -> dict[float, Decimal]:
         return {}
 
     def kapazitaet_limitierend_anteil(self) -> float:

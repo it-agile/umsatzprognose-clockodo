@@ -25,6 +25,7 @@ if TYPE_CHECKING:
     from .hinweis import Hinweis
 
 from dataclasses import dataclass, field
+from decimal import Decimal
 
 from .umsatzhistorie import betrag_je_monat, hinweise_mit_fehlenden_monaten
 
@@ -38,7 +39,7 @@ class Geschaetzt:
 class Erfasst:
     """Die tatsaechlich erfassten Allgemeinkosten, aus den ``AB {Monat}``-Reitern."""
 
-    betrag: float
+    betrag: Decimal
 
 
 # Ob fuer einen Kostenposten schon eine Erfassung vorliegt oder nur die Pauschale
@@ -62,12 +63,12 @@ class Kostenposten:
 
     jahr: int
     monat: int
-    pauschale: float
-    allgemeinkosten: float = 0.0
+    pauschale: Decimal
+    allgemeinkosten: Decimal = Decimal("0")
     erfassung: Kostenerfassung = field(default_factory=Geschaetzt)
 
     @property
-    def kosten(self) -> float:
+    def kosten(self) -> Decimal:
         """Pauschale, mit erfassten Allgemeinkosten statt der geschaetzten, sobald vorhanden."""
         match self.erfassung:
             case Geschaetzt():
@@ -95,12 +96,12 @@ class Kostenplan:
     posten: tuple[Kostenposten, ...] = ()
     abbildungshinweise: tuple[Hinweis, ...] = field(default_factory=tuple)
 
-    def kosten_je_monat(self, monate: Sequence[Monat]) -> list[float]:
+    def kosten_je_monat(self, monate: Sequence[Monat]) -> list[Decimal]:
         """Gesamtkosten je uebergebenem Monat, 0 ohne passenden Posten."""
         return betrag_je_monat(self.posten, monate, betrag=lambda p: p.kosten)
 
-    def summe(self, monate: Sequence[Monat]) -> float:
-        return sum(self.kosten_je_monat(monate))
+    def summe(self, monate: Sequence[Monat]) -> Decimal:
+        return sum(self.kosten_je_monat(monate), Decimal("0"))
 
     def hat_erfassung_je_monat(self, monate: Sequence[Monat]) -> list[bool]:
         """Ob fuer den Monat eine tatsaechliche Kostenerfassung vorliegt statt nur

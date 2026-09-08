@@ -8,6 +8,7 @@ und dass gleichnamige Projekte nicht zu einem Balken verschmelzen.
 from __future__ import annotations
 
 from datetime import date, timedelta
+from decimal import Decimal
 
 import numpy as np
 import pytest
@@ -64,17 +65,32 @@ STICHTAG = date(2026, 8, 24)
 KUNDE = Kunde(id=7, name="Union Asset Management Holding AG")
 
 HISTORIE = Umsatzhistorie.zum_stichtag(
-    [Monatsumsatz(2026, 7, 300000.0, 2000.0), Monatsumsatz(2026, 8, 50000.0, 400.0)],
+    [
+        Monatsumsatz(2026, 7, Decimal("300000.0"), 2000.0),
+        Monatsumsatz(2026, 8, Decimal("50000.0"), 400.0),
+    ],
     STICHTAG,
 )
 PROJEKTE = (
-    Projekt(id=1, name="Beispielprojekt Eins", kunde=KUNDE, aktiv=True,
-            budget=Gesamtbudget(betrag=50000.0),
-            verbrauchtes_volumen=16000.0, verbrauchte_stunden=100.0),
-    Projekt(id=2, name="Beispielprojekt Zwei", kunde=KUNDE, aktiv=True,
-            budget=Gesamtbudget(betrag=20000.0),
-            verbrauchtes_volumen=7000.0, verbrauchte_stunden=50.0),
-)  # fmt: skip
+    Projekt(
+        id=1,
+        name="Beispielprojekt Eins",
+        kunde=KUNDE,
+        aktiv=True,
+        budget=Gesamtbudget(betrag=Decimal("50000.0")),
+        verbrauchtes_volumen=Decimal("16000.0"),
+        verbrauchte_stunden=100.0,
+    ),
+    Projekt(
+        id=2,
+        name="Beispielprojekt Zwei",
+        kunde=KUNDE,
+        aktiv=True,
+        budget=Gesamtbudget(betrag=Decimal("20000.0")),
+        verbrauchtes_volumen=Decimal("7000.0"),
+        verbrauchte_stunden=50.0,
+    ),
+)
 BESTAND = Bestand(stichtag=STICHTAG, projekte=PROJEKTE, umsatzhistorie=HISTORIE)
 SCHULUNGSPLAN = Schulungsplan(stichtag=STICHTAG, termine=())
 KOSTENPLAN = Kostenplan()
@@ -127,9 +143,12 @@ def _historie_fuer_abrufquote(quote: float) -> Verbrauchsverlauf:
     Dasselbe Muster wie in ``tests/domaene/test_simulation.py``: das Projekt liegt ausserhalb
     des Prognose-Scope und traegt selbst keinen Umsatz bei, nur die eine Beobachtung.
     """
-    projekt = Projekt(id=900, name="Historie", aktiv=False, budget=Gesamtbudget(betrag=1000.0))
+    projekt = Projekt(
+        id=900, name="Historie", aktiv=False, budget=Gesamtbudget(betrag=Decimal("1000.0"))
+    )
     return Verbrauchsverlauf.fuer(
-        projekt, [Monatsumsatz(jahr=2026, monat=6, umsatz=quote * 1000.0, stunden=1.0)]
+        projekt,
+        [Monatsumsatz(jahr=2026, monat=6, umsatz=Decimal(str(quote * 1000.0)), stunden=1.0)],
     )
 
 
@@ -303,8 +322,12 @@ def test_kapazitaet_je_mitarbeiter_zeigt_werte_in_tagen():
 
 
 def test_kapazitaet_je_projekt_zeigt_null_bei_pauschalprojekt():
-    zeitbasiert = Projekt(id=1, name="Zeitbasiert", aktiv=True, budget=Gesamtbudget(betrag=1000.0))
-    pauschal = Projekt(id=2, name="Pauschale", aktiv=True, budget=Gesamtbudget(betrag=1000.0))
+    zeitbasiert = Projekt(
+        id=1, name="Zeitbasiert", aktiv=True, budget=Gesamtbudget(betrag=Decimal("1000.0"))
+    )
+    pauschal = Projekt(
+        id=2, name="Pauschale", aktiv=True, budget=Gesamtbudget(betrag=Decimal("1000.0"))
+    )
     fig = diagramme.kapazitaet_je_projekt([(zeitbasiert, 70.0), (pauschal, 0.0)])
     balken = fig.data[0]
 
@@ -313,8 +336,8 @@ def test_kapazitaet_je_projekt_zeigt_null_bei_pauschalprojekt():
 
 
 def test_gewinn_verlust_monatlich_faerbt_nach_vorzeichen():
-    monate = [Monatsumsatz(2026, 7, 50000.0), Monatsumsatz(2026, 8, 30000.0)]
-    fig = diagramme.gewinn_verlust_monatlich(monate, [40000.0, 40000.0])
+    monate = [Monatsumsatz(2026, 7, Decimal("50000.0")), Monatsumsatz(2026, 8, Decimal("30000.0"))]
+    fig = diagramme.gewinn_verlust_monatlich(monate, [Decimal("40000.0"), Decimal("40000.0")])
     balken = fig.data[0]
 
     assert list(balken.x) == ["Jul 2026", "Aug 2026"]
@@ -323,8 +346,8 @@ def test_gewinn_verlust_monatlich_faerbt_nach_vorzeichen():
 
 
 def test_gewinn_verlust_je_jahr_zeigt_monatswerte_nicht_kumuliert():
-    monate = [Monatsumsatz(2026, 7, 50000.0), Monatsumsatz(2026, 8, 10000.0)]
-    fig = diagramme.gewinn_verlust_je_jahr(monate, [40000.0, 40000.0])
+    monate = [Monatsumsatz(2026, 7, Decimal("50000.0")), Monatsumsatz(2026, 8, Decimal("10000.0"))]
+    fig = diagramme.gewinn_verlust_je_jahr(monate, [Decimal("40000.0"), Decimal("40000.0")])
     linie = fig.data[0]
 
     assert list(linie.x) == ["Jul", "Aug"]
@@ -341,9 +364,9 @@ def test_gewinn_verlust_monatlich_haengt_prognosehorizont_gedaempft_an():
     monate = historie.abgeschlossene()  # nur August - September ist der laufende Monat
     fig = diagramme.gewinn_verlust_monatlich(
         monate,
-        [40000.0],
+        [Decimal("40000.0")],
         prognose=prognose,
-        horizont_kosten=[15000.0, 12000.0],
+        horizont_kosten=[Decimal("15000.0"), Decimal("12000.0")],
         verbrauch_laufender_monat=historie.laufender,
     )
     balken = fig.data[0]
@@ -354,8 +377,8 @@ def test_gewinn_verlust_monatlich_haengt_prognosehorizont_gedaempft_an():
     # realisierte historie.laufender.umsatz - dieselbe Rechnung wie im Umsatzverlauf.
     erwartetes_ergebnis = [
         100000.0 - 40000.0,
-        (historie.laufender.umsatz + median[0]) - 15000.0,
-        median[1] - 12000.0,
+        (float(historie.laufender.umsatz) + float(median[0])) - 15000.0,
+        float(median[1]) - 12000.0,
     ]
     assert list(balken.y) == pytest.approx(erwartetes_ergebnis)
     # September ist der laufende Monat (erster Horizontmonat) - vorlaeufig, nicht rein
@@ -364,8 +387,8 @@ def test_gewinn_verlust_monatlich_haengt_prognosehorizont_gedaempft_an():
 
 
 def test_gewinn_verlust_monatlich_ohne_prognose_bleibt_wie_zuvor():
-    monate = [Monatsumsatz(2026, 7, 50000.0)]
-    fig = diagramme.gewinn_verlust_monatlich(monate, [40000.0])
+    monate = [Monatsumsatz(2026, 7, Decimal("50000.0"))]
+    fig = diagramme.gewinn_verlust_monatlich(monate, [Decimal("40000.0")])
     assert list(fig.data[0].marker.opacity) == [1.0]
     # Ohne Prognose gibt es nichts zu unterscheiden - keine Sicherheits-Legende.
     assert not any(spur.name == "Daten" for spur in fig.data)
@@ -376,9 +399,9 @@ def test_gewinn_verlust_monatlich_zeigt_datensicherheits_legende_mit_prognose():
     monate = historie.abgeschlossene()
     fig = diagramme.gewinn_verlust_monatlich(
         monate,
-        [40000.0],
+        [Decimal("40000.0")],
         prognose=prognose,
-        horizont_kosten=[15000.0, 12000.0],
+        horizont_kosten=[Decimal("15000.0"), Decimal("12000.0")],
         verbrauch_laufender_monat=historie.laufender,
     )
     legende = {spur.name: spur.marker.opacity for spur in fig.data if spur.showlegend}
@@ -394,9 +417,9 @@ def test_gewinn_verlust_je_jahr_setzt_prognose_gestrichelt_und_bruchlos_fort():
     monate = historie.abgeschlossene()
     fig = diagramme.gewinn_verlust_je_jahr(
         monate,
-        [40000.0],
+        [Decimal("40000.0")],
         prognose=prognose,
-        horizont_kosten=[15000.0, 12000.0],
+        horizont_kosten=[Decimal("15000.0"), Decimal("12000.0")],
         verbrauch_laufender_monat=historie.laufender,
     )
     # September (erster Horizontmonat) ist derselbe Kalendermonat wie der laufende -
@@ -431,12 +454,14 @@ def test_gewinn_verlust_je_jahr_setzt_prognose_gestrichelt_und_bruchlos_fort():
 
 def test_gewinn_verlust_je_jahr_teilt_die_monate_nach_kalenderjahr():
     monate = [
-        Monatsumsatz(2025, 11, 10000.0),
-        Monatsumsatz(2025, 12, 15000.0),
-        Monatsumsatz(2026, 1, 30000.0),
-        Monatsumsatz(2026, 2, 10000.0),
+        Monatsumsatz(2025, 11, Decimal("10000.0")),
+        Monatsumsatz(2025, 12, Decimal("15000.0")),
+        Monatsumsatz(2026, 1, Decimal("30000.0")),
+        Monatsumsatz(2026, 2, Decimal("10000.0")),
     ]
-    fig = diagramme.gewinn_verlust_je_jahr(monate, [0.0, 0.0, 0.0, 0.0])
+    fig = diagramme.gewinn_verlust_je_jahr(
+        monate, [Decimal("0"), Decimal("0"), Decimal("0"), Decimal("0")]
+    )
     spur_2025, spur_2026 = fig.data[0], fig.data[1]
 
     assert spur_2025.name == "2025"
@@ -454,15 +479,15 @@ def test_gewinn_verlust_je_jahr_teilt_die_monate_nach_kalenderjahr():
 def test_gewinn_verlust_je_jahr_prognose_in_neuem_jahr_startet_ohne_ist_abschnitt():
     stichtag = date(2026, 12, 1)
     historie = Umsatzhistorie.zum_stichtag(
-        [Monatsumsatz(2026, 11, 30000.0), Monatsumsatz(2026, 12, 5000.0)],
+        [Monatsumsatz(2026, 11, Decimal("30000.0")), Monatsumsatz(2026, 12, Decimal("5000.0"))],
         stichtag,
         abgeschlossene=1,
     )
     monate = historie.abgeschlossene()
     projekt = Projekt(
         id=1, name="Projekt", kunde=KUNDE, aktiv=True,
-        budget=Gesamtbudget(betrag=220000.0),
-        verbrauchtes_volumen=20000.0, verbrauchte_stunden=200.0,
+        budget=Gesamtbudget(betrag=Decimal("220000.0")),
+        verbrauchtes_volumen=Decimal("20000.0"), verbrauchte_stunden=200.0,
     )  # fmt: skip
     bestand = Bestand(
         stichtag=stichtag,
@@ -476,9 +501,9 @@ def test_gewinn_verlust_je_jahr_prognose_in_neuem_jahr_startet_ohne_ist_abschnit
 
     fig = diagramme.gewinn_verlust_je_jahr(
         monate,
-        [40000.0],
+        [Decimal("40000.0")],
         prognose=prognose,
-        horizont_kosten=[15000.0, 12000.0],
+        horizont_kosten=[Decimal("15000.0"), Decimal("12000.0")],
         verbrauch_laufender_monat=historie.laufender,
     )
     # 2026: Ist (November) plus vorlaeufiger Dezember - beide durchgezogen, per
@@ -504,9 +529,9 @@ def test_gewinn_verlust_je_jahr_zeigt_datensicherheits_legende_mit_prognose():
     monate = historie.abgeschlossene()
     fig = diagramme.gewinn_verlust_je_jahr(
         monate,
-        [40000.0],
+        [Decimal("40000.0")],
         prognose=prognose,
-        horizont_kosten=[15000.0, 12000.0],
+        horizont_kosten=[Decimal("15000.0"), Decimal("12000.0")],
         verbrauch_laufender_monat=historie.laufender,
     )
     legende = {spur.name: spur.marker.opacity for spur in fig.data if spur.name not in {"2026"}}
@@ -522,9 +547,9 @@ def test_umsatzrendite_kumuliert_zeigt_datensicherheits_legende_mit_prognose():
     monate = historie.abgeschlossene()
     fig = diagramme.umsatzrendite_kumuliert(
         monate,
-        [40000.0],
+        [Decimal("40000.0")],
         prognose=prognose,
-        horizont_kosten=[15000.0, 12000.0],
+        horizont_kosten=[Decimal("15000.0"), Decimal("12000.0")],
         verbrauch_laufender_monat=historie.laufender,
     )
     legende = {spur.name: spur.marker.opacity for spur in fig.data if spur.name not in {"2026"}}
@@ -536,8 +561,8 @@ def test_umsatzrendite_kumuliert_zeigt_datensicherheits_legende_mit_prognose():
 
 
 def test_gewinn_verlust_je_jahr_ohne_prognose_zeigt_keine_datensicherheits_legende():
-    monate = [Monatsumsatz(2026, 7, 50000.0)]
-    fig = diagramme.gewinn_verlust_je_jahr(monate, [40000.0])
+    monate = [Monatsumsatz(2026, 7, Decimal("50000.0"))]
+    fig = diagramme.gewinn_verlust_je_jahr(monate, [Decimal("40000.0")])
     assert not any(spur.name == "Daten" for spur in fig.data)
 
 
@@ -586,7 +611,10 @@ def test_umsatzverlauf_nennt_den_grund_ohne_bandbreite():
 def test_umsatzverlauf_haengt_horizont_mit_zwei_farbtoenen_an():
     stichtag = date(2026, 9, 1)
     historie = Umsatzhistorie.zum_stichtag(
-        [Monatsumsatz(2026, 8, 100000.0, 800.0), Monatsumsatz(2026, 9, 20000.0, 150.0)],
+        [
+            Monatsumsatz(2026, 8, Decimal("100000.0"), 800.0),
+            Monatsumsatz(2026, 9, Decimal("20000.0"), 150.0),
+        ],
         stichtag,
         abgeschlossene=1,
     )
@@ -606,15 +634,15 @@ def test_umsatzverlauf_haengt_horizont_mit_zwei_farbtoenen_an():
         name="Projekt",
         kunde=KUNDE,
         aktiv=True,
-        budget=Gesamtbudget(betrag=220000.0),
-        verbrauchtes_volumen=20000.0,
+        budget=Gesamtbudget(betrag=Decimal("220000.0")),
+        verbrauchtes_volumen=Decimal("20000.0"),
         verbrauchte_stunden=200.0,
         anteile=(Projektanteil(anna, stunden=200.0),),
     )
     # Eine Buchung im zweiten Horizontmonat, damit auch die "Bereits gebucht"-Spur
     # etwas zu zeichnen hat.
     verlauf_projekt = Verbrauchsverlauf.fuer(
-        projekt, [Monatsumsatz(jahr=2026, monat=10, umsatz=5000.0, stunden=50.0)]
+        projekt, [Monatsumsatz(jahr=2026, monat=10, umsatz=Decimal("5000.0"), stunden=50.0)]
     )
     bestand = Bestand(
         stichtag=stichtag,
@@ -652,14 +680,17 @@ def _historie_und_prognose_mit_horizont():
     """Historie samt Prognose ueber zwei Horizontmonate - Grundlage der Schulungs-Tests."""
     stichtag = date(2026, 9, 1)
     historie = Umsatzhistorie.zum_stichtag(
-        [Monatsumsatz(2026, 8, 100000.0, 800.0), Monatsumsatz(2026, 9, 20000.0, 150.0)],
+        [
+            Monatsumsatz(2026, 8, Decimal("100000.0"), 800.0),
+            Monatsumsatz(2026, 9, Decimal("20000.0"), 150.0),
+        ],
         stichtag,
         abgeschlossene=1,
     )
     projekt = Projekt(
         id=1, name="Projekt", kunde=KUNDE, aktiv=True,
-        budget=Gesamtbudget(betrag=220000.0),
-        verbrauchtes_volumen=20000.0, verbrauchte_stunden=200.0,
+        budget=Gesamtbudget(betrag=Decimal("220000.0")),
+        verbrauchtes_volumen=Decimal("20000.0"), verbrauchte_stunden=200.0,
     )  # fmt: skip
     bestand = Bestand(
         stichtag=stichtag,
@@ -676,7 +707,10 @@ def test_umsatzverlauf_mit_schulungsplan_zeigt_eigenes_segment_und_legende():
     historie, prognose = _historie_und_prognose_mit_horizont()
     schulungsplan = Schulungsplan(
         stichtag=historie.stichtag,
-        termine=(Schulungstermin(2026, 9, 3000.0), Schulungstermin(2026, 10, 1500.0)),
+        termine=(
+            Schulungstermin(2026, 9, Decimal("3000.0")),
+            Schulungstermin(2026, 10, Decimal("1500.0")),
+        ),
     )
 
     fig = diagramme.umsatzverlauf(historie, prognose, schulungsplan)
@@ -701,9 +735,9 @@ def test_umsatzverlauf_mit_kostenplan_zeigt_balken_fuer_historie_und_horizont():
     historie, prognose = _historie_und_prognose_mit_horizont()
     kostenplan = Kostenplan(
         posten=(
-            Kostenposten(2026, 8, 40000.0),
-            Kostenposten(2026, 9, 15000.0),
-            Kostenposten(2026, 10, 12000.0),
+            Kostenposten(2026, 8, Decimal("40000.0")),
+            Kostenposten(2026, 9, Decimal("15000.0")),
+            Kostenposten(2026, 10, Decimal("12000.0")),
         )
     )
 
@@ -718,8 +752,8 @@ def test_umsatzverlauf_mit_kostenplan_zeigt_balken_fuer_historie_und_horizont():
     median = prognose.monatswerte()[0.50]
     erwartetes_ergebnis = [
         100000.0 - 40000.0,
-        (historie.laufender.umsatz + median[0]) - 15000.0,
-        median[1] - 12000.0,
+        (float(historie.laufender.umsatz) + float(median[0])) - 15000.0,
+        float(median[1]) - 12000.0,
     ]
     ergebnis_spur = next(s for s in fig.data if s.name == "Ergebnis")
     assert ergebnis_spur.type == "bar"
@@ -744,10 +778,14 @@ def test_umsatzverlauf_mit_kostenerfassung_zeigt_satteres_rot_und_eigene_legende
     kostenplan = Kostenplan(
         posten=(
             Kostenposten(
-                2026, 8, pauschale=40000.0, allgemeinkosten=10000.0, erfassung=Erfasst(12000.0)
+                2026,
+                8,
+                pauschale=Decimal("40000.0"),
+                allgemeinkosten=Decimal("10000.0"),
+                erfassung=Erfasst(Decimal("12000.0")),
             ),
-            Kostenposten(2026, 9, 15000.0),
-            Kostenposten(2026, 10, 12000.0),
+            Kostenposten(2026, 9, Decimal("15000.0")),
+            Kostenposten(2026, 10, Decimal("12000.0")),
         )
     )
 
@@ -780,7 +818,10 @@ def test_umsatztabelle_mit_schulungsplan_ergaenzt_spalte_und_summe():
     historie, prognose = _historie_und_prognose_mit_horizont()
     schulungsplan = Schulungsplan(
         stichtag=historie.stichtag,
-        termine=(Schulungstermin(2026, 9, 3000.0), Schulungstermin(2026, 10, 1500.0)),
+        termine=(
+            Schulungstermin(2026, 9, Decimal("3000.0")),
+            Schulungstermin(2026, 10, Decimal("1500.0")),
+        ),
     )
 
     tabelle = tabellen.umsatztabelle(historie, prognose, schulungsplan)
@@ -788,7 +829,9 @@ def test_umsatztabelle_mit_schulungsplan_ergaenzt_spalte_und_summe():
     assert sep["Schulungsanmeldungen"] == "3.000,00 EUR"
     assert okt["Schulungsanmeldungen"] == "1.500,00 EUR"
 
-    erwartete_sep_summe = historie.laufender.umsatz + prognose.monatswerte()[0.50][0] + 3000.0
+    erwartete_sep_summe = (
+        historie.laufender.umsatz + prognose.monatswerte()[0.50][0] + Decimal("3000.0")
+    )
     assert sep["Summe"] == euro(erwartete_sep_summe)
 
 
@@ -801,25 +844,25 @@ def test_umsatztabelle_mit_kostenplan_ergaenzt_kosten_und_gewinn_fuer_historie_u
     historie, prognose = _historie_und_prognose_mit_horizont()
     kostenplan = Kostenplan(
         posten=(
-            Kostenposten(2026, 8, 40000.0),
-            Kostenposten(2026, 9, 15000.0),
-            Kostenposten(2026, 10, 12000.0),
+            Kostenposten(2026, 8, Decimal("40000.0")),
+            Kostenposten(2026, 9, Decimal("15000.0")),
+            Kostenposten(2026, 10, Decimal("12000.0")),
         )
     )
 
     tabelle = tabellen.umsatztabelle(historie, prognose, None, kostenplan)
     aug, sep, okt = tabelle.iloc[0], tabelle.iloc[1], tabelle.iloc[2]
 
-    assert aug["Kosten"] == euro(40000.0)
-    assert aug["Gewinn"] == euro(100000.0 - 40000.0)
+    assert aug["Kosten"] == euro(Decimal("40000.0"))
+    assert aug["Gewinn"] == euro(Decimal("100000.0") - Decimal("40000.0"))
 
     erwartete_sep_summe = historie.laufender.umsatz + prognose.monatswerte()[0.50][0]
-    assert sep["Kosten"] == euro(15000.0)
-    assert sep["Gewinn"] == euro(erwartete_sep_summe - 15000.0)
+    assert sep["Kosten"] == euro(Decimal("15000.0"))
+    assert sep["Gewinn"] == euro(erwartete_sep_summe - Decimal("15000.0"))
 
     erwartete_okt_summe = prognose.monatswerte()[0.50][1]
-    assert okt["Kosten"] == euro(12000.0)
-    assert okt["Gewinn"] == euro(erwartete_okt_summe - 12000.0)
+    assert okt["Kosten"] == euro(Decimal("12000.0"))
+    assert okt["Gewinn"] == euro(erwartete_okt_summe - Decimal("12000.0"))
 
 
 def test_umsatztabelle_ohne_kostenplan_laesst_spalten_leer():
@@ -835,8 +878,8 @@ def test_dashboard_hinweise_enthaelt_luecken_des_schulungsplans():
         name="Projekt",
         kunde=KUNDE,
         aktiv=True,
-        budget=Gesamtbudget(betrag=220000.0),
-        verbrauchtes_volumen=20000.0,
+        budget=Gesamtbudget(betrag=Decimal("220000.0")),
+        verbrauchtes_volumen=Decimal("20000.0"),
         verbrauchte_stunden=200.0,
     )
     bestand = Bestand(
@@ -860,8 +903,8 @@ def test_dashboard_hinweise_enthaelt_luecken_des_kostenplans():
         name="Projekt",
         kunde=KUNDE,
         aktiv=True,
-        budget=Gesamtbudget(betrag=220000.0),
-        verbrauchtes_volumen=20000.0,
+        budget=Gesamtbudget(betrag=Decimal("220000.0")),
+        verbrauchtes_volumen=Decimal("20000.0"),
         verbrauchte_stunden=200.0,
     )
     bestand = Bestand(
@@ -886,7 +929,7 @@ def test_dashboard_projekte_ohne_budget_enthaelt_gefilterte_projekte():
         kunde=KUNDE,
         aktiv=True,
         budget=OHNE_BUDGET,
-        verbrauchtes_volumen=20000.0,
+        verbrauchtes_volumen=Decimal("20000.0"),
         verbrauchte_stunden=200.0,
     )
     bestand = Bestand(
@@ -913,7 +956,7 @@ def test_dashboard_projekte_ohne_budget_filtert_projekte():
         kunde=KUNDE,
         aktiv=True,
         budget=OHNE_BUDGET,
-        verbrauchtes_volumen=20000.0,
+        verbrauchtes_volumen=Decimal("20000.0"),
         verbrauchte_stunden=200.0,
     )
     bestand = Bestand(
@@ -947,7 +990,7 @@ def test_dashboard_simuliere_meldet_fortschritt_einmal_nach_abschluss():
 def test_dashboard_zeigt_horizont_im_umsatzverlauf():
     stichtag = date(2026, 9, 1)
     historie = Umsatzhistorie.zum_stichtag(
-        [Monatsumsatz(2026, 9, 20000.0, 150.0)], stichtag, abgeschlossene=0
+        [Monatsumsatz(2026, 9, Decimal("20000.0"), 150.0)], stichtag, abgeschlossene=0
     )
     bestand = Bestand(
         stichtag=stichtag,
@@ -980,14 +1023,17 @@ def test_umsatztabelle_kennzeichnet_den_laufenden_monat():
 def test_umsatztabelle_verschmilzt_laufenden_monat_mit_der_prognose():
     stichtag = date(2026, 9, 1)
     historie = Umsatzhistorie.zum_stichtag(
-        [Monatsumsatz(2026, 8, 100000.0, 800.0), Monatsumsatz(2026, 9, 20000.0, 150.0)],
+        [
+            Monatsumsatz(2026, 8, Decimal("100000.0"), 800.0),
+            Monatsumsatz(2026, 9, Decimal("20000.0"), 150.0),
+        ],
         stichtag,
         abgeschlossene=1,
     )
     projekt = Projekt(
         id=1, name="Projekt", kunde=KUNDE, aktiv=True,
-        budget=Gesamtbudget(betrag=220000.0),
-        verbrauchtes_volumen=20000.0, verbrauchte_stunden=200.0,
+        budget=Gesamtbudget(betrag=Decimal("220000.0")),
+        verbrauchtes_volumen=Decimal("20000.0"), verbrauchte_stunden=200.0,
     )  # fmt: skip
     bestand = Bestand(
         stichtag=stichtag,
@@ -1116,10 +1162,12 @@ def test_abgeschlossene_monate_reicht_bis_januar_des_fruehesten_kosten_jahres(
 
 def test_dashboard_gewinn_verlust_monatlich_nutzt_kostenplan():
     historie = Umsatzhistorie.zum_stichtag(
-        [Monatsumsatz(2026, 7, 50000.0), Monatsumsatz(2026, 8, 30000.0)], STICHTAG, abgeschlossene=1
+        [Monatsumsatz(2026, 7, Decimal("50000.0")), Monatsumsatz(2026, 8, Decimal("30000.0"))],
+        STICHTAG,
+        abgeschlossene=1,
     )
     bestand = Bestand(stichtag=STICHTAG, umsatzhistorie=historie)
-    kostenplan = Kostenplan(posten=(Kostenposten(2026, 7, 40000.0),))
+    kostenplan = Kostenplan(posten=(Kostenposten(2026, 7, Decimal("40000.0")),))
     dashboard = Dashboard(bestand, SCHULUNGSPLAN, kostenplan)
 
     fig = dashboard.gewinn_verlust_monatlich(monate=1)
@@ -1130,9 +1178,9 @@ def test_dashboard_gewinn_verlust_monatlich_nutzt_kostenplan():
 
 def test_dashboard_gewinn_verlust_monatlich_ohne_monate_zeigt_mehr_als_zwoelf_monate():
     stichtag = date(2026, 3, 15)
-    monate = [Monatsumsatz(2025, m, 1000.0) for m in range(2, 13)] + [
-        Monatsumsatz(2026, 1, 1000.0),
-        Monatsumsatz(2026, 2, 1000.0),
+    monate = [Monatsumsatz(2025, m, Decimal("1000.0")) for m in range(2, 13)] + [
+        Monatsumsatz(2026, 1, Decimal("1000.0")),
+        Monatsumsatz(2026, 2, Decimal("1000.0")),
     ]  # Feb 2025 bis Feb 2026 - 13 abgeschlossene Monate, mehr als STANDARD_HISTORIE_MONATE (12)
     historie = Umsatzhistorie.zum_stichtag(monate, stichtag, abgeschlossene=13)
     bestand = Bestand(stichtag=stichtag, umsatzhistorie=historie)
@@ -1146,15 +1194,20 @@ def test_dashboard_gewinn_verlust_monatlich_ohne_monate_zeigt_mehr_als_zwoelf_mo
 def test_dashboard_gewinn_verlust_je_jahr_nutzt_kostenplan():
     historie = Umsatzhistorie.zum_stichtag(
         [
-            Monatsumsatz(2026, 6, 50000.0),
-            Monatsumsatz(2026, 7, 10000.0),
-            Monatsumsatz(2026, 8, 0.0),
+            Monatsumsatz(2026, 6, Decimal("50000.0")),
+            Monatsumsatz(2026, 7, Decimal("10000.0")),
+            Monatsumsatz(2026, 8, Decimal("0.0")),
         ],
         STICHTAG,
         abgeschlossene=2,
     )
     bestand = Bestand(stichtag=STICHTAG, umsatzhistorie=historie)
-    kostenplan = Kostenplan(posten=(Kostenposten(2026, 6, 40000.0), Kostenposten(2026, 7, 40000.0)))
+    kostenplan = Kostenplan(
+        posten=(
+            Kostenposten(2026, 6, Decimal("40000.0")),
+            Kostenposten(2026, 7, Decimal("40000.0")),
+        )
+    )
     dashboard = Dashboard(bestand, SCHULUNGSPLAN, kostenplan)
 
     fig = dashboard.gewinn_verlust_je_jahr()
@@ -1164,15 +1217,20 @@ def test_dashboard_gewinn_verlust_je_jahr_nutzt_kostenplan():
 def test_dashboard_umsatzrendite_kumuliert_nutzt_kostenplan():
     historie = Umsatzhistorie.zum_stichtag(
         [
-            Monatsumsatz(2026, 6, 50000.0),
-            Monatsumsatz(2026, 7, 50000.0),
-            Monatsumsatz(2026, 8, 0.0),
+            Monatsumsatz(2026, 6, Decimal("50000.0")),
+            Monatsumsatz(2026, 7, Decimal("50000.0")),
+            Monatsumsatz(2026, 8, Decimal("0.0")),
         ],
         STICHTAG,
         abgeschlossene=2,
     )
     bestand = Bestand(stichtag=STICHTAG, umsatzhistorie=historie)
-    kostenplan = Kostenplan(posten=(Kostenposten(2026, 6, 40000.0), Kostenposten(2026, 7, 30000.0)))
+    kostenplan = Kostenplan(
+        posten=(
+            Kostenposten(2026, 6, Decimal("40000.0")),
+            Kostenposten(2026, 7, Decimal("30000.0")),
+        )
+    )
     dashboard = Dashboard(bestand, SCHULUNGSPLAN, kostenplan)
 
     fig = dashboard.umsatzrendite_kumuliert()
@@ -1184,14 +1242,14 @@ def test_dashboard_gewinn_verlust_je_jahr_laesst_jahr_ganz_ohne_kostenerfassung_
     historie = Umsatzhistorie(
         stichtag=STICHTAG,
         monate=(
-            Monatsumsatz(2025, 12, 50000.0),
-            Monatsumsatz(2026, 7, 60000.0),
-            Monatsumsatz(2026, 8, 0.0),
+            Monatsumsatz(2025, 12, Decimal("50000.0")),
+            Monatsumsatz(2026, 7, Decimal("60000.0")),
+            Monatsumsatz(2026, 8, Decimal("0.0")),
         ),
     )
     bestand = Bestand(stichtag=STICHTAG, umsatzhistorie=historie)
     # Nur 2026 hat ueberhaupt einen Kostenposten - 2025 bleibt vollstaendig ohne Quelle.
-    kostenplan = Kostenplan(posten=(Kostenposten(2026, 7, 40000.0),))
+    kostenplan = Kostenplan(posten=(Kostenposten(2026, 7, Decimal("40000.0")),))
     dashboard = Dashboard(bestand, SCHULUNGSPLAN, kostenplan)
 
     fig = dashboard.gewinn_verlust_je_jahr()
@@ -1202,13 +1260,13 @@ def test_dashboard_umsatzrendite_kumuliert_laesst_jahr_ganz_ohne_kostenerfassung
     historie = Umsatzhistorie(
         stichtag=STICHTAG,
         monate=(
-            Monatsumsatz(2025, 12, 50000.0),
-            Monatsumsatz(2026, 7, 60000.0),
-            Monatsumsatz(2026, 8, 0.0),
+            Monatsumsatz(2025, 12, Decimal("50000.0")),
+            Monatsumsatz(2026, 7, Decimal("60000.0")),
+            Monatsumsatz(2026, 8, Decimal("0.0")),
         ),
     )
     bestand = Bestand(stichtag=STICHTAG, umsatzhistorie=historie)
-    kostenplan = Kostenplan(posten=(Kostenposten(2026, 7, 40000.0),))
+    kostenplan = Kostenplan(posten=(Kostenposten(2026, 7, Decimal("40000.0")),))
     dashboard = Dashboard(bestand, SCHULUNGSPLAN, kostenplan)
 
     fig = dashboard.umsatzrendite_kumuliert()
@@ -1219,7 +1277,7 @@ def test_dashboard_umsatzrendite_kumuliert_laesst_jahr_ganz_ohne_kostenerfassung
 def test_dashboard_gewinn_verlust_je_jahr_ohne_jede_kostenquelle_zeigt_trotzdem_alles():
     historie = Umsatzhistorie(
         stichtag=STICHTAG,
-        monate=(Monatsumsatz(2025, 12, 50000.0), Monatsumsatz(2026, 8, 0.0)),
+        monate=(Monatsumsatz(2025, 12, Decimal("50000.0")), Monatsumsatz(2026, 8, Decimal("0.0"))),
     )
     bestand = Bestand(stichtag=STICHTAG, umsatzhistorie=historie)
     dashboard = Dashboard(bestand, SCHULUNGSPLAN, KOSTENPLAN)  # KOSTENPLAN: keine Posten
@@ -1234,9 +1292,9 @@ def test_dashboard_gewinn_verlust_monatlich_haengt_vorausschau_an_wenn_simuliert
     bestand = Bestand(stichtag=historie.stichtag, umsatzhistorie=historie)
     kostenplan = Kostenplan(
         posten=(
-            Kostenposten(2026, 8, 40000.0),
-            Kostenposten(2026, 9, 15000.0),
-            Kostenposten(2026, 10, 12000.0),
+            Kostenposten(2026, 8, Decimal("40000.0")),
+            Kostenposten(2026, 9, Decimal("15000.0")),
+            Kostenposten(2026, 10, Decimal("12000.0")),
         )
     )
     dashboard = Dashboard(bestand, SCHULUNGSPLAN, kostenplan)
@@ -1248,7 +1306,9 @@ def test_dashboard_gewinn_verlust_monatlich_haengt_vorausschau_an_wenn_simuliert
 
 def test_dashboard_gewinn_verlust_je_jahr_ohne_simulation_bleibt_bei_der_historie():
     historie = Umsatzhistorie.zum_stichtag(
-        [Monatsumsatz(2026, 7, 50000.0), Monatsumsatz(2026, 8, 30000.0)], STICHTAG, abgeschlossene=1
+        [Monatsumsatz(2026, 7, Decimal("50000.0")), Monatsumsatz(2026, 8, Decimal("30000.0"))],
+        STICHTAG,
+        abgeschlossene=1,
     )
     bestand = Bestand(stichtag=STICHTAG, umsatzhistorie=historie)
     dashboard = Dashboard(bestand, SCHULUNGSPLAN, KOSTENPLAN)
@@ -1372,7 +1432,9 @@ def test_dashboard_kapazitaet_je_projekt_zeigt_werte_nach_simulation():
     bestand = Bestand(
         stichtag=historie.stichtag,
         projekte=(
-            Projekt(id=projekt, name="Projekt", aktiv=True, budget=Gesamtbudget(betrag=1.0)),
+            Projekt(
+                id=projekt, name="Projekt", aktiv=True, budget=Gesamtbudget(betrag=Decimal("1.0"))
+            ),
         ),
         umsatzhistorie=historie,
     )
@@ -1409,22 +1471,34 @@ def test_dashboard_kennzahlen_ohne_umsatzhistorie_wirft():
 
 
 def test_dashboard_stundensatz_uebersteuern_wirkt_auf_folgende_ansichten():
-    projekt = Projekt(id=1, name="Pauschale", kunde=KUNDE, aktiv=True,
-                       budget=Gesamtbudget(betrag=50000.0),
-                       verbrauchtes_volumen=20000.0, verbrauchte_stunden=0.0)  # fmt: skip
+    projekt = Projekt(
+        id=1,
+        name="Pauschale",
+        kunde=KUNDE,
+        aktiv=True,
+        budget=Gesamtbudget(betrag=Decimal("50000.0")),
+        verbrauchtes_volumen=Decimal("20000.0"),
+        verbrauchte_stunden=0.0,
+    )
     bestand = Bestand(stichtag=STICHTAG, projekte=(projekt,), umsatzhistorie=HISTORIE)
     dashboard = Dashboard(bestand, SCHULUNGSPLAN, KOSTENPLAN)
     assert dashboard.bestand.projekte[0].effektiver_stundensatz is None
 
-    dashboard.stundensatz_uebersteuern({"Pauschale": 95.0})
+    dashboard.stundensatz_uebersteuern({"Pauschale": Decimal("95.0")})
 
-    assert dashboard.bestand.projekte[0].effektiver_stundensatz == 95.0
+    assert dashboard.bestand.projekte[0].effektiver_stundensatz == Decimal("95.0")
 
 
 def test_dashboard_verbrauchsplan_uebersteuern_wirkt_auf_folgende_ansichten():
-    projekt = Projekt(id=1, name="Beispielprojekt", kunde=KUNDE, aktiv=True,
-                       budget=Gesamtbudget(betrag=50000.0),
-                       verbrauchtes_volumen=20000.0, verbrauchte_stunden=0.0)  # fmt: skip
+    projekt = Projekt(
+        id=1,
+        name="Beispielprojekt",
+        kunde=KUNDE,
+        aktiv=True,
+        budget=Gesamtbudget(betrag=Decimal("50000.0")),
+        verbrauchtes_volumen=Decimal("20000.0"),
+        verbrauchte_stunden=0.0,
+    )
     bestand = Bestand(stichtag=STICHTAG, projekte=(projekt,), umsatzhistorie=HISTORIE)
     dashboard = Dashboard(bestand, SCHULUNGSPLAN, KOSTENPLAN)
     assert dashboard.bestand.projekte[0].verbrauchsplan_zielmonat is None

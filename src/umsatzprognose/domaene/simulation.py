@@ -33,6 +33,14 @@ Kapazitaeten haengen nur an Stichtag und Horizontmonat, nicht am Lauf - sie werd
 einmal vor der Lauf-Schleife berechnet und nicht bei jedem der 10.000 Laeufe neu
 (:meth:`~umsatzprognose.domaene.mitarbeiter.Mitarbeiter.verfuegbare_kapazitaet` iteriert
 selbst schon ueber jeden Tag des Monats).
+
+**Euro-Groessen laufen als ``Decimal`` an den Fachobjekten, als ``float`` in der
+Schleife selbst.** Die vektorisierte numpy-Rechnung (10.000 Laeufe gleichzeitig) traegt
+mit ``Decimal``-Objektarrays weder ``np.quantile`` noch die uebrigen Vektoroperationen
+performant mit - :func:`_aufbauen` wandelt deshalb beim Einlesen der Fachobjekte
+gezielt in ``float`` um, :func:`_ergebnis` beim Verlassen der Schleife per :func:`_euro`
+zurueck in ``Decimal``, auf den Cent gerundet: jenseits davon traegt eine Summe
+zehntausender float-Additionen ohnehin keine belastbare Genauigkeit mehr.
 """
 
 from __future__ import annotations
@@ -48,12 +56,21 @@ if TYPE_CHECKING:
 from calendar import monthrange
 from dataclasses import dataclass
 from datetime import date
+from decimal import Decimal
 
 import numpy as np
 
 from umsatzprognose.util import Monat, monatsfolge, ordnung
 
 from .prognose import KONFIDENZNIVEAUS, NochKeinePrognose, Prognose
+
+NULL_EURO = Decimal("0")
+
+
+def _euro(betrag: float) -> Decimal:
+    """Ein aus der float-basierten Simulationsschleife zurueckgerechneter Euro-Betrag,
+    auf den Cent gerundet (siehe Moduldocstring)."""
+    return Decimal(str(round(betrag, 2)))
 
 
 def _horizontmonate(stichtag: date, monate: int) -> tuple[Monat, ...]:
@@ -106,9 +123,9 @@ class MonteCarloPrognose:
 
     _horizontmonate: tuple[Monat, ...]
     laeufe: int
-    _monatswerte: Mapping[float, tuple[float, ...]]
-    _summe: Mapping[float, float]
-    _gebucht: tuple[float, ...]
+    _monatswerte: Mapping[float, tuple[Decimal, ...]]
+    _summe: Mapping[float, Decimal]
+    _gebucht: tuple[Decimal, ...]
     _kapazitaet_limitierend_anteil: float
     _kapazitaet_je_projekt: Mapping[int, float]
 
@@ -126,13 +143,13 @@ class MonteCarloPrognose:
     def horizontmonate(self) -> tuple[Monat, ...]:
         return self._horizontmonate
 
-    def monatswerte(self) -> dict[float, list[float]]:
+    def monatswerte(self) -> dict[float, list[Decimal]]:
         return {niveau: list(werte) for niveau, werte in self._monatswerte.items()}
 
-    def gebucht(self) -> list[float]:
+    def gebucht(self) -> list[Decimal]:
         return list(self._gebucht)
 
-    def summe(self) -> dict[float, float]:
+    def summe(self) -> dict[float, Decimal]:
         return dict(self._summe)
 
     def kapazitaet_limitierend_anteil(self) -> float:
@@ -165,7 +182,7 @@ def _verbrauchsplan(
             continue
         ziel_effektiv = max(ziel, horizont[0])
         anzahl = ordnung(*ziel_effektiv) - ordnung(*horizont[0]) + 1
-        rate = (p.restvolumen_prognosewirksam or 0.0) / anzahl
+        rate = float(p.restvolumen_prognosewirksam or NULL_EURO) / anzahl
         hat_plan[i] = True
         for j, monat in enumerate(horizont):
             plan_betrag[j, i] = rate if monat <= ziel_effektiv else 0.0
@@ -198,8 +215,8 @@ def _aufbauen(bestand: Bestand, scope: tuple[Projekt, ...], monate: int) -> _Auf
     horizont = _horizontmonate(bestand.stichtag, monate)
     skalierung_monat1 = _anteil_verbleibender_arbeitstage(bestand.stichtag)
 
-    startvolumen = np.array([p.restvolumen_prognosewirksam or 0.0 for p in scope])
-    saetze = np.array([p.effektiver_stundensatz or 0.0 for p in scope])
+    startvolumen = np.array([float(p.restvolumen_prognosewirksam or NULL_EURO) for p in scope])
+    saetze = np.array([float(p.effektiver_stundensatz or NULL_EURO) for p in scope])
     # Satz 0 und ``None`` werden identisch behandelt: beide
     # erzeugen keinen Stundenbedarf, der gewuenschte Betrag geht ungedeckelt ein.
     hat_satz = saetze != 0.0
@@ -255,7 +272,7 @@ def _aufbauen(bestand: Bestand, scope: tuple[Projekt, ...], monate: int) -> _Auf
         for j, monat in enumerate(horizont[1:], start=1):
             betrag = verlauf.gebucht(*monat)
             if betrag:
-                gebucht[j, i] = betrag
+                gebucht[j, i] = float(betrag)
 
     return _Aufbau(
         horizont=horizont,
@@ -288,13 +305,13 @@ def _ergebnis(
 
     monatswerte = {
         niveau: tuple(
-            float(np.quantile(monatssummen[index], 1.0 - niveau))
+            _euro(np.quantile(monatssummen[index], 1.0 - niveau))
             for index in range(len(aufbau.horizont))
         )
         for niveau in KONFIDENZNIVEAUS
     }
-    summe = {niveau: float(np.quantile(laufsummen, 1.0 - niveau)) for niveau in KONFIDENZNIVEAUS}
-    gebucht_je_monat = tuple(float(x) for x in aufbau.gebucht.sum(axis=1))
+    summe = {niveau: _euro(np.quantile(laufsummen, 1.0 - niveau)) for niveau in KONFIDENZNIVEAUS}
+    gebucht_je_monat = tuple(_euro(x) for x in aufbau.gebucht.sum(axis=1))
     kapazitaet_je_projekt = {
         p.id: float(np.quantile(stunden_je_projekt[:, i], 0.5)) for i, p in enumerate(scope)
     }

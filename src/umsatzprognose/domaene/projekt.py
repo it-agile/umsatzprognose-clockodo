@@ -20,13 +20,16 @@ if TYPE_CHECKING:
     from .projektanteil import Projektanteil
 
 from dataclasses import dataclass, field
+from decimal import Decimal
+
+NULL_EURO = Decimal("0")
 
 
 @dataclass(frozen=True)
 class Gesamtbudget:
     """Der Normalfall: ``betrag`` ist ein Euro-Gesamtbudget."""
 
-    betrag: float
+    betrag: Decimal
     hart: bool = False
 
 
@@ -49,7 +52,7 @@ class IntervallBudget:
     1 monatlich, 2 quartalsweise, 3 jaehrlich) und kein String.
     """
 
-    betrag: float
+    betrag: Decimal
     intervall: int
 
 
@@ -57,7 +60,7 @@ class IntervallBudget:
 class TeilprojektBudget:
     """Das Budget stammt aus Teilprojekten."""
 
-    betrag: float | None = None
+    betrag: Decimal | None = None
 
 
 @dataclass(frozen=True)
@@ -90,7 +93,7 @@ def sonderfall(budget: Budget) -> str | None:
             assert_never(budget)
 
 
-def auftragsvolumen(budget: Budget) -> float | None:
+def auftragsvolumen(budget: Budget) -> Decimal | None:
     """Das Auftragsvolumen in Euro, ``None`` wenn keines bezifferbar ist."""
     match budget:
         case Gesamtbudget(betrag=betrag):
@@ -114,10 +117,10 @@ class Projekt:
     aktiv: bool = False
     abgeschlossen: bool = False
     budget: Budget = OHNE_BUDGET
-    verbrauchtes_volumen: float = 0.0
+    verbrauchtes_volumen: Decimal = NULL_EURO
     verbrauchte_stunden: float = 0.0
     anteile: tuple[Projektanteil, ...] = field(default_factory=tuple)
-    stundensatz_uebersteuerung: float | None = None
+    stundensatz_uebersteuerung: Decimal | None = None
     # Von Hand hinterlegtes Zielmonat: statt einer aus der portfolioweiten Verteilung
     # gezogenen Abrufquote nimmt die Simulation fuer dieses Projekt einen
     # deterministischen, linear auf die Monate bis einschliesslich diesem Zielmonat
@@ -143,11 +146,11 @@ class Projekt:
         return beschriftet or f"Projekt {self.id}"
 
     @property
-    def auftragsvolumen(self) -> float | None:
+    def auftragsvolumen(self) -> Decimal | None:
         return auftragsvolumen(self.budget)
 
     @property
-    def restvolumen_roh(self) -> float | None:
+    def restvolumen_roh(self) -> Decimal | None:
         """``Auftragsvolumen - Verbrauch``, vorzeichenbehaftet.
 
         Negativ heisst: das Budget ist historisch ueberschritten. Diese Groesse wird
@@ -161,7 +164,7 @@ class Projekt:
         return self.auftragsvolumen - self.verbrauchtes_volumen
 
     @property
-    def restvolumen_prognosewirksam(self) -> float | None:
+    def restvolumen_prognosewirksam(self) -> Decimal | None:
         """Bei 0 gekapptes Restvolumen - was noch abgerufen werden kann.
 
         Eine Ueberschreitung kann nur historisch entstehen, die
@@ -169,7 +172,7 @@ class Projekt:
         Budget traegt damit 0 zur Prognose bei.
         """
         roh = self.restvolumen_roh
-        return None if roh is None else max(0.0, roh)
+        return None if roh is None else max(NULL_EURO, roh)
 
     @property
     def budget_ueberschritten(self) -> bool:
@@ -186,13 +189,13 @@ class Projekt:
         return self.aktiv and not self.abgeschlossen and verwertbar(self.budget)
 
     @property
-    def effektiver_stundensatz(self) -> float | None:
+    def effektiver_stundensatz(self) -> Decimal | None:
         """Erzielter Umsatz je geleisteter Stunde, ``None`` ohne erfasste Zeit."""
         if self.stundensatz_uebersteuerung is not None:
             return self.stundensatz_uebersteuerung
         if not self.verbrauchte_stunden:
             return None
-        return self.verbrauchtes_volumen / self.verbrauchte_stunden
+        return self.verbrauchtes_volumen / Decimal(str(self.verbrauchte_stunden))
 
     @property
     def beteiligte(self) -> tuple[Mitarbeiter, ...]:

@@ -23,6 +23,8 @@ if TYPE_CHECKING:
     )
     from umsatzprognose.domaene.anmeldung import Kategorisierung
 
+from decimal import Decimal
+
 import pandas as pd
 
 from umsatzprognose.domaene import NochKeinePrognose
@@ -132,11 +134,11 @@ def umsatztabelle(
         horizont = prognose.horizontmonate()
         median = prognose.monatswerte()[0.50]
         gebucht = prognose.gebucht()
-        basis = laufender.umsatz if laufender else 0.0
+        basis = laufender.umsatz if laufender else Decimal("0")
         schulung = (
             schulungsplan.umsatz_je_monat(horizont)
             if schulungsplan is not None
-            else [0.0] * len(horizont)
+            else [Decimal("0")] * len(horizont)
         )
         kosten_horizont = (
             kostenplan.kosten_je_monat(horizont)

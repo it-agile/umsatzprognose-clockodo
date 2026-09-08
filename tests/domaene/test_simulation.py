@@ -12,6 +12,7 @@ Verteilungen nicht mischen.
 from __future__ import annotations
 
 from datetime import date
+from decimal import Decimal
 
 import numpy as np
 import pytest
@@ -54,9 +55,12 @@ def historie(quote: float, id: int = 900) -> Verbrauchsverlauf:
     Das Projekt liegt ausserhalb des Prognose-Scope (``aktiv=False``) und traegt selbst
     keinen Umsatz zur Simulation bei - es liefert nur die eine Beobachtung.
     """
-    projekt = Projekt(id=id, name=f"Historie {id}", aktiv=False, budget=Gesamtbudget(betrag=1000.0))
+    projekt = Projekt(
+        id=id, name=f"Historie {id}", aktiv=False, budget=Gesamtbudget(betrag=Decimal("1000.0"))
+    )
     return Verbrauchsverlauf.fuer(
-        projekt, [Monatsumsatz(jahr=2026, monat=6, umsatz=quote * 1000.0, stunden=1.0)]
+        projekt,
+        [Monatsumsatz(jahr=2026, monat=6, umsatz=Decimal(str(quote * 1000.0)), stunden=1.0)],
     )
 
 
@@ -80,8 +84,8 @@ def test_einfacher_lauf_ohne_kapazitaetsdeckel():
         name="Projekt",
         kunde=KUNDE,
         aktiv=True,
-        budget=Gesamtbudget(betrag=10000.0),
-        verbrauchtes_volumen=2000.0,
+        budget=Gesamtbudget(betrag=Decimal("10000.0")),
+        verbrauchtes_volumen=Decimal("2000.0"),
         verbrauchte_stunden=40.0,  # effektiver Stundensatz 50.0
         anteile=(Projektanteil(anna, stunden=40.0),),
     )
@@ -98,8 +102,9 @@ def test_einfacher_lauf_ohne_kapazitaetsdeckel():
     # Restvolumen 8000, Quote 0.5 -> gewuenscht 4000 Euro, bei 50 Euro/h sind das 80h,
     # die Anna mit ihrer ueppigen Kapazitaet vollstaendig liefert.
     for niveau, werte in prognose.monatswerte().items():
-        assert werte == [pytest.approx(4000.0)], niveau
-    assert prognose.summe() == {niveau: pytest.approx(4000.0) for niveau in prognose.summe()}
+        assert [float(w) for w in werte] == [pytest.approx(4000.0)], niveau
+    summe = {niveau: float(wert) for niveau, wert in prognose.summe().items()}
+    assert summe == {niveau: pytest.approx(4000.0) for niveau in summe}
     assert prognose.kapazitaet_limitierend_anteil() == 0.0
     # 4000 Euro bei 50 Euro/h effektivem Satz sind 80 gelieferte Stunden.
     assert prognose.kapazitaet_je_projekt() == {1: pytest.approx(80.0)}
@@ -111,8 +116,8 @@ def test_kapazitaetsdeckel_kuerzt_anteilig_ueber_alle_projekte_einer_person():
         id=1,
         name="A",
         aktiv=True,
-        budget=Gesamtbudget(betrag=10000.0),
-        verbrauchtes_volumen=2000.0,
+        budget=Gesamtbudget(betrag=Decimal("10000.0")),
+        verbrauchtes_volumen=Decimal("2000.0"),
         verbrauchte_stunden=40.0,  # Satz 50.0, wie oben
         anteile=(Projektanteil(anna, stunden=40.0),),
     )
@@ -120,8 +125,8 @@ def test_kapazitaetsdeckel_kuerzt_anteilig_ueber_alle_projekte_einer_person():
         id=2,
         name="B",
         aktiv=True,
-        budget=Gesamtbudget(betrag=10000.0),
-        verbrauchtes_volumen=2000.0,
+        budget=Gesamtbudget(betrag=Decimal("10000.0")),
+        verbrauchtes_volumen=Decimal("2000.0"),
         verbrauchte_stunden=40.0,
         anteile=(Projektanteil(anna, stunden=40.0),),
     )
@@ -141,7 +146,9 @@ def test_kapazitaetsdeckel_kuerzt_anteilig_ueber_alle_projekte_einer_person():
 
     erwarteter_umsatz = kapazitaet * 50.0
     for werte in prognose.monatswerte().values():
-        assert werte == [pytest.approx(erwarteter_umsatz)]
+        # abs=0.01: die Simulation rundet auf den Cent (siehe simulation._euro()), das
+        # allein kann schon in der Groessenordnung der sonst genutzten Standardtoleranz liegen.
+        assert [float(w) for w in werte] == [pytest.approx(erwarteter_umsatz, abs=0.01)]
     assert prognose.kapazitaet_limitierend_anteil() == 1.0
     # Beide Projekte wollen gleich viel, der Deckel kuerzt sie deshalb gleich stark -
     # zusammen genau Annas verfuegbare Kapazitaet, je zur Haelfte.
@@ -156,8 +163,8 @@ def test_projekt_ohne_stundensatz_verbraucht_keine_kapazitaet():
         id=1,
         name="Pauschale ohne Zeit",
         aktiv=True,
-        budget=Gesamtbudget(betrag=5000.0),
-        verbrauchtes_volumen=1000.0,
+        budget=Gesamtbudget(betrag=Decimal("5000.0")),
+        verbrauchtes_volumen=Decimal("1000.0"),
         verbrauchte_stunden=0.0,
     )
     b = Bestand(
@@ -170,7 +177,7 @@ def test_projekt_ohne_stundensatz_verbraucht_keine_kapazitaet():
 
     # Restvolumen 4000, Quote 0.5 -> 2000 Euro, direkt geliefert, keine Person beteiligt.
     for werte in prognose.monatswerte().values():
-        assert werte == [pytest.approx(2000.0)]
+        assert [float(w) for w in werte] == [pytest.approx(2000.0)]
     assert prognose.kapazitaet_limitierend_anteil() == 0.0
     # Ohne ableitbaren Stundensatz kein Stundenbedarf - die Kapazitaetsverteilung
     # zeigt fuer dieses Projekt 0, obwohl es Umsatz liefert.
@@ -183,8 +190,8 @@ def test_gezogene_quote_wird_auf_restvolumen_gekappt_und_folgemonat_liefert_nich
         id=1,
         name="Klein mit hoher Quote",
         aktiv=True,
-        budget=Gesamtbudget(betrag=5000.0),
-        verbrauchtes_volumen=1000.0,  # Restvolumen 4000
+        budget=Gesamtbudget(betrag=Decimal("5000.0")),
+        verbrauchtes_volumen=Decimal("1000.0"),  # Restvolumen 4000
         verbrauchte_stunden=20.0,  # Satz 50.0
         anteile=(Projektanteil(anna, stunden=20.0),),
     )
@@ -200,9 +207,9 @@ def test_gezogene_quote_wird_auf_restvolumen_gekappt_und_folgemonat_liefert_nich
     for werte in prognose.monatswerte().values():
         # Monat 1: min(4000, 3.0*4000) = 4000, das komplette Restvolumen.
         # Monat 2: nichts mehr uebrig.
-        assert werte == [pytest.approx(4000.0), pytest.approx(0.0)]
+        assert [float(w) for w in werte] == [pytest.approx(4000.0), pytest.approx(0.0)]
     for wert in prognose.summe().values():
-        assert wert == pytest.approx(4000.0)
+        assert float(wert) == pytest.approx(4000.0)
 
 
 def test_deadline_monat_zaehlt_noch_voll_folgemonat_nicht():
@@ -211,8 +218,8 @@ def test_deadline_monat_zaehlt_noch_voll_folgemonat_nicht():
         id=1,
         name="Befristet",
         aktiv=True,
-        budget=Gesamtbudget(betrag=1000000.0),
-        verbrauchtes_volumen=10000.0,  # Restvolumen 990000, bleibt ueber 2 Monate offen
+        budget=Gesamtbudget(betrag=Decimal("1000000.0")),
+        verbrauchtes_volumen=Decimal("10000.0"),  # Restvolumen 990000, bleibt ueber 2 Monate offen
         verbrauchte_stunden=100.0,  # Satz 100.0
         anteile=(Projektanteil(anna, stunden=100.0),),
         automatischer_abschluss=date(2026, 10, 15),
@@ -227,7 +234,7 @@ def test_deadline_monat_zaehlt_noch_voll_folgemonat_nicht():
     prognose = b.simulieren(monate=3, laeufe=3, zufall=np.random.default_rng(5))
 
     werte = next(iter(prognose.monatswerte().values()))
-    september, oktober, november = werte
+    september, oktober, november = (float(w) for w in werte)
     assert september > 0.0
     # Oktober enthaelt die deadline (15.10.) und zaehlt noch voll.
     assert oktober > 0.0
@@ -241,15 +248,15 @@ def test_bereits_gebuchter_betrag_ist_die_untergrenze_in_kuenftigen_monaten():
         id=1,
         name="Mit Vorabbuchung",
         aktiv=True,
-        budget=Gesamtbudget(betrag=100500.0),
-        verbrauchtes_volumen=500.0,  # Restvolumen 100000
+        budget=Gesamtbudget(betrag=Decimal("100500.0")),
+        verbrauchtes_volumen=Decimal("500.0"),  # Restvolumen 100000
         verbrauchte_stunden=10.0,  # Satz 50.0
         anteile=(Projektanteil(anna, stunden=10.0),),
     )
     # Die Buchung liegt im zweiten Horizontmonat (Oktober), nicht im Stichtagsmonat -
     # nur dort gilt sie als Untergrenze, siehe der naechste Test.
     verlauf_projekt = Verbrauchsverlauf.fuer(
-        projekt, [Monatsumsatz(jahr=2026, monat=10, umsatz=20000.0, stunden=400.0)]
+        projekt, [Monatsumsatz(jahr=2026, monat=10, umsatz=Decimal("20000.0"), stunden=400.0)]
     )
     b = Bestand(
         stichtag=STICHTAG,  # 2026-09-01
@@ -264,8 +271,8 @@ def test_bereits_gebuchter_betrag_ist_die_untergrenze_in_kuenftigen_monaten():
     # Verbrauch waere nur 0.1*90000=9000 - der real gebuchte Betrag von 20000 ist die
     # Untergrenze und ueberschreibt ihn.
     for werte in prognose.monatswerte().values():
-        assert werte == [pytest.approx(10000.0), pytest.approx(20000.0)]
-    assert prognose.gebucht() == [pytest.approx(0.0), pytest.approx(20000.0)]
+        assert [float(w) for w in werte] == [pytest.approx(10000.0), pytest.approx(20000.0)]
+    assert [float(g) for g in prognose.gebucht()] == [pytest.approx(0.0), pytest.approx(20000.0)]
 
 
 def test_verbrauchsplan_verteilt_restvolumen_linear_bis_zielmonat_unabhaengig_vom_zufall():
@@ -278,8 +285,8 @@ def test_verbrauchsplan_verteilt_restvolumen_linear_bis_zielmonat_unabhaengig_vo
         id=1,
         name="Beispielprojekt",
         aktiv=True,
-        budget=Gesamtbudget(betrag=30500.0),
-        verbrauchtes_volumen=500.0,  # Restvolumen 30000
+        budget=Gesamtbudget(betrag=Decimal("30500.0")),
+        verbrauchtes_volumen=Decimal("500.0"),  # Restvolumen 30000
         verbrauchte_stunden=100.0,  # Satz 5.0
         anteile=(Projektanteil(anna, stunden=100.0),),
         verbrauchsplan_zielmonat=(2026, 11),  # letzter von drei Horizontmonaten (Sep-Nov)
@@ -298,7 +305,7 @@ def test_verbrauchsplan_verteilt_restvolumen_linear_bis_zielmonat_unabhaengig_vo
         assert prognose.kapazitaet_limitierend_anteil() == 0.0
         for werte in prognose.monatswerte().values():
             # 30000 auf 3 Monate verteilt = 10000/Monat.
-            assert werte == [pytest.approx(10000.0)] * 3
+            assert [float(w) for w in werte] == [pytest.approx(10000.0)] * 3
 
 
 def test_stichtagsmonat_zaehlt_keine_gebuchten_betraege_als_untergrenze():
@@ -310,15 +317,15 @@ def test_stichtagsmonat_zaehlt_keine_gebuchten_betraege_als_untergrenze():
         id=1,
         name="Mit Buchung im Stichtagsmonat",
         aktiv=True,
-        budget=Gesamtbudget(betrag=100500.0),
-        verbrauchtes_volumen=500.0,  # Restvolumen 100000
+        budget=Gesamtbudget(betrag=Decimal("100500.0")),
+        verbrauchtes_volumen=Decimal("500.0"),  # Restvolumen 100000
         verbrauchte_stunden=10.0,  # Satz 50.0
         anteile=(Projektanteil(anna, stunden=10.0),),
     )
     # Eine grosse Buchung im Stichtagsmonat selbst - realistisch, weil die Antwort
     # keine Tagesgrenze kennt und Buchungen vor dem Stichtag mitzaehlt.
     verlauf_projekt = Verbrauchsverlauf.fuer(
-        projekt, [Monatsumsatz(jahr=2026, monat=9, umsatz=90000.0, stunden=1800.0)]
+        projekt, [Monatsumsatz(jahr=2026, monat=9, umsatz=Decimal("90000.0"), stunden=1800.0)]
     )
     b = Bestand(
         stichtag=STICHTAG,
@@ -331,5 +338,5 @@ def test_stichtagsmonat_zaehlt_keine_gebuchten_betraege_als_untergrenze():
 
     # Ohne den Ausschluss fuer Monat 0 wuerde hier 90000 statt 10000 stehen.
     for werte in prognose.monatswerte().values():
-        assert werte == [pytest.approx(10000.0)]
-    assert prognose.gebucht() == [pytest.approx(0.0)]
+        assert [float(w) for w in werte] == [pytest.approx(10000.0)]
+    assert [float(g) for g in prognose.gebucht()] == [pytest.approx(0.0)]

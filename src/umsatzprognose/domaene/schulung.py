@@ -21,6 +21,7 @@ if TYPE_CHECKING:
     from .hinweis import Hinweis
 
 from dataclasses import dataclass, field
+from decimal import Decimal
 
 from .umsatzhistorie import betrag_je_monat, hinweise_mit_fehlenden_monaten
 
@@ -35,7 +36,7 @@ class Schulungstermin:
 
     jahr: int
     monat: int
-    umsatz: float
+    umsatz: Decimal
 
     @property
     def schluessel(self) -> Monat:
@@ -61,12 +62,12 @@ class Schulungsplan:
         grenze = (self.stichtag.year, self.stichtag.month)
         return tuple(t for t in self.termine if t.schluessel >= grenze)
 
-    def umsatz_je_monat(self, horizontmonate: Sequence[Monat]) -> list[float]:
+    def umsatz_je_monat(self, horizontmonate: Sequence[Monat]) -> list[Decimal]:
         """Summe von ``Umsatz gesamt`` je uebergebenem Monat, 0 ohne passenden Termin."""
         return betrag_je_monat(self._relevante_termine(), horizontmonate, betrag=lambda t: t.umsatz)
 
-    def summe(self, horizontmonate: Sequence[Monat]) -> float:
-        return sum(self.umsatz_je_monat(horizontmonate))
+    def summe(self, horizontmonate: Sequence[Monat]) -> Decimal:
+        return sum(self.umsatz_je_monat(horizontmonate), Decimal("0"))
 
     def hinweise(self, horizontmonate: Sequence[Monat]) -> tuple[Hinweis, ...]:
         """Befunde aus der Abbildung, plus fehlende Horizontmonate.

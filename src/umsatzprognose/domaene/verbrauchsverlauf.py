@@ -25,6 +25,7 @@ if TYPE_CHECKING:
     from .projekt import Projekt
 
 from dataclasses import dataclass
+from decimal import Decimal
 
 from umsatzprognose.util import aus_ordnung, ordnung
 
@@ -78,11 +79,11 @@ class Verbrauchsverlauf:
         return self.monate[-1].schluessel if self.monate else None
 
     @property
-    def verbrauch(self) -> float:
+    def verbrauch(self) -> Decimal:
         """Der gesamte Verbrauch des Verlaufs - Pruefsumme gegen das Projekt."""
-        return sum(monat.umsatz for monat in self.monate)
+        return sum((monat.umsatz for monat in self.monate), Decimal("0"))
 
-    def gebucht(self, jahr: int, monat: int) -> float:
+    def gebucht(self, jahr: int, monat: int) -> Decimal:
         """Der in diesem Monat gebuchte Umsatz; 0, wenn nichts gebucht wurde.
 
         Hier ist 0 die richtige Antwort und nicht ``None``: ein Monat ohne Buchung ist
@@ -92,16 +93,17 @@ class Verbrauchsverlauf:
         for eintrag in self.monate:
             if eintrag.schluessel == (jahr, monat):
                 return eintrag.umsatz
-        return 0.0
+        return Decimal("0")
 
-    def verbrauch_vor(self, jahr: int, monat: int) -> float:
+    def verbrauch_vor(self, jahr: int, monat: int) -> Decimal:
         """Summierter Verbrauch aller Monate **vor** diesem - der Blick auf Monatsbeginn."""
         grenze = ordnung(jahr, monat)
         return sum(
-            eintrag.umsatz for eintrag in self.monate if ordnung(*eintrag.schluessel) < grenze
+            (eintrag.umsatz for eintrag in self.monate if ordnung(*eintrag.schluessel) < grenze),
+            Decimal("0"),
         )
 
-    def restvolumen_zu_monatsbeginn(self, jahr: int, monat: int) -> float | None:
+    def restvolumen_zu_monatsbeginn(self, jahr: int, monat: int) -> Decimal | None:
         """Das aus dem heutigen Budget zurueckgerechnete Restvolumen.
 
         ``None``, wenn das Projekt kein bezifferbares Auftragsvolumen hat - dann
@@ -155,7 +157,7 @@ class Verbrauchsverlauf:
         quoten: list[Abrufquote] = []
         for jahr, monat in fenster:
             restvolumen = auftragsvolumen - verbraucht
-            verbrauch = gebucht.get((jahr, monat), 0.0)
+            verbrauch = gebucht.get((jahr, monat), Decimal("0"))
             verbraucht += verbrauch
             if restvolumen <= 0:
                 continue

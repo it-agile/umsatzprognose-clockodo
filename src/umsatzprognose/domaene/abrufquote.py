@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable
+    from decimal import Decimal
 
     from .projekt import Projekt
 
@@ -40,8 +41,8 @@ class Abrufquote:
     projekt: Projekt
     jahr: int
     monat: int
-    verbrauch: float
-    restvolumen_zu_monatsbeginn: float
+    verbrauch: Decimal
+    restvolumen_zu_monatsbeginn: Decimal
 
     def __post_init__(self) -> None:
         if self.restvolumen_zu_monatsbeginn <= 0:
@@ -55,8 +56,13 @@ class Abrufquote:
 
     @property
     def wert(self) -> float:
-        """Der Anteil des offenen Restvolumens, der im Monat abgerufen wurde."""
-        return self.verbrauch / self.restvolumen_zu_monatsbeginn
+        """Der Anteil des offenen Restvolumens, der im Monat abgerufen wurde.
+
+        Ein reines Verhaeltnis (Euro/Euro) und keine Geldgroesse - deshalb ``float``,
+        nicht ``Decimal``: die Monte-Carlo-Ziehung darauf ist ohnehin vektorisiert mit
+        numpy gerechnet (siehe :meth:`Abrufquotenverteilung.ziehen_array`).
+        """
+        return float(self.verbrauch / self.restvolumen_zu_monatsbeginn)
 
     @property
     def schluessel(self) -> tuple[int, int]:

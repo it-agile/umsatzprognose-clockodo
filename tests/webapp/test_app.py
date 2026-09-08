@@ -8,6 +8,7 @@ lassen - ``fastapi`` ist bewusst keine Basisabhaengigkeit (siehe Moduldocstring 
 from __future__ import annotations
 
 from datetime import date
+from decimal import Decimal
 
 import pytest
 
@@ -35,20 +36,22 @@ import umsatzprognose.webapp.app as app_modul  # noqa: E402
 
 STICHTAG = date(2026, 8, 24)
 KUNDE = Kunde(id=1, name="Testkunde")
-HISTORIE = Umsatzhistorie.zum_stichtag([Monatsumsatz(2026, 8, 1000.0, 10.0)], STICHTAG)
+HISTORIE = Umsatzhistorie.zum_stichtag([Monatsumsatz(2026, 8, Decimal("1000.0"), 10.0)], STICHTAG)
 PROJEKTE = (
     Projekt(
         id=1,
         name="Testprojekt",
         kunde=KUNDE,
         aktiv=True,
-        budget=Gesamtbudget(betrag=5000.0),
-        verbrauchtes_volumen=1000.0,
+        budget=Gesamtbudget(betrag=Decimal("5000.0")),
+        verbrauchtes_volumen=Decimal("1000.0"),
         verbrauchte_stunden=10.0,
     ),
 )
 BESTAND = Bestand(stichtag=STICHTAG, projekte=PROJEKTE, umsatzhistorie=HISTORIE)
-SCHULUNGSPLAN = Schulungsplan(stichtag=STICHTAG, termine=(Schulungstermin(2026, 8, 2500.0),))
+SCHULUNGSPLAN = Schulungsplan(
+    stichtag=STICHTAG, termine=(Schulungstermin(2026, 8, Decimal("2500.0")),)
+)
 DASHBOARD = Dashboard(BESTAND, SCHULUNGSPLAN, Kostenplan())
 DASHBOARD.simuliere(monate=1, laeufe=100)
 
