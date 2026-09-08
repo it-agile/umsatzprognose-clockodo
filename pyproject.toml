@@ -142,6 +142,12 @@ docstring-code-format = true
 indent-style = "space"
 line-ending = "auto"
 quote-style = "double"
+# Explizit der Default, aber bewusst dokumentiert: MONATSNAMEN
+# (domaene/umsatzhistorie.py) und select oben in dieser Datei verlassen sich
+# beide auf einen manuellen Komma-Abschluss samt `# fmt: skip`, um eine
+# handsortierte Mehrzeilen-Gruppierung statt des ansonsten erzwungenen
+# Ein-Element-pro-Zeile-Layouts zu behalten.
+skip-magic-trailing-comma = false
 
 [tool.mypy]
 packages = ["src","tests"]
