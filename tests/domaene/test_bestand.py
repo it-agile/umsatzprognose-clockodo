@@ -140,6 +140,19 @@ def test_stundensatz_uebersteuerung_laesst_unbenannte_projekte_unveraendert():
     assert korrigiert.projekte == b.projekte
 
 
+def test_verbrauchsplan_uebersteuerung_setzt_das_zielmonat_des_benannten_projekts():
+    b = bestand(GROSS, KLEIN)
+    korrigiert = b.mit_verbrauchsplan_uebersteuerungen({"Gross": (2026, 12)})
+    projekt = next(p for p in korrigiert.projekte if p.id == 1)
+    assert projekt.verbrauchsplan_zielmonat == (2026, 12)
+
+
+def test_verbrauchsplan_uebersteuerung_laesst_unbenannte_projekte_unveraendert():
+    b = bestand(GROSS, KLEIN)
+    korrigiert = b.mit_verbrauchsplan_uebersteuerungen({"Nicht vorhanden": (2026, 12)})
+    assert korrigiert.projekte == b.projekte
+
+
 def test_abbildungshinweise_stehen_vor_den_fachlichen():
     aus_der_abbildung = Hinweis("Auf einen Kunden ohne Projekt gebucht")
     b = bestand(OHNE_BUDGET, abbildungshinweise=(aus_der_abbildung,))

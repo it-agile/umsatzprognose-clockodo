@@ -130,7 +130,9 @@ der sechs Pakete darf `util/` importieren.
   `clockodo/` oder `schulungen/`.
 - `src/umsatzprognose/darstellung/` – der einzige Ort mit plotly (`diagramme.py`,
   `gestaltung.py`) und pandas (`tabellen.py`), dazu `dashboard.py` mit der Fassade
-  `Dashboard`, die die Notebooks benutzen.
+  `Dashboard`, die die Notebooks benutzen. `kurzarbeit.py` steht eigenständig daneben
+  (`kurzarbeit_bericht()`, `kurzarbeit_hinweise_bericht()` – Text-Berichte für
+  `notebooks/04_kurzarbeit.ipynb`, unabhängig von `Dashboard` wie der ganze Baustein).
 - `tests/` – pytest, in Unterordnern gespiegelt nach den sechs Bausteinen plus
   `darstellung/`, `util/` und `webapp/` (z. B. `tests/domaene/test_bestand.py` für
   `src/umsatzprognose/domaene/bestand.py`); `conftest.py` (gemeinsame Fixtures) und
@@ -256,7 +258,8 @@ Dashboard-Notebook auch.
   statt einer eigenen Auswahl: `/` deckt sich mit `notebooks/00_datencheck.ipynb`
   (Gewinn/Verlust je Monat, Gewinn/Verlust je Jahr, kumulierte Umsatzrendite);
   `/dashboard` mit `notebooks/01_dashboard.ipynb` (Umsatzverlauf, die zugehörige
-  Monatstabelle `Dashboard.umsatztabelle()`, offenes Auftragsvolumen je Projekt);
+  Monatstabelle `Dashboard.umsatztabelle()`, offenes Auftragsvolumen je Projekt,
+  Projekte ohne Budget);
   `/schulungen` mit `notebooks/03_schulungsanmeldungen.ipynb` (der
   Anmeldungsverlauf über `diagramme.anmeldungsverlauf()`, samt der dort gepflegten
   `KATEGORIEN`-Zuordnung, als Konstante in `webapp/app.py` übernommen); `/kurzarbeit`
@@ -289,6 +292,35 @@ Dashboard-Notebook auch.
   gleichzeitig. `Dashboard.gewinn_verlust_monatlich()` akzeptiert seit der
   "alle"-Option auch `monate=None` (zeigt die gesamte geladene Historie, nicht nur
   `STANDARD_HISTORIE_MONATE`).
+- **Drei weitere, rein darstellende Parameter, ebenfalls kein Teil des Cache-Schluessels**
+  (siehe unten): `restvolumen_top` (Slider "Anzahl Projekte mit offenem Budget", direkt
+  bei der Grafik `restvolumen_je_projekt()` auf `/dashboard` platziert statt oben im
+  Parameter-Bereich; Minimum 1, Maximum die Anzahl Projekte **ohne** Budget,
+  `Bestand.ohne_budget()` – eine bewusst andere Grundgesamtheit als die Projekte in der
+  Grafik selbst) und `ohne_budget_filter` (Textarea, nur `/dashboard`, ein
+  Ausschluss-Begriff je Zeile für `Dashboard.projekte_ohne_budget()` – die Tabelle
+  selbst zeigt immer **alle** (gefilterten) Zeilen, kein eigener Top-N-Slider dafür;
+  eigene Überschrift "Projekte ohne Budget", Text wie in
+  `notebooks/01_dashboard.ipynb`, nur die Filter-Konfiguration steckt standardmäßig
+  eingeklappt in einer `<details>`-Sektion direkt über der Tabelle). Der Slider und
+  das Filter-Textarea liegen in `dashboard.html` bewusst **nicht** im
+  `<form id="dashboard-form">` oben verschachtelt, sondern direkt bei der Grafik bzw.
+  Tabelle, die sie steuern -
+  verbunden über das HTML5-Attribut `form="dashboard-form"` an jedem Eingabeelement
+  (siehe MDN zu `form`), damit trotzdem ein einzelner GET-Request alle aktuellen Werte
+  der Seite mitträgt, unabhängig davon, welches einzelne Feld den Submit auslöst. Dazu
+  `verbrauchsplan` (Textarea, auf `/` **und** `/dashboard`, eine Zeile je Projekt im
+  Format `Projektname: JJJJ-MM` – parst zu `Projekt.verbrauchsplan_zielmonat`-Übersteuerungen,
+  siehe `domaene.bestand.mit_verbrauchsplan_uebersteuerungen()`). **Wichtig bei
+  `verbrauchsplan`**: `Dashboard.verbrauchsplan_uebersteuern()` verändert `self.bestand`
+  in-place – richtig für ein Notebook mit einem eigenen `Dashboard` im eigenen Kernel,
+  falsch für die Webapp, deren `DashboardCache` ein einziges, von allen Besuchenden
+  geteiltes `Dashboard` hält (keine Benutzertrennung, siehe oben). `_mit_verbrauchsplan()`
+  in `webapp/app.py` baut deshalb bei gesetztem Parameter ein **transientes** `Dashboard`
+  mit übersteuertem `Bestand` und einer eigenen, synchronen Neusimulation
+  (`schulungsplan`/`kostenplan`/`auslastung` bleiben vom Original übernommen, kein
+  erneuter Abruf) – das gecachte Original bleibt für alle anderen Besuchenden
+  unverändert. Leerer Parameter (Normalfall) überspringt das komplett.
 - **Zwei verschiedene Cache-Strategien, je nachdem, ob ein engerer Parameter
   wirklich weniger laedt oder nur anders anzeigt** (siehe Klassendocstrings in
   `webapp/cache.py`): `DashboardCache` haelt je angefragter
@@ -365,10 +397,20 @@ Geschäfts- und Personendaten.
 Erlaubt bleibt die Beschreibung des **Verhaltens**: Envelope, Feldnamen, Typen,
 Sonderfälle, Statuscodes, Grenzen der API. Testfixtures bilden die **Struktur** der
 echten Antwort nach, mit frei erfundenen IDs, Namen und Beträgen. Notebooks werden
-**ohne Zellausgaben** committet – durchgesetzt durch den Pre-Commit-Hook
-`.githooks/pre-commit`: sein Notebook-Teil (reine Standardbibliothek, kein
-zusätzliches Paket) entfernt Ausgaben und Ausführungszähler aus staged
-`.ipynb`-Dateien. Derselbe Hook formatiert zusätzlich staged `.py`-Dateien mit
+**ohne Zellausgaben und mit eingeklappten Code-Zellen** committet – durchgesetzt durch
+den Pre-Commit-Hook `.githooks/pre-commit`: sein Notebook-Teil (reine
+Standardbibliothek, kein zusätzliches Paket, Kernlogik in
+`scripts/notebook_ausgaben.py`) entfernt Ausgaben und Ausführungszähler aus staged
+`.ipynb`-Dateien (`zellausgaben_entfernen()`) und klappt jede Code-Zelle ohne
+`metadata.jupyter.source_hidden` ein (`code_zellen_einklappen()`) – Notebooks zeigen
+Fachexpert:innen grundsätzlich keinen Code, nur Zell-Titel (`# @title …`) und Ausgabe;
+eine neu eingefügte oder überschriebene Zelle ohne diese Metadata würde ihren Code
+sonst unbemerkt offen zeigen. `scripts/notebooks_formatieren.py` führt dieselbe
+Bereinigung unabhängig von einem Commit aus, mit je einer Option
+(`--ausgaben-loeschen`/`--einklappen`, `argparse.BooleanOptionalAction`, beide
+standardmäßig an) je Aktion – ohne jeden Parameter laufen wie am Hook beide Aktionen
+über alle Notebooks im Repository. Derselbe Hook formatiert zusätzlich staged
+`.py`-Dateien mit
 `ruff format` (direkt, wenn schon auf PATH, sonst über `uv run ruff` – braucht also
 das `ruff`-Extra in der jeweils aktiven Umgebung, deshalb auch Teil von
 `[tool.tox.env.coverage]`) – beide Teile staged
@@ -436,6 +478,17 @@ Monats-`diff`-Werte (siehe Spec Abschnitt 8). Kein Anschluss an `Dashboard` (Spe
 Abschnitt 2/7) – ein eigenständiges Notebook (`notebooks/04_kurzarbeit.ipynb`, wie
 beim Anmeldungsverlauf) und eine eigenständige Webapp-Seite (`/kurzarbeit`, eigener
 `KurzarbeitCache`) zeigen ausschließlich Aggregatzahlen, nie Einzelwerte je Person.
+Der ganze Baustein steht zusätzlich hinter einem eigenen Feature-Flag,
+`clockodo.kurzarbeit.kurzarbeit_aktiv()` (Umgebungsvariable `KURZARBEIT_AKTIV`,
+Standard aus): ungesetzt oder auf "aus" bleibt er an allen drei Stellen unsichtbar –
+Webapp-Seite/-Navigation (`webapp/app.py`, `basis.html`), Diagramm-/Tabellen-Export
+(`scripts/diagramme_exportieren.py`, dort aktuell ohnehin kein Kurzarbeit-Eintrag) und
+Wochenbericht (`scripts/wochenbericht.py`, weder Diagramm noch erwähnender Absatz).
+**`notebooks/04_kurzarbeit.ipynb` selbst kennt das Flag nicht** und bleibt bewusst
+immer ausführbar, unabhängig von `KURZARBEIT_AKTIV` - weder das Notebook noch
+`notebooks/setup.py`s `kurzarbeit_rohdaten()` fragen es ab. Der Schalter blendet den
+Baustein nur aus den drei genannten Konsumenten aus, nicht aus seiner eigenen
+Datenquelle.
 
 ## Rechenkern (Monte Carlo, 10.000 Läufe)
 
@@ -458,7 +511,16 @@ Ablauf je Lauf und Horizontmonat:
    **prognosewirksame** Restvolumen (`max(0, …)`); ein Projekt nach `deadline` mit
    `automatic_completion` trägt ab dem Folgemonat nichts mehr bei.
 2. Abrufquote je Monat aus der **portfolioweiten** empirischen Verteilung ziehen →
-   gewünschter Euro-Verbrauch, **begrenzt auf das verbleibende Restvolumen**.
+   gewünschter Euro-Verbrauch, **begrenzt auf das verbleibende Restvolumen**. Für
+   Projekte mit von Hand hinterlegtem `Projekt.verbrauchsplan_zielmonat`
+   (`Bestand.mit_verbrauchsplan_uebersteuerungen()`/
+   `Dashboard.verbrauchsplan_uebersteuern()`) entfällt die Ziehung: das Restvolumen
+   wird stattdessen deterministisch linear auf die Monate bis einschließlich diesem
+   Zielmonat verteilt – gedacht für Projekte, deren vollständiger Verbrauch bis zu
+   einem bestimmten Monat schon feststeht, obwohl dafür noch keine Buchungen in
+   Clockodo vorliegen. Der Kapazitätsdeckel (Schritt 4) gilt trotzdem weiter, ein
+   solches Projekt kann also durch Konkurrenz mit anderen, weiterhin
+   probabilistischen Projekten trotzdem weniger als geplant ausgeliefert bekommen.
 3. Über den effektiven Stundensatz in Stunden umrechnen und auf Personen aufteilen –
    Schlüssel ist `Projekt.anteil_je_mitarbeiter()`, der historische Anteil je Person an
    den Gesamtstunden, unverändert fortgeschrieben. Stundensatz `0` oder `None` bleibt

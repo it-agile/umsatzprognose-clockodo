@@ -80,25 +80,27 @@ if TYPE_CHECKING:
     import pandas as pd
     import plotly.graph_objects as go
 
-    from umsatzprognose.darstellung import Dashboard
     from umsatzprognose.domaene import Kurzarbeitsbewertung
 
 from contextlib import asynccontextmanager
 from functools import partial
 
-from fastapi import FastAPI, Query, Request
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from umsatzprognose.darstellung import diagramme, tabellen
+from umsatzprognose.clockodo import kurzarbeit_aktiv
+from umsatzprognose.darstellung import Dashboard, diagramme, tabellen
 from umsatzprognose.domaene import Schwellenwerte
 
 from .cache import AnmeldungsverlaufCache, DashboardCache, KurzarbeitCache
 
 # Deckt sich mit derselben Notebook-Zelle ("projekte_ohne_auftragsvolumen" in
-# notebooks/01_dashboard.ipynb).
-RESTVOLUMEN_TOP = 20
+# notebooks/01_dashboard.ipynb) - dort ein fester Wert, hier per Slider einstellbar
+# (siehe RestvolumenTop unten). Kein statisches "le=": das sinnvolle Maximum (Anzahl
+# Projekte ohne Budget, siehe dashboard_seite()) haengt vom geladenen Bestand ab.
+STANDARD_RESTVOLUMEN_TOP = 20
 
 # Deckt sich mit "KATEGORIEN" in notebooks/03_schulungsanmeldungen.ipynb - dieselbe,
 # von Hand gepflegte Zuordnung Schulungstyp -> Kategorie, nur noch fuer die
@@ -167,6 +169,13 @@ MAXIMALE_KURZARBEIT_MONATE = max(int(wert) for wert in KURZARBEIT_MONATE_OPTIONE
 AbJahr = Annotated[int | None, Query(ge=STANDARD_AB_JAHR, le=date.today().year)]
 AB_JAHR_OPTIONEN = tuple(range(STANDARD_AB_JAHR, date.today().year + 1))
 
+RestvolumenTop = Annotated[int, Query(ge=1)]
+
+# Freitext-Parameter fuer die beiden unten eingeklappten Konfigurationsabschnitte -
+# leer bleibt ohne Wirkung (siehe _verbrauchsplan_aus_text()/_ohne_budget_filter_aus_text()).
+Verbrauchsplan = Annotated[str, Query()]
+OhneBudgetFilter = Annotated[str, Query()]
+
 
 def _standard_anzeige_ab_jahr(*, heute: date | None = None) -> int:
     """Ohne explizit gewaehlten ``ab_jahr``-Parameter gezeigtes Jahr.
@@ -203,6 +212,10 @@ _anmeldungsverlauf_cache = AnmeldungsverlaufCache(ab_jahr=STANDARD_AB_JAHR)
 _kurzarbeit_cache = KurzarbeitCache(maximale_monate=MAXIMALE_KURZARBEIT_MONATE)
 _templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
 
+# Einmal beim Import gelesen (siehe umsatzprognose.clockodo.kurzarbeit_aktiv) - steuert
+# Navigation, die /kurzarbeit-Route und das Vorladen unten gemeinsam.
+_KURZARBEIT_AKTIV = kurzarbeit_aktiv()
+
 
 @asynccontextmanager
 async def _vorladen(app: FastAPI) -> AsyncIterator[None]:
@@ -217,7 +230,8 @@ async def _vorladen(app: FastAPI) -> AsyncIterator[None]:
         horizont_monate=int(STANDARD_HORIZONT_MONATE), auslastung_monate=STANDARD_AUSLASTUNG_MONATE
     )
     _anmeldungsverlauf_cache.anstossen()
-    _kurzarbeit_cache.anstossen()
+    if _KURZARBEIT_AKTIV:
+        _kurzarbeit_cache.anstossen()
     yield
 
 
@@ -248,6 +262,7 @@ def _antwort(
             "aktive_seite": seite,
             "stichtag": stichtag,
             "anfrage_query": _anfrage_query(request),
+            "kurzarbeit_aktiv": _KURZARBEIT_AKTIV,
             **kontext,
         },
     )
@@ -336,11 +351,70 @@ def _dashboard_oder_ladeseite(
     )
 
 
+def _verbrauchsplan_aus_text(text: str) -> dict[str, tuple[int, int]]:
+    """Eine Zeile je Projekt, Format ``Projektname: JJJJ-MM`` - fuers Textarea der
+    eingeklappten Verbrauchsplan-Sektion. Leere oder nicht passende Zeilen werden
+    uebersprungen statt die Seite mit einem Fehler abzubrechen."""
+    werte: dict[str, tuple[int, int]] = {}
+    for zeile in text.splitlines():
+        if ":" not in zeile:
+            continue
+        name, monat_text = zeile.split(":", 1)
+        name = name.strip()
+        if not name or "-" not in monat_text:
+            continue
+        jahr_text, monat_nr_text = monat_text.strip().split("-", 1)
+        try:
+            werte[name] = (int(jahr_text), int(monat_nr_text))
+        except ValueError:
+            continue
+    return werte
+
+
+def _ohne_budget_filter_aus_text(text: str) -> list[str]:
+    """Ein Ausschluss-Begriff je Zeile fuers Textarea der eingeklappten
+    Projektfilter-Sektion (siehe ``Bestand.ohne_budget``) - leere Zeilen werden
+    uebersprungen."""
+    return [zeile.strip() for zeile in text.splitlines() if zeile.strip()]
+
+
+def _mit_verbrauchsplan(
+    dashboard: Dashboard, *, verbrauchsplan: str, horizont_monate: int
+) -> Dashboard:
+    """Liefert bei gesetztem ``verbrauchsplan`` ein **transientes** ``Dashboard`` mit
+    angewendeter Uebersteuerung und frischer Simulation, sonst unveraendert das
+    uebergebene.
+
+    Absichtlich kein ``dashboard.verbrauchsplan_uebersteuern(...)`` auf dem
+    uebergebenen Objekt: dieses ``Dashboard`` ist bei einem Treffer im
+    ``DashboardCache`` **derselbe, geteilte** Stand fuer alle Besuchenden (siehe
+    Moduldocstring - keine Benutzertrennung). Eine In-Place-Uebersteuerung durch eine
+    einzelne Anfrage wuerde bis zum naechsten TTL-Reload allen anderen Besuchenden
+    dieselbe uebersteuerte Prognose zeigen. Stattdessen entsteht ein neues
+    ``Dashboard`` mit einem neuen, unveraenderlichen ``Bestand``
+    (``mit_verbrauchsplan_uebersteuerungen``) und einer eigenen, synchronen
+    Neusimulation (numpy-vektorisiert, kein Netzzugriff) - ``schulungsplan``/
+    ``kostenplan``/``auslastung`` werden vom Original uebernommen, kein erneuter Abruf.
+    """
+    werte = _verbrauchsplan_aus_text(verbrauchsplan)
+    if not werte:
+        return dashboard
+    uebersteuert = Dashboard(
+        dashboard.bestand.mit_verbrauchsplan_uebersteuerungen(werte),
+        dashboard.schulungsplan,
+        dashboard.kostenplan,
+        dashboard.auslastung,
+    )
+    uebersteuert.simuliere(monate=horizont_monate)
+    return uebersteuert
+
+
 @app.get("/", response_class=HTMLResponse)
 async def uebersicht(
     request: Request,
     horizont_monate: HorizontMonate = STANDARD_HORIZONT_MONATE,
     gewinn_verlust_monate: GewinnVerlustMonate = STANDARD_GEWINN_VERLUST_MONATE,
+    verbrauchsplan: Verbrauchsplan = "",
 ) -> HTMLResponse:
     """Deckt sich mit notebooks/00_datencheck.ipynb: Gewinn/Verlust und Umsatzrendite."""
     horizont_zahl = int(horizont_monate)
@@ -352,7 +426,9 @@ async def uebersicht(
     )
     if isinstance(ergebnis, HTMLResponse):
         return ergebnis
-    dashboard = ergebnis
+    dashboard = _mit_verbrauchsplan(
+        ergebnis, verbrauchsplan=verbrauchsplan, horizont_monate=horizont_zahl
+    )
 
     gewinn_verlust_zahl = None if gewinn_verlust_monate == "alle" else int(gewinn_verlust_monate)
     return _antwort(
@@ -364,6 +440,8 @@ async def uebersicht(
         horizont_optionen=PROGNOSE_MONATE_OPTIONEN,
         gewinn_verlust_monate=gewinn_verlust_monate,
         gewinn_verlust_optionen=HISTORISCHE_MONATE_OPTIONEN,
+        verbrauchsplan=verbrauchsplan,
+        verbrauchsplan_abweichend=bool(verbrauchsplan.strip()),
         gewinn_verlust_monatlich=_figur_html(
             dashboard.gewinn_verlust_monatlich(monate=gewinn_verlust_zahl), mit_plotlyjs=True
         ),
@@ -376,7 +454,11 @@ async def uebersicht(
 
 @app.get("/dashboard", response_class=HTMLResponse)
 async def dashboard_seite(
-    request: Request, horizont_monate: HorizontMonate = STANDARD_HORIZONT_MONATE
+    request: Request,
+    horizont_monate: HorizontMonate = STANDARD_HORIZONT_MONATE,
+    restvolumen_top: RestvolumenTop = STANDARD_RESTVOLUMEN_TOP,
+    verbrauchsplan: Verbrauchsplan = "",
+    ohne_budget_filter: OhneBudgetFilter = "",
 ) -> HTMLResponse:
     """Deckt sich mit notebooks/01_dashboard.ipynb: Umsatzverlauf und offenes Volumen."""
     horizont_zahl = int(horizont_monate)
@@ -388,7 +470,9 @@ async def dashboard_seite(
     )
     if isinstance(ergebnis, HTMLResponse):
         return ergebnis
-    dashboard = ergebnis
+    dashboard = _mit_verbrauchsplan(
+        ergebnis, verbrauchsplan=verbrauchsplan, horizont_monate=horizont_zahl
+    )
 
     return _antwort(
         request,
@@ -399,8 +483,17 @@ async def dashboard_seite(
         horizont_optionen=PROGNOSE_MONATE_OPTIONEN,
         umsatzverlauf=_figur_html(dashboard.umsatzverlauf(), mit_plotlyjs=True),
         umsatztabelle=_tabelle_html(dashboard.umsatztabelle()),
+        restvolumen_top=restvolumen_top,
+        restvolumen_top_max=len(dashboard.bestand.ohne_budget()),
         restvolumen_je_projekt=_figur_html(
-            dashboard.restvolumen_je_projekt(top=RESTVOLUMEN_TOP), mit_plotlyjs=False
+            dashboard.restvolumen_je_projekt(top=restvolumen_top), mit_plotlyjs=False
+        ),
+        verbrauchsplan=verbrauchsplan,
+        verbrauchsplan_abweichend=bool(verbrauchsplan.strip()),
+        ohne_budget_filter=ohne_budget_filter,
+        ohne_budget_filter_abweichend=bool(ohne_budget_filter.strip()),
+        projekte_ohne_budget=_tabelle_html(
+            dashboard.projekte_ohne_budget(_ohne_budget_filter_aus_text(ohne_budget_filter))
         ),
     )
 
@@ -492,7 +585,13 @@ async def kurzarbeit(
     von :class:`~.cache.KurzarbeitCache`), kein erneuter Clockodo-Abruf. Vollstaendig
     unabhaengig von :class:`DashboardCache` - kein Bezug zur Umsatzprognose (Spec
     Abschnitt 2/7). Zeigt ausschliesslich Aggregatzahlen, keine Einzelwerte je Person.
+
+    Liefert 404, solange der Baustein per :data:`_KURZARBEIT_AKTIV` ausgeschaltet ist -
+    dieselbe Bedingung, die auch den Navigationslink verbirgt (siehe ``basis.html``)
+    und das Vorladen unten unterlaesst.
     """
+    if not _KURZARBEIT_AKTIV:
+        raise HTTPException(status_code=404)
     monate_zahl = int(anzahl_monate)
     schwellenwerte = Schwellenwerte(
         anteil_interne_arbeit=anteil_interne_arbeit_prozent / 100,

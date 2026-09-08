@@ -28,6 +28,19 @@ def umgebungsvariable(name: str, *, fehlerklasse: type[Exception]) -> str:
     return value
 
 
+def umgebungsvariable_bool(name: str, *, standard: bool = False) -> bool:
+    """Ein optionaler Ein/Aus-Schalter statt einer Pflichtangabe.
+
+    Ungesetzt oder leer liefert ``standard``; gesetzt gilt "1"/"true"/"ja"
+    (unabhaengig von Gross-/Kleinschreibung) als eingeschaltet, alles andere als
+    ausgeschaltet.
+    """
+    wert = os.environ.get(name, "").strip().lower()
+    if not wert:
+        return standard
+    return wert in {"1", "true", "ja"}
+
+
 def colab_secret(name: str, *, fehlerklasse: type[Exception]) -> str:
     """Ein Colab-Secret lesen und im Fehlerfall sagen, was zu tun ist."""
     from google.colab import userdata

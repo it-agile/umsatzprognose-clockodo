@@ -13,12 +13,34 @@ if TYPE_CHECKING:
 
 from conftest import client_mit_routen
 from umsatzprognose.clockodo.kurzarbeit import (
+    KURZARBEIT_AKTIV_VAR,
     KurzarbeitRepository,
     _abgeschlossene_monate,
     anzahl_ladeschritte,
+    kurzarbeit_aktiv,
 )
 
 STICHTAG = date(2026, 9, 24)
+
+
+def test_kurzarbeit_aktiv_ist_ohne_gesetzte_variable_aus(monkeypatch):
+    monkeypatch.delenv(KURZARBEIT_AKTIV_VAR, raising=False)
+    # use_dotenv=False: isoliert vom lokalen .env dieses Klons (siehe
+    # ClockodoCredentials.aus_umgebung()-Tests fuer dasselbe Muster).
+    assert kurzarbeit_aktiv(use_dotenv=False) is False
+
+
+def test_kurzarbeit_aktiv_ist_bei_true_an(monkeypatch):
+    monkeypatch.setenv(KURZARBEIT_AKTIV_VAR, "true")
+    assert kurzarbeit_aktiv(use_dotenv=False) is True
+
+
+def test_kurzarbeit_aktiv_laedt_env_datei(monkeypatch, tmp_path):
+    monkeypatch.delenv(KURZARBEIT_AKTIV_VAR, raising=False)
+    (tmp_path / ".env").write_text(f"{KURZARBEIT_AKTIV_VAR}=true\n")
+    monkeypatch.chdir(tmp_path)
+
+    assert kurzarbeit_aktiv() is True
 
 
 def _benutzer_antwort() -> dict:

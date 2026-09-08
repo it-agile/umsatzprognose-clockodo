@@ -1,11 +1,16 @@
 #!/usr/bin/env python3
-"""Pre-commit-Hook: entfernt Zellausgaben aus committeten Notebooks und formatiert
-staged Python-Dateien mit ``ruff format``.
+"""Pre-commit-Hook: entfernt Zellausgaben aus committeten Notebooks, klappt ihre
+Code-Zellen ein und formatiert staged Python-Dateien mit ``ruff format``.
 
 Der Notebook-Teil verhindert, dass aus Clockodo oder den Schulungs-Sheets gelesene
 Werte über Diagramme oder Tabellen als Zellausgabe ins öffentliche Repository
-gelangen - siehe CLAUDE.md, Abschnitt "Keine gelesenen Werte im Repository". Er ist
-reine Standardbibliothek, kein zusätzliches Paket nötig - dieser Teil muss auch ohne
+gelangen - siehe CLAUDE.md, Abschnitt "Keine gelesenen Werte im Repository". Dazu
+gehört auch, dass jede Code-Zelle eingeklappt bleibt (``metadata.jupyter.
+source_hidden``, siehe ``code_zellen_einklappen()`` in ``scripts/notebook_ausgaben.
+py``) - Notebooks in diesem Repository zeigen Fachexpert:innen grundsätzlich keinen
+Code, nur Zell-Titel und Ausgabe; eine neu eingefügte oder überschriebene Zelle ohne
+diese Metadata würde ihren Code offen zeigen. Beide Prüfungen sind reine
+Standardbibliothek, kein zusätzliches Paket nötig - dieser Teil muss auch ohne
 `uv sync --extra notebook` laufen. Der Formatierungs-Teil braucht dagegen `ruff`
 (`uv sync --extra ruff` bzw. `--extra dev`): steht es schon direkt auf PATH (etwa in
 einem aktivierten venv oder einem tox-Environment, in dem dieser Hook-Teil selbst
@@ -17,11 +22,12 @@ Umgebungswahl adressieren soll) scheiterte an einer zu alten lokal installierten
 uv-Version, die das Flag noch nicht kennt - der direkte PATH-Aufruf ist zudem
 einfacher und ohne jede Versionsanforderung an `uv` selbst.
 
-Findet der Hook Zellausgaben in einem staged Notebook oder formatiert `ruff format`
-eine staged Python-Datei um, entfernt/formatiert er sie, staged die veraenderte Datei
-erneut und bricht den Commit ab (Exit-Code 1) - damit die Änderung sichtbar bleibt,
-statt sie unbemerkt unter den Ursprungsstand zu schieben. `git commit` erneut
-ausführen, dann ist die Datei bereits bereinigt/formatiert.
+Findet der Hook Zellausgaben oder ausgeklappte Code-Zellen in einem staged Notebook,
+oder formatiert `ruff format` eine staged Python-Datei um, bereinigt/formatiert er
+sie, staged die veraenderte Datei erneut und bricht den Commit ab (Exit-Code 1) -
+damit die Änderung sichtbar bleibt, statt sie unbemerkt unter den Ursprungsstand zu
+schieben. `git commit` erneut ausführen, dann ist die Datei bereits
+bereinigt/formatiert.
 
 Einmalig pro Klon aktivieren: `git config core.hooksPath .githooks`
 """
@@ -35,7 +41,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
-from notebook_ausgaben import zellausgaben_entfernen
+from notebook_ausgaben import code_zellen_einklappen, zellausgaben_entfernen
 
 
 def staged_dateien(*, suffix: str) -> list[str]:
@@ -74,15 +80,20 @@ def main() -> int:
     bereinigt = []
     for pfad in notebooks:
         try:
-            if zellausgaben_entfernen(Path(pfad)):
-                bereinigt.append(pfad)
+            # Beide Pruefungen laufen unabhaengig vom Kurzschluss von `or` - eine
+            # veraenderte Zellausgabe soll das Einklappen nicht ueberspringen.
+            ausgaben_entfernt = zellausgaben_entfernen(Path(pfad))
+            eingeklappt = code_zellen_einklappen(Path(pfad))
         except (OSError, json.JSONDecodeError) as fehler:
             print(f"pre-commit: {pfad} konnte nicht geprüft werden ({fehler})", file=sys.stderr)
             return 1
+        if ausgaben_entfernt or eingeklappt:
+            bereinigt.append(pfad)
     if bereinigt:
         subprocess.run(["git", "add", *bereinigt], check=True)
         print(
-            "pre-commit: Zellausgaben entfernt aus: "
+            "pre-commit: Notebook(s) bereinigt (Zellausgaben entfernt und/oder "
+            "Code-Zellen eingeklappt): "
             + ", ".join(bereinigt)
             + "\nDatei(en) sind bereits neu gestaged - `git commit` einfach erneut ausführen.",
             file=sys.stderr,

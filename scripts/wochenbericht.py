@@ -37,7 +37,11 @@ import plotly.io as pio
 from slack_sdk import WebClient
 
 from umsatzprognose import Dashboard, SchulungenRepository
-from umsatzprognose.clockodo import KurzarbeitRepository, rollenzuordnung_automatisch
+from umsatzprognose.clockodo import (
+    KurzarbeitRepository,
+    kurzarbeit_aktiv,
+    rollenzuordnung_automatisch,
+)
 from umsatzprognose.darstellung import diagramme
 from umsatzprognose.darstellung.dashboard import STANDARD_GEWINN_VERLUST_MONATE
 from umsatzprognose.domaene import Kurzarbeitsbewertung, bewertungen
@@ -118,10 +122,14 @@ def kontext_text(dashboard: Dashboard) -> str:
         else f"{MONATSNAMEN[von_monat - 1]} {von_jahr} bis {MONATSNAMEN[bis_monat - 1]} {bis_jahr}"
     )
 
+    # summe() ist die Summe über den ganzen Horizont, kein Wert je Monat (Kollegen-
+    # Feedback: der frühere Text ohne "je Monat" las sich wie ein Monatswert) - durch
+    # die Anzahl Horizontmonate geteilt, um genau das klarzustellen.
+    anzahl_monate = len(prognose.horizontmonate())
     summe = prognose.summe()
     text = (
-        f"Prognose für {zeitraum}: mindestens {euro(summe[0.95])} mit 95 % Sicherheit, "
-        f"im Median rund {euro(summe[0.50])}."
+        f"Prognose je Monat ({zeitraum}): mindestens {euro(summe[0.95] / anzahl_monate)}/Monat "
+        f"mit 95 % Sicherheit, im Median rund {euro(summe[0.50] / anzahl_monate)}/Monat."
     )
 
     kapazitaet_anteil = prognose.kapazitaet_limitierend_anteil()
@@ -166,11 +174,16 @@ def kurzarbeit_erlaeuterung(ergebnisse: dict[Monat, Kurzarbeitsbewertung]) -> st
 
 def diagrammtitel_und_figuren(
     dashboard: Dashboard,
-    kurzarbeit_ergebnisse: dict[Monat, Kurzarbeitsbewertung],
+    kurzarbeit_ergebnisse: dict[Monat, Kurzarbeitsbewertung] | None,
     *,
     gewinn_verlust_monate: int | None,
 ) -> list[tuple[str, object]]:
-    """Titel und Figur je Diagramm, in der Reihenfolge des Posts."""
+    """Titel und Figur je Diagramm, in der Reihenfolge des Posts.
+
+    ``kurzarbeit_ergebnisse`` ``None`` (Baustein ausgeschaltet, siehe
+    ``umsatzprognose.clockodo.kurzarbeit_aktiv``) lässt den entsprechenden Eintrag
+    ganz entfallen, statt eine leere Grafik zu zeigen.
+    """
     jahre = range(ANMELDUNGEN_AB_JAHR, dashboard.stichtag.year + 1)
     anmeldungsverlauf = (
         SchulungenRepository.mit_automatischen_zugangsdaten().anmeldungsverlauf_laden(jahre)
@@ -180,7 +193,7 @@ def diagrammtitel_und_figuren(
     )
     # mit_beschriftung=True nur hier: ein statischer Bildexport ohne Hover-Tooltip
     # braucht die Werte als Text, Notebooks und Webapp zeigen sie interaktiv per Hover.
-    return [
+    eintraege: list[tuple[str, object]] = [
         ("Umsatz je Monat", dashboard.umsatzverlauf(mit_beschriftung=True)),
         ("Offenes Auftragsvolumen je Projekt", dashboard.restvolumen_je_projekt()),
         (
@@ -196,16 +209,22 @@ def diagrammtitel_und_figuren(
             dashboard.umsatzrendite_kumuliert(mit_beschriftung=True),
         ),
         ("Auslastung je Person", dashboard.auslastung_je_mitarbeiter()),
-        (
-            "Kurzarbeitsbereitschaft je Monat",
-            diagramme.kurzarbeit_grafik(kurzarbeit_ergebnisse, mit_beschriftung=True),
-        ),
+    ]
+    if kurzarbeit_ergebnisse is not None:
+        eintraege.append(
+            (
+                "Kurzarbeitsbereitschaft je Monat",
+                diagramme.kurzarbeit_grafik(kurzarbeit_ergebnisse, mit_beschriftung=True),
+            )
+        )
+    eintraege += [
         ("Anmeldungen je Monat", diagramme.anmeldungsverlauf(anmeldungsverlauf_fenster)),
         (
             "Umsatztabelle",
             diagramme.tabelle_als_grafik("Umsatz je Monat", dashboard.umsatztabelle()),
         ),
     ]
+    return eintraege
 
 
 def posten(
@@ -224,7 +243,7 @@ def posten(
             "„Copy link“ - der Teil nach der letzten '/'), nicht die eigene Mitglieds-ID."
         )
 
-    kurzarbeit_ergebnisse = kurzarbeit_laden(dashboard)
+    kurzarbeit_ergebnisse = kurzarbeit_laden(dashboard) if kurzarbeit_aktiv() else None
     titel_figuren = diagrammtitel_und_figuren(
         dashboard, kurzarbeit_ergebnisse, gewinn_verlust_monate=gewinn_verlust_monate
     )
@@ -248,9 +267,14 @@ def posten(
         for titel, _figur in titel_figuren
         if titel in DIAGRAMM_ERLAEUTERUNGEN
     )
+    kurzarbeit_absatz = (
+        f"\n\n{kurzarbeit_erlaeuterung(kurzarbeit_ergebnisse)}"
+        if kurzarbeit_ergebnisse is not None
+        else ""
+    )
     titel_post = (
         f"Wochenbericht Zahlen, Daten, Fakten - Stand {dashboard.stichtag:%d.%m.%Y}\n\n"
-        f"{kontext_text(dashboard)}\n\n{kurzarbeit_erlaeuterung(kurzarbeit_ergebnisse)}\n\n"
+        f"{kontext_text(dashboard)}{kurzarbeit_absatz}\n\n"
         f"{erlaeuterungen}"
     )
     client.files_upload_v2(

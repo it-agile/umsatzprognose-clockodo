@@ -1425,6 +1425,19 @@ def test_dashboard_stundensatz_uebersteuern_wirkt_auf_folgende_ansichten():
     assert dashboard.bestand.projekte[0].effektiver_stundensatz == 95.0
 
 
+def test_dashboard_verbrauchsplan_uebersteuern_wirkt_auf_folgende_ansichten():
+    projekt = Projekt(id=1, name="Beispielprojekt", kunde=KUNDE, aktiv=True,
+                       budget=Gesamtbudget(betrag=50000.0),
+                       verbrauchtes_volumen=20000.0, verbrauchte_stunden=0.0)  # fmt: skip
+    bestand = Bestand(stichtag=STICHTAG, projekte=(projekt,), umsatzhistorie=HISTORIE)
+    dashboard = Dashboard(bestand, SCHULUNGSPLAN, KOSTENPLAN)
+    assert dashboard.bestand.projekte[0].verbrauchsplan_zielmonat is None
+
+    dashboard.verbrauchsplan_uebersteuern({"Beispielprojekt": (2026, 12)})
+
+    assert dashboard.bestand.projekte[0].verbrauchsplan_zielmonat == (2026, 12)
+
+
 def test_dashboard_laden_verdrahtet_alle_vier_repositories(monkeypatch):
     """Regressionstest fuer ``Dashboard.laden()`` als ``synchron()`` um ``laden_async()``.
 

@@ -51,7 +51,7 @@ from datetime import date
 
 import numpy as np
 
-from umsatzprognose.util import Monat, monatsfolge
+from umsatzprognose.util import Monat, monatsfolge, ordnung
 
 from .prognose import KONFIDENZNIVEAUS, NochKeinePrognose, Prognose
 
@@ -142,6 +142,36 @@ class MonteCarloPrognose:
         return dict(self._kapazitaet_je_projekt)
 
 
+def _verbrauchsplan(
+    scope: tuple[Projekt, ...], horizont: tuple[Monat, ...]
+) -> tuple[np.ndarray, np.ndarray]:
+    """Deterministischer Verbrauch je Projekt mit gesetztem
+    ``verbrauchsplan_zielmonat`` (siehe dessen Docstring in
+    :mod:`umsatzprognose.domaene.projekt`) - ersetzt fuer diese Projekte in
+    :func:`simulieren` die aus der portfolioweiten Verteilung gezogene Abrufquote.
+
+    ``hat_plan`` markiert die betroffenen Projekte, ``plan_betrag`` traegt je
+    Horizontmonat den geplanten Euro-Betrag (0 fuer Projekte ohne Plan und fuer
+    Monate nach dem Zielmonat) - das restliche Volumen linear auf die Monate ab
+    ``horizont[0]`` bis einschliesslich dem Zielmonat verteilt. Ein Zielmonat vor
+    ``horizont[0]`` wird auf ``horizont[0]`` gekappt: "haette laengst vollstaendig
+    verbraucht sein sollen" wird zu "vollstaendig im ersten Horizontmonat".
+    """
+    hat_plan = np.zeros(len(scope), dtype=bool)
+    plan_betrag = np.zeros((len(horizont), len(scope)))
+    for i, p in enumerate(scope):
+        ziel = p.verbrauchsplan_zielmonat
+        if ziel is None:
+            continue
+        ziel_effektiv = max(ziel, horizont[0])
+        anzahl = ordnung(*ziel_effektiv) - ordnung(*horizont[0]) + 1
+        rate = (p.restvolumen_prognosewirksam or 0.0) / anzahl
+        hat_plan[i] = True
+        for j, monat in enumerate(horizont):
+            plan_betrag[j, i] = rate if monat <= ziel_effektiv else 0.0
+    return hat_plan, plan_betrag
+
+
 @dataclass(frozen=True)
 class _Aufbau:
     """Die laufunabhaengigen Groessen vor der Monte-Carlo-Schleife - einmal aus den
@@ -158,6 +188,8 @@ class _Aufbau:
     kapazitaet: np.ndarray
     traegt_bei: np.ndarray
     gebucht: np.ndarray
+    hat_plan: np.ndarray
+    plan_betrag: np.ndarray
 
 
 def _aufbauen(bestand: Bestand, scope: tuple[Projekt, ...], monate: int) -> _Aufbau:
@@ -205,6 +237,7 @@ def _aufbauen(bestand: Bestand, scope: tuple[Projekt, ...], monate: int) -> _Auf
     )
 
     traegt_bei = np.array([[_traegt_noch_bei(p, monat) for p in scope] for monat in horizont])
+    hat_plan, plan_betrag = _verbrauchsplan(scope, horizont)
 
     # Monat 0 ist der Stichtagsmonat: ``verlauf.gebucht()`` kommt aus einer
     # Monatsgruppierung ohne Tagesgrenze und liefert deshalb den ganzen Monat, vor und
@@ -235,6 +268,8 @@ def _aufbauen(bestand: Bestand, scope: tuple[Projekt, ...], monate: int) -> _Auf
         kapazitaet=kapazitaet,
         traegt_bei=traegt_bei,
         gebucht=gebucht,
+        hat_plan=hat_plan,
+        plan_betrag=plan_betrag,
     )
 
 
@@ -318,9 +353,17 @@ def simulieren(
 
         # Schritt 1+2: gewuenschter Verbrauch je Lauf und Projekt, auf das
         # Restvolumen begrenzt; Schritt 3 (Euro -> Stunden), wo ein Satz das erlaubt.
+        # Projekte mit Verbrauchsplan (aufbau.hat_plan) ersetzen die gezogene
+        # Abrufquote durch den vorab linear verteilten Betrag (siehe
+        # _verbrauchsplan) - deterministisch ueber alle Laeufe, nur durch das
+        # laufabhaengige Restvolumen und den Kapazitaetsdeckel weiter unten begrenzt.
         gilt = aufbau.traegt_bei[index] & (restvolumen > 0)
         quote = verteilung.ziehen_array((laeufe, len(scope)), zufall) * skalierung
-        gewuenscht_euro = np.where(gilt, np.minimum(restvolumen, quote * restvolumen), 0.0)
+        stochastisch = np.minimum(restvolumen, quote * restvolumen)
+        deterministisch = np.minimum(restvolumen, aufbau.plan_betrag[index])
+        gewuenscht_euro = np.where(
+            gilt, np.where(aufbau.hat_plan, deterministisch, stochastisch), 0.0
+        )
         gewuenscht_stunden = np.where(aufbau.hat_satz, gewuenscht_euro / aufbau.saetze_sicher, 0.0)
 
         # Schritt 3 (Aufteilung) + Schritt 4 (Kapazitaetsdeckel je Person, ueber alle

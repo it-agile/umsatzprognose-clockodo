@@ -1,6 +1,6 @@
 {% extends "basis.html" %}
 {% block inhalt %}
-<form method="get" class="parameter">
+<form method="get" class="parameter" id="dashboard-form">
     <label>Prognosehorizont
         <select name="horizont_monate" onchange="this.form.submit()">
             {% for wert in horizont_optionen %}
@@ -8,8 +8,45 @@
             {% endfor %}
         </select>
     </label>
+    <details class="regler-abschnitt" {{ "open" if verbrauchsplan_abweichend }}>
+        <summary>Verbrauchsplan-Übersteuerung <span class="zusammenfassung">(optional)</span></summary>
+        <div class="regler-gruppe">
+            <label>Eine Zeile je Projekt, Format "Projektname: JJJJ-MM":
+                <textarea name="verbrauchsplan" rows="3" placeholder="Beispielprojekt: 2026-12">{{ verbrauchsplan }}</textarea>
+            </label>
+            <div class="regler-aktionen">
+                <button type="submit">Anwenden</button>
+                <a class="zuruecksetzen" href="/dashboard?horizont_monate={{ horizont_monate }}&restvolumen_top={{ restvolumen_top }}&ohne_budget_filter={{ ohne_budget_filter | urlencode }}">Verbrauchsplan zurücksetzen</a>
+            </div>
+        </div>
+    </details>
 </form>
 {{ umsatzverlauf | safe }}
 {{ umsatztabelle | safe }}
+
+<label>Anzahl Projekte mit offenem Budget
+    <input type="range" name="restvolumen_top" min="1" max="{{ restvolumen_top_max }}"
+           value="{{ restvolumen_top }}" form="dashboard-form"
+           oninput="this.nextElementSibling.textContent = this.value"
+           onchange="this.form.submit()">
+    <output>{{ restvolumen_top }}</output>
+</label>
 {{ restvolumen_je_projekt | safe }}
+
+<h2>Projekte ohne Budget</h2>
+<p>Ohne gefilterte Projekte, sortiert.</p>
+<details class="regler-abschnitt" {{ "open" if ohne_budget_filter_abweichend }}>
+    <summary>Projektfilter "ohne Budget" <span class="zusammenfassung">(optional)</span></summary>
+    <div class="regler-gruppe">
+        <label>Ein Ausschluss-Begriff je Zeile:
+            <textarea name="ohne_budget_filter" form="dashboard-form" rows="3"
+                      placeholder="it-agile GmbH&#10;Öffentliche Schulung">{{ ohne_budget_filter }}</textarea>
+        </label>
+        <div class="regler-aktionen">
+            <button type="submit" form="dashboard-form">Anwenden</button>
+            <a class="zuruecksetzen" href="/dashboard?horizont_monate={{ horizont_monate }}&restvolumen_top={{ restvolumen_top }}&verbrauchsplan={{ verbrauchsplan | urlencode }}">Filter zurücksetzen</a>
+        </div>
+    </div>
+</details>
+{{ projekte_ohne_budget | safe }}
 {% endblock %}

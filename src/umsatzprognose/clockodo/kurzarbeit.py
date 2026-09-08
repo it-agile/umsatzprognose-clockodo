@@ -45,6 +45,7 @@ from umsatzprognose.util import (
     monatsfolge,
     ordnung,
     umgebungsvariable,
+    umgebungsvariable_bool,
     vormonat,
 )
 
@@ -63,6 +64,7 @@ BILLABLE_ABRECHENBAR = 1
 BILLABLE_FAKTURIERT = 2
 
 ROLLENZUORDNUNG_VAR = "KURZARBEIT_ROLLENZUORDNUNG"
+KURZARBEIT_AKTIV_VAR = "KURZARBEIT_AKTIV"
 
 # Personen, interne/abrechenbare/fakturierte Stunden, Gesamtstunden - die fuenf
 # gleichzeitigen Zweige in KurzarbeitRepository.laden_async(), die unabhaengig von
@@ -263,6 +265,25 @@ class MissingRollenzuordnungError(MissingCredentialsError):
 
 _umgebungsvariable = partial(umgebungsvariable, fehlerklasse=MissingRollenzuordnungError)
 _colab_secret = partial(colab_secret, fehlerklasse=MissingRollenzuordnungError)
+
+
+def kurzarbeit_aktiv(*, use_dotenv: bool = True) -> bool:
+    """Ob der Baustein Kurzarbeitsbereitschaft ueberhaupt aktiv ist.
+
+    Steuert, ob Webapp-Seite/-Navigation, Diagramm-/Tabellen-Export und Wochenbericht
+    ueberhaupt etwas zu Kurzarbeit zeigen. Ungesetzt oder "aus" bleibt der Baustein an
+    allen drei Stellen vollstaendig unsichtbar - kein Nebenprodukt eines fehlenden
+    Zugangsdatums, sondern ein bewusster Schalter (:data:`KURZARBEIT_AKTIV_VAR`).
+
+    Laedt lokal eine ``.env`` (wie ``ClockodoCredentials.aus_umgebung()``/
+    ``rollenzuordnung_aus_umgebung()``) - ohne das haette eine dort gesetzte Variable
+    nie gewirkt, insbesondere beim einmaligen Modul-Import von ``webapp/app.py``
+    (``_KURZARBEIT_AKTIV = kurzarbeit_aktiv()``), lange bevor irgendein anderer
+    Codepfad zufaellig schon einmal ``load_dotenv()`` aufgerufen haben koennte.
+    """
+    if use_dotenv:
+        load_dotenv()
+    return umgebungsvariable_bool(KURZARBEIT_AKTIV_VAR)
 
 
 def rollenzuordnung_automatisch() -> Rollenzuordnung:

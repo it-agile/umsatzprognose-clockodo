@@ -702,6 +702,19 @@ class Dashboard:
         """
         self.bestand = self.bestand.mit_stundensatz_uebersteuerungen(werte)
 
+    def verbrauchsplan_uebersteuern(self, werte: dict[str, tuple[int, int]]) -> None:
+        """Für benannte Projekte von Hand einen Verbrauchsplan hinterlegen.
+
+        Für Projekte, deren vollständiger Verbrauch bis zu einem bestimmten Monat
+        schon feststeht, obwohl dafür noch keine Buchungen in Clockodo vorliegen -
+        z. B. ``{"Beispielprojekt": (2026, 12)}``. Die Simulation verteilt das
+        verbleibende Restvolumen dann linear auf die Monate bis einschließlich
+        diesem Zielmonat, statt dafür eine Abrufquote zu ziehen. ``werte`` verwendet
+        denselben Projektnamen wie in der Hinweistabelle. Wirkt auf alle danach
+        aufgerufenen Ansichten dieses Dashboards.
+        """
+        self.bestand = self.bestand.mit_verbrauchsplan_uebersteuerungen(werte)
+
     def hinweise(self, *, max_anzahl_betroffen: int = 10) -> pd.DataFrame:
         """Was zu den Zahlen zu wissen ist - Datenlage und offene fachliche Fragen."""
         hinweise = self.bestand.hinweise()

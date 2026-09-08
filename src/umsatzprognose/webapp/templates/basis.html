@@ -23,8 +23,20 @@
         .regler-abschnitt[open] summary .zusammenfassung { display: none; }
         .regler-gruppe { display: flex; flex-direction: column; gap: 0.5rem; margin-top: 0.6rem; }
         .regler-gruppe label { color: #555; }
+        /* Textarea auf eine eigene Zeile unter ihrer Beschriftung, statt (als
+           Inline-Element im Label) rechts daneben - und breiter als der
+           Browser-Standard (~20 Zeichen), damit "Projektname: JJJJ-MM"-Zeilen
+           bequem Platz haben. */
+        .regler-gruppe textarea { display: block; margin-top: 0.3rem; width: min(100%, 40rem); }
+        /* Anwenden-Knopf und Zuruecksetzen-Link nebeneinander statt gestreckt
+           untereinander (Standardverhalten von Flex-Items in einer Spalte) - beide mit
+           natuerlicher statt voller Breite. */
+        .regler-aktionen { display: flex; flex-direction: row; align-items: center; gap: 0.6rem; }
+        .regler-aktionen button {
+            align-self: flex-start; width: fit-content; padding: 0.2rem 0.6rem;
+        }
         .zuruecksetzen {
-            display: inline-block; margin-top: 0.4rem; color: #555; text-decoration: none;
+            display: inline-block; color: #555; text-decoration: none;
             border: 1px solid #ccc; border-radius: 3px; padding: 0.2rem 0.6rem; width: fit-content;
         }
         .zuruecksetzen:hover { background: #f2f2f2; }
@@ -45,7 +57,9 @@
         <a href="/{{ anfrage_query }}" class="{{ 'aktiv' if aktive_seite == 'start' }}">Datencheck</a>
         <a href="/dashboard{{ anfrage_query }}" class="{{ 'aktiv' if aktive_seite == 'dashboard' }}">Dashboard</a>
         <a href="/schulungen{{ anfrage_query }}" class="{{ 'aktiv' if aktive_seite == 'schulungen' }}">Schulungen</a>
+        {% if kurzarbeit_aktiv %}
         <a href="/kurzarbeit{{ anfrage_query }}" class="{{ 'aktiv' if aktive_seite == 'kurzarbeit' }}">Kurzarbeit</a>
+        {% endif %}
     </nav>
     <h1>{% if stichtag %}Stand der Auswertung: {{ stichtag.strftime("%d.%m.%Y") }}{% else %}Daten werden geladen …{% endif %}</h1>
     {% block inhalt %}{% endblock %}

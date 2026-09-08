@@ -137,6 +137,10 @@ def _fake_caches(monkeypatch):
     monkeypatch.setattr(app_modul, "_dashboard_cache", dashboard_cache)
     monkeypatch.setattr(app_modul, "_anmeldungsverlauf_cache", anmeldungsverlauf_cache)
     monkeypatch.setattr(app_modul, "_kurzarbeit_cache", kurzarbeit_cache)
+    # Standardmaessig eingeschaltet, damit die bestehenden Kurzarbeit-Tests unten das
+    # bisherige Verhalten pruefen - siehe die eigenen Tests weiter unten fuer den
+    # ausgeschalteten Fall (KURZARBEIT_AKTIV).
+    monkeypatch.setattr(app_modul, "_KURZARBEIT_AKTIV", True)
     return dashboard_cache, anmeldungsverlauf_cache, kurzarbeit_cache
 
 
@@ -249,6 +253,130 @@ def test_dashboard_seite_zeigt_umsatzverlauf_und_tabelle():
     assert antwort.status_code == 200
     assert "Gewinn" in antwort.text
     assert "plotly" in antwort.text.lower()
+
+
+def test_dashboard_seite_restvolumen_top_slider_steuert_die_grafik():
+    client = TestClient(app_modul.app)
+
+    antwort = client.get("/dashboard?restvolumen_top=5")
+
+    assert antwort.status_code == 200
+    assert 'name="restvolumen_top"' in antwort.text
+    assert 'value="5"' in antwort.text
+    assert "Anzahl Projekte mit offenem Budget" in antwort.text
+
+
+def test_dashboard_seite_restvolumen_top_max_ist_anzahl_projekte_ohne_budget(_fake_caches):
+    """Bewusst die Anzahl der Projekte OHNE Budget, nicht die Anzahl der Projekte in
+    der Grafik selbst (siehe Klärung im Plan) - zwei verschiedene Zahlen."""
+    dashboard_cache, _, _ = _fake_caches
+    ohne_budget_projekt = Projekt(id=99, name="Ohne Budget", kunde=KUNDE, aktiv=True)
+    bestand = Bestand(
+        stichtag=STICHTAG, projekte=(*PROJEKTE, ohne_budget_projekt), umsatzhistorie=HISTORIE
+    )
+    dashboard = Dashboard(bestand, SCHULUNGSPLAN, Kostenplan())
+    dashboard.simuliere(monate=1, laeufe=10)
+    dashboard_cache.ergebnis = dashboard
+    client = TestClient(app_modul.app)
+
+    antwort = client.get("/dashboard")
+
+    assert 'max="1"' in antwort.text  # genau ein Projekt ohne Budget
+
+
+def test_dashboard_seite_zeigt_projekte_ohne_budget_und_respektiert_filter(_fake_caches):
+    dashboard_cache, _, _ = _fake_caches
+    ohne_budget_projekt = Projekt(id=99, name="Schulungsprodukt", kunde=KUNDE, aktiv=True)
+    bestand = Bestand(
+        stichtag=STICHTAG, projekte=(*PROJEKTE, ohne_budget_projekt), umsatzhistorie=HISTORIE
+    )
+    dashboard = Dashboard(bestand, SCHULUNGSPLAN, Kostenplan())
+    dashboard.simuliere(monate=1, laeufe=10)
+    dashboard_cache.ergebnis = dashboard
+    client = TestClient(app_modul.app)
+
+    ohne_filter = client.get("/dashboard")
+    mit_filter = client.get("/dashboard", params={"ohne_budget_filter": "Schulungsprodukt"})
+
+    # Nicht per Substring "Schulungsprodukt" pruefen - der Filterwert selbst taucht
+    # unabhaengig vom Tabelleninhalt in jedem Navigationslink wieder auf
+    # (anfrage_query). Die Tabellenzeile zeigt Kunde und Projektname kombiniert.
+    assert "Testkunde / Schulungsprodukt" in ohne_filter.text
+    assert "Testkunde / Schulungsprodukt" not in mit_filter.text
+
+
+def test_dashboard_seite_zeigt_ueberschrift_fuer_projekte_ohne_budget():
+    client = TestClient(app_modul.app)
+
+    antwort = client.get("/dashboard")
+
+    assert "<h2>Projekte ohne Budget</h2>" in antwort.text
+
+
+def test_dashboard_seite_zeigt_immer_alle_projekte_ohne_budget(_fake_caches):
+    """Kein Top-N-Slider fuer diese Tabelle - alle (gefilterten) Zeilen sind immer
+    sichtbar, unabhaengig von ihrer Anzahl."""
+    dashboard_cache, _, _ = _fake_caches
+    ohne_budget_projekte = tuple(
+        Projekt(id=100 + i, name=f"Ohne Budget {i}", kunde=KUNDE, aktiv=True) for i in range(3)
+    )
+    bestand = Bestand(
+        stichtag=STICHTAG, projekte=(*PROJEKTE, *ohne_budget_projekte), umsatzhistorie=HISTORIE
+    )
+    dashboard = Dashboard(bestand, SCHULUNGSPLAN, Kostenplan())
+    dashboard.simuliere(monate=1, laeufe=10)
+    dashboard_cache.ergebnis = dashboard
+    client = TestClient(app_modul.app)
+
+    antwort = client.get("/dashboard")
+
+    assert "Testkunde / Ohne Budget 0" in antwort.text
+    assert "Testkunde / Ohne Budget 1" in antwort.text
+    assert "Testkunde / Ohne Budget 2" in antwort.text
+
+
+def test_dashboard_seite_ohne_verbrauchsplan_simuliert_nicht_neu(_fake_caches, monkeypatch):
+    """Ohne gesetzten Parameter bleibt es beim gecachten Dashboard - keine zusaetzliche
+    Simulation je Anfrage."""
+    aufrufe: list[object] = []
+    original_simuliere = Dashboard.simuliere
+
+    def _tracking_simuliere(self, *args, **kwargs):
+        aufrufe.append(self)
+        return original_simuliere(self, *args, **kwargs)
+
+    monkeypatch.setattr(Dashboard, "simuliere", _tracking_simuliere)
+    client = TestClient(app_modul.app)
+
+    client.get("/dashboard")
+
+    assert aufrufe == []
+
+
+def test_dashboard_seite_verbrauchsplan_veraendert_nicht_das_gecachte_dashboard(
+    _fake_caches, monkeypatch
+):
+    """Wichtigster Test: ein gesetzter ``verbrauchsplan``-Parameter darf das im
+    ``DashboardCache`` gehaltene, von allen Besuchenden geteilte Dashboard nicht
+    veraendern - sonst saehen andere Besuchende bis zum naechsten TTL-Reload dieselbe,
+    von dieser einen Anfrage uebersteuerte Prognose."""
+    dashboard_cache, _, _ = _fake_caches
+    aufrufe: list[object] = []
+    original_simuliere = Dashboard.simuliere
+
+    def _tracking_simuliere(self, *args, **kwargs):
+        aufrufe.append(self)
+        return original_simuliere(self, *args, **kwargs)
+
+    monkeypatch.setattr(Dashboard, "simuliere", _tracking_simuliere)
+    client = TestClient(app_modul.app)
+
+    antwort = client.get("/dashboard", params={"verbrauchsplan": "Testprojekt: 2026-12"})
+
+    assert antwort.status_code == 200
+    assert len(aufrufe) == 1
+    assert aufrufe[0] is not dashboard_cache.ergebnis
+    assert dashboard_cache.ergebnis.bestand.projekte[0].verbrauchsplan_zielmonat is None
 
 
 def test_dashboard_seite_ohne_gecachte_daten_zeigt_die_ladeseite(_fake_caches):
@@ -550,3 +678,62 @@ def test_kurzarbeit_zeigt_keine_hinweise(_fake_caches):
     antwort = client.get("/kurzarbeit")
 
     assert "Diese Personen sind laut Rollenzuordnung ausgeschlossen" not in antwort.text
+
+
+def test_verbrauchsplan_aus_text_parst_gueltige_zeilen_und_ueberspringt_ungueltige():
+    text = (
+        "Projekt A: 2026-12\n"
+        "\n"
+        "keine Zeile ohne Doppelpunkt\n"
+        "Projekt B: nicht-JJJJ-MM\n"
+        "  : 2026-01\n"
+        "Projekt C:2027-03"
+    )
+    assert app_modul._verbrauchsplan_aus_text(text) == {
+        "Projekt A": (2026, 12),
+        "Projekt C": (2027, 3),
+    }
+
+
+def test_verbrauchsplan_aus_text_leer_liefert_leeres_dict():
+    assert app_modul._verbrauchsplan_aus_text("") == {}
+
+
+def test_ohne_budget_filter_aus_text_parst_eine_zeile_je_begriff():
+    text = "  it-agile GmbH  \n\nÖffentliche Schulung\n   \n"
+    assert app_modul._ohne_budget_filter_aus_text(text) == [
+        "it-agile GmbH",
+        "Öffentliche Schulung",
+    ]
+
+
+def test_ohne_budget_filter_aus_text_leer_liefert_leere_liste():
+    assert app_modul._ohne_budget_filter_aus_text("") == []
+
+
+def test_navigation_versteckt_kurzarbeit_wenn_ausgeschaltet(monkeypatch):
+    monkeypatch.setattr(app_modul, "_KURZARBEIT_AKTIV", False)
+    client = TestClient(app_modul.app)
+
+    antwort = client.get("/")
+
+    assert 'href="/kurzarbeit' not in antwort.text
+
+
+def test_kurzarbeit_route_liefert_404_wenn_ausgeschaltet(monkeypatch):
+    monkeypatch.setattr(app_modul, "_KURZARBEIT_AKTIV", False)
+    client = TestClient(app_modul.app)
+
+    antwort = client.get("/kurzarbeit")
+
+    assert antwort.status_code == 404
+
+
+def test_vorladen_stoesst_kurzarbeit_cache_nicht_an_wenn_ausgeschaltet(_fake_caches, monkeypatch):
+    _, _, kurzarbeit_cache = _fake_caches
+    monkeypatch.setattr(app_modul, "_KURZARBEIT_AKTIV", False)
+
+    with TestClient(app_modul.app):
+        pass
+
+    assert kurzarbeit_cache.anstossen_aufrufe == 0

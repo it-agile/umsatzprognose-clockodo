@@ -24,6 +24,8 @@ if TYPE_CHECKING:
 
     import numpy as np
 
+    from umsatzprognose.util import Monat
+
     from .kunde import Kunde
     from .mitarbeiter import Mitarbeiter
     from .prognose import Prognose
@@ -107,13 +109,30 @@ class Bestand:
         :attr:`~umsatzprognose.domaene.projekt.Projekt.effektiver_stundensatz`); wer in
         ``werte`` nicht genannt ist, bleibt unverändert.
         """
-
-        def schluessel(p: Projekt) -> str:
-            return p.name if p.name else str(p.id)
-
         aktualisiert = tuple(
-            replace(p, stundensatz_uebersteuerung=werte[schluessel(p)])
-            if schluessel(p) in werte
+            replace(p, stundensatz_uebersteuerung=werte[_projekt_schluessel(p)])
+            if _projekt_schluessel(p) in werte
+            else p
+            for p in self.projekte
+        )
+        return replace(self, projekte=aktualisiert)
+
+    def mit_verbrauchsplan_uebersteuerungen(self, werte: Mapping[str, Monat]) -> Bestand:
+        """Neuer Bestand mit von Hand hinterlegtem Verbrauchsplan für benannte Projekte.
+
+        Wie :meth:`mit_stundensatz_uebersteuerungen`: unveränderliche Fachobjekte,
+        deshalb ein neuer :class:`Bestand` statt einer Zustandsänderung, ``werte``
+        schlüsselt über denselben Bezeichner (Projektname, sonst die ID als Text).
+        Gedacht für Projekte, deren vollständiger Verbrauch bis zu einem bestimmten
+        Monat schon feststeht, obwohl dafür noch keine Buchungen in Clockodo
+        vorliegen (siehe
+        :attr:`~umsatzprognose.domaene.projekt.Projekt.verbrauchsplan_zielmonat`) -
+        z. B. ``{"Beispielprojekt": (2026, 12)}``. Wer in ``werte`` nicht genannt
+        ist, bleibt unverändert.
+        """
+        aktualisiert = tuple(
+            replace(p, verbrauchsplan_zielmonat=werte[_projekt_schluessel(p)])
+            if _projekt_schluessel(p) in werte
             else p
             for p in self.projekte
         )
@@ -222,6 +241,12 @@ class Bestand:
             for p in self.aktive_projekte
             if not verwertbar(p.budget) and not any(f in p.bezeichnung for f in filter)
         ]
+
+
+def _projekt_schluessel(p: Projekt) -> str:
+    """Derselbe Bezeichner wie in der Hinweistabelle: Projektname, sonst die ID als
+    Text - gemeinsamer Schlüssel für die ``mit_*_uebersteuerungen``-Methoden."""
+    return p.name if p.name else str(p.id)
 
 
 def _hinweis_wenn(betroffene_projekte: Iterable[Projekt], text: str) -> Hinweis | None:

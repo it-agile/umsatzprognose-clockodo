@@ -1,11 +1,12 @@
-"""Tests fuer den pre-commit-Hook, der Zellausgaben aus Notebooks entfernt und staged
-Python-Dateien mit ``ruff format`` formatiert.
+"""Tests fuer den pre-commit-Hook, der Zellausgaben aus Notebooks entfernt, ihre
+Code-Zellen einklappt und staged Python-Dateien mit ``ruff format`` formatiert.
 
 `.githooks/pre-commit` hat keine `.py`-Endung (Git verlangt den exakten Dateinamen
 ``pre-commit``) und wird deshalb ueber ``importlib`` statt eines normalen ``import``
 geladen. Die Git-Interaktion (``staged_dateien()``, ``main()``) wird hier nicht
 getestet - dafuer bräuchte es ein echtes Git-Repository als Fixture; geprueft wird die
-eigentliche Kernlogik, ``zellausgaben_entfernen()`` und ``python_dateien_formatieren()``.
+eigentliche Kernlogik, ``zellausgaben_entfernen()``, ``code_zellen_einklappen()`` und
+``python_dateien_formatieren()``.
 """
 
 from __future__ import annotations
@@ -82,6 +83,60 @@ def test_bereits_saubere_datei_bleibt_unveraendert(tmp_path):
     pfad.write_text(inhalt, encoding="utf-8")
 
     veraendert = _hook.zellausgaben_entfernen(str(pfad))
+
+    assert veraendert is False
+    assert pfad.read_text(encoding="utf-8") == inhalt
+
+
+def test_klappt_code_zelle_ohne_metadata_ein(tmp_path):
+    pfad = tmp_path / "notebook.ipynb"
+    notebook = _notebook([_code_zelle()])
+    pfad.write_text(json.dumps(notebook), encoding="utf-8")
+
+    veraendert = _hook.code_zellen_einklappen(str(pfad))
+
+    assert veraendert is True
+    ergebnis = json.loads(pfad.read_text(encoding="utf-8"))
+    assert ergebnis["cells"][0]["metadata"]["jupyter"]["source_hidden"] is True
+
+
+def test_klappt_code_zelle_mit_source_hidden_false_ein(tmp_path):
+    pfad = tmp_path / "notebook.ipynb"
+    notebook = _notebook(
+        [_code_zelle(metadata={"cellView": "form", "jupyter": {"source_hidden": False}})]
+    )
+    pfad.write_text(json.dumps(notebook), encoding="utf-8")
+
+    veraendert = _hook.code_zellen_einklappen(str(pfad))
+
+    assert veraendert is True
+    ergebnis = json.loads(pfad.read_text(encoding="utf-8"))
+    zelle = ergebnis["cells"][0]
+    assert zelle["metadata"]["jupyter"]["source_hidden"] is True
+    assert zelle["metadata"]["cellView"] == "form"  # uebrige Metadata bleibt erhalten
+
+
+def test_bereits_eingeklappte_zelle_bleibt_unveraendert(tmp_path):
+    pfad = tmp_path / "notebook.ipynb"
+    notebook = _notebook(
+        [_code_zelle(metadata={"cellView": "form", "jupyter": {"source_hidden": True}})]
+    )
+    inhalt = json.dumps(notebook)
+    pfad.write_text(inhalt, encoding="utf-8")
+
+    veraendert = _hook.code_zellen_einklappen(str(pfad))
+
+    assert veraendert is False
+    assert pfad.read_text(encoding="utf-8") == inhalt
+
+
+def test_code_zellen_einklappen_laesst_markdown_zellen_unangetastet(tmp_path):
+    pfad = tmp_path / "notebook.ipynb"
+    notebook = _notebook([{"cell_type": "markdown", "source": ["# Titel"]}])
+    inhalt = json.dumps(notebook)
+    pfad.write_text(inhalt, encoding="utf-8")
+
+    veraendert = _hook.code_zellen_einklappen(str(pfad))
 
     assert veraendert is False
     assert pfad.read_text(encoding="utf-8") == inhalt

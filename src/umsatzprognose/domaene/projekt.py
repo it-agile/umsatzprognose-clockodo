@@ -13,6 +13,8 @@ from typing import TYPE_CHECKING, assert_never
 if TYPE_CHECKING:
     from datetime import date
 
+    from umsatzprognose.util import Monat
+
     from .kunde import Kunde
     from .mitarbeiter import Mitarbeiter
     from .projektanteil import Projektanteil
@@ -116,6 +118,14 @@ class Projekt:
     verbrauchte_stunden: float = 0.0
     anteile: tuple[Projektanteil, ...] = field(default_factory=tuple)
     stundensatz_uebersteuerung: float | None = None
+    # Von Hand hinterlegtes Zielmonat: statt einer aus der portfolioweiten Verteilung
+    # gezogenen Abrufquote nimmt die Simulation fuer dieses Projekt einen
+    # deterministischen, linear auf die Monate bis einschliesslich diesem Zielmonat
+    # verteilten Verbrauch an (siehe domaene.simulation._verbrauchsplan). Gedacht fuer
+    # Projekte, deren vollstaendiger Verbrauch bis zu einem bestimmten Monat schon
+    # feststeht, obwohl dafuer noch keine Buchungen in Clockodo vorliegen. Gesetzt ueber
+    # Bestand.mit_verbrauchsplan_uebersteuerungen()/Dashboard.verbrauchsplan_uebersteuern().
+    verbrauchsplan_zielmonat: Monat | None = None
     # Clockodo kennt ``deadline`` und ``automatic_completion`` getrennt - eine
     # ``deadline`` allein ist unverbindlich. ``clockodo.projekte`` fuehrt das schon
     # beim Mapping zu diesem einen Feld zusammen. Ab diesem Datum traegt das Projekt

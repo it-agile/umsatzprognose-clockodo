@@ -1,4 +1,4 @@
-from .config import colab_secret, in_colab, umgebungsvariable
+from .config import colab_secret, in_colab, umgebungsvariable, umgebungsvariable_bool
 from .fortschritt import Fortschritt
 from .monat import Monat, aus_ordnung, monatsfolge, ordnung, vormonat
 
@@ -11,5 +11,6 @@ __all__ = (
     "monatsfolge",
     "ordnung",
     "umgebungsvariable",
+    "umgebungsvariable_bool",
     "vormonat",
 )

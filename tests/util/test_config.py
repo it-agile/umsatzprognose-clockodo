@@ -10,7 +10,12 @@ import types
 
 import pytest
 
-from umsatzprognose.util.config import colab_secret, in_colab, umgebungsvariable
+from umsatzprognose.util.config import (
+    colab_secret,
+    in_colab,
+    umgebungsvariable,
+    umgebungsvariable_bool,
+)
 
 
 class _TestError(Exception):
@@ -38,6 +43,26 @@ def test_umgebungsvariable_wirft_bei_nur_leerzeichen(monkeypatch):
     monkeypatch.setenv("LEERE_VAR", "   ")
     with pytest.raises(_TestError, match="LEERE_VAR"):
         umgebungsvariable("LEERE_VAR", fehlerklasse=_TestError)
+
+
+def test_umgebungsvariable_bool_liefert_standard_wenn_ungesetzt(monkeypatch):
+    monkeypatch.delenv("SCHALTER_VAR", raising=False)
+    assert umgebungsvariable_bool("SCHALTER_VAR") is False
+    assert umgebungsvariable_bool("SCHALTER_VAR", standard=True) is True
+
+
+@pytest.mark.parametrize("wert", ["true", "True", "1", "ja", "JA"])
+def test_umgebungsvariable_bool_erkennt_wahre_werte(monkeypatch, wert):
+    monkeypatch.setenv("SCHALTER_VAR", wert)
+    assert umgebungsvariable_bool("SCHALTER_VAR") is True
+
+
+@pytest.mark.parametrize("wert", ["false", "0", "nein"])
+def test_umgebungsvariable_bool_erkennt_falsche_werte(monkeypatch, wert):
+    monkeypatch.setenv("SCHALTER_VAR", wert)
+    # standard=True zeigt: ein explizit gesetzter falscher Wert gewinnt gegen den
+    # Standard, anders als eine leere/ungesetzte Variable (siehe Test oben).
+    assert umgebungsvariable_bool("SCHALTER_VAR", standard=True) is False
 
 
 def _fake_colab_userdata(monkeypatch, get):

@@ -268,6 +268,39 @@ def test_bereits_gebuchter_betrag_ist_die_untergrenze_in_kuenftigen_monaten():
     assert prognose.gebucht() == [pytest.approx(0.0), pytest.approx(20000.0)]
 
 
+def test_verbrauchsplan_verteilt_restvolumen_linear_bis_zielmonat_unabhaengig_vom_zufall():
+    """``verbrauchsplan_zielmonat`` ersetzt die gezogene Abrufquote durch einen
+    deterministischen, gleichmaessig verteilten Verbrauch bis zu diesem Monat - anders
+    als bei einer gezogenen Quote (siehe die anderen Tests hier) liefert derselbe Lauf
+    unabhaengig vom Zufallsgenerator dasselbe Ergebnis."""
+    anna = mitarbeiter(1, "Anna")
+    projekt = Projekt(
+        id=1,
+        name="Beispielprojekt",
+        aktiv=True,
+        budget=Gesamtbudget(betrag=30500.0),
+        verbrauchtes_volumen=500.0,  # Restvolumen 30000
+        verbrauchte_stunden=100.0,  # Satz 5.0
+        anteile=(Projektanteil(anna, stunden=100.0),),
+        verbrauchsplan_zielmonat=(2026, 11),  # letzter von drei Horizontmonaten (Sep-Nov)
+    )
+    b = Bestand(
+        stichtag=STICHTAG,  # 2026-09-01, Horizont also Sep/Okt/Nov
+        projekte=(projekt,),
+        mitarbeiter=(anna,),
+        # Quote 0.1 wuerde ohne Plan nur einen Bruchteil des Restvolumens ziehen -
+        # der Plan ignoriert sie vollstaendig.
+        verbrauchsverlaeufe=(historie(0.1),),
+    )
+
+    for seed in (10, 20):
+        prognose = b.simulieren(monate=3, laeufe=3, zufall=np.random.default_rng(seed))
+        assert prognose.kapazitaet_limitierend_anteil() == 0.0
+        for werte in prognose.monatswerte().values():
+            # 30000 auf 3 Monate verteilt = 10000/Monat.
+            assert werte == [pytest.approx(10000.0)] * 3
+
+
 def test_stichtagsmonat_zaehlt_keine_gebuchten_betraege_als_untergrenze():
     """Verlauf.gebucht() kennt im Stichtagsmonat keine Tagesgrenze und mischt Buchungen
     vor und nach dem Stichtag - als Untergrenze gezaehlt, wuerde der schon vom
