@@ -117,7 +117,7 @@ commands = [[ "uvicorn", { replace = "posargs", default = ["umsatzprognose.webap
 
 [tool.ruff]
 line-length = 100
-src = ["src", "tests"]
+src = ["src", "tests", "notebooks"]
 
 [tool.ruff.lint]
 select = [
