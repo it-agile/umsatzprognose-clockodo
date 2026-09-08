@@ -11,6 +11,8 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from umsatzprognose.clockodo.client import EntryGroupV2
 
+from dotenv import load_dotenv
+
 from conftest import client_mit_routen
 from umsatzprognose.clockodo.kurzarbeit import (
     KURZARBEIT_AKTIV_VAR,
@@ -36,9 +38,17 @@ def test_kurzarbeit_aktiv_ist_bei_true_an(monkeypatch):
 
 
 def test_kurzarbeit_aktiv_laedt_env_datei(monkeypatch, tmp_path):
+    """``load_dotenv()`` sucht standardmaessig ueber den Aufruf-Stack ab dem Speicherort
+    von kurzarbeit.py, nicht ab dem aktuellen Arbeitsverzeichnis - ``chdir`` allein
+    haette hier keine Wirkung. Die Umlenkung auf die tmp_path-Datei bildet trotzdem
+    genau das nach, was kurzarbeit_aktiv() zur Laufzeit tut: eine .env-Datei laden und
+    danach die Umgebungsvariable auswerten."""
     monkeypatch.delenv(KURZARBEIT_AKTIV_VAR, raising=False)
-    (tmp_path / ".env").write_text(f"{KURZARBEIT_AKTIV_VAR}=true\n")
-    monkeypatch.chdir(tmp_path)
+    env_datei = tmp_path / ".env"
+    env_datei.write_text(f"{KURZARBEIT_AKTIV_VAR}=true\n")
+    monkeypatch.setattr(
+        "umsatzprognose.clockodo.kurzarbeit.load_dotenv", lambda: load_dotenv(env_datei)
+    )
 
     assert kurzarbeit_aktiv() is True
 
