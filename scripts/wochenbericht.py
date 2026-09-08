@@ -143,7 +143,7 @@ def kontext_text(dashboard: Dashboard) -> str:
 
 def kurzarbeit_laden(dashboard: Dashboard) -> dict[Monat, Kurzarbeitsbewertung]:
     """Laedt die Kurzarbeit-Rohdaten und bewertet sie - eigenstaendig, unabhaengig vom
-    Bestand (Spec Abschnitt 2/7, siehe ``notebooks/04_kurzarbeit.ipynb``).
+    Bestand (siehe ``notebooks/04_kurzarbeit.ipynb``).
 
     Synchron statt ``laden_async``: dieses Skript laeuft ausserhalb eines Event-Loops,
     genau der Fall, fuer den ``KurzarbeitRepository.laden`` gedacht ist.

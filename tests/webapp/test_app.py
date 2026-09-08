@@ -650,7 +650,7 @@ def test_kurzarbeit_weist_ausserhalb_der_optionen_liegende_parameter_zurueck():
 
 
 def test_kurzarbeit_zeigt_keine_einzelwerte_je_person():
-    """Aggregatzahlen ja, aber keine Personennamen oder IDs (Spec Abschnitt 2/6)."""
+    """Aggregatzahlen ja, aber keine Personennamen oder IDs."""
     client = TestClient(app_modul.app)
 
     antwort = client.get("/kurzarbeit")

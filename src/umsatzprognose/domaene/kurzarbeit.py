@@ -5,7 +5,7 @@ Organisation die Voraussetzungen fuer Kurzarbeit erfuellt haette.
 :mod:`.kosten`: kein Monte-Carlo-Lauf, keine Bandbreite - jeder Monat hat ein
 eindeutiges, deterministisches Ergebnis auf Basis bereits gebuchter Zeit. Anders als
 dort aber **kein Bezug zur Umsatzprognose ueberhaupt** - ein Kapazitaets-/
-Personalsignal statt eines Umsatz- oder Kostensignals (Spec Abschnitt 7), deshalb
+Personalsignal statt eines Umsatz- oder Kostensignals, deshalb
 bewusst nicht an :class:`~umsatzprognose.domaene.bestand.Bestand` angebunden.
 
 Getrennt wie bei :mod:`~umsatzprognose.domaene.simulation`: :class:`Personenmonat` ist
@@ -15,8 +15,8 @@ die reine, bewertungsfreie Rohdatenabbildung (liefert
 (:class:`Rollenzuordnung`) und den Schwellenwerten (:class:`Schwellenwerte`)
 verknuepft.
 
-**Fuer einzelne Personen bleibt unsichtbar, an welcher Bedingung sie scheitern** (Spec
-Abschnitt 2/6): :class:`Kurzarbeitsbewertung` traegt ausschliesslich Aggregatzahlen.
+**Fuer einzelne Personen bleibt unsichtbar, an welcher Bedingung sie scheitern**:
+:class:`Kurzarbeitsbewertung` traegt ausschliesslich Aggregatzahlen.
 Die drei personenbezogenen :class:`~umsatzprognose.domaene.hinweis.Hinweis` (fuer
 ausgeschlossene, unklassifizierte und nicht bestimmbare Personen) tragen zwar
 IDs in ``betroffene``, aber nur zur Zaehlung (``Hinweis.anzahl``) - keine Ausgabe
@@ -37,8 +37,8 @@ from dataclasses import dataclass, field
 
 from .hinweis import Hinweis
 
-# Die sechs sich gegenseitig ausschliessenden Kategorien einer Person in einem Monat
-# (Spec 5.3/5.6) - Schluessel fuer :func:`_kategorie` und die Sammlung in :func:`bewerten`.
+# Die sechs sich gegenseitig ausschliessenden Kategorien einer Person in einem Monat -
+# Schluessel fuer :func:`_kategorie` und die Sammlung in :func:`bewerten`.
 _NICHT_BESTIMMBAR = "nicht_bestimmbar"
 _AUSGESCHLOSSEN = "ausgeschlossen"
 _KURZARBEITSFAEHIG = "kurzarbeitsfaehig"
@@ -51,9 +51,9 @@ _SCHEITERT_UEBERSTUNDEN = "scheitert_ueberstunden"
 class Personenmonat:
     """Die fuer die Regel noetigen Rohdaten einer Person in einem Kalendermonat.
 
-    Reine Clockodo-Abbildung (Spec Abschnitt 3), ohne Kenntnis von Rollen oder
+    Reine Clockodo-Abbildung, ohne Kenntnis von Rollen oder
     Schwellenwerten - ``name`` ist trotzdem Teil dieser Rohdaten, weil
-    :class:`Rollenzuordnung` (5.2) ueber den Namen zuordnet und :func:`bewerten`
+    :class:`Rollenzuordnung` ueber den Namen zuordnet und :func:`bewerten`
     ausser den Rohdaten selbst keine weitere Personenzuordnung entgegennimmt.
 
     Attributes:
@@ -63,12 +63,12 @@ class Personenmonat:
         monat: Kalendermonat (1-12).
         interne_stunden: gebuchte Zeit mit ``billable == 0``.
         externe_stunden: gebuchte Zeit mit ``billable in {1, 2}``.
-        gesamt_stunden: gebuchte Zeit ohne Billable-Filter - der
-            Konsistenz-Abruf aus Spec Abschnitt 4. Kann wegen unabhaengiger
+        gesamt_stunden: gebuchte Zeit ohne Billable-Filter - der ungefilterte
+            Konsistenz-Abruf. Kann wegen unabhaengiger
             Abrufe geringfuegig von ``interne_stunden + externe_stunden``
             abweichen; die Differenz ist :attr:`unklassifizierte_stunden`.
         ueberstundenstand: der kumulierte Ueberstundenstand zum Monatsende, ``None``
-            wenn dafuer kein Eintrag vorliegt (Spec 5.6).
+            wenn dafuer kein Eintrag vorliegt.
     """
 
     mitarbeiter_id: int
@@ -91,14 +91,14 @@ class Personenmonat:
 
     @property
     def alle_arbeitsstunden(self) -> float:
-        """Nenner fuer den Anteil interner Arbeit (Spec 5.3) - intern, extern und
+        """Nenner fuer den Anteil interner Arbeit - intern, extern und
         unklassifiziert zusammen."""
         return self.interne_stunden + self.externe_stunden + self.unklassifizierte_stunden
 
 
 @dataclass(frozen=True)
 class Rollenzuordnung:
-    """Personen, die nie in den Zaehler kurzarbeitsfaehiger Personen eingehen (Spec 5.2).
+    """Personen, die nie in den Zaehler kurzarbeitsfaehiger Personen eingehen.
 
     Zuordnung ueber den Namen statt der ID: die Liste ist eine personenbezogene
     Angabe und wird zur Laufzeit aus einer Umgebungsvariable/einem Colab-Secret
@@ -114,7 +114,7 @@ class Rollenzuordnung:
 
 @dataclass(frozen=True)
 class Schwellenwerte:
-    """Die drei Schwellenwerte der Regel (Spec 5.3/5.4), als Parameter von aussen."""
+    """Die drei Schwellenwerte der Regel, als Parameter von aussen."""
 
     anteil_interne_arbeit: float = 0.24
     ueberstunden_stunden: float = 14.0
@@ -124,12 +124,12 @@ class Schwellenwerte:
 @dataclass(frozen=True)
 class Kurzarbeitsbewertung:
     """Das Ergebnis von :func:`bewerten` fuer einen Kalendermonat - ausschliesslich
-    Aggregatzahlen (Spec Abschnitt 6), keine personenbezogenen Einzelwerte.
+    Aggregatzahlen, keine personenbezogenen Einzelwerte.
 
     Die fuenf Zaehler ``anzahl_kurzarbeitsfaehig``, ``anzahl_scheitert_*`` und
     ``anzahl_ausgeschlossen`` sind eine Partition der einbezogenen Personen -
-    :attr:`anzahl_einbezogen` (der Nenner der 30-%-Quote, Spec 5.4) ist ihre Summe.
-    ``anzahl_nicht_bestimmbar`` (Spec 5.6) steht ausserhalb dieser Partition, weder
+    :attr:`anzahl_einbezogen` (der Nenner der 30-%-Quote) ist ihre Summe.
+    ``anzahl_nicht_bestimmbar`` steht ausserhalb dieser Partition, weder
     Zaehler noch Nenner.
     """
 
@@ -150,7 +150,7 @@ class Kurzarbeitsbewertung:
 
     @property
     def anzahl_einbezogen(self) -> int:
-        """Der Nenner der 30-%-Quote (Spec 5.4) - alle bewertbaren Personen, inklusive
+        """Der Nenner der 30-%-Quote - alle bewertbaren Personen, inklusive
         der laut Rollenzuordnung ausgeschlossenen."""
         return (
             self.anzahl_kurzarbeitsfaehig
@@ -168,7 +168,7 @@ class Kurzarbeitsbewertung:
 
     @property
     def vorbereitet(self) -> bool | None:
-        """Ob die Organisation die Voraussetzung erfuellt (Spec 5.4), ``None`` ohne Quote."""
+        """Ob die Organisation die Voraussetzung erfuellt, ``None`` ohne Quote."""
         quote = self.quote
         return None if quote is None else quote >= self.schwellenwerte.quote_organisation
 
@@ -176,7 +176,7 @@ class Kurzarbeitsbewertung:
 def _kategorie(
     person: Personenmonat, *, rollenzuordnung: Rollenzuordnung, schwellenwerte: Schwellenwerte
 ) -> str:
-    """Die Kategorie einer Person in einem Monat (Spec 5.3/5.6) - eine reine
+    """Die Kategorie einer Person in einem Monat - eine reine
     Klassifikationsfunktion ohne Zaehlerzustand, siehe :func:`bewerten`."""
     if person.ueberstundenstand is None or person.alle_arbeitsstunden == 0:
         return _NICHT_BESTIMMBAR
@@ -202,7 +202,7 @@ def bewerten(
     rollenzuordnung: Rollenzuordnung | None = None,
     schwellenwerte: Schwellenwerte | None = None,
 ) -> Kurzarbeitsbewertung:
-    """Bewertet die Rohdaten genau eines Kalendermonats (Spec 5.7).
+    """Bewertet die Rohdaten genau eines Kalendermonats.
 
     Fuer mehrere Monate siehe :func:`bewertungen`.
     """
@@ -265,7 +265,7 @@ def bewertungen(
     rollenzuordnung: Rollenzuordnung | None = None,
     schwellenwerte: Schwellenwerte | None = None,
 ) -> dict[Monat, Kurzarbeitsbewertung]:
-    """Bewertet mehrere Kalendermonate (Spec 5.7) - ruft :func:`bewerten` je Monat auf."""
+    """Bewertet mehrere Kalendermonate - ruft :func:`bewerten` je Monat auf."""
     rollenzuordnung = rollenzuordnung if rollenzuordnung is not None else Rollenzuordnung()
     schwellenwerte = schwellenwerte if schwellenwerte is not None else Schwellenwerte()
     return {

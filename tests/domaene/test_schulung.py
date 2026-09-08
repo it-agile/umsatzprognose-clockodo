@@ -27,7 +27,7 @@ def test_umsatz_je_monat_ignoriert_monate_vor_dem_stichtag() -> None:
         stichtag=STICHTAG,
         termine=(Schulungstermin(2026, 8, 2000.0), Schulungstermin(2026, 9, 300.0)),
     )
-    # August liegt vor dem Stichtagsmonat und ist bereits Ist-Umsatz (Spec 5.2).
+    # August liegt vor dem Stichtagsmonat und ist bereits Ist-Umsatz.
     assert plan.umsatz_je_monat(HORIZONT) == [300.0, 0.0, 0.0]
 
 

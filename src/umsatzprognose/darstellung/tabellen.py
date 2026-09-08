@@ -89,8 +89,8 @@ def umsatztabelle(
     Prognosehorizont bereits gebuchte kuenftige Monate, :meth:`Prognose.gebucht`), und
     **Prognostiziert** fuer den Rest bis zum Median der Simulation. Mit
     ``schulungsplan`` kommt zusaetzlich **Schulungsanmeldungen** dazu - additiv und
-    unabhaengig von der Bestand-Bandbreite (Spec Baustein Schulungsanmeldungen,
-    Abschnitt 6). Die Summenspalte fasst alle vier je Monat zusammen.
+    unabhaengig von der Bestand-Bandbreite. Die Summenspalte fasst alle vier je Monat
+    zusammen.
 
     Mit ``kostenplan`` kommen **Kosten** und **Gewinn** (Summe minus Kosten) dazu -
     anders als die Schulungsanmeldungen fuer **jeden** Monat, auch die Historie: die

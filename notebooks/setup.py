@@ -216,10 +216,9 @@ def kurzarbeit_rohdaten(
     ersten Aufruf je Kernel, danach nur noch zurueckgegeben.
 
     Komplett unabhaengig von :func:`dashboard` - eigener Baustein, kein Bezug zur
-    Umsatzprognose (siehe ``spec/spec-kurzarbeit.md`` Abschnitt 2/7). Liefert bewusst
-    nur die Rohdaten, nicht schon eine :class:`~umsatzprognose.domaene.
-    kurzarbeit.Kurzarbeitsbewertung` - die Bewertung mit Rollenzuordnung und
-    Schwellenwerten ist eine reine, sofortige Rechnung
+    Umsatzprognose. Liefert bewusst nur die Rohdaten, nicht schon eine
+    :class:`~umsatzprognose.domaene.kurzarbeit.Kurzarbeitsbewertung` - die Bewertung
+    mit Rollenzuordnung und Schwellenwerten ist eine reine, sofortige Rechnung
     (:func:`~umsatzprognose.domaene.kurzarbeit.bewertungen`) und braucht deshalb keinen
     eigenen Ladevorgang; sie steht im Notebook selbst, damit Schwellenwerte dort ohne
     Neuabruf geaendert werden koennen.

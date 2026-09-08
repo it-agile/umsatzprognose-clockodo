@@ -136,7 +136,7 @@ def test_abbilden_faellt_intern_extern_und_gesamt_stunden_zusammen():
 
 
 def test_abbilden_erzeugt_personenmonat_auch_ohne_gebuchte_stunde():
-    # Spec 5.6: "keine gebuchte Stunde" muss von "keine Person" unterscheidbar bleiben.
+    # "keine gebuchte Stunde" muss von "keine Person" unterscheidbar bleiben.
     ergebnis = KurzarbeitRepository.abbilden(
         [{"id": 301, "name": "Anna Beispiel", "active": True}],
         intern=[],

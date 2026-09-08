@@ -97,9 +97,8 @@ def umsatzverlauf(
 
     Mit ``schulungsplan`` kommt, additiv unterhalb von "Bereits gebucht" und
     "Prognostiziert", ein eigenfarbiger Balkenabschnitt "Schulungsanmeldungen" fuer den
-    Umsatz aus bereits geplanten oeffentlichen Schulungsterminen hinzu (Spec Baustein
-    Schulungsanmeldungen, Abschnitt 6) - unabhaengig von der Bestand-Bandbreite und ohne
-    eigene Unsicherheit.
+    Umsatz aus bereits geplanten oeffentlichen Schulungsterminen hinzu - unabhaengig
+    von der Bestand-Bandbreite und ohne eigene Unsicherheit.
 
     Mit ``kostenplan`` kommen je Monat zwei weitere, eigenstaendige Balken neben dem
     Umsatzbalken hinzu (Historie und Prognosehorizont): "Kosten" und "Ergebnis" (Umsatz

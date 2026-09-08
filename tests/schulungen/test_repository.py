@@ -21,7 +21,7 @@ from umsatzprognose.schulungen.schulungen import (
 
 KOPFZEILE = ["Schulung", "Jahr", "Monat", "Trainer", "Umsatz gesamt", "Bemerkungen"]
 
-# Die Spalte "TN Zahl" kommt laut Spec Abschnitt 4 zweimal vor: einmal als Gesamtsumme
+# Die Spalte "TN Zahl" kommt zweimal vor: einmal als Gesamtsumme
 # direkt vor "Umsatz gesamt" (hier Index 4), einmal in der Gruppe mit "Max
 # Zahl"/"Restplätze"/"Auslastung" (hier Index 7) - beide tragen laut Beobachtung am
 # Jahrgang 2024 denselben Wert.

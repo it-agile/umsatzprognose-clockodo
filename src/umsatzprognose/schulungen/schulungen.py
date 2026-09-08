@@ -2,7 +2,7 @@
 
 Die Kopfzeile des Tabellenblatts bestimmt die Spaltenzuordnung **namentlich**, nicht
 ueber die Position - robust gegenueber den vielen fuer die Prognose ungenutzten Spalten
-(Rabattstufen, Trainer, Praesenz/Online, ...; siehe Spec Abschnitt 4).
+(Rabattstufen, Trainer, Praesenz/Online, ...).
 
 **Die Kopfzeile steht nicht zuverlaessig in Zeile 0.** Analog zum Baustein Kosten
 (siehe Moduldocstring von :mod:`umsatzprognose.kosten.kosten`) geht der eigentlichen
@@ -25,7 +25,7 @@ formatiert (``"12.345,67 €"``, ``"1.234,56€"``, mit/ohne Leerzeichen). Gepar
 :func:`~umsatzprognose.domaene.zahlen.euro_parsen`, robust: alles außer Ziffern, Punkt
 und Komma entfernen, den Tausenderpunkt entfernen, das Komma zum Dezimalpunkt machen.
 
-**Eine fehlende Quelle ist laut Spec Abschnitt 6 kein Fehler**: ein Jahr ohne
+**Eine fehlende Quelle ist kein Fehler**: ein Jahr ohne
 konfigurierte Datei, eine nicht lesbare Datei oder eine Datei ohne auffindbare
 Pflichtspalten wird abgefangen und als :class:`~umsatzprognose.domaene.hinweis.Hinweis`
 verzeichnet, statt die ganze Prognose scheitern zu lassen. Das unterscheidet dieses
@@ -35,8 +35,8 @@ Repository bewusst vom Fail-fast in :mod:`umsatzprognose.clockodo` (dort meldet
 Daneben liest :meth:`SchulungenRepository.anmeldungsverlauf_laden` aus demselben
 Tabellenblatt eine zweite, unabhaengige Sicht: die Teilnehmerzahl je Schulungstyp und
 Monat statt des Umsatzes, siehe Moduldocstring von
-:mod:`umsatzprognose.domaene.anmeldung`. Die Kopfzeile traegt laut Spec Abschnitt 4 die
-Spalte ``TN Zahl`` zweimal - einmal als Gesamtsumme direkt vor ``Umsatz gesamt``, einmal
+:mod:`umsatzprognose.domaene.anmeldung`. Die Kopfzeile traegt die Spalte ``TN Zahl``
+zweimal - einmal als Gesamtsumme direkt vor ``Umsatz gesamt``, einmal
 in der Gruppe mit ``Max Zahl``/``Restplaetze``/``Auslastung`` fuer die
 Kapazitaetsauslastung. Verifiziert am Jahrgang 2024: beide tragen denselben Wert. Die
 namentliche Zuordnung ueber ein dict nimmt bei einem doppelten Spaltennamen ohnehin
@@ -165,8 +165,8 @@ class SchulungenRepository:
         """Der Schulungsplan zum Stichtag, ueber alle vom Horizont beruehrten Jahre.
 
         Reicht der Horizont ueber einen Jahreswechsel, werden die Dateien mehrerer
-        Jahrgaenge gelesen und ihre Termine vor der Aggregation zusammengefuehrt
-        (Spec 5.3). Ein fehlendes oder nicht lesbares Jahr wird nicht zum Fehler, siehe
+        Jahrgaenge gelesen und ihre Termine vor der Aggregation zusammengefuehrt.
+        Ein fehlendes oder nicht lesbares Jahr wird nicht zum Fehler, siehe
         Moduldocstring.
         """
         stichtag = stichtag or date.today()

@@ -1,6 +1,6 @@
 """Schulungsanmeldungen - Umsatz aus bereits geplanten oeffentlichen Schulungsterminen.
 
-**Additiv und unabhaengig von der Bestand-Simulation** (Spec 5.4): kein Monte-Carlo-Lauf,
+**Additiv und unabhaengig von der Bestand-Simulation**: kein Monte-Carlo-Lauf,
 keine Bandbreite - der Betrag je Termin steht in der externen Planungstabelle schon fest.
 Die einzige Unsicherheit ist die Pflegequalitaet der Quelle selbst, nicht ein
 stochastisches Modell. Deshalb nimmt :meth:`Schulungsplan.umsatz_je_monat` die
@@ -31,8 +31,7 @@ class Schulungstermin:
     """Ein Termin einer oeffentlichen Schulung - nur die fuer die Prognose relevanten Felder.
 
     Teilnehmerzahlen, Rabattstufen, Trainer- und Praesenz/Online-Angaben sowie der
-    Bemerkungsfreitext (u. a. ein moeglicher Stornogrund) sind nicht Teil des Modells,
-    siehe Spec Abschnitt 2.
+    Bemerkungsfreitext (u. a. ein moeglicher Stornogrund) sind nicht Teil des Modells.
     """
 
     jahr: int
@@ -59,12 +58,12 @@ class Schulungsplan:
     abbildungshinweise: tuple[Hinweis, ...] = field(default_factory=tuple)
 
     def _relevante_termine(self) -> tuple[Schulungstermin, ...]:
-        """Nur Monate ab dem Stichtagsmonat - Vergangenes ist bereits Ist-Umsatz (Spec 5.2)."""
+        """Nur Monate ab dem Stichtagsmonat - Vergangenes ist bereits Ist-Umsatz."""
         grenze = (self.stichtag.year, self.stichtag.month)
         return tuple(t for t in self.termine if t.schluessel >= grenze)
 
     def umsatz_je_monat(self, horizontmonate: Sequence[Monat]) -> list[float]:
-        """Summe von ``Umsatz gesamt`` je uebergebenem Monat, 0 ohne passenden Termin (Spec 5.1)."""
+        """Summe von ``Umsatz gesamt`` je uebergebenem Monat, 0 ohne passenden Termin."""
         summen: defaultdict[Monat, float] = defaultdict(float)
         for termin in self._relevante_termine():
             summen[termin.schluessel] += termin.umsatz
@@ -74,7 +73,7 @@ class Schulungsplan:
         return sum(self.umsatz_je_monat(horizontmonate))
 
     def hinweise(self, horizontmonate: Sequence[Monat]) -> tuple[Hinweis, ...]:
-        """Befunde aus der Abbildung, plus fehlende Horizontmonate (Spec 6).
+        """Befunde aus der Abbildung, plus fehlende Horizontmonate.
 
         Ob ein Monat fehlt, weil die Datei nicht geladen wurde, oder weil sie geladen
         ist, aber keinen Termin fuer diesen Monat enthaelt, sieht fuer den Leser gleich

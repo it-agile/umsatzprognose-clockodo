@@ -191,10 +191,10 @@ def _standard_anzeige_ab_jahr(*, heute: date | None = None) -> int:
     return max(jahr, STANDARD_AB_JAHR)
 
 
-# Die drei Schwellenwerte der Kurzarbeit-Regel (siehe domaene.kurzarbeit.Schwellenwerte,
-# spec/spec-kurzarbeit.md Abschnitt 5.5 - "Parameter von aussen") als Regler in der
-# Weboberflaeche. Anteil interne Arbeit/Quote der Organisation sind Prozentangaben -
-# volle Prozentpunkte (step=1) genuegen, ein Nachkommawert waere Schein-Praezision.
+# Die drei Schwellenwerte der Kurzarbeit-Regel (siehe domaene.kurzarbeit.Schwellenwerte)
+# als Regler in der Weboberflaeche. Anteil interne Arbeit/Quote der Organisation sind
+# Prozentangaben - volle Prozentpunkte (step=1) genuegen, ein Nachkommawert waere
+# Schein-Praezision.
 # Ueberstundenstand ist keine Prozentangabe, aber ebenfalls in vollen Stunden sinnvoll.
 # 0-100 % ist der volle, unstrittige Wertebereich; bei den Ueberstunden ist 0-40 Std.
 # grosszuegig um den Standard (14 Std.) herum bemessen, ohne den Regler unhandlich zu
@@ -537,7 +537,7 @@ async def schulungen(request: Request, ab_jahr: AbJahr = None) -> HTMLResponse:
 
 # Deckt sich mit MONATSNAMEN in notebooks/04_kurzarbeit.ipynb. Bewusst hier dupliziert
 # statt aus darstellung.umsatzhistorie importiert - der Baustein Kurzarbeit bleibt
-# unabhaengig von pandas/darstellung (Spec Abschnitt 5.8).
+# unabhaengig von pandas/darstellung.
 _KURZARBEIT_MONATSNAMEN = (
     "Januar", "Februar", "März", "April", "Mai", "Juni",
     "Juli", "August", "September", "Oktober", "November", "Dezember",
@@ -556,7 +556,7 @@ def _kurzarbeit_status_klasse(bewertung: Kurzarbeitsbewertung) -> str:
     (siehe .status-erfuellt/.status-nicht-erfuellt in basis.html), damit Text und
     Grafik dieselbe Unterscheidung erfuellt/nicht erfuellt zeigen - bewusst kein
     Gruen/Rot, weil "erfuellt" hier kein gutes Ergebnis ist (siehe
-    darstellung/gestaltung.py). Leer ohne Quote (Spec 5.6) - "keine Auswertung
+    darstellung/gestaltung.py). Leer ohne Quote - "keine Auswertung
     möglich" ist ein dritter, unentschiedener Zustand und soll nicht wie "nicht
     erfuellt" gefaerbt erscheinen."""
     if bewertung.vorbereitet is None:
@@ -580,11 +580,11 @@ async def kurzarbeit(
 ) -> HTMLResponse:
     """Deckt sich mit notebooks/04_kurzarbeit.ipynb: die Kurzarbeitsbereitschaft je Monat.
 
-    Die drei Schwellenwerte (Spec Abschnitt 5.5) sind hier ueber Regler waehlbar -
+    Die drei Schwellenwerte sind hier ueber Regler waehlbar -
     reine In-Memory-Neubewertung derselben geladenen Rohdaten (siehe Klassendocstring
     von :class:`~.cache.KurzarbeitCache`), kein erneuter Clockodo-Abruf. Vollstaendig
-    unabhaengig von :class:`DashboardCache` - kein Bezug zur Umsatzprognose (Spec
-    Abschnitt 2/7). Zeigt ausschliesslich Aggregatzahlen, keine Einzelwerte je Person.
+    unabhaengig von :class:`DashboardCache` - kein Bezug zur Umsatzprognose.
+    Zeigt ausschliesslich Aggregatzahlen, keine Einzelwerte je Person.
 
     Liefert 404, solange der Baustein per :data:`_KURZARBEIT_AKTIV` ausgeschaltet ist -
     dieselbe Bedingung, die auch den Navigationslink verbirgt (siehe ``basis.html``)

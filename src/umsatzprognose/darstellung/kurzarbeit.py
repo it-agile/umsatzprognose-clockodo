@@ -3,7 +3,7 @@
 Eigenstaendig neben :mod:`~umsatzprognose.darstellung.diagramme` (dort
 ``kurzarbeit_grafik``) - unabhaengig von
 :class:`~umsatzprognose.darstellung.dashboard.Dashboard`, wie der ganze Baustein
-Kurzarbeitsbereitschaft (siehe CLAUDE.md, ``spec/spec-kurzarbeit.md`` Abschnitt 2/7).
+Kurzarbeitsbereitschaft.
 Fasst den Notebook-Code aus ``notebooks/04_kurzarbeit.ipynb`` (Tabellen- und
 Hinweisausgabe) in zwei aufrufbare Funktionen zusammen, statt ihn im Notebook zu
 wiederholen.
@@ -24,7 +24,7 @@ from .gestaltung import KURZARBEIT_SCHWELLE_ERREICHT, KURZARBEIT_SCHWELLE_NICHT_
 # Ausgeschriebene Monatsnamen, nicht die abgekuerzten aus domaene.umsatzhistorie.
 # MONATSNAMEN (dort fuer Diagramm-Achsenbeschriftungen gedacht) - deckt sich mit
 # _KURZARBEIT_MONATSNAMEN in webapp/app.py, aus demselben Grund bewusst dupliziert statt
-# importiert: der Baustein Kurzarbeit bleibt eigenstaendig (Spec Abschnitt 5.8).
+# importiert: der Baustein Kurzarbeit bleibt eigenstaendig.
 _MONATSNAMEN = (
     "Januar", "Februar", "März", "April", "Mai", "Juni",
     "Juli", "August", "September", "Oktober", "November", "Dezember",

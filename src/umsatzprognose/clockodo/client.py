@@ -220,9 +220,8 @@ class UserReportMonthDetailV1(TypedDict):
     """Ein Monatseintrag aus ``UserReportV1.month_details``.
 
     ``diff`` ist trotz des Namens **nicht** der kumulierte Stand, sondern nur die
-    Abweichung dieses einzelnen Monats - siehe Moduldocstring von
-    :mod:`umsatzprognose.clockodo.kurzarbeit` und Abschnitt 8 von
-    ``spec/spec-kurzarbeit.md`` (live verifiziert).
+    Abweichung dieses einzelnen Monats (live verifiziert) - siehe Moduldocstring von
+    :mod:`umsatzprognose.clockodo.kurzarbeit`.
     """
 
     nr: int

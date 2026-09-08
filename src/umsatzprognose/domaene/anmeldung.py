@@ -13,7 +13,7 @@ die Vergangenheit ausschliessen wuerde. Bleibt wie der Baustein Schulungsanmeldu
 additiv: kein Einfluss auf Restvolumen, Abrufquote oder Kapazitaetsdeckel.
 
 **Keine Kategorisierung im Diagramm mehr** (eine fruehere Fassung gruppierte dort per
-von Hand gepflegter Zuordnung nach Scrum/Kanban/Sonstige, siehe Spec Abschnitt 9) - als
+von Hand gepflegter Zuordnung nach Scrum/Kanban/Sonstige) - als
 Liniendiagramm mit einer Linie je Kategorie veraltete das unbemerkt, sobald neue
 Schulungstypen dazukamen. Primaer zaehlt dort nur noch die Gesamtzahl je Monat (siehe
 :meth:`Anmeldungsverlauf.je_monat`). Dieselbe Kategorisierung bleibt aber als Drilldown

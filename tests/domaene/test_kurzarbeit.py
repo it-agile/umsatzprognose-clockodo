@@ -68,7 +68,7 @@ def test_scheitert_an_ueberstunden_ab_schwelle():
 
 
 def test_negativer_ueberstundenstand_erfuellt_die_schwelle():
-    # Minusstunden gelten ohne Sonderbehandlung als unter der Schwelle (Spec 5.3)
+    # Minusstunden gelten ohne Sonderbehandlung als unter der Schwelle
     person = _person(1, intern=40.0, extern=120.0, ueberstunden=-5.0)
 
     bewertung = bewerten([person], monat=MONAT)

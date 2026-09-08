@@ -19,10 +19,10 @@ im Web-Frontend).
 
 ## Stand
 
-Prototyp-Phase. Umgesetzt sind das Restvolumen je Projekt (Spec 5.1) und die geschätzte
-Abrufquote-Verteilung (5.2), dazu das vollständige Domänenmodell außer der Simulation –
+Prototyp-Phase. Umgesetzt sind das Restvolumen je Projekt und die geschätzte
+Abrufquote-Verteilung, dazu das vollständige Domänenmodell außer der Simulation –
 inklusive Aufteilungsschlüssel je Person und Sollarbeitszeit. Es fehlen die verfügbare
-Kapazität (5.3: Abwesenheiten, Feiertage) und die Monte-Carlo-Simulation (5.4). Das
+Kapazität (Abwesenheiten, Feiertage) und die Monte-Carlo-Simulation. Das
 Dashboard zeigt an der Stelle der Bandbreite eine Begründung an, statt eine Zahl zu
 erfinden. Der Baustein Schulungsanmeldungen ist umgesetzt.
 

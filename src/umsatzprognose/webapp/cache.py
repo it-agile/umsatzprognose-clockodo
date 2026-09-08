@@ -264,7 +264,7 @@ class KurzarbeitCache:
     ``anzahl_monate`` noch ein Wechsel der ``schwellenwerte`` (z. B. ueber einen
     Regler in der Weboberflaeche) loest deshalb einen neuen Ladevorgang bei Clockodo
     aus. Vollstaendig unabhaengig von :class:`DashboardCache` - kein Bezug zur
-    Umsatzprognose (siehe ``spec/spec-kurzarbeit.md`` Abschnitt 2/7).
+    Umsatzprognose.
     """
 
     def __init__(self, *, maximale_monate: int, ttl_sekunden: int | None = None) -> None:

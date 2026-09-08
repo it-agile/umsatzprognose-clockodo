@@ -268,7 +268,7 @@ Dashboard-Notebook auch.
   Voraussetzungen für Kurzarbeit erfüllt hätte, ausschließlich Aggregatzahlen).
   Anders als die anderen drei Seiten **kein Bezug zu `Dashboard`/`DashboardCache`** –
   ein eigenständiger `KurzarbeitCache`, weil der Baustein kein Umsatz- oder
-  Kostensignal ist, sondern ein Kapazitäts-/Personalsignal (Spec Abschnitt 2/7).
+  Kostensignal ist, sondern ein Kapazitäts-/Personalsignal.
 - **Parameter der Notebook-Ladezellen sind hier URL-Parameter, wählbar über ein
   Dropdown** statt eines freien Zahlenbereichs (via `typing.Literal` - zugleich die
   Dropdown-Optionsliste über `typing.get_args()`, siehe `HorizontMonate`,
@@ -474,9 +474,9 @@ geführt. Der kumulierte Überstundenstand lässt sich nicht direkt aus
 `/userreports` lesen: `month_details[].diff` ist live verifiziert **nicht**
 kumuliert, sondern nur die Abweichung des einzelnen Monats – `KurzarbeitRepository`
 bildet ihn deshalb selbst aus `overtime_carryover` plus der aufsummierten
-Monats-`diff`-Werte (siehe Spec Abschnitt 8). Kein Anschluss an `Dashboard` (Spec
-Abschnitt 2/7) – ein eigenständiges Notebook (`notebooks/04_kurzarbeit.ipynb`, wie
-beim Anmeldungsverlauf) und eine eigenständige Webapp-Seite (`/kurzarbeit`, eigener
+Monats-`diff`-Werte. Kein Anschluss an `Dashboard` – ein eigenständiges Notebook
+(`notebooks/04_kurzarbeit.ipynb`, wie beim Anmeldungsverlauf) und eine eigenständige
+Webapp-Seite (`/kurzarbeit`, eigener
 `KurzarbeitCache`) zeigen ausschließlich Aggregatzahlen, nie Einzelwerte je Person.
 Der ganze Baustein steht zusätzlich hinter einem eigenen Feature-Flag,
 `clockodo.kurzarbeit.kurzarbeit_aktiv()` (Umgebungsvariable `KURZARBEIT_AKTIV`,
@@ -687,5 +687,4 @@ den Prognosehorizont ab, sondern auch die bereits geladene Umsatzhistorie (Param
 
 Ein für ein Jahr fehlender Eintrag in `KOSTEN_SHEET_IDS` oder eine nicht lesbare Datei
 führt **nicht** zu einem Fehler (anders als bei Clockodo), sondern zu einem `Hinweis` an
-`Schulungsplan.abbildungshinweise` bzw. `Kostenplan.abbildungshinweise` – Spec-Vorgabe
-(Abschnitt 6 der jeweiligen Spec).
+`Schulungsplan.abbildungshinweise` bzw. `Kostenplan.abbildungshinweise`.

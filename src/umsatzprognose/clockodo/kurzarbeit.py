@@ -1,7 +1,7 @@
 """Abbildung der Rohdaten fuer den Baustein Kurzarbeitsbereitschaft auf
 :class:`~umsatzprognose.domaene.kurzarbeit.Personenmonat`.
 
-**Fachlich blind** (Spec Abschnitt 4): dieses Modul weiss nichts von Rollen,
+**Fachlich blind**: dieses Modul weiss nichts von Rollen,
 Schwellenwerten oder der Regel selbst - siehe :mod:`umsatzprognose.domaene.kurzarbeit`
 fuer beides.
 
@@ -9,12 +9,12 @@ Fuenf gleichzeitige Abrufe je Zeitfenster (``billable`` kennt nur einen Wert je 
 siehe :mod:`.auslastung`): Personen (``/v3/users``), intern (``billable=0``), extern
 (``billable=1`` und ``=2``, ueber
 :func:`~umsatzprognose.clockodo.client.stunden_je_person_und_monat` zusammengefasst)
-und ein ungefilterter Abruf zur Konsistenzpruefung (Spec Abschnitt 4/5.5). Dazu je in
+und ein ungefilterter Abruf zur Konsistenzpruefung. Dazu je in
 den angefragten Monaten vorkommendem Jahr ein ``/userreports``-Abruf.
 
 **Der kumulierte Ueberstundenstand wird selbst gebildet**, nicht direkt aus
-``month_details[].diff`` gelesen: live gegen die echte API verifiziert (siehe
-``spec/spec-kurzarbeit.md`` Abschnitt 8), ist ``diff`` dort **nicht** kumuliert,
+``month_details[].diff`` gelesen: live gegen die echte API verifiziert, ist ``diff``
+dort **nicht** kumuliert,
 sondern nur die Abweichung des einzelnen Monats. Der Stand zum Ende eines Zielmonats
 ist deshalb ``overtime_carryover`` (Saldo zum Jahresbeginn) plus die Summe aller
 ``month_details[].diff``-Werte von Monat 1 bis einschliesslich des Zielmonats -
@@ -97,8 +97,8 @@ class KurzarbeitRepository:
     async def laden_async(
         self, *, stichtag: date, anzahl_monate: int = 1, fortschritt: Fortschritt | None = None
     ) -> dict[Monat, tuple[Personenmonat, ...]]:
-        """Die letzten ``anzahl_monate`` **abgeschlossenen** Monate (Spec 5.7 - der
-        laufende Monat wird nie bewertet).
+        """Die letzten ``anzahl_monate`` **abgeschlossenen** Monate - der laufende
+        Monat wird nie bewertet.
 
         ``fortschritt``, sofern angegeben, meldet sich je einem der fuenf
         gleichzeitigen Zweige (Personen, interne/abrechenbare/fakturierte Stunden,
@@ -180,8 +180,8 @@ class KurzarbeitRepository:
     ) -> dict[Monat, tuple[Personenmonat, ...]]:
         """Baut je Person aus ``/v3/users`` und je angefragtem Monat einen
         :class:`Personenmonat` - unabhaengig davon, ob ueberhaupt Stunden gebucht
-        wurden (Spec 5.6 setzt genau das voraus, um "keine gebuchte Stunde" von
-        "nicht in der Antwort" unterscheiden zu koennen)."""
+        wurden (um "keine gebuchte Stunde" von "nicht in der Antwort" unterscheiden
+        zu koennen)."""
         interne_stunden = stunden_je_person_und_monat(intern)
         ueberstunden = _ueberstundenstaende(userreports_nach_jahr, monate=monate)
 
@@ -208,7 +208,7 @@ class KurzarbeitRepository:
 
 def _abgeschlossene_monate(stichtag: date, anzahl: int) -> list[Monat]:
     """``anzahl`` abgeschlossene Monate bis einschliesslich des Vormonats des
-    Stichtags, aelteste zuerst - der Stichtagsmonat selbst wird nie bewertet (5.7)."""
+    Stichtags, aelteste zuerst - der Stichtagsmonat selbst wird nie bewertet."""
     letzter = vormonat(stichtag.year, stichtag.month)
     start = aus_ordnung(ordnung(*letzter) - anzahl + 1)
     return monatsfolge(start, anzahl)
@@ -287,10 +287,10 @@ def kurzarbeit_aktiv(*, use_dotenv: bool = True) -> bool:
 
 
 def rollenzuordnung_automatisch() -> Rollenzuordnung:
-    """Aus der passenden Quelle: Colab-Secrets in Colab, sonst ``.env`` (Spec 5.2).
+    """Aus der passenden Quelle: Colab-Secrets in Colab, sonst ``.env``.
 
     Die Namensliste ist eine personenbezogene Angabe und wird deshalb nie im
-    Repository gefuehrt (Spec 5.2), sondern zur Laufzeit gelesen.
+    Repository gefuehrt, sondern zur Laufzeit gelesen.
     """
     return rollenzuordnung_aus_colab_secrets() if in_colab() else rollenzuordnung_aus_umgebung()
 
