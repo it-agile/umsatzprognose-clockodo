@@ -253,7 +253,7 @@ def _anfrage_query(request: Request) -> str:
 
 
 def _antwort(
-    request: Request, *, seite: str, name: str, stichtag: date | None, **kontext
+    request: Request, *, seite: str, name: str, stichtag: date | None, **kontext: object
 ) -> HTMLResponse:
     return _templates.TemplateResponse(
         request=request,

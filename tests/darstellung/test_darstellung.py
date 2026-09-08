@@ -110,17 +110,13 @@ def dashboard_repository_stubs(monkeypatch):
         async def laden_async(self, *args, **kwargs):
             return ()
 
+    monkeypatch.setattr(BestandRepository, "mit_automatischen_zugangsdaten", _StubBestandRepository)
     monkeypatch.setattr(
-        BestandRepository, "mit_automatischen_zugangsdaten", lambda: _StubBestandRepository()
+        SchulungenRepository, "mit_automatischen_zugangsdaten", _StubSchulungenRepository
     )
+    monkeypatch.setattr(KostenRepository, "mit_automatischen_zugangsdaten", _StubKostenRepository)
     monkeypatch.setattr(
-        SchulungenRepository, "mit_automatischen_zugangsdaten", lambda: _StubSchulungenRepository()
-    )
-    monkeypatch.setattr(
-        KostenRepository, "mit_automatischen_zugangsdaten", lambda: _StubKostenRepository()
-    )
-    monkeypatch.setattr(
-        AuslastungRepository, "mit_automatischen_zugangsdaten", lambda: _StubAuslastungRepository()
+        AuslastungRepository, "mit_automatischen_zugangsdaten", _StubAuslastungRepository
     )
     return bestand_aufrufe
 
@@ -1470,17 +1466,13 @@ def test_dashboard_laden_verdrahtet_alle_vier_repositories(monkeypatch):
         async def laden_async(self, *args, **kwargs):
             return ()
 
+    monkeypatch.setattr(BestandRepository, "mit_automatischen_zugangsdaten", _StubBestandRepository)
     monkeypatch.setattr(
-        BestandRepository, "mit_automatischen_zugangsdaten", lambda: _StubBestandRepository()
+        SchulungenRepository, "mit_automatischen_zugangsdaten", _StubSchulungenRepository
     )
+    monkeypatch.setattr(KostenRepository, "mit_automatischen_zugangsdaten", _StubKostenRepository)
     monkeypatch.setattr(
-        SchulungenRepository, "mit_automatischen_zugangsdaten", lambda: _StubSchulungenRepository()
-    )
-    monkeypatch.setattr(
-        KostenRepository, "mit_automatischen_zugangsdaten", lambda: _StubKostenRepository()
-    )
-    monkeypatch.setattr(
-        AuslastungRepository, "mit_automatischen_zugangsdaten", lambda: _StubAuslastungRepository()
+        AuslastungRepository, "mit_automatischen_zugangsdaten", _StubAuslastungRepository
     )
 
     dashboard = Dashboard.laden(stichtag=STICHTAG)

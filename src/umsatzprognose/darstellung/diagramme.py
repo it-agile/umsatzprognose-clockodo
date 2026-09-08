@@ -203,6 +203,34 @@ def umsatzverlauf(
                 yshift=10,
                 font={"color": TINTE_ZWEITRANGIG, "size": 11},
             )
+    _umsatzverlauf_legende(
+        fig,
+        laufender=laufender,
+        horizont_gebucht=horizont_gebucht,
+        prognose=prognose,
+        horizont_schulung=horizont_schulung,
+        kosten_balken=kosten_balken,
+    )
+
+    achsen(fig)
+    fig.update_layout(bargap=0.3, bargroupgap=0.08, barcornerradius=4, barmode="group")
+    fig.update_yaxes(tickformat=",.0f", ticksuffix=" €", rangemode="tozero")
+    _tickangle_setzen(fig)
+    return fig
+
+
+def _umsatzverlauf_legende(
+    fig: go.Figure,
+    *,
+    laufender: Monatsumsatz | None,
+    horizont_gebucht: Sequence[float],
+    prognose: Prognose | None,
+    horizont_schulung: Sequence[float],
+    kosten_balken: KostenBalkenErgebnis,
+) -> None:
+    """Legendeneintraege fuer :func:`umsatzverlauf`, ausgelagert um dessen Komplexitaet
+    innerhalb der konfigurierten mccabe-Grenze zu halten - reine Fortsetzung des
+    Balkenaufbaus, kein eigenstaendig wiederverwendeter Baustein."""
     _legendeintrag(fig, "Abgerechnet", SERIE)
     if laufender or any(horizont_gebucht):
         _legendeintrag(fig, "Nicht abgerechnet", SERIE_HELL)
@@ -218,12 +246,6 @@ def umsatzverlauf(
         _legendeintrag(fig, "Ergebnis (positiv)", ERGEBNIS_POSITIV)
         _legendeintrag(fig, "Ergebnis (negativ)", ERGEBNIS_NEGATIV)
     _horizontale_legende(fig)
-
-    achsen(fig)
-    fig.update_layout(bargap=0.3, bargroupgap=0.08, barcornerradius=4, barmode="group")
-    fig.update_yaxes(tickformat=",.0f", ticksuffix=" €", rangemode="tozero")
-    _tickangle_setzen(fig)
-    return fig
 
 
 def _legendeintrag(fig: go.Figure, name: str, farbe: str, *, deckkraft: float = 1.0) -> None:

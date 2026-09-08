@@ -34,6 +34,7 @@ if TYPE_CHECKING:
         Monatsumsatz,
         Prognose,
         Schulungsplan,
+        Umsatzhistorie,
     )
 
 from umsatzprognose.clockodo import AuslastungRepository, BestandRepository, gleichzeitig, synchron
@@ -728,7 +729,7 @@ class Dashboard:
             hinweise += self.kostenplan.hinweise(monate)
         return tabellen.hinweistabelle(hinweise, max_anzahl_betroffen=max_anzahl_betroffen)
 
-    def _historie(self, *, anzahl: int | None = STANDARD_HISTORIE_MONATE):
+    def _historie(self, *, anzahl: int | None = STANDARD_HISTORIE_MONATE) -> Umsatzhistorie:
         """Die Umsatzhistorie, standardmaessig auf :data:`STANDARD_HISTORIE_MONATE`
         begrenzt - ``anzahl=None`` liefert die gesamte geladene Historie."""
         historie = self.bestand.umsatzhistorie

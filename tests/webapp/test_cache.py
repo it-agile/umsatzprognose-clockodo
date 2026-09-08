@@ -330,7 +330,7 @@ def kurzarbeit_ladezaehler(monkeypatch):
         "mit_automatischen_zugangsdaten",
         classmethod(lambda cls: cls.__new__(cls)),  # type: ignore[call-overload]
     )
-    monkeypatch.setattr(webapp_cache, "rollenzuordnung_automatisch", lambda: Rollenzuordnung())
+    monkeypatch.setattr(webapp_cache, "rollenzuordnung_automatisch", Rollenzuordnung)
     return aufrufe, fertig
 
 
@@ -371,7 +371,7 @@ def test_kurzarbeit_cache_zeigt_zwischenschritte_waehrend_des_ladens(monkeypatch
         "mit_automatischen_zugangsdaten",
         classmethod(lambda cls: cls.__new__(cls)),  # type: ignore[call-overload]
     )
-    monkeypatch.setattr(webapp_cache, "rollenzuordnung_automatisch", lambda: Rollenzuordnung())
+    monkeypatch.setattr(webapp_cache, "rollenzuordnung_automatisch", Rollenzuordnung)
     cache = KurzarbeitCache(maximale_monate=12, ttl_sekunden=60)
 
     async def ablauf():
@@ -448,7 +448,7 @@ def test_kurzarbeit_cache_wechsel_der_anzahl_monate_loest_keinen_neuen_ladevorga
         "mit_automatischen_zugangsdaten",
         classmethod(lambda cls: cls.__new__(cls)),  # type: ignore[call-overload]
     )
-    monkeypatch.setattr(webapp_cache, "rollenzuordnung_automatisch", lambda: Rollenzuordnung())
+    monkeypatch.setattr(webapp_cache, "rollenzuordnung_automatisch", Rollenzuordnung)
     cache = KurzarbeitCache(maximale_monate=12, ttl_sekunden=60)
 
     async def ablauf():

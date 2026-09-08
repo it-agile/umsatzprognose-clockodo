@@ -120,15 +120,22 @@ line-length = 100
 src = ["src", "tests"]
 
 [tool.ruff.lint]
-select = ["C40", "E", "F", "I", "N", "UP", "B", "SIM", "TCH", "RUF"]
+select = [
+    "C40", "C90", "E", "F", "I", "N", "UP", "B", "SIM", "TCH", "RUF",
+    "PERF", "RET", "PIE", "FBT", "SLF", "PLW0108",
+]  # fmt: skip
 ignore = []
-fixable = ["A", "B", "C", "D", "E", "F", "I"]
+fixable = ["B", "C", "E", "F", "I"]
 unfixable = []
 dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
 mccabe.max-complexity = 10
 
 [tool.ruff.lint.per-file-ignores]
 "*.ipynb" = ["E402"]
+# Tests greifen bewusst auf private Hilfsfunktionen des jeweils gespiegelten
+# src-Moduls zu (siehe CLAUDE.md, Abschnitt "Aufbau", tests/-Struktur) - SLF001
+# soll nur Zugriffe *zwischen* den sechs Bausteinen verhindern, nicht das.
+"tests/*" = ["SLF001"]
 
 [tool.ruff.format]
 docstring-code-format = true
@@ -150,6 +157,15 @@ no_implicit_reexport = true
 strict_equality = true
 show_error_codes = true
 warn_unused_configs = true
+
+[[tool.mypy.overrides]]
+# Nur fuer das Paket selbst, nicht fuer tests/: dort erzwingen vollstaendige
+# Signaturen ueberwiegend Boilerplate an pytest-Fixtures/Mocks ohne Mehrwert -
+# die Protocol/DIP-Absicherung, die CLAUDE.md mypy zuschreibt, gilt dem
+# Produktivcode.
+module = "umsatzprognose.*"
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

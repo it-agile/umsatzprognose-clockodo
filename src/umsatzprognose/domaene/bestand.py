@@ -65,7 +65,7 @@ class Bestand:
     def kunden(self) -> tuple[Kunde, ...]:
         """Alle Kunden mit mindestens einem Projekt, nach Namen sortiert."""
         gefunden = {p.kunde.id: p.kunde for p in self.projekte if p.kunde}
-        return tuple(sorted(gefunden.values(), key=lambda k: str(k)))
+        return tuple(sorted(gefunden.values(), key=str))
 
     @property
     def aktive_projekte(self) -> tuple[Projekt, ...]:
