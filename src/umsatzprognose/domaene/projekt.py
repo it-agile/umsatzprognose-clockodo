@@ -25,7 +25,7 @@ from decimal import Decimal
 NULL_EURO = Decimal("0")
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class Gesamtbudget:
     """Der Normalfall: ``betrag`` ist ein Euro-Gesamtbudget."""
 
@@ -33,7 +33,7 @@ class Gesamtbudget:
     hart: bool = False
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class StundenBudget:
     """``amount`` ist eine Stundenzahl, kein Euro-Betrag.
 
@@ -44,7 +44,7 @@ class StundenBudget:
     stunden: float
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class IntervallBudget:
     """Budget je Intervall statt Gesamtbudget.
 
@@ -56,14 +56,14 @@ class IntervallBudget:
     intervall: int
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class TeilprojektBudget:
     """Das Budget stammt aus Teilprojekten."""
 
     betrag: Decimal | None = None
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class KeinBudget:
     """Kein Budget hinterlegt."""
 
@@ -107,7 +107,7 @@ def verwertbar(budget: Budget) -> bool:
     return auftragsvolumen(budget) is not None
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class Projekt:
     """Ein beauftragtes Projekt mit Volumen, Verbrauch und Beteiligten."""
 

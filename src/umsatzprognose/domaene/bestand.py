@@ -19,7 +19,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable, Mapping
+    from collections.abc import Callable, Iterable, Mapping
     from datetime import date
 
     import numpy as np
@@ -43,7 +43,7 @@ from .simulation import simulieren
 from .zahlen import euro
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class Bestand:
     """Alle Projekte, Personen und Umsaetze zu einem Stichtag.
 
@@ -119,11 +119,8 @@ class Bestand:
         :attr:`~umsatzprognose.domaene.projekt.Projekt.effektiver_stundensatz`); wer in
         ``werte`` nicht genannt ist, bleibt unverändert.
         """
-        aktualisiert = tuple(
-            replace(p, stundensatz_uebersteuerung=werte[_projekt_schluessel(p)])
-            if _projekt_schluessel(p) in werte
-            else p
-            for p in self.projekte
+        aktualisiert = _mit_uebersteuerung(
+            self.projekte, werte, lambda p, wert: replace(p, stundensatz_uebersteuerung=wert)
         )
         return replace(self, projekte=aktualisiert)
 
@@ -140,11 +137,8 @@ class Bestand:
         z. B. ``{"Beispielprojekt": (2026, 12)}``. Wer in ``werte`` nicht genannt
         ist, bleibt unverändert.
         """
-        aktualisiert = tuple(
-            replace(p, verbrauchsplan_zielmonat=werte[_projekt_schluessel(p)])
-            if _projekt_schluessel(p) in werte
-            else p
-            for p in self.projekte
+        aktualisiert = _mit_uebersteuerung(
+            self.projekte, werte, lambda p, wert: replace(p, verbrauchsplan_zielmonat=wert)
         )
         return replace(self, projekte=aktualisiert)
 
@@ -257,6 +251,23 @@ def _projekt_schluessel(p: Projekt) -> str:
     """Derselbe Bezeichner wie in der Hinweistabelle: Projektname, sonst die ID als
     Text - gemeinsamer Schlüssel für die ``mit_*_uebersteuerungen``-Methoden."""
     return p.name if p.name else str(p.id)
+
+
+def _mit_uebersteuerung[V](
+    projekte: tuple[Projekt, ...],
+    werte: Mapping[str, V],
+    ersetzen: Callable[[Projekt, V], Projekt],
+) -> tuple[Projekt, ...]:
+    """Gemeinsamer Kern von ``mit_stundensatz_uebersteuerungen`` und
+    ``mit_verbrauchsplan_uebersteuerungen``: für jedes über :func:`_projekt_schluessel`
+    in ``werte`` benannte Projekt ersetzt ``ersetzen`` das jeweilige Feld, unbenannte
+    Projekte bleiben unverändert. ``ersetzen`` (statt eines Feldnamens als String)
+    hält die Typprüfung des jeweiligen ``dataclasses.replace()``-Aufrufs an der
+    Aufrufstelle scharf."""
+    return tuple(
+        ersetzen(p, werte[_projekt_schluessel(p)]) if _projekt_schluessel(p) in werte else p
+        for p in projekte
+    )
 
 
 def _hinweis_wenn(betroffene_projekte: Iterable[Projekt], text: str) -> Hinweis | None:

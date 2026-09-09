@@ -17,7 +17,7 @@ from dataclasses import dataclass
 from decimal import Decimal
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class Projektanteil:
     """Geleistete Stunden und erzielter Umsatz einer Person auf einem Projekt."""
 

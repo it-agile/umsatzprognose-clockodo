@@ -176,7 +176,8 @@ class MitarbeiterRepository:
         )
         return je_person, hinweise
 
-    def _abwesenheiten(self, abwesenheiten: list[AbsenceV4]) -> dict[int, list[Abwesenheit]]:
+    @staticmethod
+    def _abwesenheiten(abwesenheiten: list[AbsenceV4]) -> dict[int, list[Abwesenheit]]:
         """Rohe Abwesenheiten zu Personen - ungefiltert nach Typ und Status."""
         je_person: dict[int, list[Abwesenheit]] = defaultdict(list)
         for eintrag in abwesenheiten:
@@ -192,7 +193,8 @@ class MitarbeiterRepository:
             )
         return je_person
 
-    def _feiertage(self, eintraege: list[UsersNonbusinessDayV2]) -> dict[int, list[Feiertag]]:
+    @staticmethod
+    def _feiertage(eintraege: list[UsersNonbusinessDayV2]) -> dict[int, list[Feiertag]]:
         """Feiertage zu Personen - je Eintrag schon eine Person mit ihren Tagen.
 
         Ein Eintrag je Person und Jahr (``users_id`` und ``days``); ueber mehrere Jahre

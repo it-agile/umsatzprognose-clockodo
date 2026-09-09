@@ -26,7 +26,7 @@ from decimal import Decimal
 from .umsatzhistorie import betrag_je_monat, hinweise_mit_fehlenden_monaten
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class Schulungstermin:
     """Ein Termin einer oeffentlichen Schulung - nur die fuer die Prognose relevanten Felder.
 
@@ -43,7 +43,7 @@ class Schulungstermin:
         return (self.jahr, self.monat)
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class Schulungsplan:
     """Alle geladenen Schulungstermine zu einem Stichtag.
 

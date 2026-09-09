@@ -82,7 +82,7 @@ class Prognose(Protocol):
         ...
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class NochKeinePrognose:
     """Es gibt keine Prognose, und zwar aus einem benennbaren Grund.
 

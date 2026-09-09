@@ -106,7 +106,7 @@ def _traegt_noch_bei(projekt: Projekt, monat: Monat) -> bool:
     return (abschluss.year, abschluss.month) >= monat
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class MonteCarloPrognose:
     """Das Ergebnis der Monte-Carlo-Simulation.
 
@@ -189,7 +189,7 @@ def _verbrauchsplan(
     return hat_plan, plan_betrag
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class _Aufbau:
     """Die laufunabhaengigen Groessen vor der Monte-Carlo-Schleife - einmal aus den
     Fachobjekten gelesen statt bei jedem der ``laeufe`` Laeufe neu, siehe

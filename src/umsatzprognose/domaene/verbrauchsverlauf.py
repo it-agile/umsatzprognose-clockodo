@@ -33,7 +33,7 @@ from .abrufquote import Abrufquote
 from .umsatzhistorie import Monatsumsatz
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class Verbrauchsverlauf:
     """Die Monate eines Projekts mit Buchung, chronologisch und ohne Doppelte.
 

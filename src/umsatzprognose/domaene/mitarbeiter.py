@@ -60,7 +60,7 @@ TYPEN_KRANKHEIT = frozenset({4, 5, 11, 12, 15})
 TYPEN_ABWESEND = frozenset({TYP_URLAUB}) | TYPEN_KRANKHEIT
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class Abwesenheit:
     """Eine geplante Abwesenheit einer Person, aus ``/v4/absences``.
 
@@ -107,7 +107,7 @@ class Abwesenheit:
         return self.gilt_als_abwesend and self.status in STATUS_GEPLANT
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class Feiertag:
     """Ein Feiertag, der fuer eine Person gilt, aus ``/v2/usersNonbusinessDays``.
 
@@ -127,7 +127,7 @@ class Feiertag:
     name: str | None = None
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class Wochenarbeitszeit:
     """Vereinbarte Stunden je Wochentag, gueltig in einem Zeitraum.
 
@@ -151,7 +151,7 @@ class Wochenarbeitszeit:
         return self.gueltig_bis is None or tag <= self.gueltig_bis
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class Mitarbeiter:
     """Eine Person, die Zeit bucht."""
 

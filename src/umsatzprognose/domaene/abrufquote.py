@@ -25,7 +25,7 @@ import numpy as np
 from .umsatzhistorie import MONATSNAMEN
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class Abrufquote:
     """Eine einzelne Beobachtung: ein Projekt in einem Monat.
 
@@ -74,7 +74,7 @@ class Abrufquote:
         return f"{self.projekt.bezeichnung}, {MONATSNAMEN[self.monat - 1]} {self.jahr}"
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True)  # kein slots=True: cached_property unten braucht ein Instanz-__dict__
 class Abrufquotenverteilung:
     """Die empirische Verteilung der Abrufquote ueber alle Projekt-Monate.
 

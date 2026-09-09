@@ -30,12 +30,12 @@ from decimal import Decimal
 from .umsatzhistorie import betrag_je_monat, hinweise_mit_fehlenden_monaten
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class Geschaetzt:
     """Noch keine Erfassung nachgezogen - die Pauschale gilt unveraendert."""
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class Erfasst:
     """Die tatsaechlich erfassten Allgemeinkosten, aus den ``AB {Monat}``-Reitern."""
 
@@ -48,7 +48,7 @@ class Erfasst:
 Kostenerfassung = Geschaetzt | Erfasst
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class Kostenposten:
     """Die Kosten eines Kalendermonats laut Kostenplanungstabelle.
 
@@ -83,7 +83,7 @@ class Kostenposten:
         return (self.jahr, self.monat)
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class Kostenplan:
     """Alle geladenen Kostenposten.
 

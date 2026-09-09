@@ -47,7 +47,7 @@ _SCHEITERT_INTERN = "scheitert_intern"
 _SCHEITERT_UEBERSTUNDEN = "scheitert_ueberstunden"
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class Personenmonat:
     """Die fuer die Regel noetigen Rohdaten einer Person in einem Kalendermonat.
 
@@ -96,7 +96,7 @@ class Personenmonat:
         return self.interne_stunden + self.externe_stunden + self.unklassifizierte_stunden
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class Rollenzuordnung:
     """Personen, die nie in den Zaehler kurzarbeitsfaehiger Personen eingehen.
 
@@ -112,7 +112,7 @@ class Rollenzuordnung:
         return name is not None and name in self.namen
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class Schwellenwerte:
     """Die drei Schwellenwerte der Regel, als Parameter von aussen."""
 
@@ -121,7 +121,7 @@ class Schwellenwerte:
     quote_organisation: float = 0.30
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class Kurzarbeitsbewertung:
     """Das Ergebnis von :func:`bewerten` fuer einen Kalendermonat - ausschliesslich
     Aggregatzahlen, keine personenbezogenen Einzelwerte.

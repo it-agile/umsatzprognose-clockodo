@@ -21,7 +21,7 @@ if TYPE_CHECKING:
 from dataclasses import dataclass
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class Auslastungsmonat:
     """Abrechenbare Stunden einer Person in einem Kalendermonat."""
 
@@ -45,7 +45,7 @@ class Auslastungsmonat:
         return None if verfuegbar <= 0 else self.abrechenbare_stunden / verfuegbar
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class Auslastungssumme:
     """Abrechenbare und verfuegbare Stunden einer Person, aufsummiert ueber mehrere Monate.
 

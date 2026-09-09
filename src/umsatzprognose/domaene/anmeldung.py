@@ -72,7 +72,7 @@ def _teilnehmerzahl_je[K](
     return summen
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class Anmeldung:
     """Teilnehmerzahl eines Schulungstyps in einem Monat - eine Zeile der Quelltabelle."""
 
@@ -86,7 +86,7 @@ class Anmeldung:
         return (self.jahr, self.monat)
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class Anmeldungsverlauf:
     """Alle geladenen Anmeldungen ueber den abgedeckten Zeitraum.
 

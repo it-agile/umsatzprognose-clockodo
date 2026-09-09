@@ -92,7 +92,7 @@ def betrag_je_monat[Posten: _MitSchluessel](
     return [summen[monat] for monat in monate]
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class Monatsumsatz:
     """Umsatz und geleistete Stunden eines Kalendermonats."""
 
@@ -117,7 +117,7 @@ class Monatsumsatz:
         return (tag.year, tag.month) == self.schluessel
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class Umsatzhistorie:
     """Eine lueckenlose Folge von Monatsumsaetzen bis zum Stichtag."""
 
