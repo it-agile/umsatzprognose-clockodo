@@ -21,7 +21,8 @@
     ) }}
 </form>
 {{ umsatzverlauf | safe }}
-{{ umsatztabelle | safe }}
+<h2>Monatstabelle</h2>
+<div class="tabelle-wrapper">{{ umsatztabelle | safe }}</div>
 
 <label>Anzahl Projekte mit offenem Budget
     <input type="range" name="restvolumen_top" min="1" max="{{ restvolumen_top_max }}"
@@ -45,5 +46,5 @@
     "Filter zurücksetzen",
     "dashboard-form"
 ) }}
-{{ projekte_ohne_budget | safe }}
+<div class="tabelle-wrapper">{{ projekte_ohne_budget | safe }}</div>
 {% endblock %}

@@ -2,19 +2,31 @@
 <html lang="de">
 <head>
     <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Umsatzprognose</title>
     <link rel="icon" type="image/png" href="/static/favicon.png" />
     {% block kopf %}{% endblock %}
     <style>
         body { font-family: sans-serif; margin: 2rem; color: #222; }
         h1 { font-size: 1.1rem; color: #555; font-weight: normal; }
+        .skip-link {
+            position: absolute; left: -9999px; top: 0; padding: 0.5rem 1rem;
+            background: #fff; border: 1px solid #333; z-index: 1;
+        }
+        .skip-link:focus { left: 0.5rem; top: 0.5rem; }
         nav { margin-bottom: 1.5rem; border-bottom: 1px solid #ddd; padding-bottom: 0.5rem; }
         nav a { margin-right: 1.5rem; text-decoration: none; color: #333; font-weight: 600; }
-        nav a.aktiv { color: #0a5; border-bottom: 2px solid #0a5; }
+        /* #0a7a3d statt des urspruenglichen helleren Gruens - Kontrast auf Weiss
+           sonst nur ca. 3,05:1, unter dem WCAG-AA-Minimum von 4,5:1 fuer normal
+           grossen Text; diese Abstufung liegt bei ca. 5,4:1. */
+        nav a.aktiv { color: #0a7a3d; border-bottom: 2px solid #0a7a3d; }
         table { border-collapse: collapse; margin: 1rem 0 2rem; }
         th, td { padding: 0.3rem 0.8rem; text-align: right; border-bottom: 1px solid #eee; }
         th:first-child, td:first-child { text-align: left; }
         th { color: #555; font-weight: 600; }
+        /* Umhuellt jede eingebettete pandas-Tabelle - scrollt bei schmalem Viewport
+           nur die Tabelle selbst horizontal, statt die ganze Seite zu sprengen. */
+        .tabelle-wrapper { overflow-x: auto; }
         .parameter { margin-bottom: 1rem; }
         .parameter label { margin-right: 1.5rem; color: #555; }
         .parameter output { display: inline-block; min-width: 3.5em; }
@@ -53,6 +65,7 @@
     </style>
 </head>
 <body>
+    <a class="skip-link" href="#hauptinhalt">Zum Inhalt springen</a>
     <nav>
         <a href="/{{ anfrage_query }}" class="{{ 'aktiv' if aktive_seite == 'start' }}">Datencheck</a>
         <a href="/dashboard{{ anfrage_query }}" class="{{ 'aktiv' if aktive_seite == 'dashboard' }}">Dashboard</a>
@@ -61,7 +74,9 @@
         <a href="/kurzarbeit{{ anfrage_query }}" class="{{ 'aktiv' if aktive_seite == 'kurzarbeit' }}">Kurzarbeit</a>
         {% endif %}
     </nav>
-    <h1>{% if stichtag %}Stand der Auswertung: {{ stichtag.strftime("%d.%m.%Y") }}{% else %}Daten werden geladen …{% endif %}</h1>
-    {% block inhalt %}{% endblock %}
+    <main id="hauptinhalt">
+        <h1>{% if stichtag %}Stand der Auswertung: {{ stichtag.strftime("%d.%m.%Y") }}{% else %}Daten werden geladen …{% endif %}</h1>
+        {% block inhalt %}{% endblock %}
+    </main>
 </body>
 </html>

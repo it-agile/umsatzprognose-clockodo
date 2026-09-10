@@ -3,7 +3,10 @@
 <meta http-equiv="refresh" content="2">
 {% endblock %}
 {% block inhalt %}
-<p class="ladehinweis">Die Daten werden im Hintergrund geladen - diese Seite aktualisiert sich alle paar Sekunden von selbst.</p>
+<p class="ladehinweis">
+    Die Daten werden im Hintergrund geladen - diese Seite aktualisiert sich alle paar
+    Sekunden von selbst. <a href="{{ request.url.path }}{{ anfrage_query }}">Jetzt neu laden</a>
+</p>
 {% if fortschritt %}
 <ul class="fortschritt">
     {% for zeile in fortschritt %}
