@@ -32,7 +32,7 @@
     </label>
 </form>
 <details class="regler-abschnitt" {{ "open" if filter_abweichend }}>
-    <summary>Filter für Schulungen <span class="zusammenfassung">(optional)</span></summary>
+    <summary>Filter für Schulungen</summary>
     <div class="filter-spalten">
         {{ filter_dropdown("kategorie_filter", "Kategorie", kategorie_optionen, kategorie_filter) }}
         {{ filter_dropdown("schulung_filter", "Schulungen", schulung_optionen, schulung_filter) }}
