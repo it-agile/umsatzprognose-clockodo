@@ -195,15 +195,16 @@ class Mitarbeiter:
         Wochenarbeitszeit - beides ist von hier aus nicht unterscheidbar und muss es
         auch nicht sein: in beiden Faellen gibt es nichts abzuziehen.
         """
-        abzug = 0.0
-        for feiertag in self.feiertage:
-            if feiertag.datum.year != jahr or feiertag.datum.month != monat:
-                continue
-            arbeitszeit = self.wochenarbeitszeit(feiertag.datum)
-            if arbeitszeit is None:
-                continue
-            abzug += arbeitszeit.stunden_je_wochentag[feiertag.datum.weekday()]
-        return abzug
+        return sum(
+            (
+                arbeitszeit.stunden_je_wochentag[feiertag.datum.weekday()]
+                for feiertag in self.feiertage
+                if feiertag.datum.year == jahr
+                and feiertag.datum.month == monat
+                and (arbeitszeit := self.wochenarbeitszeit(feiertag.datum)) is not None
+            ),
+            0.0,
+        )
 
     def verfuegbare_kapazitaet(self, jahr: int, monat: int) -> float:
         """Verfuegbare Kapazitaet in diesem Monat.
@@ -235,11 +236,12 @@ class Mitarbeiter:
             if abwesenheit.beginnt <= tag <= abwesenheit.endet
         }
 
-        stunden = 0.0
-        for tag in alle_tage:
-            if tag in belegte_tage:
-                continue
-            arbeitszeit = self.wochenarbeitszeit(tag)
-            if arbeitszeit is not None:
-                stunden += arbeitszeit.stunden_je_wochentag[tag.weekday()]
-        return stunden
+        return sum(
+            (
+                arbeitszeit.stunden_je_wochentag[tag.weekday()]
+                for tag in alle_tage
+                if tag not in belegte_tage
+                and (arbeitszeit := self.wochenarbeitszeit(tag)) is not None
+            ),
+            0.0,
+        )

@@ -81,6 +81,37 @@ def standard_ttl_sekunden() -> int:
         return STANDARD_TTL_SEKUNDEN
 
 
+# Dieselben fuenf fertigen Statuszeilen wie in scripts/wochenbericht.py/
+# scripts/diagramme_exportieren.py/notebooks/setup.py (dort ``_ABSCHLUSS_MUSTER``) -
+# nur sie werden an die Ladeseite durchgereicht, nicht die Zwischenschritte dazwischen
+# (Bestands fuenf gleichzeitige Zweige, Kostenplans Jahr-fuer-Jahr-Meldungen,
+# Verlaufscache-Meldungen). CLI/Notebooks fangen diese Zwischenschritte ueber einen
+# live aktualisierten Balken ab, der am Ende durch die fertige Statuszeile ersetzt
+# wird; die Weboberflaeche kennt keinen solchen Balken (kein dauerhaft offener Kanal
+# zum Browser, siehe Moduldocstring) und wuerde ohne diesen Filter jeden
+# Zwischenschritt als eigene, dauerhaft stehenbleibende Zeile zeigen - ausfuehrlicher
+# als die bewusst zusammengefasste Anzeige dort, und damit inkonsistent zu ihr.
+_ABSCHLUSS_MUSTER = (
+    "Bestand geladen",
+    "Schulung(en) geladen",
+    "Kostenprognose geladen",
+    "Auslastungsmonat(e) geladen",
+    "Simulation abgeschlossen",
+)
+
+
+def _nur_abschluesse(fortschritt: Fortschritt) -> Fortschritt:
+    """Filtert einen ``fortschritt``-Callback auf die finalen Statuszeilen aus
+    :data:`_ABSCHLUSS_MUSTER` - fuer denselben Informationsstand wie die
+    Fortschrittsbalken in CLI-Scripts und Notebooks, siehe dort."""
+
+    def _gefiltert(text: str) -> None:
+        if any(muster in text for muster in _ABSCHLUSS_MUSTER):
+            fortschritt(text)
+
+    return _gefiltert
+
+
 class _TTLCache[K: Hashable, V]:
     """Ein Wert je Schluessel, erneuert nach Ablauf der TTL - der Kern beider Caches.
 
@@ -185,13 +216,20 @@ class DashboardCache:
 
     def anstossen(self, *, horizont_monate: int, auslastung_monate: int) -> None:
         async def laden(fortschritt: Fortschritt) -> Dashboard:
+            melden = _nur_abschluesse(fortschritt)
             dashboard = await Dashboard.laden_async(
                 stichtag=date.today(),
                 horizont_monate=horizont_monate,
                 auslastung_monate=auslastung_monate,
-                fortschritt=fortschritt,
+                fortschritt=melden,
             )
-            dashboard.simuliere(monate=horizont_monate, fortschritt=fortschritt)
+            # simuliere_async() statt simuliere(): ein direkter, blockierender Aufruf
+            # wuerde den einzigen Event-Loop-Thread des Servers fuer die Dauer der
+            # Monte-Carlo-Rechnung einfrieren - saemtliche anderen gleichzeitigen
+            # Anfragen (auch die der anderen beiden Caches, siehe _vorladen() in
+            # webapp/app.py) muessten darauf warten, statt wirklich gleichzeitig zu
+            # laufen.
+            await dashboard.simuliere_async(monate=horizont_monate, fortschritt=melden)
             return dashboard
 
         self._cache.anstossen((horizont_monate, auslastung_monate), laden)
@@ -228,15 +266,20 @@ class AnmeldungsverlaufCache:
             # anmeldungsverlauf_laden() ist ein einzelner synchroner Aufruf (siehe
             # Moduldocstring von umsatzprognose.schulungen.schulungen) - kein eigener
             # fortschritt-Parameter noetig, ein Vorher/Nachher-Bericht wie bei der
-            # Simulation genuegt (siehe Dashboard.simuliere).
+            # Simulation genuegt (siehe Dashboard.simuliere). asyncio.to_thread() statt
+            # eines direkten Aufrufs: ein Server bedient mehrere Anfragen aus demselben
+            # Event-Loop-Thread - ein direkter, blockierender Google-Sheets-Aufruf
+            # wuerde diesen einen Thread fuer die Dauer des Abrufs einfrieren und damit
+            # auch die anderen beiden, gleichzeitig angestossenen Caches ausbremsen.
             start = time.perf_counter()
-            verlauf = SchulungenRepository.mit_automatischen_zugangsdaten().anmeldungsverlauf_laden(
-                jahre
+            verlauf = await asyncio.to_thread(
+                SchulungenRepository.mit_automatischen_zugangsdaten().anmeldungsverlauf_laden,
+                jahre,
             )
             dauer = timedelta(seconds=time.perf_counter() - start)
             fortschritt(
                 f"{len(verlauf.anmeldungen)} Anmeldungen aus {len(verlauf.monate)} Monaten "
-                f"geladen (in {humanize.naturaldelta(dauer)})."
+                f"geladen (in {humanize.naturaldelta(dauer)})"
             )
             return verlauf
 
@@ -295,13 +338,22 @@ class KurzarbeitCache:
         async def laden(
             fortschritt: Fortschritt,
         ) -> tuple[dict[Monat, tuple[Personenmonat, ...]], Rollenzuordnung]:
+            # Ohne fortschritt= an laden_async(): dessen fuenf gleichzeitige Zweige
+            # und die Jahres-Abrufe sind reine Zwischenschritte (siehe
+            # KurzarbeitRepository.laden_async), die CLI/Notebooks ueber einen live
+            # aktualisierten Balken abfangen statt sie stehen zu lassen - hier reicht
+            # die eine synthetisierte Statuszeile danach, wortgleich zu dort.
             start = time.perf_counter()
             rohdaten = await KurzarbeitRepository.mit_automatischen_zugangsdaten().laden_async(
-                stichtag=date.today(), anzahl_monate=self._maximale_monate, fortschritt=fortschritt
+                stichtag=date.today(), anzahl_monate=self._maximale_monate
             )
             rollenzuordnung = rollenzuordnung_automatisch()
             dauer = timedelta(seconds=time.perf_counter() - start)
-            fortschritt(f"{len(rohdaten)} Monate geladen (in {humanize.naturaldelta(dauer)}).")
+            anzahl_personen = len({p.mitarbeiter_id for pm in rohdaten.values() for p in pm})
+            fortschritt(
+                f"Kurzarbeits-Rohdaten aus {len(rohdaten)} Monate(n) von {anzahl_personen} "
+                f"Person(en) geladen (in {humanize.naturaldelta(dauer)})"
+            )
             return rohdaten, rollenzuordnung
 
         self._cache.anstossen(None, laden)

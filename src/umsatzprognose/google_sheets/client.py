@@ -26,6 +26,7 @@ Aufrufer (:mod:`umsatzprognose.schulungen`, :mod:`umsatzprognose.kosten`, ...) s
 from __future__ import annotations
 
 import os
+import sys
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol
 
@@ -229,6 +230,17 @@ def _lokale_credentials(oauth_client_config: dict | None) -> CredentialsBase:
         if credentials and credentials.expired and credentials.refresh_token:
             credentials.refresh(Request())
         else:
+            # Ohne diesen Hinweis wirkt ein Aufruf ohne zwischengespeicherten Token wie
+            # ein haengengebliebenes Skript: run_local_server() blockiert unauffaellig
+            # auf die Browser-Anmeldung, ihre eigene Konsolenausgabe kann von
+            # gleichzeitig laufenden Fortschrittsanzeigen (siehe scripts/) ueberdeckt
+            # werden. pfad zeigt zusaetzlich, ob der erwartete Token schlicht am
+            # falschen Ort gesucht wird (Standard ist CWD-relativ, siehe token_pfad()).
+            print(
+                f"Kein gueltiger Google-Token unter {pfad} - Login im Browser noetig, "
+                "bitte dort bestaetigen.",
+                file=sys.stderr,
+            )
             flow = InstalledAppFlow.from_client_config(oauth_client_config, SCOPES)
             credentials = flow.run_local_server(port=0)
         pfad.write_text(credentials.to_json())

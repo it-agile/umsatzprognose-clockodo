@@ -37,7 +37,7 @@ class _FakeDashboard:
         self.auslastung_monate = auslastung_monate
         self.simulierte_monate: int | None = None
 
-    def simuliere(self, *, monate: int, fortschritt=None) -> None:
+    async def simuliere_async(self, *, monate: int, fortschritt=None) -> None:
         self.simulierte_monate = monate
         if fortschritt is not None:
             fortschritt(f"Simulation abgeschlossen: {monate} Monat(e)")
@@ -64,6 +64,22 @@ def ladezaehler(monkeypatch):
 async def _bis_geladen(fertig: asyncio.Event) -> None:
     await asyncio.wait_for(fertig.wait(), timeout=1)
     await asyncio.sleep(0)  # dem Hintergrund-Task die Gelegenheit geben, den Cache zu fuellen
+
+
+async def _bis_bereit(bereit) -> None:
+    """Wartet per Polling, bis ``bereit()`` nicht mehr ``None`` liefert.
+
+    Fuer Ladevorgaenge wie ``AnmeldungsverlaufCache`` (seit ``anmeldungsverlauf_laden``
+    ueber ``asyncio.to_thread`` laeuft, um den Event-Loop nicht zu blockieren) taugt
+    ``_bis_geladen``s ``asyncio.Event`` nicht: ein Fake, der in einem echten
+    Worker-Thread laeuft, duerfte ``Event.set()`` nicht gefahrlos aufrufen (nicht
+    threadsicher) - Polling auf das Ergebnis selbst braucht das nicht.
+    """
+    for _ in range(200):
+        if bereit() is not None:
+            return
+        await asyncio.sleep(0.01)
+    raise AssertionError("Cache wurde nicht rechtzeitig befuellt")
 
 
 def test_anstossen_laedt_im_hintergrund_und_bereit_liefert_danach_das_ergebnis(ladezaehler):
@@ -225,11 +241,13 @@ def test_ein_erfolgreicher_ladevorgang_loescht_einen_vorherigen_fehler(monkeypat
 @pytest.fixture
 def anmeldungsverlauf_ladezaehler(monkeypatch):
     aufrufe: list[range] = []
-    fertig = asyncio.Event()
 
     def _fake_anmeldungsverlauf_laden(self, jahre):
+        # Laeuft echt in einem asyncio.to_thread-Worker (AnmeldungsverlaufCache
+        # kapselt den synchronen Aufruf so, um den Event-Loop nicht zu blockieren) -
+        # deshalb kein asyncio.Event hier (nicht threadsicher setzbar), Tests warten
+        # stattdessen per Polling auf das Ergebnis selbst (siehe ``_bis_bereit``).
         aufrufe.append(jahre)
-        fertig.set()
         return Anmeldungsverlauf()
 
     monkeypatch.setattr(
@@ -240,7 +258,7 @@ def anmeldungsverlauf_ladezaehler(monkeypatch):
         "mit_automatischen_zugangsdaten",
         classmethod(lambda cls: cls.__new__(cls)),  # type: ignore[call-overload]
     )
-    return aufrufe, fertig
+    return aufrufe
 
 
 def test_anmeldungsverlauf_cache_fortschritt_ist_leer_ohne_laufenden_ladevorgang():
@@ -252,13 +270,13 @@ def test_anmeldungsverlauf_cache_fortschritt_ist_leer_ohne_laufenden_ladevorgang
 
 
 def test_anmeldungsverlauf_cache_laedt_ab_dem_konstruktor_jahr(anmeldungsverlauf_ladezaehler):
-    aufrufe, fertig = anmeldungsverlauf_ladezaehler
+    aufrufe = anmeldungsverlauf_ladezaehler
     cache = AnmeldungsverlaufCache(ab_jahr=2022, ttl_sekunden=60)
 
     async def ablauf():
         assert cache.bereit() is None
         cache.anstossen()
-        await _bis_geladen(fertig)
+        await _bis_bereit(cache.bereit)
         return cache.bereit()
 
     verlauf = asyncio.run(ablauf())
@@ -273,12 +291,12 @@ def test_anmeldungsverlauf_cache_laedt_bei_wiederholtem_anstossen_nur_einmal(
     ist beim Filtern in :meth:`Anmeldungsverlauf.ab_jahr` immer eine Teilmenge dieses
     einen geladenen Bereichs - der Cache kennt deshalb gar kein zweites ``ab_jahr``
     mehr, das einen eigenen Ladevorgang auslösen könnte."""
-    aufrufe, fertig = anmeldungsverlauf_ladezaehler
+    aufrufe = anmeldungsverlauf_ladezaehler
     cache = AnmeldungsverlaufCache(ab_jahr=2022, ttl_sekunden=60)
 
     async def ablauf():
         cache.anstossen()
-        await _bis_geladen(fertig)
+        await _bis_bereit(cache.bereit)
         cache.anstossen()  # weiterhin frisch - loest keinen zweiten Ladevorgang aus
         cache.anstossen()
 
@@ -352,16 +370,20 @@ def test_kurzarbeit_cache_bewertet_die_geladenen_rohdaten(kurzarbeit_ladezaehler
     assert ergebnisse[(2026, 8)].anzahl_kurzarbeitsfaehig == 1
 
 
-def test_kurzarbeit_cache_zeigt_zwischenschritte_waehrend_des_ladens(monkeypatch):
-    """``KurzarbeitRepository.laden_async()`` meldet sich je Zweig (siehe dessen
-    Docstring) - diese Zwischenmeldungen landen sofort in
-    ``KurzarbeitCache.fortschritt``, genau wie beim ``DashboardCache``."""
-    gemeldet = asyncio.Event()
+def test_kurzarbeit_cache_leitet_rohe_zwischenschritte_nicht_weiter(monkeypatch):
+    """``KurzarbeitRepository.laden_async()`` meldet sich intern je Zweig (siehe
+    dessen Docstring) - anders als zuvor landen diese rohen Zwischenschritte NICHT in
+    ``KurzarbeitCache.fortschritt``: CLI/Notebooks zeigen sie ebenfalls nie als eigene
+    Zeile, sondern fassen sie in einem live aktualisierten Balken zusammen, der am
+    Ende durch die fertige Statuszeile ersetzt wird (siehe CLAUDE.md, Fortschritts-
+    anzeigen) - fuer denselben Informationsstand verzichtet ``KurzarbeitCache``
+    komplett auf die Weiterleitung und meldet stattdessen nur die eine, wortgleiche
+    Statuszeile (siehe ``KurzarbeitCache.anstossen``)."""
+    gestartet = asyncio.Event()
     weiter = asyncio.Event()
 
-    async def _fake_laden_async(self, *, stichtag=None, anzahl_monate=1, fortschritt):
-        fortschritt("Personen geladen")
-        gemeldet.set()
+    async def _fake_laden_async(self, *, stichtag=None, anzahl_monate=1, fortschritt=None):
+        gestartet.set()
         await weiter.wait()
         return {}
 
@@ -377,7 +399,7 @@ def test_kurzarbeit_cache_zeigt_zwischenschritte_waehrend_des_ladens(monkeypatch
     async def ablauf():
         assert cache.fortschritt() == []
         cache.anstossen()
-        await asyncio.wait_for(gemeldet.wait(), timeout=1)
+        await asyncio.wait_for(gestartet.wait(), timeout=1)
         waehrend_des_ladens = cache.fortschritt()
 
         weiter.set()
@@ -386,7 +408,7 @@ def test_kurzarbeit_cache_zeigt_zwischenschritte_waehrend_des_ladens(monkeypatch
         return waehrend_des_ladens, nach_abschluss
 
     waehrend_des_ladens, nach_abschluss = asyncio.run(ablauf())
-    assert waehrend_des_ladens == ["Personen geladen"]
+    assert waehrend_des_ladens == []
     assert nach_abschluss == []
     assert cache.bereit(anzahl_monate=6, schwellenwerte=Schwellenwerte()) is not None
 

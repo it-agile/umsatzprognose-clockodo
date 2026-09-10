@@ -378,7 +378,7 @@ def _ohne_budget_filter_aus_text(text: str) -> list[str]:
     return [zeile.strip() for zeile in text.splitlines() if zeile.strip()]
 
 
-def _mit_verbrauchsplan(
+async def _mit_verbrauchsplan(
     dashboard: Dashboard, *, verbrauchsplan: str, horizont_monate: int
 ) -> Dashboard:
     """Liefert bei gesetztem ``verbrauchsplan`` ein **transientes** ``Dashboard`` mit
@@ -392,9 +392,12 @@ def _mit_verbrauchsplan(
     einzelne Anfrage wuerde bis zum naechsten TTL-Reload allen anderen Besuchenden
     dieselbe uebersteuerte Prognose zeigen. Stattdessen entsteht ein neues
     ``Dashboard`` mit einem neuen, unveraenderlichen ``Bestand``
-    (``mit_verbrauchsplan_uebersteuerungen``) und einer eigenen, synchronen
-    Neusimulation (numpy-vektorisiert, kein Netzzugriff) - ``schulungsplan``/
-    ``kostenplan``/``auslastung`` werden vom Original uebernommen, kein erneuter Abruf.
+    (``mit_verbrauchsplan_uebersteuerungen``) und einer eigenen Neusimulation -
+    ``schulungsplan``/``kostenplan``/``auslastung`` werden vom Original uebernommen,
+    kein erneuter Abruf. ``simuliere_async()`` statt ``simuliere()``: ein direkter,
+    blockierender Aufruf wuerde den einzigen Event-Loop-Thread des Servers fuer die
+    Dauer dieser Neusimulation einfrieren - je Anfrage mit gesetztem
+    ``verbrauchsplan``, nicht nur beim seltenen Neuladen des Caches.
     """
     werte = _verbrauchsplan_aus_text(verbrauchsplan)
     if not werte:
@@ -405,7 +408,7 @@ def _mit_verbrauchsplan(
         dashboard.kostenplan,
         dashboard.auslastung,
     )
-    uebersteuert.simuliere(monate=horizont_monate)
+    await uebersteuert.simuliere_async(monate=horizont_monate)
     return uebersteuert
 
 
@@ -426,7 +429,7 @@ async def uebersicht(
     )
     if isinstance(ergebnis, HTMLResponse):
         return ergebnis
-    dashboard = _mit_verbrauchsplan(
+    dashboard = await _mit_verbrauchsplan(
         ergebnis, verbrauchsplan=verbrauchsplan, horizont_monate=horizont_zahl
     )
 
@@ -470,7 +473,7 @@ async def dashboard_seite(
     )
     if isinstance(ergebnis, HTMLResponse):
         return ergebnis
-    dashboard = _mit_verbrauchsplan(
+    dashboard = await _mit_verbrauchsplan(
         ergebnis, verbrauchsplan=verbrauchsplan, horizont_monate=horizont_zahl
     )
 

@@ -250,8 +250,8 @@ setup.dashboard(...)` als gewöhnlichen Code, eine IPython-Magic wie `%run -i` b
 für die statische Analyse unsichtbar und ließe `dashboard` in jeder folgenden Zelle
 als undefiniert erscheinen. `setup.py` wird nicht eigenständig geöffnet.
 
-- `notebooks/00_datencheck.ipynb` – Umsatzprognose, Gewinn/Verlust und Auslastung im
-  Überblick, rein lesend.
+- `notebooks/00_datencheck.ipynb` – Umsatzprognose und Gewinn/Verlust im Überblick,
+  rein lesend.
 - `notebooks/01_dashboard.ipynb` – für Fachexperten. Je Zelle ein Aufruf auf
   `Dashboard`, Fachsprache, keine Endpunkte, keine IDs, keine technischen Marker.
 - `notebooks/02_technik_pruefung.ipynb` – für die Entwicklung. Prüfsummen,

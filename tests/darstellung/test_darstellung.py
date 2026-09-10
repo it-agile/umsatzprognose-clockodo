@@ -1386,7 +1386,7 @@ def test_dashboard_schritt_berichte_rekonstruiert_dieselben_vier_zeilen():
         dashboard.schritt_berichte()
     )
 
-    assert bestand_zeile == f"Bestand geladen: {len(PROJEKTE)} Projekt(e) (in 2 Minuten)"
+    assert bestand_zeile == f"{len(PROJEKTE)} Projekt(e) im Bestand geladen (in 2 Minuten)"
     assert schulungsplan_zeile == "0 Schulung(en) geladen (in 2 Sekunden)"
     assert kostenplan_zeile == "0 Monat(e) mit Kostenprognose geladen (in eine Sekunde)"
     assert auslastung_zeile == "0 Auslastungsmonat(e) geladen (in 3 Sekunden)"
@@ -1605,7 +1605,9 @@ def test_dashboard_laden_meldet_beginn_jedes_schritts_vor_dessen_fortschritt(
         return next(i for i, e in enumerate(ereignisse) if vorhersage(e))
 
     idx_bestand_beginnt = index(lambda e: e == "beginnt:Bestand")
-    idx_bestand_fortschritt = index(lambda e: e.startswith("fortschritt:Bestand geladen"))
+    idx_bestand_fortschritt = index(
+        lambda e: e.startswith("fortschritt:") and "Bestand geladen" in e
+    )
     idx_schulungsplan_beginnt = index(lambda e: e == "beginnt:Schulungsplan")
     idx_schulungsplan_fortschritt = index(
         lambda e: e.startswith("fortschritt:") and "Schulung(en)" in e

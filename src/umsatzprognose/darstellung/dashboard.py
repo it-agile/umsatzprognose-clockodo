@@ -123,7 +123,7 @@ def _dauer_text(dauer: timedelta | None) -> str:
 # ein zweites Mal im selben Kernel nicht neu laedt, aber trotzdem berichten will.
 def _bestand_bericht(bestand: Bestand, dauer: timedelta | None) -> str:
     return (
-        f"Bestand geladen: {humanize.intcomma(len(bestand.projekte))} Projekt(e)"
+        f"{humanize.intcomma(len(bestand.projekte))} Projekt(e) im Bestand geladen"
         f" (in {_dauer_text(dauer)})"
     )
 
@@ -322,8 +322,10 @@ class Dashboard:
 
         ``fortschritt``, sofern angegeben, wird nach jedem der vier Abrufe einmal mit
         einer fertigen Statuszeile (Umfang und Dauer) aufgerufen - fuer eine sukzessive
-        Fortschrittsanzeige waehrend des rund halbminuetigen Ladevorgangs, etwa per
-        ``tqdm`` im Notebook (siehe ``notebooks/setup.py``). Diese vier Aufrufe kommen
+        Fortschrittsanzeige waehrend des rund halbminuetigen Ladevorgangs, etwa als
+        grafischer Fortschrittsbalken im Notebook (siehe ``notebooks/setup.py``) oder
+        als Text-Balken in den CLI-Scripts (siehe ``scripts/wochenbericht.py``). Diese
+        vier Aufrufe kommen
         dabei in der Reihenfolge, in der die jeweiligen Abrufe tatsaechlich fertig
         werden - Bestand und Schulungsplan in beliebiger Reihenfolge zueinander, danach
         Kostenplan und Auslastung ebenfalls in beliebiger Reihenfolge zueinander, aber
@@ -543,6 +545,29 @@ class Dashboard:
                 f"Simulation abgeschlossen: {humanize.intcomma(laeufe)} Laeufe ueber "
                 f"{monate} Monat(e) (in {_dauer_text(t.dauer)})"
             )
+
+    async def simuliere_async(
+        self, *, monate: int = 3, laeufe: int = 10_000, fortschritt: Fortschritt | None = None
+    ) -> None:
+        """Wie :meth:`simuliere`, aber nebenlaeufigkeitsfreundlich: die Monte-Carlo-Rechnung
+        laeuft in einem eigenen ``asyncio.to_thread``-Worker, damit sie parallel zu anderen
+        Coroutinen laufen kann (z. B. dem gleichzeitigen Laden von Kurzarbeit-Rohdaten
+        oder Anmeldungsverlauf, siehe ``scripts/wochenbericht.py``), statt den Event-Loop
+        fuer ihre Dauer zu blockieren - wichtig vor allem fuer einen Server-Prozess mit
+        mehreren gleichzeitigen Anfragen (siehe ``webapp/cache.py``), wo ein blockierender
+        Aufruf saemtliche anderen Anfragen fuer die Dauer der Simulation einfrieren wuerde.
+
+        ``humanize.i18n.activate("de_DE")`` wirkt nur thread-lokal (siehe Kommentar in
+        :meth:`laden_async`) - der neue Worker-Thread hat das noch nie gesehen, deshalb
+        hier erneut aktiviert, sonst waere die von :meth:`simuliere` selbst gebaute
+        Statuszeile englisch.
+        """
+
+        def _simulieren() -> None:
+            humanize.i18n.activate("de_DE")
+            self.simuliere(monate=monate, laeufe=laeufe, fortschritt=fortschritt)
+
+        await asyncio.to_thread(_simulieren)
 
     def umsatzverlauf(self, *, mit_beschriftung: bool = False) -> go.Figure:
         """Der Umsatz je Monat - Historie und, daran anschliessend, der Prognosehorizont.
