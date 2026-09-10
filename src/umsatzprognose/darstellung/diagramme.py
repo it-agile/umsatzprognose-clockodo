@@ -10,11 +10,10 @@ Gestaltung:
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, NotRequired, TypedDict, Unpack
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping, Sequence
-    from typing import Any
 
     import pandas as pd
 
@@ -264,7 +263,12 @@ def _legendeintrag(fig: go.Figure, name: str, farbe: str, *, deckkraft: float = 
     )
 
 
-def _tickangle_setzen(fig: go.Figure, **kwargs: Any) -> None:
+class _TickangleKwargs(TypedDict):
+    categoryorder: NotRequired[str]
+    categoryarray: NotRequired[list[str]]
+
+
+def _tickangle_setzen(fig: go.Figure, **kwargs: Unpack[_TickangleKwargs]) -> None:
     """Schliesst die x-Achse ab: :data:`TICKWINKEL` plus optionale weitere
     ``update_xaxes``-Kwargs (z. B. ``categoryorder``/``categoryarray`` fuer eine feste
     Monatsreihenfolge) - gemeinsamer letzter Schritt aller Diagramme mit Monatsachse."""

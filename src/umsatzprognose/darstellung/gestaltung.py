@@ -7,7 +7,7 @@ Zahlen in den Hinweisfenstern, die plotly selbst formatiert.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import NotRequired, TypedDict, Unpack
 
 import plotly.graph_objects as go
 
@@ -71,7 +71,19 @@ JAHRESFARBEN = (
 SCHRIFT = 'system-ui, -apple-system, "Segoe UI", sans-serif'
 
 
-def figur(titel: str, *, untertitel: str = "", hoehe: int = 420, **layout: Any) -> go.Figure:
+class _GridSpec(TypedDict):
+    rows: int
+    columns: int
+    pattern: str
+
+
+class _FigurLayoutKwargs(TypedDict):
+    grid: NotRequired[_GridSpec]
+
+
+def figur(
+    titel: str, *, untertitel: str = "", hoehe: int = 420, **layout: Unpack[_FigurLayoutKwargs]
+) -> go.Figure:
     """Eine leere Figur im gemeinsamen Erscheinungsbild."""
     fig = go.Figure()
     fig.update_layout(

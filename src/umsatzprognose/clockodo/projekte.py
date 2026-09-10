@@ -58,7 +58,7 @@ ACHTUNG:
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, TypedDict
 
 if TYPE_CHECKING:
     from typing import Any
@@ -87,6 +87,16 @@ from umsatzprognose.domaene.zahlen import euro, stunden
 
 from .client import HISTORIE_VON, SEKUNDEN_JE_STUNDE
 from .nebenlaeufig import gleichzeitig, synchron
+
+
+class _Verbrauchseintrag(TypedDict):
+    """Verbrauch eines Projekts, aus einer oder mehreren ``entrygroups``-Gruppen
+    aufsummiert (siehe :meth:`ProjektRepository._verbrauch`) - keine Antwortform der
+    API, sondern eine selbst gebaute Zwischenstruktur."""
+
+    revenue: Decimal
+    stunden: float
+    sub_groups: list[EntryGroupV2]
 
 
 class ProjektRepository:
@@ -168,12 +178,12 @@ class ProjektRepository:
     def _projekt(
         self,
         rohprojekt: ProjectV4,
-        verbrauch: Mapping[int, dict[str, Any]],
+        verbrauch: Mapping[int, _Verbrauchseintrag],
         *,
         mit_anteilen: bool,
     ) -> Projekt:
         projects_id = projekt_id(rohprojekt)
-        gebucht = verbrauch.get(projects_id, {})
+        gebucht = verbrauch.get(projects_id, _leerer_verbrauch())
         customers_id = rohprojekt.get("customers_id")
         name = rohprojekt.get("name")
         return Projekt(
@@ -183,15 +193,15 @@ class ProjektRepository:
             aktiv=bool(rohprojekt.get("active")),
             abgeschlossen=bool(rohprojekt.get("completed")),
             budget=budget(rohprojekt),
-            verbrauchtes_volumen=gebucht.get("revenue", Decimal("0")),
-            verbrauchte_stunden=float(gebucht.get("stunden", 0.0)),
+            verbrauchtes_volumen=gebucht["revenue"],
+            verbrauchte_stunden=gebucht["stunden"],
             anteile=self._anteile(gebucht) if mit_anteilen else (),
             automatischer_abschluss=automatischer_abschluss(rohprojekt),
         )
 
-    def _anteile(self, gebucht: Mapping[str, Any]) -> tuple[Projektanteil, ...]:
+    def _anteile(self, gebucht: _Verbrauchseintrag) -> tuple[Projektanteil, ...]:
         anteile = []
-        for untergruppe in gebucht.get("sub_groups") or ():
+        for untergruppe in gebucht["sub_groups"]:
             users_id = int(untergruppe["group"])
             anteile.append(
                 Projektanteil(
@@ -205,18 +215,16 @@ class ProjektRepository:
         return tuple(anteile)
 
     @staticmethod
-    def _verbrauch(gruppen: list[EntryGroupV2]) -> dict[int, dict[str, Any]]:
+    def _verbrauch(gruppen: list[EntryGroupV2]) -> dict[int, _Verbrauchseintrag]:
         """``projects_id`` -> Umsatz, Stunden und Untergruppen; ohne ``group == 0``."""
-        verbrauch: dict[int, dict[str, Any]] = {}
+        verbrauch: dict[int, _Verbrauchseintrag] = {}
         for gruppe in gruppen:
             projects_id = int(gruppe["group"])
             if projects_id == 0:
                 continue
             # Summiert statt zugewiesen: eine Gruppierung liefert je Projekt eine
             # Gruppe, ein doppelter Schluessel wuerde sonst still eine Zeile verwerfen.
-            eintrag = verbrauch.setdefault(
-                projects_id, {"revenue": Decimal("0"), "stunden": 0.0, "sub_groups": []}
-            )
+            eintrag = verbrauch.setdefault(projects_id, _leerer_verbrauch())
             eintrag["revenue"] += Decimal(str(gruppe.get("revenue") or 0.0))
             eintrag["stunden"] += float(gruppe.get("duration") or 0.0) / SEKUNDEN_JE_STUNDE
             eintrag["sub_groups"].extend(gruppe.get("sub_groups") or [])
@@ -239,7 +247,7 @@ class ProjektRepository:
 
     @staticmethod
     def _verbrauch_ohne_stammdaten_hinweis(
-        verbrauch: Mapping[int, dict[str, Any]], projekte: tuple[Projekt, ...]
+        verbrauch: Mapping[int, _Verbrauchseintrag], projekte: tuple[Projekt, ...]
     ) -> tuple[Hinweis, ...]:
         bekannt = {p.id for p in projekte}
         verwaist = sorted(set(verbrauch) - bekannt)
@@ -251,6 +259,13 @@ class ProjektRepository:
                 tuple(str(waise) for waise in verwaist),
             ),
         )
+
+
+def _leerer_verbrauch() -> _Verbrauchseintrag:
+    """Ein frisches, leeres Dict je Aufruf - kein gemeinsames Konstanten-Objekt: der
+    Aufruf in :meth:`ProjektRepository._verbrauch` mutiert den Rückgabewert direkt
+    danach in-place."""
+    return {"revenue": Decimal("0"), "stunden": 0.0, "sub_groups": []}
 
 
 def projekt_id(rohprojekt: Mapping[str, Any]) -> int:
