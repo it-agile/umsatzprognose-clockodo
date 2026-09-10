@@ -59,6 +59,9 @@ mypy = [
     "nbqa>=1.9",
     "pandas-stubs~=3.0.5",
 ]
+ty = [
+    "ty>=0.0.80",
+]
 
 [build-system]
 requires = [ "hatchling>=1.32", "tox>=4.60", "tox-uv>=1.36" ]
@@ -103,10 +106,10 @@ allowlist_externals = [ "nbqa" ]
 commands = [[ "nbqa", "mypy", { replace = "posargs", default = ["notebooks"], extend = true }]]
 
 [tool.tox.env.ty]
-extras = [ "dev", "bericht", "web", "notebook" ]
-allowlist_externals = [ "uvx" ]
+extras = [ "ty", "dev", "bericht", "web", "notebook" ]
+allowlist_externals = [ "ty" ]
 ignore_outcome = true
-commands = [[ "uvx", "ty", "check", { replace = "posargs", default = ["src", "tests", "scripts", "notebooks"], extend = true } ]]
+commands = [[ "ty", "check", { replace = "posargs", default = ["src", "tests", "scripts", "notebooks"], extend = true } ]]
 
 [tool.tox.env.jupyter]
 extras = [ "notebook" ]
