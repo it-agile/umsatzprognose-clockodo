@@ -30,7 +30,7 @@ Anmeldungsverlauf) laden dabei gleichzeitig statt nacheinander - wie
 ``Dashboard.laden_async`` intern schon seine vier Bestandteile gleichzeitig lädt, und
 wie ``webapp/app.py``s ``_vorladen()`` alle drei Caches beim Start unabhängig
 voneinander anstößt. Jede Quelle trägt ihren Ladefortschritt in einer eigenen Zeile
-vor (siehe ``_Mehrzeilenanzeige``), ersetzt am Ende durch die fertige Statuszeile -
+vor (siehe ``Mehrzeilenanzeige``), ersetzt am Ende durch die fertige Statuszeile -
 sowohl mit als auch ohne ``--nur-text``, und sowohl im lokalen Terminal als auch im Log
 des GitHub-Actions-Laufs. Eine Leerzeile trennt den Ladebericht ("Daten geladen und
 simuliert.") sichtbar vom Folgenden - dem Post-Text bei ``--nur-text``, den
@@ -43,9 +43,7 @@ import argparse
 import asyncio
 import os
 import re
-import sys
 import tempfile
-import threading
 import time
 from datetime import date, timedelta
 from decimal import Decimal
@@ -58,13 +56,18 @@ if TYPE_CHECKING:
     import pandas as pd
     import plotly.graph_objects as go
 
-    from umsatzprognose.clockodo import Fortschritt
     from umsatzprognose.domaene import Prognose
     from umsatzprognose.domaene.anmeldung import Anmeldungsverlauf
     from umsatzprognose.util import Monat
 
 import humanize
 import plotly.io as pio
+from _fortschritt import (
+    Mehrzeilenanzeige,
+    dashboard_melden_bauen,
+    fortschrittsbalken,
+    relativer_pfad,
+)
 from slack_sdk import WebClient
 
 from umsatzprognose import Dashboard, SchulungenRepository
@@ -183,141 +186,6 @@ ANMELDUNGEN_AB_JAHR = 2022
 ANMELDUNGEN_MONATE_FENSTER = 13
 
 
-class _Mehrzeilenanzeige:
-    """Eine feste Anzahl Zeilen (eine je Datenquelle), die bei jeder Aenderung
-    gemeinsam neu gezeichnet werden - je eine eigene Zeile zeigt, was gerade laedt
-    und wie weit es ist, am Ende ersetzt durch die fertige Statuszeile.
-
-    Ersetzt mehrere unabhaengige, ueber tqdms ``position=``-Parameter positionierte
-    Balken (siehe Git-Historie): tqdms Positionsverwaltung geht beim Schliessen eines
-    Balkens (``close()``) davon aus, dass Balken in absteigender Positionsreihenfolge
-    fertig werden (wie bei verschachtelten Balken, z. B. eine aeussere und mehrere
-    innere Schleifen) - sie verschiebt beim Schliessen automatisch die Positionen
-    aller noch offenen Balken mit hoeherer Positionsnummer. Bei unabhaengigen,
-    gleichzeitig laufenden Quellen wie hier (Bestand/Schulungsplan/Kostenplan/
-    Auslastung/Kurzarbeit-Rohdaten/Anmeldungsverlauf, die in beliebiger Reihenfolge
-    und mit mehreren Zwischenschritten fertig werden) fuehrt das dazu, dass noch
-    aktive Zeilen mitten im Update ploetzlich an einer anderen Bildschirmzeile
-    landen - beobachtet als doppelt gedruckte oder durcheinandergewuerfelte
-    Statuszeilen und ein am Ende sichtbar kaputtes Terminal. Diese Klasse zeichnet
-    stattdessen bei jeder Aenderung alle Zeilen gemeinsam neu, in einer festen
-    Reihenfolge, ohne jede Annahme ueber die Fertigstellungsreihenfolge - und ohne
-    tqdm ueberhaupt zu benutzen.
-
-    Threadsicher durch eine einzelne Sperre statt eines Zurueckreichens an einen
-    bestimmten Thread: mehrere ``fortschritt()``-Quellen laufen nebeneinander, deren
-    Berichte teils im Event-Loop-Thread ankommen (reine Coroutinen), teils in einem
-    eigenen ``asyncio.to_thread``-Worker (Schulungsplan/Kostenplan innerhalb von
-    ``Dashboard.laden_async``, hier zusaetzlich die Simulation und der
-    Anmeldungsverlauf-Abruf) - die Sperre serialisiert die tatsaechlichen
-    Zeichenvorgaenge unabhaengig davon, aus welchem Thread sie kommen.
-    """
-
-    def __init__(self, namen: Sequence[str], *, vorlage: str = "{name} laden ...") -> None:
-        self._namen = list(namen)
-        self._zeilen = {name: vorlage.format(name=name) for name in self._namen}
-        self._sperre = threading.Lock()
-        self._schon_gezeichnet = False
-
-    def _neu_zeichnen(self) -> None:
-        teile = [f"\033[{len(self._namen)}A"] if self._schon_gezeichnet else []
-        teile.extend(f"\033[2K{self._zeilen[name]}\n" for name in self._namen)
-        sys.stderr.write("".join(teile))
-        sys.stderr.flush()
-        self._schon_gezeichnet = True
-
-    def aktualisieren(self, name: str, text: str) -> None:
-        """Ersetzt die Zeile zu ``name`` durch ``text`` - fuer Zwischenstaende
-        (weiterer Aufruf folgt) genauso wie fuer die fertige Statuszeile (letzter
-        Aufruf zu diesem ``name``)."""
-        with self._sperre:
-            self._zeilen[name] = text
-            self._neu_zeichnen()
-
-
-# Ein je Schritt eindeutiger Textbaustein aus dessen fertiger Statuszeile (siehe
-# Dashboard.laden_async), der Name entspricht der Zeile in _Mehrzeilenanzeige.
-_ABSCHLUSS_MUSTER = {
-    "Bestand": "Bestand geladen",
-    "Schulungsplan": "Schulung(en) geladen",
-    "Kostenplan": "Kostenprognose geladen",
-    "Auslastung": "Auslastungsmonat(e) geladen",
-    "Simulation": "Simulation abgeschlossen",
-}
-# Bestand meldet sich zusaetzlich zwischendurch, je einem seiner fuenf gleichzeitigen
-# Zweige (siehe BestandRepository.laden_async) - diese Texte sind fest und bekannt,
-# anders als bei Kostenplan (dort variiert die Jahreszahl).
-_BESTAND_ZWISCHENSCHRITTE = (
-    "Kunden geladen",
-    "Personen geladen",
-    "Projekt-Rohdaten geladen",
-    "Umsatzhistorie geladen",
-    "Verbrauchsverlauf geladen",
-)
-# Kostenplan meldet sich ebenfalls zwischendurch, je verarbeitetem Jahr (siehe
-# KostenRepository.laden) - die Jahresanzahl ist vorher nicht bekannt, deshalb ein
-# Spinner statt eines Anteils von einem Gesamtwert (siehe :func:`_spinner`).
-_KOSTENPLAN_ZWISCHENSCHRITT_MUSTER = "Kostenposten bis"
-
-_BALKEN_BREITE = 24
-_SPINNER_ZEICHEN = "|/-\\"
-
-
-def _fortschrittsbalken(erledigt: int, gesamt: int) -> str:
-    """Ein schlichter Text-Fortschrittsbalken, z. B. ``[████████░░░░░░░░]`` - kein
-    tqdm (siehe Klassendocstring von :class:`_Mehrzeilenanzeige`), nur zur
-    sichtbaren Untermalung des Zwischenstands, den :class:`_Mehrzeilenanzeige` ohnehin
-    schon als Text (``n/gesamt``) traegt."""
-    anteil = min(1.0, erledigt / gesamt) if gesamt else 0.0
-    gefuellt = round(_BALKEN_BREITE * anteil)
-    return "[" + "█" * gefuellt + "░" * (_BALKEN_BREITE - gefuellt) + "]"
-
-
-def _spinner(index: int) -> str:
-    """Ein rotierendes Zeichen fuer Zwischenschritte ohne bekanntes Gesamt (siehe
-    :data:`_KOSTENPLAN_ZWISCHENSCHRITT_MUSTER`) - zeigt "es tut sich was", wo ein
-    Anteil mangels bekanntem Gesamtwert nicht sinnvoll waere."""
-    return _SPINNER_ZEICHEN[index % len(_SPINNER_ZEICHEN)]
-
-
-def _dashboard_melden_bauen(anzeige: _Mehrzeilenanzeige) -> Fortschritt:
-    """Baut den ``fortschritt()``-Callback fuers Dashboard-Laden/-Simulieren: eine
-    Zeile je Schritt (Bestand, Schulungsplan, Kostenplan, Auslastung, Simulation),
-    mit sichtbarem Zwischenstand fuer Bestand (fuenf Zweige, als Balken) und
-    Kostenplan (verarbeitete Jahre, als Spinner), bis sie durch die fertige
-    Statuszeile ersetzt wird."""
-    bestand_erledigt = 0
-    kostenplan_jahre = 0
-
-    def _melden(text: str) -> None:
-        nonlocal bestand_erledigt, kostenplan_jahre
-        for name, muster in _ABSCHLUSS_MUSTER.items():
-            if muster in text:
-                anzeige.aktualisieren(name, text)
-                return
-        if text in _BESTAND_ZWISCHENSCHRITTE:
-            bestand_erledigt += 1
-            gesamt = len(_BESTAND_ZWISCHENSCHRITTE)
-            anzeige.aktualisieren(
-                "Bestand",
-                f"Bestand laden {_fortschrittsbalken(bestand_erledigt, gesamt)} "
-                f"{bestand_erledigt}/{gesamt}",
-            )
-            return
-        if _KOSTENPLAN_ZWISCHENSCHRITT_MUSTER in text:
-            kostenplan_jahre += 1
-            anzeige.aktualisieren(
-                "Kostenplan",
-                f"Kostenplan laden {_spinner(kostenplan_jahre)} ({kostenplan_jahre} Jahr(e))",
-            )
-            return
-        # Verlaufscache-Meldungen o.Ae. passen auf keines der bekannten Muster - ohne
-        # eigene Zeile bewusst verworfen (der Verlaufscache ist per
-        # CLOCKODO_CACHE_TTL_SEKUNDEN ohnehin striktes Opt-in, siehe CLAUDE.md).
-
-    return _melden
-
-
 async def _daten_laden_async(
     *,
     stichtag: date,
@@ -333,7 +201,7 @@ async def _daten_laden_async(
     naechste beginnt.
 
     Jede tragt ihren Ladefortschritt in einer eigenen Zeile vor (siehe
-    :class:`_Mehrzeilenanzeige`), ersetzt am Ende durch die fertige Statuszeile -
+    :class:`Mehrzeilenanzeige`), ersetzt am Ende durch die fertige Statuszeile -
     unabhaengig davon, in welcher Reihenfolge sie tatsaechlich fertig werden.
     ``mit_kurzarbeit``/``mit_anmeldungsverlauf`` lassen die zugehoerige Zeile (und den
     Abruf) ganz entfallen, statt unnoetig zu laden: Kurzarbeit nur hinter dem
@@ -346,14 +214,14 @@ async def _daten_laden_async(
         namen.append("Kurzarbeit-Rohdaten")
     if mit_anmeldungsverlauf:
         namen.append("Anmeldungsverlauf")
-    anzeige = _Mehrzeilenanzeige(namen)
+    anzeige = Mehrzeilenanzeige(namen)
 
     anmeldungsverlauf_jahre = (
         list(range(ANMELDUNGEN_AB_JAHR, stichtag.year + 1)) if mit_anmeldungsverlauf else []
     )
 
     async def _dashboard_laden() -> Dashboard:
-        melden = _dashboard_melden_bauen(anzeige)
+        melden = dashboard_melden_bauen(anzeige)
         dashboard = await Dashboard.laden_async(
             stichtag=stichtag, horizont_monate=horizont_monate, fortschritt=melden
         )
@@ -372,7 +240,7 @@ async def _daten_laden_async(
             erledigt += 1
             anzeige.aktualisieren(
                 "Kurzarbeit-Rohdaten",
-                f"Kurzarbeit-Rohdaten laden {_fortschrittsbalken(erledigt, total)} "
+                f"Kurzarbeit-Rohdaten laden {fortschrittsbalken(erledigt, total)} "
                 f"{erledigt}/{total}",
             )
 
@@ -402,7 +270,7 @@ async def _daten_laden_async(
             erledigt += 1
             anzeige.aktualisieren(
                 "Anmeldungsverlauf",
-                f"Anmeldungsverlauf laden {_fortschrittsbalken(erledigt, gesamt)} "
+                f"Anmeldungsverlauf laden {fortschrittsbalken(erledigt, gesamt)} "
                 f"{erledigt}/{gesamt}",
             )
 
@@ -410,7 +278,7 @@ async def _daten_laden_async(
         # asyncio.to_thread(): anmeldungsverlauf_laden() ist ein synchroner Aufruf
         # (siehe Moduldocstring von umsatzprognose.schulungen.schulungen) - im eigenen
         # Worker-Thread blockiert er nicht den Event-Loop, in dem gleichzeitig
-        # Dashboard und Kurzarbeit-Rohdaten laufen. _Mehrzeilenanzeige ist threadsicher
+        # Dashboard und Kurzarbeit-Rohdaten laufen. Mehrzeilenanzeige ist threadsicher
         # (siehe dort), _melden() darf also direkt aus dem Worker-Thread aufgerufen
         # werden.
         anmeldungsverlauf = await asyncio.to_thread(
@@ -643,19 +511,11 @@ def post_text(
     )
 
 
-def _relativer_pfad(pfad: Path) -> Path:
-    """Der Pfad relativ zum aufrufenden Arbeitsverzeichnis - eine Exportzeile zeigt den
-    Dateinamen so, statt absolut (der ``tempfile.TemporaryDirectory()`` hier liegt
-    zwar ohnehin ausserhalb des Arbeitsverzeichnisses, die Anzeige bleibt trotzdem
-    einheitlich mit ``scripts/diagramme_exportieren.py``)."""
-    return Path(os.path.relpath(pfad, Path.cwd()))
-
-
 async def _bilder_exportieren_async(
     titel_figuren: list[tuple[str, go.Figure]], verzeichnis: Path
 ) -> list[Path]:
     """Schreibt je Diagramm ein PNG, mit einem eigenen Export-Balken pro Datei (siehe
-    :class:`_Mehrzeilenanzeige`) - beschriftet mit dem Dateinamen relativ zum
+    :class:`Mehrzeilenanzeige`) - beschriftet mit dem Dateinamen relativ zum
     Aufrufenden Verzeichnis zur Erlaeuterung, was gerade geschrieben wird. Ersetzt
     durch denselben Pfad samt Exportdauer, sobald die Datei geschrieben ist.
 
@@ -670,9 +530,9 @@ async def _bilder_exportieren_async(
     # "/" im Titel ("Gewinn/Verlust je Monat") waere im Dateinamen ein Pfadtrenner -
     # der Slack-Titel bleibt davon unberuehrt, nur der lokale Dateiname wird bereinigt.
     bilder = [verzeichnis / f"{titel.replace('/', '-')}.png" for titel, _figur in titel_figuren]
-    anzeigenamen = [str(_relativer_pfad(bild)) for bild in bilder]
-    anzeige = _Mehrzeilenanzeige(
-        anzeigenamen, vorlage="{name} exportieren " + _fortschrittsbalken(0, 1)
+    anzeigenamen = [str(relativer_pfad(bild)) for bild in bilder]
+    anzeige = Mehrzeilenanzeige(
+        anzeigenamen, vorlage="{name} exportieren " + fortschrittsbalken(0, 1)
     )
 
     start = time.perf_counter()

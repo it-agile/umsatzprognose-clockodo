@@ -13,7 +13,6 @@ from __future__ import annotations
 
 import asyncio
 import sys
-import threading
 import time
 from datetime import date
 from decimal import Decimal
@@ -586,29 +585,3 @@ def test_daten_laden_async_ueberspringt_kurzarbeit_und_anmeldungsverlauf_wenn_ni
 
     assert kurzarbeit_ergebnisse is None
     assert anmeldungsverlauf_fenster is None
-
-
-def test_mehrzeilenanzeige_uebersteht_gleichzeitige_aktualisierungen_aus_mehreren_threads():
-    """Regression fuer die beobachtete Balken-Korruption (Statuszeilen doppelt
-    gedruckt bzw. durcheinandergewuerfelt, Terminal am Ende sichtbar kaputt): mehrere
-    ``fortschritt()``-Quellen liefen aus verschiedenen Threads gleichzeitig auf
-    dieselbe Anzeige ein. Hier mit vielen echten Threads, die alle gleichzeitig
-    dieselbe Zeile aktualisieren - ohne die interne Sperre wuerde das zu
-    Race-Conditions/Exceptions in ``_neu_zeichnen`` fuehren."""
-    anzeige = wochenbericht._Mehrzeilenanzeige(["Bestand", "Kurzarbeit-Rohdaten"])
-
-    def _viele_updates(name: str) -> None:
-        for i in range(50):
-            anzeige.aktualisieren(name, f"{name} laden ({i})")
-
-    threads = [
-        threading.Thread(target=_viele_updates, args=(name,))
-        for name in ("Bestand", "Kurzarbeit-Rohdaten")
-        for _ in range(3)
-    ]
-    for thread in threads:
-        thread.start()
-    for thread in threads:
-        thread.join(timeout=5)
-
-    assert all(not thread.is_alive() for thread in threads)

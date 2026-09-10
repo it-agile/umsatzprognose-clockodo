@@ -59,7 +59,14 @@ ein Muster, das eine bereits dokumentierte, bewusste Entscheidung umsetzt (z. B.
   (Abhängigkeiten zeigen Richtung Stabilität), SAP (Abstraktheit steigt mit
   Stabilität).
 - **Code vereinfachen** – nur echte Vereinfachungen ohne Verhaltensänderung, keine
-  kosmetischen Vorlieben.
+  kosmetischen Vorlieben. Ausdrücklich auch im Sinne von "ein Mensch kann weitere
+  Anpassungen leicht übernehmen": bewusst akzeptierte Duplizierung zwischen mehreren
+  Dateien (z. B. zwischen `scripts/wochenbericht.py` und
+  `scripts/diagramme_exportieren.py`, weil keins von beiden Teil des installierten
+  Pakets ist) bleibt nur so lange eine legitime Ausnahme, wie sie tatsächlich
+  synchron gehalten wird – laufen Kopien wiederholt auseinander, gehört die
+  gemeinsame Logik in ein von beiden importiertes, gemeinsames Modul (siehe
+  `scripts/_fortschritt.py`).
 - **`__slots__` statt `__dict__`, wo sinnvoll**: bei den unveränderlichen
   `@dataclass(frozen=True)`-Fachobjekten in `domaene/` per `slots=True` am
   Dataclass-Decorator (ab Python 3.10 direkt unterstützt) – spart Speicher und
