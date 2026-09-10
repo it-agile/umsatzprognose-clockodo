@@ -16,7 +16,7 @@
         "Beispielprojekt: 2026-12",
         verbrauchsplan,
         verbrauchsplan_abweichend,
-        "/dashboard?horizont_monate=" ~ horizont_monate ~ "&restvolumen_top=" ~ restvolumen_top ~ "&ohne_budget_filter=" ~ (ohne_budget_filter | urlencode),
+        "/dashboard" ~ verbrauchsplan_zuruecksetzen_query,
         "Verbrauchsplan zurücksetzen"
     ) }}
 </form>
@@ -41,7 +41,7 @@
     "it-agile GmbH\nÖffentliche Schulung",
     ohne_budget_filter,
     ohne_budget_filter_abweichend,
-    "/dashboard?horizont_monate=" ~ horizont_monate ~ "&restvolumen_top=" ~ restvolumen_top ~ "&verbrauchsplan=" ~ (verbrauchsplan | urlencode),
+    "/dashboard" ~ ohne_budget_filter_zuruecksetzen_query,
     "Filter zurücksetzen",
     "dashboard-form"
 ) }}

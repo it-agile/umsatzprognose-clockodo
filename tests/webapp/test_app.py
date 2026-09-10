@@ -740,3 +740,73 @@ def test_vorladen_stoesst_kurzarbeit_cache_nicht_an_wenn_ausgeschaltet(_fake_cac
         pass
 
     assert kurzarbeit_cache.anstossen_aufrufe == 0
+
+
+def test_navigationslinks_ohne_query_wenn_alle_parameter_auf_standard(_fake_caches):
+    """Standardwerte sollen beim Wechseln der Ansicht nicht in der URL landen - eine
+    schlanke URL statt unveraendert mitgeschleppter Standardwerte."""
+    client = TestClient(app_modul.app)
+
+    antwort = client.get("/")
+
+    assert 'href="/"' in antwort.text
+    assert 'href="/dashboard"' in antwort.text
+    assert 'href="/schulungen"' in antwort.text
+    assert 'href="/kurzarbeit"' in antwort.text
+
+
+def test_navigationslinks_lassen_standardwert_weg_auch_wenn_explizit_in_url(_fake_caches):
+    client = TestClient(app_modul.app)
+
+    antwort = client.get(f"/?horizont_monate={app_modul.STANDARD_HORIZONT_MONATE}")
+
+    assert 'href="/"' in antwort.text
+    assert 'href="/dashboard"' in antwort.text
+
+
+def test_navigationslinks_behalten_abweichenden_parameter(_fake_caches):
+    client = TestClient(app_modul.app)
+
+    antwort = client.get("/?horizont_monate=6")
+
+    assert 'href="/?horizont_monate=6"' in antwort.text
+    assert 'href="/dashboard?horizont_monate=6"' in antwort.text
+
+
+def test_verbrauchsplan_zuruecksetzen_link_ohne_abweichende_parameter_zeigt_auf_schlanke_url(
+    _fake_caches,
+):
+    client = TestClient(app_modul.app)
+
+    antwort = client.get("/dashboard?verbrauchsplan=Testprojekt:2026-12")
+
+    assert 'href="/dashboard">Verbrauchsplan zurücksetzen' in antwort.text
+
+
+def test_verbrauchsplan_zuruecksetzen_link_behaelt_abweichenden_parameter(_fake_caches):
+    client = TestClient(app_modul.app)
+
+    antwort = client.get("/dashboard?horizont_monate=6&verbrauchsplan=Testprojekt:2026-12")
+
+    assert 'href="/dashboard?horizont_monate=6">Verbrauchsplan zurücksetzen' in antwort.text
+
+
+def test_ohne_budget_filter_zuruecksetzen_link_ohne_abweichende_parameter_zeigt_auf_schlanke_url(
+    _fake_caches,
+):
+    client = TestClient(app_modul.app)
+
+    antwort = client.get("/dashboard?ohne_budget_filter=Testkunde")
+
+    assert 'href="/dashboard">Filter zurücksetzen' in antwort.text
+
+
+def test_kurzarbeit_zuruecksetzen_link_laesst_standard_zeitraum_weg(_fake_caches):
+    client = TestClient(app_modul.app)
+
+    antwort = client.get(
+        f"/kurzarbeit?anzahl_monate={app_modul.STANDARD_KURZARBEIT_MONATE}"
+        "&anteil_interne_arbeit_prozent=10"
+    )
+
+    assert 'href="/kurzarbeit">Schwellenwerte zurücksetzen' in antwort.text

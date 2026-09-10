@@ -73,6 +73,7 @@ from __future__ import annotations
 from datetime import date
 from pathlib import Path
 from typing import TYPE_CHECKING, Annotated, Literal, get_args
+from urllib.parse import urlencode
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Callable
@@ -176,6 +177,24 @@ RestvolumenTop = Annotated[int, Query(ge=1)]
 Verbrauchsplan = Annotated[str, Query()]
 OhneBudgetFilter = Annotated[str, Query()]
 
+# Je Seite die Parameter-Standardwerte (als String, wie sie im Query-String stehen) -
+# _anfrage_query() blendet damit auf ihren Standard stehende Parameter aus
+# Navigations- und Zuruecksetzen-Links aus, damit die URL beim Seitenwechsel schlank
+# bleibt statt unveraendert mitgeschleppter Standardwerte (``ab_jahr`` auf
+# /schulungen fehlt hier, weil sein Standard vom aktuellen Datum abhaengt - siehe
+# _standard_anzeige_ab_jahr() und die Route selbst).
+_STANDARDWERTE_START: dict[str, str] = {
+    "horizont_monate": STANDARD_HORIZONT_MONATE,
+    "gewinn_verlust_monate": STANDARD_GEWINN_VERLUST_MONATE,
+    "verbrauchsplan": "",
+}
+_STANDARDWERTE_DASHBOARD: dict[str, str] = {
+    "horizont_monate": STANDARD_HORIZONT_MONATE,
+    "restvolumen_top": str(STANDARD_RESTVOLUMEN_TOP),
+    "verbrauchsplan": "",
+    "ohne_budget_filter": "",
+}
+
 
 def _standard_anzeige_ab_jahr(*, heute: date | None = None) -> int:
     """Ohne explizit gewaehlten ``ab_jahr``-Parameter gezeigtes Jahr.
@@ -206,6 +225,13 @@ UeberstundenStunden = Annotated[int, Query(ge=0, le=40)]
 STANDARD_ANTEIL_INTERNE_ARBEIT_PROZENT = 24
 STANDARD_QUOTE_ORGANISATION_PROZENT = 30
 STANDARD_UEBERSTUNDEN_STUNDEN = 14
+
+_STANDARDWERTE_KURZARBEIT: dict[str, str] = {
+    "anzahl_monate": STANDARD_KURZARBEIT_MONATE,
+    "anteil_interne_arbeit_prozent": str(STANDARD_ANTEIL_INTERNE_ARBEIT_PROZENT),
+    "ueberstunden_stunden": str(STANDARD_UEBERSTUNDEN_STUNDEN),
+    "quote_organisation_prozent": str(STANDARD_QUOTE_ORGANISATION_PROZENT),
+}
 
 _dashboard_cache = DashboardCache()
 _anmeldungsverlauf_cache = AnmeldungsverlaufCache(ab_jahr=STANDARD_AB_JAHR)
@@ -247,13 +273,35 @@ def _tabelle_html(tabelle: pd.DataFrame) -> str:
     return tabelle.to_html(index=False, border=0, classes="tabelle", na_rep="")
 
 
-def _anfrage_query(request: Request) -> str:
-    query = str(request.url.query)
-    return f"?{query}" if query else ""
+def _anfrage_query(
+    request: Request,
+    standardwerte: dict[str, str] | None = None,
+    *,
+    ohne: frozenset[str] = frozenset(),
+) -> str:
+    """Query-String der aktuellen Anfrage fuer Navigations- und Zuruecksetzen-Links.
+
+    Ein Parameter faellt weg, wenn er in ``ohne`` steht oder seinem Standardwert
+    entspricht (``standardwerte``) - sonst wuerden beim Seitenwechsel bzw.
+    Zuruecksetzen unveraendert auf dem Standard stehende Parameter mitgeschleppt,
+    statt die URL schlank zu halten.
+    """
+    paare = [
+        (schluessel, wert)
+        for schluessel, wert in request.query_params.multi_items()
+        if schluessel not in ohne and (not standardwerte or standardwerte.get(schluessel) != wert)
+    ]
+    return f"?{urlencode(paare)}" if paare else ""
 
 
 def _antwort(
-    request: Request, *, seite: str, name: str, stichtag: date | None, **kontext: object
+    request: Request,
+    *,
+    seite: str,
+    name: str,
+    stichtag: date | None,
+    standardwerte: dict[str, str] | None = None,
+    **kontext: object,
 ) -> HTMLResponse:
     return _templates.TemplateResponse(
         request=request,
@@ -261,7 +309,7 @@ def _antwort(
         context={
             "aktive_seite": seite,
             "stichtag": stichtag,
-            "anfrage_query": _anfrage_query(request),
+            "anfrage_query": _anfrage_query(request, standardwerte),
             "kurzarbeit_aktiv": _KURZARBEIT_AKTIV,
             **kontext,
         },
@@ -269,7 +317,12 @@ def _antwort(
 
 
 def _ladeseite(
-    request: Request, *, seite: str, fortschritt: list[str], fehler: str | None = None
+    request: Request,
+    *,
+    seite: str,
+    fortschritt: list[str],
+    fehler: str | None = None,
+    standardwerte: dict[str, str] | None = None,
 ) -> HTMLResponse:
     """Kurze Zwischenseite, waehrend :mod:`.cache` im Hintergrund laedt - siehe Moduldocstring.
 
@@ -290,6 +343,7 @@ def _ladeseite(
         seite=seite,
         name="laedt.html",
         stichtag=None,
+        standardwerte=standardwerte,
         fortschritt=fortschritt,
         fehler=fehler,
     )
@@ -303,6 +357,7 @@ def _bereit_oder_ladeseite[T](
     anstossen: Callable[[], None],
     fortschritt: Callable[[], list[str]],
     fehler: Callable[[], str | None],
+    standardwerte: dict[str, str] | None = None,
 ) -> T | HTMLResponse:
     """Liefert den gecachten Wert, sonst stoesst sie das Laden im Hintergrund an und
     liefert die Ladeseite - das gemeinsame "nicht blockierend geladen"-Muster aller
@@ -314,11 +369,22 @@ def _bereit_oder_ladeseite[T](
     if wert is not None:
         return wert
     anstossen()
-    return _ladeseite(request, seite=seite, fortschritt=fortschritt(), fehler=fehler())
+    return _ladeseite(
+        request,
+        seite=seite,
+        fortschritt=fortschritt(),
+        fehler=fehler(),
+        standardwerte=standardwerte,
+    )
 
 
 def _dashboard_oder_ladeseite(
-    request: Request, *, seite: str, horizont_monate: int, auslastung_monate: int
+    request: Request,
+    *,
+    seite: str,
+    horizont_monate: int,
+    auslastung_monate: int,
+    standardwerte: dict[str, str] | None = None,
 ) -> Dashboard | HTMLResponse:
     """Liefert das gecachte ``Dashboard`` fuer diese Parameterkombination, sonst die
     Ladeseite - gemeinsam fuer ``uebersicht()`` und ``dashboard_seite()``, die beide
@@ -348,6 +414,7 @@ def _dashboard_oder_ladeseite(
             horizont_monate=horizont_monate,
             auslastung_monate=auslastung_monate,
         ),
+        standardwerte=standardwerte,
     )
 
 
@@ -426,6 +493,7 @@ async def uebersicht(
         seite="start",
         horizont_monate=horizont_zahl,
         auslastung_monate=STANDARD_AUSLASTUNG_MONATE,
+        standardwerte=_STANDARDWERTE_START,
     )
     if isinstance(ergebnis, HTMLResponse):
         return ergebnis
@@ -439,12 +507,16 @@ async def uebersicht(
         seite="start",
         name="datencheck.html",
         stichtag=dashboard.stichtag,
+        standardwerte=_STANDARDWERTE_START,
         horizont_monate=horizont_monate,
         horizont_optionen=PROGNOSE_MONATE_OPTIONEN,
         gewinn_verlust_monate=gewinn_verlust_monate,
         gewinn_verlust_optionen=HISTORISCHE_MONATE_OPTIONEN,
         verbrauchsplan=verbrauchsplan,
         verbrauchsplan_abweichend=bool(verbrauchsplan.strip()),
+        verbrauchsplan_zuruecksetzen_query=_anfrage_query(
+            request, _STANDARDWERTE_START, ohne=frozenset({"verbrauchsplan"})
+        ),
         gewinn_verlust_monatlich=_figur_html(
             dashboard.gewinn_verlust_monatlich(monate=gewinn_verlust_zahl), mit_plotlyjs=True
         ),
@@ -470,6 +542,7 @@ async def dashboard_seite(
         seite="dashboard",
         horizont_monate=horizont_zahl,
         auslastung_monate=STANDARD_AUSLASTUNG_MONATE,
+        standardwerte=_STANDARDWERTE_DASHBOARD,
     )
     if isinstance(ergebnis, HTMLResponse):
         return ergebnis
@@ -482,6 +555,7 @@ async def dashboard_seite(
         seite="dashboard",
         name="dashboard.html",
         stichtag=dashboard.stichtag,
+        standardwerte=_STANDARDWERTE_DASHBOARD,
         horizont_monate=horizont_monate,
         horizont_optionen=PROGNOSE_MONATE_OPTIONEN,
         umsatzverlauf=_figur_html(dashboard.umsatzverlauf(), mit_plotlyjs=True),
@@ -493,8 +567,14 @@ async def dashboard_seite(
         ),
         verbrauchsplan=verbrauchsplan,
         verbrauchsplan_abweichend=bool(verbrauchsplan.strip()),
+        verbrauchsplan_zuruecksetzen_query=_anfrage_query(
+            request, _STANDARDWERTE_DASHBOARD, ohne=frozenset({"verbrauchsplan"})
+        ),
         ohne_budget_filter=ohne_budget_filter,
         ohne_budget_filter_abweichend=bool(ohne_budget_filter.strip()),
+        ohne_budget_filter_zuruecksetzen_query=_anfrage_query(
+            request, _STANDARDWERTE_DASHBOARD, ohne=frozenset({"ohne_budget_filter"})
+        ),
         projekte_ohne_budget=_tabelle_html(
             dashboard.projekte_ohne_budget(_ohne_budget_filter_aus_text(ohne_budget_filter))
         ),
@@ -510,6 +590,7 @@ async def schulungen(request: Request, ab_jahr: AbJahr = None) -> HTMLResponse:
     engerer Beginn zeigt deshalb sofort ein anderes Ergebnis, ohne neu zu laden. Ohne
     Angabe gilt :func:`_standard_anzeige_ab_jahr` statt starr :data:`STANDARD_AB_JAHR`.
     """
+    standardwerte = {"ab_jahr": str(_standard_anzeige_ab_jahr())}
     ergebnis = _bereit_oder_ladeseite(
         request,
         seite="schulungen",
@@ -517,6 +598,7 @@ async def schulungen(request: Request, ab_jahr: AbJahr = None) -> HTMLResponse:
         anstossen=_anmeldungsverlauf_cache.anstossen,
         fortschritt=_anmeldungsverlauf_cache.fortschritt,
         fehler=_anmeldungsverlauf_cache.fehler,
+        standardwerte=standardwerte,
     )
     if isinstance(ergebnis, HTMLResponse):
         return ergebnis
@@ -529,6 +611,7 @@ async def schulungen(request: Request, ab_jahr: AbJahr = None) -> HTMLResponse:
         seite="schulungen",
         name="schulungen.html",
         stichtag=date.today(),
+        standardwerte=standardwerte,
         ab_jahr=jahr,
         ab_jahr_optionen=AB_JAHR_OPTIONEN,
         anmeldungsverlauf=_figur_html(
@@ -610,6 +693,7 @@ async def kurzarbeit(
         anstossen=_kurzarbeit_cache.anstossen,
         fortschritt=_kurzarbeit_cache.fortschritt,
         fehler=_kurzarbeit_cache.fehler,
+        standardwerte=_STANDARDWERTE_KURZARBEIT,
     )
     if isinstance(ergebnis, HTMLResponse):
         return ergebnis
@@ -639,6 +723,7 @@ async def kurzarbeit(
         seite="kurzarbeit",
         name="kurzarbeit.html",
         stichtag=date.today(),
+        standardwerte=_STANDARDWERTE_KURZARBEIT,
         anzahl_monate=anzahl_monate,
         anzahl_monate_optionen=KURZARBEIT_MONATE_OPTIONEN,
         anzahl_monate_beschriftungen=KURZARBEIT_MONATE_BESCHRIFTUNGEN,
@@ -646,6 +731,17 @@ async def kurzarbeit(
         ueberstunden_stunden=ueberstunden_stunden,
         quote_organisation_prozent=quote_organisation_prozent,
         schwellenwerte_abweichend=schwellenwerte_abweichend,
+        schwellenwerte_zuruecksetzen_query=_anfrage_query(
+            request,
+            _STANDARDWERTE_KURZARBEIT,
+            ohne=frozenset(
+                {
+                    "anteil_interne_arbeit_prozent",
+                    "ueberstunden_stunden",
+                    "quote_organisation_prozent",
+                }
+            ),
+        ),
         zeilen=zeilen,
         kurzarbeit_grafik=_figur_html(diagramme.kurzarbeit_grafik(ergebnisse), mit_plotlyjs=True),
     )
