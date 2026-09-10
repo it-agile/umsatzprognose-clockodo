@@ -111,6 +111,18 @@ allowlist_externals = [ "ty" ]
 ignore_outcome = true
 commands = [[ "ty", "check", { replace = "posargs", default = ["src", "tests", "scripts", "notebooks"], extend = true } ]]
 
+
+# py315 ist als eigene Umgebung vorbereitet, aber bewusst weder Teil von env_list noch
+# der Matrix in ci.yml: Python 3.15 ist zum Zeitpunkt dieser Ergaenzung noch nicht final
+# veroeffentlicht, und ob alle Abhaengigkeiten (insbesondere numpy, pandas, kaleido)
+# dafuer schon Wheels bereitstellen, ist noch offen. Gezielt ausfuehrbar schon jetzt ueber
+# "uvx --with tox-uv tox -e py315"; sobald sich das als stabil erweist, wandert "py315" in
+# env_list und in die CI-Matrix.
+[tool.tox.env.py315]
+extras = [ "dev", "bericht" ]
+allowlist_externals = [ "pytest" ]
+commands = [["pytest", { replace = "posargs", default = [], extend = true }]]
+
 [tool.tox.env.jupyter]
 extras = [ "notebook" ]
 allowlist_externals = [ "jupyter" ]

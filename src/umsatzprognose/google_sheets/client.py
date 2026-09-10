@@ -243,6 +243,6 @@ def _lokale_credentials(oauth_client_config: dict | None) -> CredentialsBase:
             )
             flow = InstalledAppFlow.from_client_config(oauth_client_config, SCOPES)
             credentials = flow.run_local_server(port=0)
-        pfad.write_text(credentials.to_json())
+        pfad.write_text(credentials.to_json(), encoding="utf-8")
 
     return credentials

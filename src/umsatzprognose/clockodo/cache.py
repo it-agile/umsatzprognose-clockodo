@@ -141,7 +141,7 @@ async def gecacht_oder_neu[T](
     datei = VERZEICHNIS / f"{schluessel}.json"
     start = time.perf_counter()
     if datei.exists() and (time.time() - datei.stat().st_mtime) < ttl:
-        ergebnis = json.loads(datei.read_text())
+        ergebnis = json.loads(datei.read_text(encoding="utf-8"))
         if fortschritt is not None:
             fortschritt(
                 f"{label}: aus dem Cache geladen ({_dauer_text(time.perf_counter() - start)})"
@@ -150,7 +150,7 @@ async def gecacht_oder_neu[T](
 
     ergebnis = await lader()
     VERZEICHNIS.mkdir(parents=True, exist_ok=True)
-    datei.write_text(json.dumps(ergebnis))
+    datei.write_text(json.dumps(ergebnis), encoding="utf-8")
     if fortschritt is not None:
         fortschritt(
             f"{label}: frisch geladen und zwischengespeichert"
