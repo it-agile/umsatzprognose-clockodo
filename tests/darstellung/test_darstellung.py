@@ -31,6 +31,7 @@ from umsatzprognose.darstellung.gestaltung import (
     SCHULUNG,
     SERIE_HELL,
     TICKWINKEL,
+    TINTE,
     VORLAEUFIG_DECKKRAFT,
 )
 from umsatzprognose.domaene import (
@@ -214,6 +215,51 @@ def _anmeldungsverlauf_ueber_monate(anzahl: int) -> Anmeldungsverlauf:
 def test_anmeldungsverlauf_beschriftung_steht_immer_schraeg():
     fig = diagramme.anmeldungsverlauf(_anmeldungsverlauf_ueber_monate(3))
     assert fig.layout.xaxis.tickangle == TICKWINKEL
+
+
+def test_anmeldungsverlauf_reihen_zeichnet_eine_spur_je_reihe():
+    monate = ((2026, 9), (2026, 10))
+    reihen = {
+        "Alle Schulungen": {(2026, 9): 8, (2026, 10): 3},
+        "Scrum": {(2026, 9): 5},
+    }
+    fig = diagramme.anmeldungsverlauf_reihen(reihen, monate)
+
+    namen = {spur.name for spur in fig.data}
+    assert namen == {"Alle Schulungen", "Scrum"}
+
+    alle = next(s for s in fig.data if s.name == "Alle Schulungen")
+    assert list(alle.x) == ["Sep 2026", "Okt 2026"]
+    assert list(alle.y) == [8, 3]
+    assert alle.line.color == TINTE
+
+    scrum = next(s for s in fig.data if s.name == "Scrum")
+    assert list(scrum.y) == [5, 0]
+    assert scrum.line.color == JAHRESFARBEN[0]
+
+
+def test_anmeldungsverlauf_reihen_ohne_trend_zeigt_keine_trendspuren():
+    monate = ((2026, 9),)
+    fig = diagramme.anmeldungsverlauf_reihen({"Scrum": {(2026, 9): 5}}, monate)
+    assert not any("Trend" in (spur.name or "") for spur in fig.data)
+
+
+def test_anmeldungsverlauf_reihen_mit_trend_ergaenzt_gestrichelte_spur_je_reihe():
+    monate = ((2026, 9), (2026, 10), (2026, 11))
+    reihen = {"Scrum": {(2026, 9): 8, (2026, 10): 3, (2026, 11): 4}}
+    fig = diagramme.anmeldungsverlauf_reihen(reihen, monate, mit_trend=True)
+
+    trend = next(s for s in fig.data if s.name == "Scrum (Trend)")
+    assert trend.line.dash == "dash"
+    assert trend.line.color == JAHRESFARBEN[0]
+    assert trend.showlegend is False
+    assert list(trend.y) == pytest.approx([7.0, 5.0, 3.0])
+
+
+def test_anmeldungsverlauf_reihen_ohne_auswahl_zeigt_hinweis():
+    fig = diagramme.anmeldungsverlauf_reihen({}, ((2026, 9),))
+    assert fig.data == ()
+    assert "gewählte Auswahl" in fig.layout.annotations[0].text
 
 
 def _kurzarbeit_ergebnisse() -> dict[tuple[int, int], Kurzarbeitsbewertung]:
@@ -1086,7 +1132,11 @@ def test_hinweistabelle_kuerzt_lange_id_listen():
     assert zeile["Projekte"].endswith("…")
 
 
-def test_anmeldungstabelle_zeigt_teilnehmerzahl_je_monat_und_kategorie_mit_summe():
+def test_anmeldungstabelle_zeigt_teilnehmerzahl_je_kategorie_und_monat_mit_summe_und_gesamtzeile():
+    """Eine Kategorie je Zeile, Monate als Spalten (siehe Docstring von
+    tabellen.anmeldungstabelle) - transponiert gegenueber einer frueheren Fassung mit
+    einem Monat je Zeile, damit die Kategorien in der Webapp aufklappbar werden
+    koennen (siehe tabellen.anmeldungsdetailtabellen)."""
     verlauf = Anmeldungsverlauf(
         anmeldungen=(
             Anmeldung(2026, 9, "CSM 2-tägig", 5),
@@ -1099,12 +1149,11 @@ def test_anmeldungstabelle_zeigt_teilnehmerzahl_je_monat_und_kategorie_mit_summe
 
     tabelle = tabellen.anmeldungstabelle(verlauf, kategorien)
 
-    assert list(tabelle.columns) == ["Monat", "Scrum", "Kanban", "Sonstige", "Summe"]
-    assert tabelle["Monat"].tolist() == ["Sep 2026", "Okt 2026"]
-    assert tabelle["Scrum"].tolist() == [5, 3]
-    assert tabelle["Kanban"].tolist() == [2, 0]
-    assert tabelle["Sonstige"].tolist() == [1, 0]
-    assert tabelle["Summe"].tolist() == [8, 3]
+    assert list(tabelle.columns) == ["Kategorie", "Sep 2026", "Okt 2026", "Summe"]
+    assert tabelle["Kategorie"].tolist() == ["Scrum", "Kanban", "Sonstige", "Gesamt"]
+    assert tabelle["Sep 2026"].tolist() == [5, 2, 1, 8]
+    assert tabelle["Okt 2026"].tolist() == [3, 0, 0, 3]
+    assert tabelle["Summe"].tolist() == [8, 2, 1, 11]
 
 
 def test_dashboard_rechnet_kennzahlen_ohne_den_laufenden_monat():

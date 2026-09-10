@@ -1318,6 +1318,81 @@ def anmeldungsverlauf(verlauf: Anmeldungsverlauf, *, hoehe: int = 420) -> go.Fig
     return fig
 
 
+def anmeldungsverlauf_reihen(
+    reihen: Mapping[str, Mapping[Monat, int]],
+    monate: Sequence[Monat],
+    *,
+    mit_trend: bool = False,
+    hoehe: int = 420,
+) -> go.Figure:
+    """Wie :func:`anmeldungsverlauf`, aber mit einer waehlbaren Anzahl benannter,
+    einzeln eingefaerbter Reihen statt nur der Gesamtzahl - der interaktive Filter in
+    der Webapp (siehe ``webapp/templates/schulungen.html`` und Moduldocstring von
+    :mod:`umsatzprognose.domaene.anmeldung`).
+
+    ``reihen`` bildet einen Anzeigenamen (Kategorie, Schulungstyp, Format oder Dauer)
+    auf seine Monatswerte ab - die Aufrufstelle entscheidet, was eine Reihe bedeutet,
+    diese Funktion zeichnet nur. Die Reihe ``"Alle Schulungen"`` behaelt die Farbe
+    :data:`~umsatzprognose.darstellung.gestaltung.TINTE` aus :func:`anmeldungsverlauf`,
+    fuer denselben Anblick wie ohne jede Auswahl. Alle anderen Reihen bekommen der
+    Reihe nach (nicht nach Alphabet, sondern nach Einfuegereihenfolge in ``reihen``)
+    eine Farbe aus :data:`~umsatzprognose.darstellung.gestaltung.JAHRESFARBEN` - dieselbe
+    CVD-sichere Palette wie beim Kalenderjahresvergleich
+    (:func:`gewinn_verlust_je_jahr`), hier je gewaehltem Filterkriterium statt je Jahr.
+
+    ``mit_trend`` ergaenzt je Reihe eine gestrichelte lineare Trendlinie
+    (:func:`_linearer_trend`) in derselben Farbe, ohne eigenen Legendeneintrag -
+    zusammen mit der Datenlinie durch dieselbe ``legendgroup`` verbunden.
+    """
+    fig = figur(
+        "Anmeldungen je Monat",
+        untertitel="Teilnehmerzahl öffentlicher Schulungen" + (", mit Trend" if mit_trend else ""),
+        hoehe=hoehe,
+    )
+    if not monate or not reihen:
+        fig.add_annotation(
+            text="Keine Anmeldedaten für den gewählten Zeitraum/die gewählte Auswahl.",
+            showarrow=False,
+            font={"color": TINTE_ZWEITRANGIG, "size": 13},
+        )
+        return fig
+
+    beschriftungen = [f"{MONATSNAMEN[monat - 1]} {jahr}" for jahr, monat in monate]
+    farbenindex = 0
+    for name, je_monat in reihen.items():
+        if name == "Alle Schulungen":
+            farbe = TINTE
+        else:
+            farbe = JAHRESFARBEN[farbenindex % len(JAHRESFARBEN)]
+            farbenindex += 1
+        werte = [je_monat.get(monat, 0) for monat in monate]
+        fig.add_scatter(
+            x=beschriftungen,
+            y=werte,
+            mode="lines+markers",
+            name=name,
+            legendgroup=name,
+            line={"color": farbe, "width": 2},
+            marker={"size": 6, "color": farbe},
+        )
+        if mit_trend:
+            fig.add_scatter(
+                x=beschriftungen,
+                y=_linearer_trend([float(w) for w in werte]),
+                mode="lines",
+                name=f"{name} (Trend)",
+                legendgroup=name,
+                showlegend=False,
+                line={"color": farbe, "width": 2, "dash": "dash"},
+            )
+
+    _horizontale_legende(fig)
+    achsen(fig)
+    fig.update_yaxes(rangemode="tozero")
+    _tickangle_setzen(fig)
+    return fig
+
+
 def kurzarbeit_grafik(
     ergebnisse: Mapping[Monat, Kurzarbeitsbewertung],
     *,

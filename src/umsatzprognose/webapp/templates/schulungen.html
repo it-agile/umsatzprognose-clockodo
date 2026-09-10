@@ -1,6 +1,28 @@
 {% extends "basis.html" %}
+{% macro filter_dropdown(feldname, beschriftung, optionen, ausgewaehlt) %}
+<div class="filter-spalte">
+    <span class="filter-beschriftung">{{ beschriftung }}</span>
+    <details class="filter-dropdown">
+        <summary title="{{ ausgewaehlt | join(', ') }}">{{ ausgewaehlt | join(", ") if ausgewaehlt else "–" }}</summary>
+        <div class="filter-optionen">
+            {% for option in optionen %}
+            <label>
+                <input
+                    type="checkbox"
+                    name="{{ feldname }}"
+                    value="{{ option }}"
+                    form="schulungen-form"
+                    {{ "checked" if option in ausgewaehlt }}
+                >
+                {{ option }}
+            </label>
+            {% endfor %}
+        </div>
+    </details>
+</div>
+{% endmacro %}
 {% block inhalt %}
-<form method="get" class="parameter">
+<form method="get" class="parameter" id="schulungen-form">
     <label>Anmeldungen ab Jahr
         <select name="ab_jahr" onchange="this.form.submit()">
             {% for jahr in ab_jahr_optionen %}
@@ -9,9 +31,105 @@
         </select>
     </label>
 </form>
+<details class="regler-abschnitt" {{ "open" if filter_abweichend }}>
+    <summary>Filter für Schulungen <span class="zusammenfassung">(optional)</span></summary>
+    <div class="filter-spalten">
+        {{ filter_dropdown("kategorie_filter", "Kategorie", kategorie_optionen, kategorie_filter) }}
+        {{ filter_dropdown("schulung_filter", "Schulungen", schulung_optionen, schulung_filter) }}
+        {{ filter_dropdown("format_filter", "Format", format_optionen, format_filter) }}
+        {{ filter_dropdown("dauer_filter", "Dauer", dauer_optionen, dauer_filter) }}
+        <div class="filter-spalte">
+            <span class="filter-beschriftung">Trendlinien</span>
+            <label class="filter-checkbox">
+                <input type="hidden" name="trendlinien_werte" value="aus" form="schulungen-form">
+                <input
+                    type="checkbox"
+                    name="trendlinien_werte"
+                    value="an"
+                    form="schulungen-form"
+                    {{ "checked" if trendlinien }}
+                >
+                anzeigen
+            </label>
+        </div>
+    </div>
+    <div class="regler-aktionen">
+        <button type="submit" form="schulungen-form">Anwenden</button>
+        <a class="zuruecksetzen" href="/schulungen{{ filter_zuruecksetzen_query }}">Filter zurücksetzen</a>
+    </div>
+</details>
 {{ anmeldungsverlauf | safe }}
 <details>
-    <summary>Einzelne Schulungen</summary>
-    <div class="tabelle-wrapper">{{ anmeldungstabelle | safe }}</div>
+    <summary>Schulungsdetails</summary>
+    <div class="tabelle-wrapper">
+    <table class="tabelle">
+        <thead>
+            <tr>
+                <th><span class="kategorie-pfeil-platzhalter"></span>Kategorie</th>
+                {% for beschriftung in monatsbeschriftungen %}
+                <th>{{ beschriftung }}</th>
+                {% endfor %}
+                <th>Summe</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for zeile in kategorie_zeilen %}
+            <tr data-tiefe="{{ zeile.tiefe }}"{% if zeile.tiefe > 0 %} style="display: none"{% endif %}>
+                <td class="kategorie-tiefe-{{ zeile.tiefe }}">{% if zeile.hat_kinder -%}
+                    <button
+                        type="button"
+                        class="kategorie-knopf"
+                        aria-expanded="false"
+                        onclick="kategorieZeileUmschalten(this)"
+                    ><span class="kategorie-pfeil">▸</span>{{ zeile.name }}</button>
+                    {%- else -%}
+                    <span class="kategorie-pfeil-platzhalter"></span>{{ zeile.name }}
+                    {%- endif %}</td>
+                {% for wert in zeile.werte %}
+                <td>{{ wert if wert else "" }}</td>
+                {% endfor %}
+                <td>{{ zeile.summe if zeile.summe else "" }}</td>
+            </tr>
+            {% endfor %}
+            <tr class="zeile-gesamt">
+                <td><span class="kategorie-pfeil-platzhalter"></span>Gesamt</td>
+                {% for wert in gesamt_werte %}
+                <td>{{ wert if wert else "" }}</td>
+                {% endfor %}
+                <td>{{ gesamt_summe if gesamt_summe else "" }}</td>
+            </tr>
+        </tbody>
+    </table>
+    </div>
 </details>
+<script>
+    // Blendet die direkten Kinder einer Zeile ein/aus, statt <details> je Zeile zu
+    // verschachteln (siehe Docstring von app._knoten_flach) - eine echte <table>
+    // berechnet ihre Spaltenbreiten unabhaengig vom Auf-/Zuklappen korrekt.
+    function kategorieZeileUmschalten(knopf) {
+        var zeile = knopf.closest("tr");
+        var tiefe = Number(zeile.dataset.tiefe);
+        var wirdGeoeffnet = knopf.getAttribute("aria-expanded") !== "true";
+        knopf.setAttribute("aria-expanded", wirdGeoeffnet ? "true" : "false");
+        knopf.querySelector(".kategorie-pfeil").textContent = wirdGeoeffnet ? "▾" : "▸";
+
+        var naechste = zeile.nextElementSibling;
+        while (naechste && Number(naechste.dataset.tiefe) > tiefe) {
+            if (!wirdGeoeffnet) {
+                // Zuklappen: die gesamte Unterstruktur verstecken und ihren
+                // Aufklapp-Zustand zuruecksetzen, damit sie beim naechsten Aufklappen
+                // wieder eingeklappt beginnt.
+                naechste.style.display = "none";
+                var innererKnopf = naechste.querySelector(".kategorie-knopf");
+                if (innererKnopf) {
+                    innererKnopf.setAttribute("aria-expanded", "false");
+                    innererKnopf.querySelector(".kategorie-pfeil").textContent = "▸";
+                }
+            } else if (Number(naechste.dataset.tiefe) === tiefe + 1) {
+                naechste.style.display = "";
+            }
+            naechste = naechste.nextElementSibling;
+        }
+    }
+</script>
 {% endblock %}

@@ -81,8 +81,11 @@ if TYPE_CHECKING:
     import pandas as pd
     import plotly.graph_objects as go
 
-    from umsatzprognose.domaene import Kurzarbeitsbewertung
+    from umsatzprognose.domaene import Anmeldungsverlauf, Kurzarbeitsbewertung
+    from umsatzprognose.domaene.anmeldung import Kategorisierung
+    from umsatzprognose.util import Monat
 
+from collections.abc import Sequence
 from contextlib import asynccontextmanager
 from functools import partial
 
@@ -93,7 +96,9 @@ from fastapi.templating import Jinja2Templates
 
 from umsatzprognose.clockodo import kurzarbeit_aktiv
 from umsatzprognose.darstellung import Dashboard, diagramme, tabellen
-from umsatzprognose.domaene import Schwellenwerte
+from umsatzprognose.domaene import Anmeldungsknoten, Schwellenwerte
+from umsatzprognose.domaene.anmeldung import KATEGORIE_SONSTIGE
+from umsatzprognose.schulungen import kategorien_automatisch
 
 from .cache import AnmeldungsverlaufCache, DashboardCache, KurzarbeitCache
 
@@ -103,34 +108,6 @@ from .cache import AnmeldungsverlaufCache, DashboardCache, KurzarbeitCache
 # Projekte ohne Budget, siehe dashboard_seite()) haengt vom geladenen Bestand ab.
 STANDARD_RESTVOLUMEN_TOP = 20
 
-# Deckt sich mit "KATEGORIEN" in notebooks/03_schulungsanmeldungen.ipynb - dieselbe,
-# von Hand gepflegte Zuordnung Schulungstyp -> Kategorie, nur noch fuer die
-# Anmeldungstabelle gebraucht (das Diagramm zeigt nur noch die Gesamtzahl).
-KATEGORIEN: dict[str, list[str]] = {
-    "Scrum": [
-        "A-CSD",
-        "A-CSM",
-        "A-CSPO",
-        "CSD",
-        "CSM 2-tägig",
-        "CSM 3-tägig",
-        "CSP-PO",
-        "CSP-SM",
-        "CSPO 2-tägig",
-        "CSPO 3-tägig",
-        "CAL 2",
-        "CAL ETO",
-    ],
-    "Kanban": [
-        "KCP",
-        "KMM",
-        "KSD",
-        "KSI",
-        "KSI 2-tägig",
-        "KSI 3-tägig",
-        "SBK",
-    ],
-}
 
 # Feste, kuratierte Optionen statt eines freien Zahlenbereichs - siehe Moduldocstring.
 # "alle" bei den historischen Monaten steht fuer die gesamte geladene Historie (siehe
@@ -176,6 +153,24 @@ RestvolumenTop = Annotated[int, Query(ge=1)]
 # leer bleibt ohne Wirkung (siehe _verbrauchsplan_aus_text()/_ohne_budget_filter_aus_text()).
 Verbrauchsplan = Annotated[str, Query()]
 OhneBudgetFilter = Annotated[str, Query()]
+
+# Die vier unabhaengigen Filter-Dropdowns (Mehrfachauswahl) fuer den Anmeldungsverlauf
+# auf /schulungen (siehe _anmeldungsreihen()) - anders als HorizontMonate & Co. keine
+# Annotated[Literal[...]], weil ihre gueltigen Werte von den geladenen Daten bzw. der
+# .env-Konfiguration abhaengen, nicht von einer festen, im Code kuratierten Auswahl.
+KategorieFilter = Annotated[Sequence[str], Query()]
+SchulungFilter = Annotated[Sequence[str], Query()]
+FormatFilter = Annotated[Sequence[str], Query()]
+DauerFilter = Annotated[Sequence[str], Query()]
+# Checkbox-Wert per verstecktem Begleitfeld (siehe schulungen.html): ein einzelnes
+# HTML-Kontrollkaestchen kann seinen "aus"-Zustand nicht selbst senden, ein
+# Begleitfeld mit demselben Namen und Wert "aus" tut das immer, das Kontrollkaestchen
+# selbst nur zusaetzlich mit Wert "an", wenn angehakt.
+TrendlinienWerte = Annotated[Sequence[str], Query()]
+
+ALLE_KATEGORIEN = "Alle Kategorien"
+ALLE_SCHULUNGEN = "Alle Schulungen"
+ALLE = "Alle"
 
 # Je Seite die Parameter-Standardwerte (als String, wie sie im Query-String stehen) -
 # _anfrage_query() blendet damit auf ihren Standard stehende Parameter aus
@@ -581,14 +576,152 @@ async def dashboard_seite(
     )
 
 
+def _monate_summieren(knoten: Sequence[Anmeldungsknoten]) -> dict[Monat, int]:
+    """Monatswerte mehrerer Geschwister-Knoten aufsummiert - Grundlage fuer den
+    virtuellen Wurzelknoten einer Kategorie (:func:`_kategorie_knoten`) und die
+    Gesamt-Zeile ueber alle Kategorien."""
+    summen: dict[Monat, int] = {}
+    for kind in knoten:
+        for monat, wert in kind.monate.items():
+            summen[monat] = summen.get(monat, 0) + wert
+    return summen
+
+
+def _kategorie_knoten(name: str, kinder: tuple[Anmeldungsknoten, ...]) -> Anmeldungsknoten:
+    """Ein virtueller Wurzelknoten fuer eine Kategorie, mit ihren Basisname-Knoten als
+    Kinder - dieselbe Knotenform wie darunter, damit :func:`_knoten_ansicht` die
+    Kategorie-Zeile und ihre Unterzeilen einheitlich behandeln kann."""
+    return Anmeldungsknoten(name, _monate_summieren(kinder), kinder)
+
+
+def _knoten_flach(
+    knoten: Anmeldungsknoten, monate: Sequence[Monat], *, tiefe: int = 0
+) -> list[dict[str, object]]:
+    """Wandelt einen :class:`~umsatzprognose.domaene.Anmeldungsknoten`-Baum in eine
+    flache, in Vorordnung sortierte Liste von Jinja-tauglichen Zeilen um - Grundlage
+    fuer echte ``<tr>``-Zeilen in ``schulungen.html`` statt verschachtelter
+    ``<details>``-Elemente.
+
+    Ein verschachteltes ``<details>`` haette (auch mit ``display: contents`` auf dem
+    Element selbst) in der Praxis keine verlaessliche gemeinsame Tabellen-
+    Spaltenberechnung mit der Wurzel ergeben: der Inhaltsbereich eines ``<details>``
+    (alles ausser ``<summary>``) bildet in aktuellen Browsern einen eigenen, davon
+    unabhaengigen Block, in dem eine tiefer verschachtelte Zeile ihre eigene, isolierte
+    Spaltenbreite bekommt statt der Monatsspalten der Wurzel - beobachtet an einer
+    aufgeklappten Unterkategorie, deren Zahlen dann nicht mehr unter den
+    Monatsspalten, sondern zusammengequetscht direkt hinter dem Pfeil auftauchen. Eine
+    echte ``<table>`` berechnet ihre Spaltenbreiten dagegen immer ueber alle (auch
+    unsichtbaren) Zeilen hinweg korrekt; das Auf-/Zuklappen blendet Zeilen deshalb nur
+    noch per ``style.display`` ein/aus (siehe ``kategorieZeileUmschalten()`` in
+    ``schulungen.html``), ohne die Spaltenberechnung zu beeinflussen.
+    """
+    werte = [knoten.monate.get(monat, 0) for monat in monate]
+    zeile: dict[str, object] = {
+        "name": knoten.name,
+        "werte": werte,
+        "summe": sum(werte),
+        "tiefe": tiefe,
+        "hat_kinder": bool(knoten.kinder),
+    }
+    zeilen = [zeile]
+    for kind in knoten.kinder:
+        zeilen.extend(_knoten_flach(kind, monate, tiefe=tiefe + 1))
+    return zeilen
+
+
+def _anmeldungsreihen(
+    verlauf: Anmeldungsverlauf,
+    kategorien: Kategorisierung,
+    *,
+    kategorie_filter: Sequence[str],
+    schulung_filter: Sequence[str],
+    format_filter: Sequence[str],
+    dauer_filter: Sequence[str],
+) -> dict[str, dict[Monat, int]]:
+    """Eine Reihe je ausgewaehltem Filterkriterium, ueber alle vier Dropdowns hinweg -
+    nicht nur eine je Kategorie: jede Auswahl (Kategorie, Basisname, Format oder Dauer)
+    erzeugt ihre eigene Linie im Diagramm (siehe
+    :func:`~umsatzprognose.darstellung.diagramme.anmeldungsverlauf_reihen`), auch wenn
+    mehrere Dropdowns gleichzeitig etwas auswaehlen. :data:`ALLE_KATEGORIEN` (im
+    Kategorie-Dropdown), :data:`ALLE_SCHULUNGEN` (im Schulungen-Dropdown) und
+    :data:`ALLE` (in Format- oder Dauer-Dropdown) meinen dieselbe Gesamtzahl -
+    unabhaengig davon, in welchem Dropdown oder wie oft gewaehlt, liefert das genau
+    eine Reihe (``dict.setdefault``).
+    """
+    reihen: dict[str, dict[Monat, int]] = {}
+    je_kategorie: dict[str, dict[Monat, int]] | None = None
+    for name in kategorie_filter:
+        if name == ALLE_KATEGORIEN:
+            reihen.setdefault(ALLE_SCHULUNGEN, verlauf.je_monat())
+            continue
+        if je_kategorie is None:
+            je_kategorie = verlauf.je_monat_und_kategorie(kategorien)
+        reihen.setdefault(name, je_kategorie.get(name, {}))
+    for basisname in schulung_filter:
+        if basisname == ALLE_SCHULUNGEN:
+            reihen.setdefault(ALLE_SCHULUNGEN, verlauf.je_monat())
+        else:
+            reihen.setdefault(basisname, verlauf.je_monat_und_basisname(basisname))
+    for format_wert in format_filter:
+        if format_wert == ALLE:
+            reihen.setdefault(ALLE_SCHULUNGEN, verlauf.je_monat())
+        else:
+            reihen.setdefault(format_wert, verlauf.je_monat_und_format(format_wert))
+    for dauer_wert in dauer_filter:
+        if dauer_wert == ALLE:
+            reihen.setdefault(ALLE_SCHULUNGEN, verlauf.je_monat())
+        else:
+            reihen.setdefault(dauer_wert, verlauf.je_monat_und_dauer(dauer_wert))
+    return reihen
+
+
+def _schulung_optionen(
+    verlauf: Anmeldungsverlauf, kategorien: Kategorisierung, *, kategorie_filter: Sequence[str]
+) -> list[str]:
+    """Die Basisnamen (Dauer-Varianten wie "CSPO 2-tägig"/"CSPO 3-tägig"
+    zusammengefasst zu "CSPO", wie im Tabellen-Drilldown - siehe
+    :meth:`Anmeldungsverlauf.summe_je_basisname`) mit Anmeldung im aktuellen
+    Zeitfenster, alphabetisch sortiert und mit :data:`ALLE_SCHULUNGEN` vorangestellt -
+    eingeschraenkt auf die gewaehlten Kategorien, falls ``kategorie_filter`` (ohne
+    :data:`ALLE_KATEGORIEN`) nicht leer ist, sonst ungefiltert. Reine Anzeige-
+    Konfiguration der Dropdown-Optionen, keine Fachlogik - die eigentliche Zuordnung
+    liefert :meth:`Anmeldungsverlauf.basisnamen_je_kategorie`."""
+    gewaehlte_kategorien = [name for name in kategorie_filter if name != ALLE_KATEGORIEN]
+    if not gewaehlte_kategorien:
+        return [ALLE_SCHULUNGEN, *sorted(verlauf.basisnamen, key=str.lower)]
+    je_kategorie = verlauf.basisnamen_je_kategorie(kategorien)
+    erlaubt = {
+        name for kategorie in gewaehlte_kategorien for name in je_kategorie.get(kategorie, ())
+    }
+    return [
+        ALLE_SCHULUNGEN,
+        *sorted((name for name in verlauf.basisnamen if name in erlaubt), key=str.lower),
+    ]
+
+
 @app.get("/schulungen", response_class=HTMLResponse)
-async def schulungen(request: Request, ab_jahr: AbJahr = None) -> HTMLResponse:
+async def schulungen(
+    request: Request,
+    ab_jahr: AbJahr = None,
+    kategorie_filter: KategorieFilter = (ALLE_KATEGORIEN,),
+    schulung_filter: SchulungFilter = (ALLE_SCHULUNGEN,),
+    format_filter: FormatFilter = (ALLE,),
+    dauer_filter: DauerFilter = (ALLE,),
+    trendlinien_werte: TrendlinienWerte = ("an",),
+) -> HTMLResponse:
     """Deckt sich mit notebooks/03_schulungsanmeldungen.ipynb: der Anmeldungsverlauf.
 
     ``ab_jahr`` filtert den einen geladenen Anmeldungsverlauf nur noch in-memory
     (siehe :class:`~umsatzprognose.webapp.cache.AnmeldungsverlaufCache`) - ein
     engerer Beginn zeigt deshalb sofort ein anderes Ergebnis, ohne neu zu laden. Ohne
     Angabe gilt :func:`_standard_anzeige_ab_jahr` statt starr :data:`STANDARD_AB_JAHR`.
+
+    Die vier Filter-Dropdowns (Mehrfachauswahl) darueber, was der Anmeldungsverlauf
+    zeigt, sind unabhaengige Auswahlkriterien statt einer Filterkette: jede Auswahl
+    erzeugt ihre eigene Linie (siehe :func:`_anmeldungsreihen`), das Diagramm zeigt
+    also die Vereinigung aller vier Dropdowns. ``trendlinien_werte`` traegt den
+    Checkbox-Zustand ueber ein verstecktes Begleitfeld (siehe Docstring von
+    :data:`TrendlinienWerte`).
     """
     standardwerte = {"ab_jahr": str(_standard_anzeige_ab_jahr())}
     ergebnis = _bereit_oder_ladeseite(
@@ -606,6 +739,38 @@ async def schulungen(request: Request, ab_jahr: AbJahr = None) -> HTMLResponse:
 
     jahr = ab_jahr if ab_jahr is not None else _standard_anzeige_ab_jahr()
     verlauf_ab_jahr = verlauf.ab_jahr(jahr)
+
+    monate = verlauf_ab_jahr.monate
+    monatsbeschriftungen = [tabellen.monatsbeschriftung(monat) for monat in monate]
+    kategorien: Kategorisierung = kategorien_automatisch()
+
+    trendlinien = "an" in trendlinien_werte
+    reihen = _anmeldungsreihen(
+        verlauf_ab_jahr,
+        kategorien,
+        kategorie_filter=kategorie_filter,
+        schulung_filter=schulung_filter,
+        format_filter=format_filter,
+        dauer_filter=dauer_filter,
+    )
+    filter_abweichend = (
+        list(kategorie_filter) != [ALLE_KATEGORIEN]
+        or list(schulung_filter) != [ALLE_SCHULUNGEN]
+        or list(format_filter) != [ALLE]
+        or list(dauer_filter) != [ALLE]
+        or not trendlinien
+    )
+
+    gliederung = verlauf_ab_jahr.gliederung_je_kategorie(kategorien)
+    kategorie_knoten = [
+        _kategorie_knoten(kategorie, kinder) for kategorie, kinder in gliederung.items()
+    ]
+    kategorie_zeilen = [
+        zeile for knoten in kategorie_knoten for zeile in _knoten_flach(knoten, monate)
+    ]
+    gesamt_monate = _monate_summieren(kategorie_knoten)
+    gesamt_werte = [gesamt_monate.get(monat, 0) for monat in monate]
+
     return _antwort(
         request,
         seite="schulungen",
@@ -615,9 +780,41 @@ async def schulungen(request: Request, ab_jahr: AbJahr = None) -> HTMLResponse:
         ab_jahr=jahr,
         ab_jahr_optionen=AB_JAHR_OPTIONEN,
         anmeldungsverlauf=_figur_html(
-            diagramme.anmeldungsverlauf(verlauf_ab_jahr), mit_plotlyjs=True
+            diagramme.anmeldungsverlauf_reihen(reihen, monate, mit_trend=trendlinien),
+            mit_plotlyjs=True,
         ),
-        anmeldungstabelle=_tabelle_html(tabellen.anmeldungstabelle(verlauf_ab_jahr, KATEGORIEN)),
+        kategorie_filter=kategorie_filter,
+        kategorie_optionen=[
+            ALLE_KATEGORIEN,
+            *sorted([*kategorien, KATEGORIE_SONSTIGE], key=str.lower),
+        ],
+        schulung_filter=schulung_filter,
+        schulung_optionen=_schulung_optionen(
+            verlauf_ab_jahr, kategorien, kategorie_filter=kategorie_filter
+        ),
+        format_filter=format_filter,
+        format_optionen=[ALLE, *sorted(verlauf_ab_jahr.formate, key=str.lower)],
+        dauer_filter=dauer_filter,
+        dauer_optionen=[ALLE, *sorted(verlauf_ab_jahr.dauern, key=str.lower)],
+        trendlinien=trendlinien,
+        filter_abweichend=filter_abweichend,
+        filter_zuruecksetzen_query=_anfrage_query(
+            request,
+            standardwerte,
+            ohne=frozenset(
+                {
+                    "kategorie_filter",
+                    "schulung_filter",
+                    "format_filter",
+                    "dauer_filter",
+                    "trendlinien_werte",
+                }
+            ),
+        ),
+        monatsbeschriftungen=monatsbeschriftungen,
+        kategorie_zeilen=kategorie_zeilen,
+        gesamt_werte=gesamt_werte,
+        gesamt_summe=sum(gesamt_werte),
     )
 
 

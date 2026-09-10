@@ -21,9 +21,20 @@
            grossen Text; diese Abstufung liegt bei ca. 5,4:1. */
         nav a.aktiv { color: #0a7a3d; border-bottom: 2px solid #0a7a3d; }
         table { border-collapse: collapse; margin: 1rem 0 2rem; }
-        th, td { padding: 0.3rem 0.8rem; text-align: right; border-bottom: 1px solid #eee; }
+        th, td {
+            padding: 0.3rem 0.8rem; text-align: right; vertical-align: top;
+            border-bottom: 1px solid #ddd; border-right: 1px solid #eee;
+        }
+        th:last-child, td:last-child { border-right: none; }
         th:first-child, td:first-child { text-align: left; }
-        th { color: #555; font-weight: 600; }
+        /* Kopfzeile farblich abgesetzt und mit eigener, kraeftigerer Trennlinie -
+           macht die Spaltenueberschriften auf den ersten Blick von den Werten
+           unterscheidbar, auch in breiten Tabellen wie der Monatstabelle oder dem
+           Kategorie-Drilldown auf /schulungen. */
+        thead th { background: #f2f2f2; color: #555; font-weight: 600; border-bottom: 2px solid #ccc; }
+        /* Zebrastreifen je Zeile - erleichtert das zeilenweise Verfolgen breiter
+           Tabellen mit vielen Spalten (Monate, Kategorien). */
+        tbody tr:nth-child(even) { background: #f8f8f8; }
         /* Umhuellt jede eingebettete pandas-Tabelle - scrollt bei schmalem Viewport
            nur die Tabelle selbst horizontal, statt die ganze Seite zu sprengen. */
         .tabelle-wrapper { overflow-x: auto; }
@@ -33,8 +44,83 @@
         .regler-abschnitt { margin-top: 0.8rem; }
         .regler-abschnitt summary { cursor: pointer; color: #555; }
         .regler-abschnitt[open] summary .zusammenfassung { display: none; }
+        /* Kategorie-Drilldown auf /schulungen (schulungen.html): eine beliebig tief
+           gestaffelte Baumstruktur (Kategorie -> Basisname -> ggf. Format -> ggf.
+           Dauer), als echte <table> mit flach (in Vorordnung) gerenderten <tr>-Zeilen
+           statt verschachtelter <details>-Elemente - eine fruehere Fassung nutzte
+           display:contents auf <details>, um Zeilen trotz Verschachtelung in
+           derselben Tabellen-Spaltenberechnung zu halten, aber der Inhaltsbereich
+           eines <details> (alles ausser <summary>) bildet in aktuellen Browsern einen
+           eigenen, davon unabhaengigen Block: eine aufgeklappte Unterzeile bekam
+           dadurch ihre eigene, isolierte Spaltenbreite statt der Monatsspalten der
+           Wurzel. Das Auf-/Zuklappen blendet Zeilen deshalb nur noch per
+           style.display ein/aus (siehe kategorieZeileUmschalten() in
+           schulungen.html) - eine echte <table> berechnet ihre Spaltenbreiten immer
+           ueber alle (auch unsichtbaren) Zeilen hinweg korrekt. */
+        .kategorie-knopf {
+            background: none; border: none; padding: 0; margin: 0; font: inherit;
+            color: inherit; cursor: pointer; text-align: left;
+        }
+        /* .kategorie-pfeil-platzhalter reserviert denselben Platz wie .kategorie-pfeil,
+           ohne sichtbares Dreieck - fuer Blattzeilen und die Kopf-/Gesamt-Zeile, sonst
+           faengt der Name einer aufklappbaren Zeile sichtbar weiter rechts an als der
+           einer Blattzeile in derselben Spalte. */
+        .kategorie-pfeil, .kategorie-pfeil-platzhalter {
+            display: inline-block; width: 1em; margin-right: 0.3em;
+        }
+        /* Je Tiefe im Baum die erste Zelle zusaetzlich eingerueckt, statt gleich weit
+           links wie ihr Elternknoten zu stehen. */
+        .kategorie-tiefe-1 { padding-left: 1.5rem; }
+        .kategorie-tiefe-2 { padding-left: 3rem; }
+        .kategorie-tiefe-3 { padding-left: 4.5rem; }
+        /* kategorieZeileUmschalten() blendet Kindzeilen nur per style.display ein/
+           aus, sie bleiben also im DOM - die allgemeine Zebra-Regel oben (:nth-child)
+           zaehlt dabei auch unsichtbare Zeilen mit und wuerde je nach Anzahl gerade
+           eingeklappter Kindzeilen unregelmaessig wirken. Eine Abstufung nach
+           Baumtiefe ueber das data-tiefe-Attribut bleibt dagegen unabhaengig vom Auf-/
+           Zuklappen immer gleich. */
+        tbody tr[data-tiefe] { background: #fff; }
+        tbody tr[data-tiefe="1"] { background: #f6f6f6; }
+        tbody tr[data-tiefe="2"] { background: #eeeeee; }
+        tbody tr[data-tiefe="3"] { background: #e6e6e6; }
+        /* Die Gesamt-Zeile hat kein data-tiefe (kein Teil des Baums) - ohne eigene
+           Regel bliebe sie der zufaelligen Zebra-Parität nach vorausgehenden,
+           teils unsichtbaren Zeilen ausgeliefert; stattdessen hebt sie sich immer
+           gleich ab. */
+        tr.zeile-gesamt { background: #f0f0f0; font-weight: 600; border-top: 2px solid #ccc; }
         .regler-gruppe { display: flex; flex-direction: column; gap: 0.5rem; margin-top: 0.6rem; }
         .regler-gruppe label { color: #555; }
+        /* Filter-Dropdowns auf /schulungen (schulungen.html): mehrere Filter
+           nebeneinander statt untereinander, je Filter die Beschriftung ueber statt
+           neben der Auswahl - anders als .regler-gruppe oben, die stattdessen einen
+           einzelnen Regler je Zeile stapelt. */
+        .filter-spalten { display: flex; flex-wrap: wrap; gap: 1.5rem; margin-top: 0.6rem; }
+        .filter-spalte { display: flex; flex-direction: column; gap: 0.3rem; }
+        .filter-beschriftung { color: #555; font-weight: 600; }
+        /* Ein <select multiple> verlangt Strg/Cmd-Klick fuer eine Mehrfachauswahl -
+           wenig entdeckbar. Stattdessen ein <details> als geschlossenes "Dropdown"
+           (Zusammenfassung der aktuellen Auswahl im summary), das beim Oeffnen eine
+           Liste echter Kontrollkaestchen zeigt - nativ, ohne JavaScript, dieselbe
+           Technik wie die uebrigen .regler-abschnitt-Elemente in dieser App. */
+        .filter-dropdown { position: relative; }
+        .filter-dropdown summary {
+            cursor: pointer; list-style: none; border: 1px solid #ccc; border-radius: 3px;
+            padding: 0.3rem 0.6rem; min-width: 10rem; max-width: 16rem; color: #222;
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        }
+        .filter-dropdown summary::-webkit-details-marker { display: none; }
+        .filter-optionen {
+            position: absolute; z-index: 1; top: 100%; left: 0; margin-top: 0.2rem;
+            background: #fff; border: 1px solid #ccc; border-radius: 3px;
+            padding: 0.4rem 0.6rem; min-width: 10rem; max-height: 12rem; overflow-y: auto;
+            display: flex; flex-direction: column; gap: 0.2rem;
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+        }
+        .filter-optionen label {
+            display: flex; align-items: center; gap: 0.4rem; color: #222;
+            font-weight: normal; white-space: nowrap;
+        }
+        .filter-checkbox { display: flex; align-items: center; gap: 0.4rem; color: #222; }
         /* Textarea auf eine eigene Zeile unter ihrer Beschriftung, statt (als
            Inline-Element im Label) rechts daneben - und breiter als der
            Browser-Standard (~20 Zeichen), damit "Projektname: JJJJ-MM"-Zeilen

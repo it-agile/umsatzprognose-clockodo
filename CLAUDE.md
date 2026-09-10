@@ -267,7 +267,10 @@ als undefiniert erscheinen. `setup.py` wird nicht eigenständig geöffnet.
 - `notebooks/03_schulungsanmeldungen.ipynb` – unabhängig vom Baustein Bestand: der
   Anmeldungsverlauf öffentlicher Schulungen (Teilnehmerzahl je Monat und Kategorie,
   `setup.anmeldungsverlauf()`), nicht der Umsatz. Die Kategorie-Zuordnung
-  (`KATEGORIEN`) ist frei konfigurierbar und steht im Notebook, nicht im Paket.
+  (`KATEGORIEN`) ist frei konfigurierbar, aber **keine Notebook-Konstante mehr** –
+  `schulungen.kategorien_automatisch()` liest sie zur Laufzeit aus der
+  Umgebungsvariable `SCHULUNGEN_KATEGORIEN` (Colab-Secrets in Colab, sonst `.env`),
+  dieselbe Quelle wie in der Webapp, statt zweier unabhängig gepflegter Kopien.
 - `notebooks/04_kurzarbeit.ipynb` – wie `03_schulungsanmeldungen.ipynb` vollständig
   unabhängig, hier vom Baustein Kurzarbeitsbereitschaft
   (`setup.kurzarbeit_rohdaten()`, Rollenzuordnung/Schwellenwerte als eigene,
@@ -296,8 +299,53 @@ Dashboard-Notebook auch.
   Monatstabelle `Dashboard.umsatztabelle()`, offenes Auftragsvolumen je Projekt,
   Projekte ohne Budget);
   `/schulungen` mit `notebooks/03_schulungsanmeldungen.ipynb` (der
-  Anmeldungsverlauf über `diagramme.anmeldungsverlauf()`, samt der dort gepflegten
-  `KATEGORIEN`-Zuordnung, als Konstante in `webapp/app.py` übernommen); `/kurzarbeit`
+  Anmeldungsverlauf), zusätzlich mit zwei Ergänzungen, die nur die Webapp zeigt:
+
+  - **Ein optionaler Mehrfach-Filter über der Grafik** (`app._anmeldungsreihen()`,
+    per Voreinstellung zugeklapptes `<details class="regler-abschnitt">`, klappt nur
+    bei aktiver Auswahl auf): vier unabhängige Dropdowns (Kategorie, Schulungen,
+    Format, Dauer, alle mit Mehrfachauswahl) plus Checkbox "Trendlinien" - jede
+    Auswahl über alle vier Dropdowns hinweg erzeugt ihre **eigene** farbige Linie
+    (`diagramme.anmeldungsverlauf_reihen()`, Palette wie
+    `gewinn_verlust_je_jahr()`s Kalenderjahre), keine Filterkette. Jedes Dropdown hat
+    einen eigenen "alle"-Eintrag - `ALLE_KATEGORIEN` ("Alle Kategorien") im
+    Kategorie-, `ALLE_SCHULUNGEN` ("Alle Schulungen") im Schulungen- und `ALLE`
+    ("Alle") im Format-/Dauer-Dropdown -, die alle dieselbe Gesamtzahl liefern,
+    unabhängig von Dropdown oder Mehrfachnennung nur eine Linie. Die
+    Dropdown-Optionen sind je Liste alphabetisch sortiert, mit dem jeweiligen
+    "alle"-Eintrag vorangestellt statt einsortiert; per Voreinstellung sind alle vier
+    "alle"-Einträge zugleich vorausgewählt, sodass ohne Auswahl weiterhin nur die eine
+    Gesamtlinie erscheint und der Filterabschnitt zugeklappt bleibt. Das
+    Schulungen-Dropdown zeigt Basisnamen statt einzelner Schulungstypen - Dauer-
+    Varianten wie "CSPO 2-tägig"/"CSPO 3-tägig" fasst es zu "CSPO" zusammen
+    (`Anmeldungsverlauf.basisnamen`, `.basisnamen_je_kategorie()`,
+    `.je_monat_und_basisname()`), wie es der Tabellen-Drilldown unten bereits tut.
+    Es bietet außerdem nur Basisnamen an, die zur aktuellen Kategorie-Auswahl passen
+    (`app._schulung_optionen()`) - reine Dropdown-Optionen-Einschränkung, keine
+    Fachlogik. Ohne Standard-Verhalten
+    identisch zu vorher (eine schwarze Linie plus Trend); die
+    Trendlinien-Checkbox ist deshalb per verstecktem Begleitfeld (`value="aus"`) plus
+    Kontrollkästchen (`value="an"`) realisiert, weil ein einzelnes HTML-Kästchen
+    seinen "aus"-Zustand sonst nicht senden könnte, und startet angehakt.
+  - **Ein aufklappbarer Kategorie-Drilldown ("Schulungsdetails")**: eine
+    Baumstruktur Kategorie → Basisname → (Format, nur bei tatsächlicher Vielfalt) →
+    (Dauer, ebenso nur bei tatsächlicher Vielfalt), siehe
+    `domaene.anmeldung.Anmeldungsverlauf.gliederung_je_kategorie()`. Format
+    (Präsenz/Online) kommt direkt aus der gleichnamigen Sheet-Spalte
+    (`Anmeldung.format`), Dauer (`"2-tägig"`/`"3-tägig"`) wird aus dem
+    Schulungstyp-Text abgeleitet (`_basisname_und_dauer()`), keins von beiden ist
+    eine gepflegte Liste. Eine echte `<table>` mit flach (in Vorordnung) gerenderten
+    `<tr>`-Zeilen statt verschachtelter `<details>`-Elemente je Ebene - eine frühere
+    Fassung nutzte `display: contents` auf `<details>`, aber der Inhaltsbereich
+    eines `<details>` (alles außer `<summary>`) bildet in aktuellen Browsern einen
+    eigenen, unabhängigen Block, der die Tabellen-Spaltenberechnung verschachtelter
+    Zeilen von der Wurzel trennt. Auf-/Zuklappen blendet Zeilen deshalb per kleinem,
+    eigenständigem Skript (`kategorieZeileUmschalten()` in `schulungen.html`) nur
+    noch über `style.display` ein/aus.
+
+  Die Kategorie-Zuordnung (`KATEGORIEN`) kommt aus derselben
+  `SCHULUNGEN_KATEGORIEN`-Umgebungsvariable wie im Notebook (siehe oben), keine
+  Konstante mehr in `webapp/app.py`; `/kurzarbeit`
   mit `notebooks/04_kurzarbeit.ipynb` (Baustein Kurzarbeitsbereitschaft,
   `spec/spec-kurzarbeit.md` – rückblickend je Monat, ob die Organisation die
   Voraussetzungen für Kurzarbeit erfüllt hätte, ausschließlich Aggregatzahlen).
@@ -708,7 +756,18 @@ die Kopfzeile namentlich** zugeordnet (`Jahr`, `Monat`, `Umsatz gesamt`), nicht 
 Position – robust gegenüber den vielen ungenutzten Spalten. `Umsatz gesamt` ist
 uneinheitlich formatiertes deutsches Zahlenformat mit Euro-Zeichen, geparst über
 `domaene.zahlen.euro_parsen()` (entfernt alles außer Ziffern/Punkt/Komma, dann den
-Tausenderpunkt, dann Komma → Punkt).
+Tausenderpunkt, dann Komma → Punkt). Für den Anmeldungsverlauf (`TN Zahl` je
+Schulungstyp und Monat) steht `Präsenz/Online` **nicht** mehr unter den ungenutzten
+Spalten – `_zeilen_zu_anmeldungen()` liest sie als `Anmeldung.format`, Grundlage der
+Format-Unterteilung im Kategorie-Drilldown der Webapp (siehe oben). Eine leere Zelle in
+`TN Zahl` zählt als 0 Anmeldungen, statt die ganze Zeile zu überspringen – sonst würde
+ein Schulungstyp mit ausschließlich leeren `TN Zahl`-Zellen in einem Zeitraum unbemerkt
+ganz aus dem Anmeldungsverlauf verschwinden, statt mit 0 aufzutauchen. Die
+Kategorie-Zuordnung (`KATEGORIEN`, Scrum/Kanban/Sonstige) ist wie `KOSTEN_SHEET_IDS`
+reine Laufzeit-Konfiguration: `schulungen.kategorien_automatisch()` liest sie aus der
+Umgebungsvariable `SCHULUNGEN_KATEGORIEN` (JSON-Objekt Kategorie → Liste von
+Schulungstypen), Colab-Secrets in Colab, sonst `.env` – dieselbe Quelle für Webapp und
+Notebook.
 
 **Kosten:** Tabellenblatt `Kosten {jahr}` – **ohne festen Zeilen- oder Spaltenbereich**:
 gelesen wird pauschal `1:20`, weder Kopfzeilen-Zeile noch Spaltenlage stimmen

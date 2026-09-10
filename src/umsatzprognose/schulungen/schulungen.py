@@ -2,7 +2,11 @@
 
 Die Kopfzeile des Tabellenblatts bestimmt die Spaltenzuordnung **namentlich**, nicht
 ueber die Position - robust gegenueber den vielen fuer die Prognose ungenutzten Spalten
-(Rabattstufen, Trainer, Praesenz/Online, ...).
+(Rabattstufen, Trainer, ...). ``Präsenz/Online`` ist dagegen keine ungenutzte Spalte
+mehr: :meth:`SchulungenRepository.anmeldungsverlauf_laden` liest sie als
+:attr:`~umsatzprognose.domaene.anmeldung.Anmeldung.format`, Grundlage der
+Format-Unterteilung im Kategorie-Drilldown der Webapp (siehe
+:meth:`~umsatzprognose.domaene.anmeldung.Anmeldungsverlauf.gliederung_je_kategorie`).
 
 **Die Kopfzeile steht nicht zuverlaessig in Zeile 0.** Analog zum Baustein Kosten
 (siehe Moduldocstring von :mod:`umsatzprognose.kosten.kosten`) geht der eigentlichen
@@ -50,9 +54,14 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
 
+    from umsatzprognose.domaene.anmeldung import Kategorisierung
     from umsatzprognose.util import Fortschritt
 
+import json
 from datetime import date
+from functools import partial
+
+from dotenv import load_dotenv
 
 from umsatzprognose.domaene import (
     Anmeldung,
@@ -65,13 +74,14 @@ from umsatzprognose.domaene.zahlen import euro_parsen
 from umsatzprognose.google_sheets import (
     GoogleSheetsClient,
     GoogleSheetsConfig,
+    MissingCredentialsError,
     TabellenClient,
     jahre_laden,
     kopfzeile_finden,
     zelle,
     zelle_an,
 )
-from umsatzprognose.util import aus_ordnung, ordnung
+from umsatzprognose.util import aus_ordnung, colab_secret, in_colab, ordnung, umgebungsvariable
 
 TABELLENBLATT = "Öffentliche Schulungen"
 
@@ -80,6 +90,59 @@ SPALTE_MONAT = "Monat"
 SPALTE_UMSATZ = "Umsatz gesamt"
 SPALTE_SCHULUNGSTYP = "Schulung"
 SPALTE_TEILNEHMERZAHL = "TN Zahl"
+SPALTE_FORMAT = "Präsenz/Online"
+
+KATEGORIEN_VAR = "SCHULUNGEN_KATEGORIEN"
+
+_umgebungsvariable = partial(umgebungsvariable, fehlerklasse=MissingCredentialsError)
+_colab_secret = partial(colab_secret, fehlerklasse=MissingCredentialsError)
+
+
+def kategorien_automatisch() -> Kategorisierung:
+    """Aus der passenden Quelle: Colab-Secrets in Colab, sonst ``.env`` - dieselbe
+    Auswahl wie bei :meth:`~umsatzprognose.google_sheets.GoogleSheetsConfig.automatisch`
+    und :func:`~umsatzprognose.clockodo.kurzarbeit.rollenzuordnung_automatisch`.
+
+    Die Kategorie-Zuordnung (Scrum/Kanban/Sonstige, siehe Moduldocstring von
+    :mod:`umsatzprognose.domaene.anmeldung`) ist reine Konfiguration statt Fachlogik
+    und wird deshalb wie :data:`~umsatzprognose.google_sheets.config.SHEET_ID_VAR` zur
+    Laufzeit gelesen statt im Repository als Python-Konstante gefuehrt - Webapp und
+    Notebook (``notebooks/03_schulungsanmeldungen.ipynb``) lesen dieselbe Quelle statt
+    zwei unabhaengig gepflegte Kopien.
+    """
+    return kategorien_aus_colab_secrets() if in_colab() else kategorien_aus_umgebung()
+
+
+def kategorien_aus_umgebung(*, use_dotenv: bool = True) -> Kategorisierung:
+    """Aus :data:`KATEGORIEN_VAR`; lokal wird eine ``.env`` beruecksichtigt."""
+    if use_dotenv:
+        load_dotenv()
+    return _kategorien_aus_json(_umgebungsvariable(KATEGORIEN_VAR))
+
+
+def kategorien_aus_colab_secrets() -> Kategorisierung:
+    """Aus der Colab-Secrets-Verwaltung. Keine ``.env`` in Colab."""
+    return _kategorien_aus_json(_colab_secret(KATEGORIEN_VAR))
+
+
+def _kategorien_aus_json(roh: str) -> Kategorisierung:
+    try:
+        wert = json.loads(roh)
+    except json.JSONDecodeError as fehler:
+        raise MissingCredentialsError(
+            f"{KATEGORIEN_VAR} enthaelt kein gueltiges JSON: {fehler}"
+        ) from fehler
+    ungueltig = not isinstance(wert, dict) or not all(
+        isinstance(kategorie, str)
+        and isinstance(typen, list)
+        and all(isinstance(typ, str) for typ in typen)
+        for kategorie, typen in wert.items()
+    )
+    if ungueltig:
+        raise MissingCredentialsError(
+            f"{KATEGORIEN_VAR} muss ein JSON-Objekt Kategorie -> Liste von Schulungstypen sein."
+        )
+    return wert
 
 
 def _jahr_spalte_ermitteln(index: dict[str, int]) -> int:
@@ -120,7 +183,7 @@ def _zeilen_zu_anmeldungen(zeilen: list[list[str]]) -> list[Anmeldung]:
     if not zeilen:
         return []
     kopf_zeile, index = kopfzeile_finden(
-        zeilen, {SPALTE_MONAT, SPALTE_SCHULUNGSTYP, SPALTE_TEILNEHMERZAHL}
+        zeilen, {SPALTE_MONAT, SPALTE_SCHULUNGSTYP, SPALTE_TEILNEHMERZAHL, SPALTE_FORMAT}
     )
     jahr_spalte = _jahr_spalte_ermitteln(index)
 
@@ -128,15 +191,22 @@ def _zeilen_zu_anmeldungen(zeilen: list[list[str]]) -> list[Anmeldung]:
     for zeile in zeilen[kopf_zeile + 1 :]:
         jahr_text = zelle_an(zeile, jahr_spalte).strip()
         monat_text = zelle(zeile, index, SPALTE_MONAT).strip()
-        teilnehmerzahl_text = zelle(zeile, index, SPALTE_TEILNEHMERZAHL).strip()
-        if not jahr_text or not monat_text or not teilnehmerzahl_text:
+        if not jahr_text or not monat_text:
             continue
+        # Eine leere Zelle steht fuer 0 Anmeldungen, nicht fuer eine fehlende Zeile -
+        # sonst wuerde ein Schulungstyp mit ausschliesslich leeren TN-Zahl-Zellen in
+        # diesem Zeitraum unbemerkt ganz aus verlauf.schulungstypen verschwinden statt
+        # mit 0 aufzutauchen.
+        teilnehmerzahl_text = zelle(zeile, index, SPALTE_TEILNEHMERZAHL).strip()
         anmeldungen.append(
             Anmeldung(
                 jahr=int(jahr_text),
                 monat=int(monat_text),
                 schulungstyp=zelle(zeile, index, SPALTE_SCHULUNGSTYP).strip() or "Unbekannt",
-                teilnehmerzahl=int(float(teilnehmerzahl_text.replace(",", "."))),
+                teilnehmerzahl=int(float(teilnehmerzahl_text.replace(",", ".")))
+                if teilnehmerzahl_text
+                else 0,
+                format=zelle(zeile, index, SPALTE_FORMAT).strip(),
             )
         )
     return anmeldungen

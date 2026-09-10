@@ -38,6 +38,7 @@ KOPFZEILE_ANMELDUNGEN = [
     "Max Zahl",
     "Restplätze",
     "Auslastung",
+    "Präsenz/Online",
 ]
 
 
@@ -127,11 +128,12 @@ def test_zeilen_zu_anmeldungen_findet_spalten_ueber_die_kopfzeile() -> None:
             "15",
             "3",
             "80%",
+            "Präsenz",
         ],
     ]
     anmeldungen = _zeilen_zu_anmeldungen(zeilen)
-    assert [(a.jahr, a.monat, a.schulungstyp, a.teilnehmerzahl) for a in anmeldungen] == [
-        (2026, 10, "Scrum Master", 12),
+    assert [(a.jahr, a.monat, a.schulungstyp, a.teilnehmerzahl, a.format) for a in anmeldungen] == [
+        (2026, 10, "Scrum Master", 12, "Präsenz"),
     ]
 
 
@@ -140,27 +142,52 @@ def test_zeilen_zu_anmeldungen_nimmt_die_zuletzt_stehende_tn_zahl_spalte() -> No
     eine Verwechslung aufdeckt - in der Praxis tragen beide denselben Wert."""
     zeilen = [
         KOPFZEILE_ANMELDUNGEN,
-        ["Kurs A", "2026", "10", "", "1", "0,00 €", "", "9", "10", "1", "90%"],
+        ["Kurs A", "2026", "10", "", "1", "0,00 €", "", "9", "10", "1", "90%", "Präsenz"],
     ]
     [anmeldung] = _zeilen_zu_anmeldungen(zeilen)
     assert anmeldung.teilnehmerzahl == 9
 
 
-def test_zeilen_zu_anmeldungen_ueberspringt_zeilen_ohne_jahr_monat_oder_teilnehmerzahl() -> None:
-    zeilen = [KOPFZEILE_ANMELDUNGEN, ["Kurs A", "", "", "", "", "0,00 €", "", "", "", "", ""]]
+def test_zeilen_zu_anmeldungen_ueberspringt_zeilen_ohne_jahr_oder_monat() -> None:
+    zeilen = [
+        KOPFZEILE_ANMELDUNGEN,
+        ["Kurs A", "", "", "", "", "0,00 €", "", "", "", "", "", ""],
+    ]
     assert _zeilen_zu_anmeldungen(zeilen) == []
 
 
-def test_zeilen_zu_anmeldungen_findet_jahr_spalte_trotz_vertipptem_kopfzeilentext() -> None:
-    kopfzeile = ["x^", "Monat", "Schulung", "Trainer", "Datum", "TN Zahl", "Umsatz gesamt"]
-    zeilen = [kopfzeile, ["2024", "10", "Scrum Master", "", "", "12", "1.500,00 €"]]
+def test_zeilen_zu_anmeldungen_leere_teilnehmerzahl_zaehlt_als_null() -> None:
+    """Eine leere Zelle in der TN-Zahl-Spalte steht fuer 0 Anmeldungen, nicht fuer eine
+    fehlende Zeile - sonst wuerde ein Schulungstyp mit ausschliesslich leeren TN-Zahl-
+    Zellen in diesem Zeitraum unbemerkt ganz aus dem Anmeldungsverlauf verschwinden."""
+    zeilen = [
+        KOPFZEILE_ANMELDUNGEN,
+        ["Kurs A", "2026", "10", "", "", "0,00 €", "", "", "", "", "", ""],
+    ]
     [anmeldung] = _zeilen_zu_anmeldungen(zeilen)
-    assert (anmeldung.jahr, anmeldung.monat, anmeldung.schulungstyp, anmeldung.teilnehmerzahl) == (
-        2024,
-        10,
-        "Scrum Master",
-        12,
-    )
+    assert (anmeldung.jahr, anmeldung.monat, anmeldung.teilnehmerzahl) == (2026, 10, 0)
+
+
+def test_zeilen_zu_anmeldungen_findet_jahr_spalte_trotz_vertipptem_kopfzeilentext() -> None:
+    kopfzeile = [
+        "x^",
+        "Monat",
+        "Schulung",
+        "Trainer",
+        "Datum",
+        "TN Zahl",
+        "Umsatz gesamt",
+        "Präsenz/Online",
+    ]
+    zeilen = [kopfzeile, ["2024", "10", "Scrum Master", "", "", "12", "1.500,00 €", "Online"]]
+    [anmeldung] = _zeilen_zu_anmeldungen(zeilen)
+    assert (
+        anmeldung.jahr,
+        anmeldung.monat,
+        anmeldung.schulungstyp,
+        anmeldung.teilnehmerzahl,
+        anmeldung.format,
+    ) == (2024, 10, "Scrum Master", 12, "Online")
 
 
 def test_zeilen_zu_anmeldungen_ohne_zeilen_ist_leer() -> None:
@@ -173,11 +200,11 @@ def test_zeilen_zu_anmeldungen_wirft_bei_fehlenden_spalten() -> None:
 
 
 def test_zeilen_zu_anmeldungen_findet_kopfzeile_hinter_einer_vorausgehenden_zeile() -> None:
-    vorausgehende_zeile = ["Übersicht", "Monat", "", "", "", "", "", "", "", "", ""]
+    vorausgehende_zeile = ["Übersicht", "Monat", "", "", "", "", "", "", "", "", "", ""]
     zeilen = [
         vorausgehende_zeile,
         KOPFZEILE_ANMELDUNGEN,
-        ["Kurs A", "2026", "10", "", "1", "0,00 €", "", "9", "10", "1", "90%"],
+        ["Kurs A", "2026", "10", "", "1", "0,00 €", "", "9", "10", "1", "90%", "Präsenz"],
     ]
     [anmeldung] = _zeilen_zu_anmeldungen(zeilen)
     assert (anmeldung.jahr, anmeldung.monat, anmeldung.teilnehmerzahl) == (2026, 10, 9)
@@ -188,11 +215,37 @@ def test_anmeldungsverlauf_laden_fuehrt_mehrere_jahre_zusammen() -> None:
         {
             "sheet-2022": [
                 KOPFZEILE_ANMELDUNGEN,
-                ["Scrum Master", "2022", "3", "", "1", "1.000,00 €", "", "4", "10", "6", "40%"],
+                [
+                    "Scrum Master",
+                    "2022",
+                    "3",
+                    "",
+                    "1",
+                    "1.000,00 €",
+                    "",
+                    "4",
+                    "10",
+                    "6",
+                    "40%",
+                    "Präsenz",
+                ],
             ],
             "sheet-2023": [
                 KOPFZEILE_ANMELDUNGEN,
-                ["Scrum Master", "2023", "1", "", "1", "2.000,00 €", "", "6", "10", "4", "60%"],
+                [
+                    "Scrum Master",
+                    "2023",
+                    "1",
+                    "",
+                    "1",
+                    "2.000,00 €",
+                    "",
+                    "6",
+                    "10",
+                    "4",
+                    "60%",
+                    "Präsenz",
+                ],
             ],
         }
     )
@@ -208,11 +261,37 @@ def test_anmeldungsverlauf_laden_meldet_fortschritt_je_jahr_mit_kumulierter_anza
         {
             "sheet-2022": [
                 KOPFZEILE_ANMELDUNGEN,
-                ["Scrum Master", "2022", "3", "", "1", "1.000,00 €", "", "4", "10", "6", "40%"],
+                [
+                    "Scrum Master",
+                    "2022",
+                    "3",
+                    "",
+                    "1",
+                    "1.000,00 €",
+                    "",
+                    "4",
+                    "10",
+                    "6",
+                    "40%",
+                    "Präsenz",
+                ],
             ],
             "sheet-2023": [
                 KOPFZEILE_ANMELDUNGEN,
-                ["Scrum Master", "2023", "1", "", "1", "2.000,00 €", "", "6", "10", "4", "60%"],
+                [
+                    "Scrum Master",
+                    "2023",
+                    "1",
+                    "",
+                    "1",
+                    "2.000,00 €",
+                    "",
+                    "6",
+                    "10",
+                    "4",
+                    "60%",
+                    "Präsenz",
+                ],
             ],
         }
     )

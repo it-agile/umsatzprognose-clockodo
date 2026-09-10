@@ -196,29 +196,47 @@ def hinweistabelle(hinweise: Sequence[Hinweis], *, max_anzahl_betroffen: int = 1
     )
 
 
+def monatsbeschriftung(monat: tuple[int, int]) -> str:
+    jahr, monatsnummer = monat
+    return f"{MONATSNAMEN[monatsnummer - 1]} {jahr}"
+
+
 def anmeldungstabelle(verlauf: Anmeldungsverlauf, kategorien: Kategorisierung) -> pd.DataFrame:
-    """Teilnehmerzahl je Monat und Kategorie, mit einer Summenspalte je Monat - der
-    Drilldown hinter der Gesamtzahl aus
-    :func:`~umsatzprognose.darstellung.diagramme.anmeldungsverlauf`.
+    """Teilnehmerzahl je Kategorie und Monat, mit einer Summenspalte je Kategorie und
+    einer abschliessenden Gesamt-Zeile je Monat - der Drilldown hinter der Gesamtzahl
+    aus :func:`~umsatzprognose.darstellung.diagramme.anmeldungsverlauf`, fuer die
+    statische Notebook-Ansicht (``notebooks/03_schulungsanmeldungen.ipynb``). Die
+    Webapp zeigt denselben Drilldown stattdessen interaktiv und feiner aufgeschluesselt
+    (siehe :meth:`~umsatzprognose.domaene.anmeldung.Anmeldungsverlauf.
+    gliederung_je_kategorie` und ``webapp/templates/schulungen.html``).
+
+    Eine Kategorie je Zeile statt (wie in einer frueheren Fassung) ein Monat je Zeile -
+    das haelt die Zeilenzahl unabhaengig von der Laenge des betrachteten Zeitraums fest.
 
     ``kategorien`` bildet Kategoriename auf die zugehoerigen Schulungstypen ab (siehe
     Moduldocstring von :mod:`umsatzprognose.domaene.anmeldung`) - typischerweise eine
     im Notebook/Skript gepflegte, frei aenderbare Zuordnung, keine Konstante dieser
-    Funktion. Die Spalten ergeben sich aus den uebergebenen Kategorien (in ihrer
+    Funktion. Die Zeilen ergeben sich aus den uebergebenen Kategorien (in ihrer
     Reihenfolge, plus ``KATEGORIE_SONSTIGE`` am Ende) statt einer festen Konstante.
     """
     je_kategorie = verlauf.je_monat_und_kategorie(kategorien)
+    monate = verlauf.monate
+    beschriftungen = [monatsbeschriftung(monat) for monat in monate]
+    werte_je_kategorie: dict[str, dict[str, int]] = {}
     zeilen = []
-    for monat in verlauf.monate:
-        werte = {kategorie: je_monat.get(monat, 0) for kategorie, je_monat in je_kategorie.items()}
-        zeilen.append(
-            {
-                "Monat": f"{MONATSNAMEN[monat[1] - 1]} {monat[0]}",
-                **werte,
-                "Summe": sum(werte.values()),
-            }
-        )
-    spalten = ["Monat", *je_kategorie, "Summe"]
+    for kategorie, je_monat in je_kategorie.items():
+        werte = {
+            beschriftung: je_monat.get(monat, 0)
+            for monat, beschriftung in zip(monate, beschriftungen, strict=True)
+        }
+        werte_je_kategorie[kategorie] = werte
+        zeilen.append({"Kategorie": kategorie, **werte, "Summe": sum(werte.values())})
+    gesamt = {
+        beschriftung: sum(werte[beschriftung] for werte in werte_je_kategorie.values())
+        for beschriftung in beschriftungen
+    }
+    zeilen.append({"Kategorie": "Gesamt", **gesamt, "Summe": sum(gesamt.values())})
+    spalten = ["Kategorie", *beschriftungen, "Summe"]
     return _ohne_index(pd.DataFrame(zeilen, columns=spalten))
 
 

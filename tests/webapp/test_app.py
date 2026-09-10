@@ -14,6 +14,7 @@ import pytest
 
 from umsatzprognose.darstellung import Dashboard
 from umsatzprognose.domaene import (
+    Anmeldung,
     Anmeldungsverlauf,
     Bestand,
     Gesamtbudget,
@@ -33,6 +34,36 @@ fastapi = pytest.importorskip("fastapi")
 from fastapi.testclient import TestClient  # noqa: E402
 
 import umsatzprognose.webapp.app as app_modul  # noqa: E402
+
+# Dieselbe Zuordnung, die vor der Umstellung auf SCHULUNGEN_KATEGORIEN (siehe
+# schulungen.kategorien_automatisch) als Konstante in webapp/app.py stand - hier per
+# Fake statt echter Umgebungsvariable, damit die Tests ohne .env laufen (siehe
+# _fake_caches unten).
+KATEGORIEN = {
+    "Scrum": [
+        "A-CSD",
+        "A-CSM",
+        "A-CSPO",
+        "CSD",
+        "CSM 2-tägig",
+        "CSM 3-tägig",
+        "CSP-PO",
+        "CSP-SM",
+        "CSPO 2-tägig",
+        "CSPO 3-tägig",
+        "CAL 2",
+        "CAL ETO",
+    ],
+    "Kanban": [
+        "KCP",
+        "KMM",
+        "KSD",
+        "KSI",
+        "KSI 2-tägig",
+        "KSI 3-tägig",
+        "SBK",
+    ],
+}
 
 STICHTAG = date(2026, 8, 24)
 KUNDE = Kunde(id=1, name="Testkunde")
@@ -140,6 +171,10 @@ def _fake_caches(monkeypatch):
     monkeypatch.setattr(app_modul, "_dashboard_cache", dashboard_cache)
     monkeypatch.setattr(app_modul, "_anmeldungsverlauf_cache", anmeldungsverlauf_cache)
     monkeypatch.setattr(app_modul, "_kurzarbeit_cache", kurzarbeit_cache)
+    # kategorien_automatisch() liest sonst SCHULUNGEN_KATEGORIEN aus der echten
+    # Umgebung (siehe schulungen.kategorien_automatisch) - hier fest verdrahtet, damit
+    # die Tests ohne gesetzte .env laufen.
+    monkeypatch.setattr(app_modul, "kategorien_automatisch", lambda: KATEGORIEN)
     # Standardmaessig eingeschaltet, damit die bestehenden Kurzarbeit-Tests unten das
     # bisherige Verhalten pruefen - siehe die eigenen Tests weiter unten fuer den
     # ausgeschalteten Fall (KURZARBEIT_AKTIV).
@@ -412,6 +447,355 @@ def test_schulungen_ohne_ab_jahr_zeigt_den_dynamischen_standard(_fake_caches):
     erwartet = app_modul._standard_anzeige_ab_jahr()
     assert antwort.status_code == 200
     assert f'value="{erwartet}" selected' in antwort.text
+
+
+def test_schulungen_details_abschnitt_heisst_schulungsdetails(_fake_caches):
+    client = TestClient(app_modul.app)
+
+    antwort = client.get("/schulungen")
+
+    assert "<summary>Schulungsdetails</summary>" in antwort.text
+    assert "Einzelne Schulungen" not in antwort.text
+
+
+def test_schulungen_zeigt_monatssummen_in_der_aufklappbaren_kategoriezeile(
+    _fake_caches,
+):
+    """Die Kategorie-Zeile bleibt beim Zuklappen mit ihren Monatswerten sichtbar - sie
+    stehen in derselben echten Tabellenzeile, nicht in einer separaten Tabelle."""
+    _, anmeldungsverlauf_cache, _ = _fake_caches
+    anmeldungsverlauf_cache.ergebnis = Anmeldungsverlauf(
+        anmeldungen=(
+            Anmeldung(2026, 9, "CSM 2-tägig", 5),
+            Anmeldung(2026, 9, "CSPO 2-tägig", 2),
+            Anmeldung(2026, 9, "KSD", 4),
+        )
+    )
+    client = TestClient(app_modul.app)
+
+    antwort = client.get("/schulungen")
+
+    tabelle = antwort.text[antwort.text.index("<tbody>") :]
+    scrum_index = tabelle.index(">Scrum<")
+    zeile_ende = tabelle.index("</tr>", scrum_index)
+    zeile = tabelle[scrum_index:zeile_ende]
+    assert "<td>7</td>" in zeile  # 5 + 2
+
+
+def test_schulungen_zeigt_gesamtzeile_ueber_alle_kategorien(_fake_caches):
+    _, anmeldungsverlauf_cache, _ = _fake_caches
+    anmeldungsverlauf_cache.ergebnis = Anmeldungsverlauf(
+        anmeldungen=(
+            Anmeldung(2026, 9, "CSM 2-tägig", 5),
+            Anmeldung(2026, 9, "KSD", 4),
+            Anmeldung(2026, 9, "Ein ganz neuer Kurs", 1),
+        )
+    )
+    client = TestClient(app_modul.app)
+
+    antwort = client.get("/schulungen")
+
+    gesamt_index = antwort.text.index(">Gesamt<")
+    zeile_ende = antwort.text.index("</tr>", gesamt_index)
+    zeile = antwort.text[gesamt_index:zeile_ende]
+    assert "<td>10</td>" in zeile
+
+
+def test_schulungen_basisname_ohne_variante_bleibt_einfaches_blatt(_fake_caches):
+    """Ein Schulungstyp ohne Dauer-Suffix und mit nur einem Format bleibt ein
+    einfaches Blatt, ohne eigenen Aufklapp-Knopf."""
+    _, anmeldungsverlauf_cache, _ = _fake_caches
+    anmeldungsverlauf_cache.ergebnis = Anmeldungsverlauf(
+        anmeldungen=(Anmeldung(2026, 9, "KSD", 4),)
+    )
+    client = TestClient(app_modul.app)
+
+    antwort = client.get("/schulungen")
+
+    ksd_index = antwort.text.index(">KSD<")
+    assert "kategorie-knopf" not in antwort.text[max(0, ksd_index - 300) : ksd_index]
+
+
+def test_schulungen_dauer_ebene_erscheint_nur_bei_mehreren_dauer_varianten(_fake_caches):
+    _, anmeldungsverlauf_cache, _ = _fake_caches
+    anmeldungsverlauf_cache.ergebnis = Anmeldungsverlauf(
+        anmeldungen=(
+            Anmeldung(2026, 9, "CSPO 2-tägig", 5),
+            Anmeldung(2026, 9, "CSPO 3-tägig", 2),
+        )
+    )
+    client = TestClient(app_modul.app)
+
+    antwort = client.get("/schulungen")
+
+    assert ">CSPO<" in antwort.text
+    assert ">2-tägig<" in antwort.text
+    assert ">3-tägig<" in antwort.text
+
+
+def test_schulungen_format_ebene_erscheint_nur_bei_mehreren_formaten(_fake_caches):
+    _, anmeldungsverlauf_cache, _ = _fake_caches
+    anmeldungsverlauf_cache.ergebnis = Anmeldungsverlauf(
+        anmeldungen=(
+            Anmeldung(2026, 9, "CSPO 2-tägig", 5, format="Präsenz"),
+            Anmeldung(2026, 9, "CSPO 2-tägig", 3, format="Online"),
+        )
+    )
+    client = TestClient(app_modul.app)
+
+    antwort = client.get("/schulungen")
+
+    assert ">Präsenz<" in antwort.text
+    assert ">Online<" in antwort.text
+
+
+def test_schulungen_format_ebene_fehlt_bei_nur_einem_format(_fake_caches):
+    _, anmeldungsverlauf_cache, _ = _fake_caches
+    anmeldungsverlauf_cache.ergebnis = Anmeldungsverlauf(
+        anmeldungen=(
+            Anmeldung(2026, 9, "CSPO 2-tägig", 5, format="Präsenz"),
+            Anmeldung(2026, 10, "CSPO 2-tägig", 3, format="Präsenz"),
+        )
+    )
+    client = TestClient(app_modul.app)
+
+    antwort = client.get("/schulungen")
+
+    tabelle = antwort.text[antwort.text.index("<tbody>") :]
+    assert ">Präsenz<" not in tabelle
+
+
+def test_schulungen_vier_ebenen_format_und_dauer_zusammen(_fake_caches):
+    """Deckt den Fall aus der Aufgabenstellung ab: Format- und Dauer-Ebene gemeinsam
+    unter einem Basisname, wenn beide tatsaechlich variieren."""
+    _, anmeldungsverlauf_cache, _ = _fake_caches
+    anmeldungsverlauf_cache.ergebnis = Anmeldungsverlauf(
+        anmeldungen=(
+            Anmeldung(2026, 9, "CSPO 2-tägig", 5, format="Präsenz"),
+            Anmeldung(2026, 9, "CSPO 3-tägig", 2, format="Präsenz"),
+            Anmeldung(2026, 9, "CSPO 2-tägig", 1, format="Online"),
+            Anmeldung(2026, 9, "CSPO 3-tägig", 4, format="Online"),
+        )
+    )
+    client = TestClient(app_modul.app)
+
+    antwort = client.get("/schulungen")
+
+    cspo_index = antwort.text.index(">CSPO<")
+    praesenz_index = antwort.text.index(">Präsenz<", cspo_index)
+    online_index = antwort.text.index(">Online<", cspo_index)
+    dauer_treffer = [m for m in ("2-tägig", "3-tägig") if f">{m}<" in antwort.text]
+    assert len(dauer_treffer) == 2
+    assert praesenz_index > cspo_index
+    assert online_index > cspo_index
+
+
+def test_schulungen_filterabschnitt_bleibt_ohne_filter_zugeklappt(_fake_caches):
+    client = TestClient(app_modul.app)
+
+    antwort = client.get("/schulungen")
+
+    assert '<details class="regler-abschnitt" open>' not in antwort.text
+
+
+def test_schulungen_filterabschnitt_klappt_bei_kategorie_auswahl_auf(_fake_caches):
+    client = TestClient(app_modul.app)
+
+    antwort = client.get("/schulungen?kategorie_filter=Scrum")
+
+    assert '<details class="regler-abschnitt" open>' in antwort.text
+
+
+def test_schulungen_kategorie_und_alle_schulungen_ergeben_je_eine_farbige_reihe(
+    _fake_caches,
+):
+    """Jede Auswahl (auch "Alle Schulungen" zusaetzlich zu einer Kategorie) erzeugt
+    ihre eigene Reihe im Diagramm, keine gegenseitig exklusive Auswahl."""
+    _, anmeldungsverlauf_cache, _ = _fake_caches
+    anmeldungsverlauf_cache.ergebnis = Anmeldungsverlauf(
+        anmeldungen=(
+            Anmeldung(2026, 9, "CSM 2-tägig", 5),
+            Anmeldung(2026, 9, "KSD", 4),
+        )
+    )
+    client = TestClient(app_modul.app)
+
+    antwort = client.get("/schulungen?kategorie_filter=Alle+Kategorien&kategorie_filter=Scrum")
+
+    assert '"name":"Alle Schulungen"' in antwort.text
+    assert '"name":"Scrum"' in antwort.text
+
+
+def test_schulungen_schulungen_dropdown_wird_durch_kategorie_auswahl_eingeschraenkt(
+    _fake_caches,
+):
+    _, anmeldungsverlauf_cache, _ = _fake_caches
+    anmeldungsverlauf_cache.ergebnis = Anmeldungsverlauf(
+        anmeldungen=(
+            Anmeldung(2026, 9, "CSM 2-tägig", 5),
+            Anmeldung(2026, 9, "KSD", 4),
+        )
+    )
+    client = TestClient(app_modul.app)
+
+    antwort = client.get("/schulungen?kategorie_filter=Scrum")
+
+    assert 'value="CSM"' in antwort.text
+    assert 'value="KSD"' not in antwort.text
+
+
+def test_schulungen_schulungen_dropdown_fasst_dauer_varianten_zu_basisname_zusammen(
+    _fake_caches,
+):
+    """ "CSPO 2-tägig"/"CSPO 3-tägig" erscheinen im Dropdown zusammengefasst als
+    "CSPO" - wie im Tabellen-Drilldown darunter, keine eigenen Dauer-Optionen."""
+    _, anmeldungsverlauf_cache, _ = _fake_caches
+    anmeldungsverlauf_cache.ergebnis = Anmeldungsverlauf(
+        anmeldungen=(
+            Anmeldung(2026, 9, "CSPO 2-tägig", 5),
+            Anmeldung(2026, 9, "CSPO 3-tägig", 2),
+        )
+    )
+    client = TestClient(app_modul.app)
+
+    antwort = client.get("/schulungen")
+
+    ausschnitt_start = antwort.text.index('name="schulung_filter"')
+    ausschnitt_ende = antwort.text.index("</div>", ausschnitt_start)
+    ausschnitt = antwort.text[ausschnitt_start:ausschnitt_ende]
+    assert 'value="CSPO"' in ausschnitt
+    assert 'value="CSPO 2-tägig"' not in ausschnitt
+    assert 'value="CSPO 3-tägig"' not in ausschnitt
+
+
+def test_schulungen_schulung_filter_summiert_ueber_dauer_varianten_hinweg():
+    """Auswahl "CSPO" im Schulungen-Filter erzeugt eine Reihe, die "CSPO 2-tägig" und
+    "CSPO 3-tägig" gemeinsam zaehlt."""
+    verlauf = Anmeldungsverlauf(
+        anmeldungen=(
+            Anmeldung(2026, 9, "CSPO 2-tägig", 5),
+            Anmeldung(2026, 9, "CSPO 3-tägig", 2),
+        )
+    )
+
+    reihen = app_modul._anmeldungsreihen(
+        verlauf,
+        {},
+        kategorie_filter=(),
+        schulung_filter=("CSPO",),
+        format_filter=(),
+        dauer_filter=(),
+    )
+
+    assert reihen["CSPO"] == {(2026, 9): 7}
+
+
+def test_schulungen_filter_dropdowns_sind_ohne_filter_alle_vier_auf_alle_gesetzt(
+    _fake_caches,
+):
+    """Ohne explizite Auswahl sind alle vier 'alle'-Eintraege vorausgewaehlt, aber das
+    Diagramm zeigt trotzdem nur die eine Gesamtlinie und der Filterabschnitt bleibt
+    zugeklappt (siehe test_schulungen_filterabschnitt_bleibt_ohne_filter_zugeklappt)."""
+    client = TestClient(app_modul.app)
+
+    antwort = client.get("/schulungen")
+
+    for feldname, alle_wert in (
+        ("kategorie_filter", "Alle Kategorien"),
+        ("schulung_filter", "Alle Schulungen"),
+        ("format_filter", "Alle"),
+        ("dauer_filter", "Alle"),
+    ):
+        ausschnitt_start = antwort.text.index(f'name="{feldname}"')
+        ausschnitt_ende = antwort.text.index("</div>", ausschnitt_start)
+        ausschnitt = antwort.text[ausschnitt_start:ausschnitt_ende]
+        assert f'value="{alle_wert}"' in ausschnitt
+        assert "checked" in ausschnitt
+
+
+def test_schulungen_kategorie_optionen_alphabetisch_mit_alle_kategorien_zuerst(
+    _fake_caches,
+):
+    client = TestClient(app_modul.app)
+
+    antwort = client.get("/schulungen")
+
+    ausschnitt_start = antwort.text.index('name="kategorie_filter"')
+    ausschnitt_ende = antwort.text.index("</div>", ausschnitt_start)
+    ausschnitt = antwort.text[ausschnitt_start:ausschnitt_ende]
+    reihenfolge = [
+        wert for wert in ("Alle Kategorien", "Kanban", "Scrum", "Sonstige") if wert in ausschnitt
+    ]
+    positionen = [ausschnitt.index(f'value="{wert}"') for wert in reihenfolge]
+    assert positionen == sorted(positionen)
+    assert reihenfolge[0] == "Alle Kategorien"
+
+
+def test_schulungen_schulung_optionen_alphabetisch_mit_alle_schulungen_zuerst(
+    _fake_caches,
+):
+    _, anmeldungsverlauf_cache, _ = _fake_caches
+    anmeldungsverlauf_cache.ergebnis = Anmeldungsverlauf(
+        anmeldungen=(
+            Anmeldung(2026, 9, "KSD", 4),
+            Anmeldung(2026, 9, "A-CSD", 5),
+        )
+    )
+    client = TestClient(app_modul.app)
+
+    antwort = client.get("/schulungen")
+
+    ausschnitt_start = antwort.text.index('name="schulung_filter"')
+    ausschnitt_ende = antwort.text.index("</div>", ausschnitt_start)
+    ausschnitt = antwort.text[ausschnitt_start:ausschnitt_ende]
+    positionen = [
+        ausschnitt.index(f'value="{wert}"') for wert in ("Alle Schulungen", "A-CSD", "KSD")
+    ]
+    assert positionen == sorted(positionen)
+
+
+def test_schulungen_trendlinien_standardmaessig_an(_fake_caches):
+    """Ohne Interaktion mit dem Filter-Formular soll die Trendlinie wie bisher immer
+    angezeigt werden - das Kontrollkaestchen startet deshalb angehakt."""
+    _, anmeldungsverlauf_cache, _ = _fake_caches
+    anmeldungsverlauf_cache.ergebnis = Anmeldungsverlauf(
+        anmeldungen=(
+            Anmeldung(2026, 9, "KSD", 4),
+            Anmeldung(2026, 10, "KSD", 2),
+        )
+    )
+    client = TestClient(app_modul.app)
+
+    antwort = client.get("/schulungen")
+
+    assert '"name":"Alle Schulungen (Trend)"' in antwort.text
+
+
+def test_schulungen_trendlinien_checkbox_ausgeschaltet_zeigt_keine_trendreihe(
+    _fake_caches,
+):
+    _, anmeldungsverlauf_cache, _ = _fake_caches
+    anmeldungsverlauf_cache.ergebnis = Anmeldungsverlauf(
+        anmeldungen=(
+            Anmeldung(2026, 9, "KSD", 4),
+            Anmeldung(2026, 10, "KSD", 2),
+        )
+    )
+    client = TestClient(app_modul.app)
+
+    antwort = client.get("/schulungen?trendlinien_werte=aus")
+
+    assert "(Trend)" not in antwort.text
+
+
+def test_schulungen_filter_zuruecksetzen_behaelt_ab_jahr(_fake_caches):
+    client = TestClient(app_modul.app)
+
+    antwort = client.get("/schulungen?ab_jahr=2023&kategorie_filter=Scrum")
+
+    href_index = antwort.text.index("Filter zurücksetzen")
+    zeile = antwort.text[max(0, href_index - 200) : href_index]
+    assert 'href="/schulungen?ab_jahr=2023"' in zeile
 
 
 def test_standard_anzeige_ab_jahr_ab_dem_mindestmonat_ist_das_laufende_jahr():

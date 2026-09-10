@@ -9,8 +9,16 @@ mit :mod:`umsatzprognose.kosten` genutzt, die dieselben jaehrlichen Dateien lese
 ein anderes Tabellenblatt.
 """
 
-from umsatzprognose.schulungen.schulungen import SchulungenRepository
+from umsatzprognose.schulungen.schulungen import (
+    SchulungenRepository,
+    kategorien_aus_colab_secrets,
+    kategorien_aus_umgebung,
+    kategorien_automatisch,
+)
 
 __all__ = [
     "SchulungenRepository",
+    "kategorien_aus_colab_secrets",
+    "kategorien_aus_umgebung",
+    "kategorien_automatisch",
 ]
