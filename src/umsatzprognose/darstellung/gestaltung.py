@@ -41,6 +41,14 @@ TINTE_ZWEITRANGIG = "#52514e"
 TINTE_GEDAEMPFT = "#898781"
 GITTER = "#e1e0d9"
 ACHSE = "#c3c2b7"
+# Spaltenraster fuer breite Tabellen im Bildexport (siehe tabelle_als_grafik) - dieselbe
+# Idee wie das Spaltenraster der Webapp (basis.html): jede zweite Spalte einen Hauch
+# dunkler als FLAECHE, damit sich eine Zahl in einer vielspaltigen Tabelle leichter
+# ihrer Spalte zuordnen laesst.
+TABELLE_SPALTE_GERADE = "#f2f1ee"
+# Die Spalte, die die Zeile zusammenfasst (Summe/Gewinn, siehe tabelle_als_grafik) -
+# staerker abgehoben als das Spaltenraster, analog zur "Gesamt"-Zeile der Webapp.
+TABELLE_SPALTE_ZUSAMMENFASSUNG = "#eae9e4"
 
 # Fuer den prognostizierten (noch nicht realen) Teil eines Balkens: dieselbe Farbfamilie,
 # aber gedaempft - Sicherheit einer Zahl druecken wir ueber die Deckkraft aus, nicht ueber

@@ -62,24 +62,25 @@
 <details>
     <summary>Schulungsdetails</summary>
     <div class="tabelle-wrapper">
-    <table class="tabelle">
+    <table class="tabelle spaltenraster spalte-zusammenfassung">
         <thead>
             <tr>
-                <th><span class="kategorie-pfeil-platzhalter"></span>Kategorie</th>
+                <th scope="col"><span class="kategorie-pfeil-platzhalter"></span>Kategorie</th>
                 {% for beschriftung in monatsbeschriftungen %}
-                <th>{{ beschriftung }}</th>
+                <th scope="col">{{ beschriftung }}</th>
                 {% endfor %}
-                <th>Summe</th>
+                <th scope="col">Summe</th>
             </tr>
         </thead>
         <tbody>
             {% for zeile in kategorie_zeilen %}
-            <tr data-tiefe="{{ zeile.tiefe }}"{% if zeile.tiefe > 0 %} style="display: none"{% endif %}>
+            <tr id="{{ zeile.id }}" data-tiefe="{{ zeile.tiefe }}"{% if zeile.tiefe > 0 %} style="display: none"{% endif %}>
                 <td class="kategorie-tiefe-{{ zeile.tiefe }}">{% if zeile.hat_kinder -%}
                     <button
                         type="button"
                         class="kategorie-knopf"
                         aria-expanded="false"
+                        aria-controls="{{ zeile.kinder_ids | join(' ') }}"
                         onclick="kategorieZeileUmschalten(this)"
                     ><span class="kategorie-pfeil">▸</span>{{ zeile.name }}</button>
                     {%- else -%}

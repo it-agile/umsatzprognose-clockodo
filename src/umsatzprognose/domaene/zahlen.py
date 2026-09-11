@@ -55,6 +55,22 @@ def euro_parsen(text: str) -> Decimal:
 
     Parst direkt in ``Decimal``, ohne den Umweg ueber ``float`` - der wuerde die
     Nachkommastellen schon vor der Umwandlung mit einem Binaerrundungsfehler behaften.
+    Fuers Einlesen von Sheet-Betraegen gedacht, die stets positiv sind - ein Minuszeichen
+    faellt deshalb wie jedes andere unerlaubte Zeichen weg. Fuer einen Betrag, bei dem das
+    Vorzeichen selbst der Punkt ist (z. B. ein per :func:`euro` formatierter Gewinn/
+    Verlust), siehe :func:`betrag_parsen`.
     """
     bereinigt = _UNERLAUBTE_ZEICHEN.sub("", text).replace(".", "").replace(",", ".")
+    return Decimal(bereinigt) if bereinigt else Decimal("0")
+
+
+def betrag_parsen(text: str) -> Decimal:
+    """Wie :func:`euro_parsen`, nur mit erhaltenem Vorzeichen.
+
+    Fuers Rueckparsen eines schon per :func:`euro` formatierten Betrags (z. B. eines
+    Gewinns), um dessen Vorzeichen weiterzuverwenden - etwa fuer eine gruen/rote
+    Einfaerbung. ``euro_parsen()`` eignet sich dafuer nicht: es liest stets positive
+    Sheet-Betraege ein und entfernt ein Minuszeichen deshalb als unerlaubtes Zeichen.
+    """
+    bereinigt = text.strip().removesuffix("EUR").strip().replace(".", "").replace(",", ".")
     return Decimal(bereinigt) if bereinigt else Decimal("0")

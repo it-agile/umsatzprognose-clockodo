@@ -88,6 +88,41 @@
            teils unsichtbaren Zeilen ausgeliefert; stattdessen hebt sie sich immer
            gleich ab. */
         tr.zeile-gesamt { background: #f0f0f0; font-weight: 600; border-top: 2px solid #ccc; }
+        /* Bei so vielen Spalten nebeneinander (Kategorie-Drilldown, Monatstabelle,
+           Kurzarbeit-Monatsuebersicht) ist auf den ersten Blick schwer zu sehen,
+           welche Zahl zu welcher Spalte gehoert - ein zartes Spaltenraster hilft
+           dabei, analog zur Abstufung nach Baumtiefe bei den Zeilen im
+           Kategorie-Drilldown. Als rgba statt einer deckenden Farbe, damit
+           darunterliegende Zeilenfaerbung weiterhin durchscheint
+           (Tabellen-Hintergrundreihenfolge nach CSS: Zeile zuerst, Zelle zuletzt und
+           damit oben). */
+        .spaltenraster th:nth-child(even), .spaltenraster td:nth-child(even) {
+            background: rgba(0, 0, 0, 0.035);
+        }
+        /* Eigenschaften einer Spalte, die (einen Teil) der Zeile zusammenfasst (Summe
+           im Kategorie-Drilldown, Summe UND Gewinn in der Monatstabelle) - als eigene
+           Variablen statt wiederholter Werte, weil dieselbe Abhebung an zwei Stellen
+           gebraucht wird: hier ueber :last-child (Kategorie-Drilldown, dessen
+           Summe-Spalte immer die letzte ist) und in app._tabelle_html() ueber
+           :nth-child (Monatstabelle, wo Summe nicht die letzte Spalte ist). */
+        :root {
+            --spalte-grenze: 2px solid #ccc;
+            --spalte-grenze-flaeche: #f0f0f0;
+        }
+        /* Die Spalte, die die Zeile zusammenfasst (Summe im Kategorie-Drilldown,
+           immer die letzte Spalte) - kraeftigere Trennlinie und eigene (diesmal
+           deckende) Flaeche, wie bei der "Gesamt"-Zeile, aber ohne deren Fettung: der
+           Summenwert selbst muss sich nicht zusaetzlich durch Fettschrift abheben. */
+        .spalte-zusammenfassung th:last-child, .spalte-zusammenfassung td:last-child {
+            border-left: var(--spalte-grenze); background: var(--spalte-grenze-flaeche);
+        }
+        /* Gewinn/Verlust-Faerbung der Monatstabelle (siehe app._gewinn_eingefaerbt) -
+           eine 0 (kein Kostenplan geladen oder tatsaechlich ausgeglichen) bleibt
+           bewusst ungefaerbt statt in einer der beiden Farben. Dieselben Farbwerte wie
+           ERGEBNIS_POSITIV/ERGEBNIS_NEGATIV in darstellung/gestaltung.py, fuer densel-
+           ben Ergebnis-Vorzeichen-Farbcode im Bildexport wie in der Webapp. */
+        .gewinn-positiv { color: #3f7d54; }
+        .gewinn-negativ { color: #8c2f2f; }
         .regler-gruppe { display: flex; flex-direction: column; gap: 0.5rem; margin-top: 0.6rem; }
         .regler-gruppe label { color: #555; }
         /* Filter-Dropdowns auf /schulungen (schulungen.html): mehrere Filter
@@ -161,7 +196,13 @@
         {% endif %}
     </nav>
     <main id="hauptinhalt">
-        <h1>{% if stichtag %}Stand der Auswertung: {{ stichtag.strftime("%d.%m.%Y") }}{% else %}Daten werden geladen …{% endif %}</h1>
+        {% set seiten_titel = {
+            "start": "Datencheck",
+            "dashboard": "Dashboard",
+            "schulungen": "Schulungsanmeldungen",
+            "kurzarbeit": "Kurzarbeitsbereitschaft",
+        } %}
+        <h1>{{ seiten_titel.get(aktive_seite, "Umsatzprognose") }} — {% if stichtag %}Stand: {{ stichtag.strftime("%d.%m.%Y") }}{% else %}Daten werden geladen …{% endif %}</h1>
         {% block inhalt %}{% endblock %}
     </main>
 </body>

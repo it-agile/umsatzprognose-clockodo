@@ -1,7 +1,7 @@
 """Befunde, die neben den Zahlen mitlaufen.
 
 Ein :class:`Hinweis` ist kein Fehler und kein Log-Eintrag, sondern ein fachlicher
-Befund, der die Zahlen einordnet: dass 78 aktive Projekte ohne Budget aus der Prognose
+Befund, der die Zahlen einordnet: dass aktive Projekte ohne Budget aus der Prognose
 fallen, dass ein Budget in Stunden statt in Euro gefuehrt wird, dass Umsatz auf einen
 Kunden ohne Projekt gebucht wurde. Frueher standen diese Angaben als ``print`` im
 Notebook und waren damit weder pruefbar noch weiterverwendbar.

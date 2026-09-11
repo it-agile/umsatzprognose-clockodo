@@ -1152,7 +1152,9 @@ def test_anmeldungstabelle_zeigt_teilnehmerzahl_je_kategorie_und_monat_mit_summe
     assert list(tabelle.columns) == ["Kategorie", "Sep 2026", "Okt 2026", "Summe"]
     assert tabelle["Kategorie"].tolist() == ["Scrum", "Kanban", "Sonstige", "Gesamt"]
     assert tabelle["Sep 2026"].tolist() == [5, 2, 1, 8]
-    assert tabelle["Okt 2026"].tolist() == [3, 0, 0, 3]
+    # 0 erscheint als leere Zelle statt als "0" (Kanban/Sonstige hatten im Oktober
+    # keine Anmeldung) - siehe Docstring von tabellen.anmeldungstabelle.
+    assert tabelle["Okt 2026"].tolist() == [3, "", "", 3]
     assert tabelle["Summe"].tolist() == [8, 2, 1, 11]
 
 

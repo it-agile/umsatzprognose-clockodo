@@ -27,9 +27,10 @@ Umsatzprognose, sondern laden eigenständig über ``SchulungenRepository`` - des
 eigener Ladepfad (die innere ``_anmeldungsverlauf_laden``-Coroutine in
 :func:`_daten_laden_async`) statt eines Eintrags in
 ``DIAGRAMME_DASHBOARD``/``TABELLEN_DASHBOARD``, nur geladen, wenn eines von beiden
-tatsächlich angefordert ist. ``KATEGORIEN`` deckt sich mit derselben, von Hand
-gepflegten Zuordnung in ``webapp/app.py``/``notebooks/03_schulungsanmeldungen.ipynb``
-(siehe CLAUDE.md) - frei konfigurierbar, deshalb bewusst hier dupliziert statt im Paket.
+tatsächlich angefordert ist. Die Kategorie-Zuordnung kommt wie in ``webapp/app.py``/
+``notebooks/03_schulungsanmeldungen.ipynb`` zur Laufzeit über
+:func:`~umsatzprognose.schulungen.kategorien_automatisch` (siehe CLAUDE.md) - keine
+eigene, unabhängig gepflegte Kopie hier.
 """
 
 from __future__ import annotations
@@ -62,7 +63,7 @@ from _fortschritt import (
 from umsatzprognose import Dashboard
 from umsatzprognose.clockodo import gleichzeitig, synchron
 from umsatzprognose.darstellung import diagramme, tabellen
-from umsatzprognose.schulungen import SchulungenRepository
+from umsatzprognose.schulungen import SchulungenRepository, kategorien_automatisch
 from umsatzprognose.util import aus_ordnung, ordnung
 
 STANDARD_FORMAT = "png"
@@ -71,36 +72,6 @@ STANDARD_MONATE_FENSTER = 13  # wie notebooks/03_schulungsanmeldungen.ipynb
 
 DIAGRAMM_ANMELDUNGSVERLAUF = "anmeldungsverlauf"
 DIAGRAMM_ANMELDUNGSTABELLE = "anmeldungstabelle"
-
-# Deckt sich mit "KATEGORIEN" in webapp/app.py und notebooks/03_schulungsanmeldungen.ipynb -
-# dieselbe, von Hand gepflegte Zuordnung Schulungstyp -> Kategorie, nur fuer
-# anmeldungstabelle gebraucht (der Anmeldungsverlauf zeigt nur die Gesamtzahl, siehe
-# diagramme.anmeldungsverlauf).
-KATEGORIEN: dict[str, list[str]] = {
-    "Scrum": [
-        "A-CSD",
-        "A-CSM",
-        "A-CSPO",
-        "CSD",
-        "CSM 2-tägig",
-        "CSM 3-tägig",
-        "CSP-PO",
-        "CSP-SM",
-        "CSPO 2-tägig",
-        "CSPO 3-tägig",
-        "CAL 2",
-        "CAL ETO",
-    ],
-    "Kanban": [
-        "KCP",
-        "KMM",
-        "KSD",
-        "KSI",
-        "KSI 2-tägig",
-        "KSI 3-tägig",
-        "SBK",
-    ],
-}
 
 # Name auf der Kommandozeile -> Dashboard-Methode, die die Figur liefert. Deckt alle
 # Grafik-Methoden aus den drei Bestand-Notebooks ab (siehe deren Zellen), nicht nur die
@@ -324,7 +295,7 @@ def _figuren(
         if DIAGRAMM_ANMELDUNGSTABELLE in namen:
             figuren[DIAGRAMM_ANMELDUNGSTABELLE] = diagramme.tabelle_als_grafik(
                 "Anmeldungen je Monat und Kategorie",
-                tabellen.anmeldungstabelle(anmeldungsverlauf_fenster, KATEGORIEN),
+                tabellen.anmeldungstabelle(anmeldungsverlauf_fenster, kategorien_automatisch()),
             )
 
     return figuren

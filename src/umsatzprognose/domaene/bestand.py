@@ -9,8 +9,8 @@ noch abrufbar ist.
 **Die Simulation gehoert hierher, nicht an das Projekt.** Der
 Bedarf je Person ist ueber alle ihre Projekte gedeckelt und wird bei Ueberschreitung anteilig
 gekürzt; ein Projekt allein kann diesen Deckel nicht kennen. Und ein Lauf ist eine Ziehung ueber
-das gesamte Portfolio - die Summe aus 44 unabhaengig gerechneten Projektverteilungen ergibt
-nicht die Portfolio-Bandbreite, und die Kennzahl "Anteil der Laeufe mit Kapazitaet als
+das gesamte Portfolio - die Summe unabhaengig gerechneter Projektverteilungen ergibt nicht
+die Portfolio-Bandbreite, und die Kennzahl "Anteil der Laeufe mit Kapazitaet als
 limitierendem Faktor" entsteht ueberhaupt erst auf dieser Ebene.
 """
 

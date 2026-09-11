@@ -39,7 +39,8 @@ Bei Code-Reviews und beim Schreiben neuen Codes in `src/`, `tests/`, `scripts/` 
 `notebooks/` gilt diese Checkliste, gemessen an den eigenen Ansprüchen des Projekts
 (siehe die Architektur-Kernregeln unten), nicht an einem generischen Idealbild –
 ein Muster, das eine bereits dokumentierte, bewusste Entscheidung umsetzt (z. B.
-`frozen=True`-Dataclasses, das `Prognose`-ABC-Paar), ist damit keine Verletzung:
+`frozen=True`-Dataclasses, das `Prognose`-Protocol samt `NochKeinePrognose`), ist damit
+keine Verletzung:
 
 - **Funktionale Ansätze bevorzugen**: reine Funktionen statt unnötigem Klassenzustand,
   Comprehensions/Generatorausdrücke statt imperativer Schleifen, wo das klarer ist.
@@ -118,7 +119,7 @@ der sechs Pakete darf `util/` importieren.
   `abrufquote.py` (`Abrufquote`, `Abrufquotenverteilung` – empirische Verteilung samt
   Ziehung mit Zurücklegen), `bestand.py` (`Bestand`, das Aggregat), `simulation.py`
   (`simulieren()`, `MonteCarloPrognose` – der Rechenkern, siehe unten), `prognose.py`
-  (`Prognose`-ABC, `NochKeinePrognose`), `hinweis.py`, `zahlen.py` (deutsche
+  (`Prognose`-Protocol, `NochKeinePrognose`), `hinweis.py`, `zahlen.py` (deutsche
   Zahlformate ohne `locale`), `kurzarbeit.py` (`Personenmonat`, `Rollenzuordnung`,
   `Schwellenwerte`, `Kurzarbeitsbewertung`, `bewerten()`/`bewertungen()` – siehe
   „Was das Modul fachlich tut" unten, eigenständiger Baustein ohne Bezug zum Rest).
@@ -713,8 +714,6 @@ Weitere Fallen bei `/v2/entrygroups`:
   deshalb selbst. Die Monatssummen gehen nur auf den Cent auf (Clockodo rundet jede
   Gruppe einzeln). `group == 0` kommt darin mehrfach vor (je Kunde ohne Projekt einmal);
   `VerbrauchsverlaufRepository.abbilden()` faltet deshalb je Projekt-ID zusammen.
-- `is_lumpsum` (Untergruppen `"0"`/`"1"` als String) trennt Pauschalleistungen von
-  Zeitbuchungen.
 
 ### Sollarbeitszeit
 

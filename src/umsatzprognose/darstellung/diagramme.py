@@ -53,6 +53,8 @@ from umsatzprognose.darstellung.gestaltung import (
     SCHULUNG,
     SERIE,
     SERIE_HELL,
+    TABELLE_SPALTE_GERADE,
+    TABELLE_SPALTE_ZUSAMMENFASSUNG,
     TICKWINKEL,
     TINTE,
     TINTE_GEDAEMPFT,
@@ -64,7 +66,14 @@ from umsatzprognose.darstellung.gestaltung import (
 )
 from umsatzprognose.domaene import NochKeinePrognose
 from umsatzprognose.domaene.umsatzhistorie import MONATSNAMEN
-from umsatzprognose.domaene.zahlen import STUNDEN_JE_TAG, euro, prozent, tage, tausend_euro
+from umsatzprognose.domaene.zahlen import (
+    STUNDEN_JE_TAG,
+    betrag_parsen,
+    euro,
+    prozent,
+    tage,
+    tausend_euro,
+)
 
 # Getrennte Laengen fuer Kunde und Projekt: der Kundenname ist oft der laengere Teil,
 # unterscheidet aber die Zeilen eines Kunden nicht. Wird alles gemeinsam am Ende
@@ -397,7 +406,7 @@ def _balken_beschriften(
     fig.for_each_trace(_spur_beschriften, selector=lambda spur: spur.name in namen)
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class KostenBalkenErgebnis:
     """Was der Aufrufer von :func:`_kosten_und_ergebnis` fuer die Legende braucht.
 
@@ -1513,6 +1522,31 @@ def kennzahlen(eintraege: Sequence[tuple[str, float, str]], *, hoehe: int = 150)
     return fig
 
 
+# Spalten, die (einen Teil) der Zeile zusammenfassen: Summe bei anmeldungstabelle()
+# UND bei umsatztabelle() (fasst die vier Umsatzarten zusammen), Gewinn zusaetzlich bei
+# umsatztabelle() (fasst Summe und Kosten zusammen) - unabhaengig von ihrer Position,
+# beide koennen in derselben Tabelle vorkommen (umsatztabelle() hat beide).
+_SPALTEN_ZUSAMMENFASSUNG = {"Summe", "Gewinn"}
+_SPALTE_GEWINN = "Gewinn"
+
+
+def _gewinn_spaltenfarben(werte: pd.Series) -> list[str]:
+    """Je Zeile Gruen bei positivem, Rot bei negativem Gewinn - eine 0 (kein
+    Kostenplan geladen, oder ein Monat tatsaechlich exakt ausgeglichen) bleibt
+    bewusst in der neutralen Schriftfarbe, weil weder Gewinn noch Verlust vorliegt.
+    """
+    farben = []
+    for wert in werte:
+        betrag = betrag_parsen(str(wert))
+        if betrag > 0:
+            farben.append(ERGEBNIS_POSITIV)
+        elif betrag < 0:
+            farben.append(ERGEBNIS_NEGATIV)
+        else:
+            farben.append(TINTE)
+    return farben
+
+
 def tabelle_als_grafik(titel: str, tabelle: pd.DataFrame, *, hoehe: int | None = None) -> go.Figure:
     """Eine der Tabellen aus :mod:`umsatzprognose.darstellung.tabellen` als
     plotly-Figur statt als Text.
@@ -1523,23 +1557,42 @@ def tabelle_als_grafik(titel: str, tabelle: pd.DataFrame, *, hoehe: int | None =
     gedacht - dort reicht pandas' eigenes Rendering (Zellenausgabe bzw. ``to_html()``).
     ``hoehe`` ohne Angabe richtet sich nach der Zeilenzahl, damit weder Leerraum
     uebrigbleibt noch Zeilen abgeschnitten werden.
+
+    Dasselbe Spaltenraster wie in der Webapp (``basis.html``): jede zweite Spalte
+    einen Hauch dunkler, damit sich eine Zahl leichter ihrer Spalte zuordnen laesst.
+    Jede Zusammenfassungsspalte (``Summe``/``Gewinn``, siehe
+    :data:`_SPALTEN_ZUSAMMENFASSUNG`, unabhaengig von ihrer Position - ``umsatztabelle()``
+    hat beide, nicht nur am Ende) hebt sich zusaetzlich staerker ab, analog zur
+    "Gesamt"-Zeile im Kategorie-Drilldown der Webapp. Eine ``Gewinn``-Spalte wird
+    zusaetzlich je Zeile gruen/rot eingefaerbt (siehe :func:`_gewinn_spaltenfarben`).
     """
     zeilenhoehe = 26
     fig = figur(titel, hoehe=hoehe or 70 + zeilenhoehe * (len(tabelle) + 1))
-    ausrichtung = ["left"] + ["right"] * (len(tabelle.columns) - 1)
+    spalten = list(tabelle.columns)
+    ausrichtung = ["left"] + ["right"] * (len(spalten) - 1)
+    fuellfarben = [
+        TABELLE_SPALTE_ZUSAMMENFASSUNG
+        if name in _SPALTEN_ZUSAMMENFASSUNG
+        else (TABELLE_SPALTE_GERADE if index % 2 == 1 else FLAECHE)
+        for index, name in enumerate(spalten)
+    ]
+    schriftfarben = [
+        _gewinn_spaltenfarben(tabelle[spalte]) if spalte == _SPALTE_GEWINN else TINTE
+        for spalte in spalten
+    ]
     fig.add_trace(
         go.Table(
             header={
-                "values": [f"<b>{spalte}</b>" for spalte in tabelle.columns],
+                "values": [f"<b>{spalte}</b>" for spalte in spalten],
                 "fill_color": SERIE,
                 "font": {"color": "#ffffff", "family": SCHRIFT, "size": 13},
                 "align": ausrichtung,
                 "height": 30,
             },
             cells={
-                "values": [tabelle[spalte] for spalte in tabelle.columns],
-                "fill_color": FLAECHE,
-                "font": {"color": TINTE, "family": SCHRIFT, "size": 12},
+                "values": [tabelle[spalte] for spalte in spalten],
+                "fill_color": fuellfarben,
+                "font": {"color": schriftfarben, "family": SCHRIFT, "size": 12},
                 "align": ausrichtung,
                 "height": zeilenhoehe,
             },

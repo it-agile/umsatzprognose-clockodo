@@ -230,12 +230,24 @@ def anmeldungstabelle(verlauf: Anmeldungsverlauf, kategorien: Kategorisierung) -
             for monat, beschriftung in zip(monate, beschriftungen, strict=True)
         }
         werte_je_kategorie[kategorie] = werte
-        zeilen.append({"Kategorie": kategorie, **werte, "Summe": sum(werte.values())})
+        zeilen.append(
+            {
+                "Kategorie": kategorie,
+                **{beschriftung: wert or "" for beschriftung, wert in werte.items()},
+                "Summe": sum(werte.values()) or "",
+            }
+        )
     gesamt = {
         beschriftung: sum(werte[beschriftung] for werte in werte_je_kategorie.values())
         for beschriftung in beschriftungen
     }
-    zeilen.append({"Kategorie": "Gesamt", **gesamt, "Summe": sum(gesamt.values())})
+    zeilen.append(
+        {
+            "Kategorie": "Gesamt",
+            **{beschriftung: wert or "" for beschriftung, wert in gesamt.items()},
+            "Summe": sum(gesamt.values()) or "",
+        }
+    )
     spalten = ["Kategorie", *beschriftungen, "Summe"]
     return _ohne_index(pd.DataFrame(zeilen, columns=spalten))
 

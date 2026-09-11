@@ -89,6 +89,7 @@ from collections.abc import Sequence
 from contextlib import asynccontextmanager
 from functools import partial
 
+import plotly
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
@@ -98,6 +99,7 @@ from umsatzprognose.clockodo import kurzarbeit_aktiv
 from umsatzprognose.darstellung import Dashboard, diagramme, tabellen
 from umsatzprognose.domaene import Anmeldungsknoten, Schwellenwerte
 from umsatzprognose.domaene.anmeldung import KATEGORIE_SONSTIGE
+from umsatzprognose.domaene.zahlen import betrag_parsen
 from umsatzprognose.schulungen import kategorien_automatisch
 
 from .cache import AnmeldungsverlaufCache, DashboardCache, KurzarbeitCache
@@ -144,8 +146,7 @@ STANDARD_KURZARBEIT_MONATE: _KurzarbeitMonateWert = "6"
 # loest so nie einen erneuten Ladevorgang bei Clockodo aus.
 MAXIMALE_KURZARBEIT_MONATE = max(int(wert) for wert in KURZARBEIT_MONATE_OPTIONEN)
 
-AbJahr = Annotated[int | None, Query(ge=STANDARD_AB_JAHR, le=date.today().year)]
-AB_JAHR_OPTIONEN = tuple(range(STANDARD_AB_JAHR, date.today().year + 1))
+AbJahr = Annotated[int | None, Query(ge=STANDARD_AB_JAHR)]
 
 RestvolumenTop = Annotated[int, Query(ge=1)]
 
@@ -257,15 +258,92 @@ async def _vorladen(app: FastAPI) -> AsyncIterator[None]:
 
 
 app = FastAPI(title="Umsatzprognose", lifespan=_vorladen)
+# Reihenfolge wichtig: Starlette prueft Mounts in Registrierungsreihenfolge, das
+# allgemeinere "/static" wuerde sonst auch "/static/plotly/..." abfangen, bevor das
+# speziellere Mount darunter je zum Zug kaeme.
+#
+# plotly.js selbst ausliefern statt von einem Drittanbieter-CDN zu laden - die interne
+# Anwendung soll nicht von der Erreichbarkeit von cdn.plot.ly abhaengen. Gemountet aus
+# dem installierten Paket statt eingecheckt (die Datei ist mehrere MB gross und bleibt
+# so automatisch mit der in pyproject.toml gepinnten plotly-Version synchron).
+app.mount(
+    "/static/plotly",
+    StaticFiles(directory=str(Path(plotly.__file__).parent / "package_data")),
+    name="plotly",
+)
 app.mount("/static", StaticFiles(directory=str(Path(__file__).parent / "static")), name="static")
 
 
 def _figur_html(figur: go.Figure, *, mit_plotlyjs: bool) -> str:
-    return figur.to_html(full_html=False, include_plotlyjs="cdn" if mit_plotlyjs else False)
+    return figur.to_html(
+        full_html=False, include_plotlyjs="/static/plotly/plotly.min.js" if mit_plotlyjs else False
+    )
 
 
-def _tabelle_html(tabelle: pd.DataFrame) -> str:
-    return tabelle.to_html(index=False, border=0, classes="tabelle", na_rep="")
+# Spalten, die (einen Teil) der Zeile zusammenfassen - siehe _tabelle_html().
+_SPALTEN_ZUSAMMENFASSUNG = {"Summe", "Gewinn"}
+_SPALTE_GEWINN = "Gewinn"
+
+
+def _gewinn_eingefaerbt(wert: str) -> str:
+    """Ein schon als Text formatierter Gewinn-Betrag (siehe ``tabellen.umsatztabelle``),
+    rot bei negativem und gruen bei positivem Vorzeichen eingefaerbt. Eine 0 (kein
+    Kostenplan geladen, oder ein Monat tatsaechlich exakt ausgeglichen) bleibt bewusst
+    ungefaerbt, weil weder ein Gewinn noch ein Verlust vorliegt.
+    """
+    betrag = betrag_parsen(wert)
+    if betrag > 0:
+        return f'<span class="gewinn-positiv">{wert}</span>'
+    if betrag < 0:
+        return f'<span class="gewinn-negativ">{wert}</span>'
+    return wert
+
+
+def _tabelle_html(tabelle: pd.DataFrame, *, zusatzklasse: str = "", element_id: str = "") -> str:
+    # to_html() liefert Header-Zellen ohne scope="col"; mit index=False bestehen im
+    # erzeugten Fragment ausschliesslich die Header-Zellen aus <th>, Datenzellen sind
+    # <td> - ein gezielter Ersatz reicht deshalb ohne den Index faelschlich zu treffen.
+    hat_gewinnspalte = _SPALTE_GEWINN in tabelle.columns
+    anzeige = tabelle.copy()
+    if hat_gewinnspalte:
+        anzeige[_SPALTE_GEWINN] = anzeige[_SPALTE_GEWINN].map(_gewinn_eingefaerbt)
+    html = anzeige.to_html(
+        index=False,
+        border=0,
+        classes=f"tabelle {zusatzklasse}".strip(),
+        na_rep="",
+        # Nur bei eingefaerbtem Gewinn noetig - die injizierten <span>-Tags duerften
+        # sonst nicht als Markup durchgereicht werden. Alle anderen Zellwerte dieser
+        # Tabellen sind intern erzeugte, bereits formatierte Zahlen/Bezeichnungen ohne
+        # HTML-Sonderzeichen, das Abschalten des Escapings ist dafuer unbedenklich.
+        escape=not hat_gewinnspalte,
+    )
+    html = html.replace("<th>", '<th scope="col">')
+    if not element_id:
+        return html
+    html = html.replace("<table ", f'<table id="{element_id}" ', 1)
+    # Anders als der Kategorie-Drilldown (schulungen.html), dessen Summe-Spalte immer
+    # die letzte ist und deshalb per CSS-Klasse ueber :last-child abgehoben wird
+    # (siehe .spalte-zusammenfassung in basis.html), steht "Summe" in der
+    # Monatstabelle mitten in der Tabelle - eine reine CSS-Klasse kann eine bestimmte
+    # Spalte unabhaengig von ihrer Position nicht treffen. Deshalb hier stattdessen
+    # eine gezielte, auf die Spaltenposition zugeschnittene :nth-child-Regel je
+    # Zusammenfassungsspalte, ueber dieselben CSS-Variablen wie .spalte-zusammenfassung
+    # (keine doppelt gepflegten Werte).
+    spalten = list(tabelle.columns)
+    zusammenfassung = [name for name in spalten if name in _SPALTEN_ZUSAMMENFASSUNG]
+    if not zusammenfassung:
+        return html
+    # Fettung nur fuer Gewinn (das Endergebnis, zusaetzlich gruen/rot eingefaerbt) -
+    # der Summenwert selbst muss sich nicht zusaetzlich durch Fettschrift abheben.
+    regeln = "".join(
+        f"#{element_id} th:nth-child({spalten.index(name) + 1}),"
+        f" #{element_id} td:nth-child({spalten.index(name) + 1})"
+        " { border-left: var(--spalte-grenze); background: var(--spalte-grenze-flaeche);"
+        f"{' font-weight: 600;' if name == _SPALTE_GEWINN else ''} }}"
+        for name in zusammenfassung
+    )
+    return f"{html}<style>{regeln}</style>"
 
 
 def _anfrage_query(
@@ -544,6 +622,12 @@ async def dashboard_seite(
     dashboard = await _mit_verbrauchsplan(
         ergebnis, verbrauchsplan=verbrauchsplan, horizont_monate=horizont_zahl
     )
+    restvolumen_top_max = len(dashboard.bestand.ohne_budget())
+    # Der Slider traegt max="{{ restvolumen_top_max }}", aber Query(ge=1) allein
+    # verhindert nicht, dass ein manuell erhoehter URL-Parameter darueber liegt -
+    # sonst zeigt der Slider einen Wert ausserhalb seines eigenen Maximalattributs.
+    if restvolumen_top_max:
+        restvolumen_top = min(restvolumen_top, restvolumen_top_max)
 
     return _antwort(
         request,
@@ -554,9 +638,11 @@ async def dashboard_seite(
         horizont_monate=horizont_monate,
         horizont_optionen=PROGNOSE_MONATE_OPTIONEN,
         umsatzverlauf=_figur_html(dashboard.umsatzverlauf(), mit_plotlyjs=True),
-        umsatztabelle=_tabelle_html(dashboard.umsatztabelle()),
+        umsatztabelle=_tabelle_html(
+            dashboard.umsatztabelle(), zusatzklasse="spaltenraster", element_id="tabelle-monat"
+        ),
         restvolumen_top=restvolumen_top,
-        restvolumen_top_max=len(dashboard.bestand.ohne_budget()),
+        restvolumen_top_max=restvolumen_top_max,
         restvolumen_je_projekt=_figur_html(
             dashboard.restvolumen_je_projekt(top=restvolumen_top), mit_plotlyjs=False
         ),
@@ -595,7 +681,7 @@ def _kategorie_knoten(name: str, kinder: tuple[Anmeldungsknoten, ...]) -> Anmeld
 
 
 def _knoten_flach(
-    knoten: Anmeldungsknoten, monate: Sequence[Monat], *, tiefe: int = 0
+    knoten: Anmeldungsknoten, monate: Sequence[Monat], *, tiefe: int = 0, pfad: str = "0"
 ) -> list[dict[str, object]]:
     """Wandelt einen :class:`~umsatzprognose.domaene.Anmeldungsknoten`-Baum in eine
     flache, in Vorordnung sortierte Liste von Jinja-tauglichen Zeilen um - Grundlage
@@ -616,16 +702,23 @@ def _knoten_flach(
     ``schulungen.html``), ohne die Spaltenberechnung zu beeinflussen.
     """
     werte = [knoten.monate.get(monat, 0) for monat in monate]
+    knoten_id = f"schulung-zeile-{pfad}"
     zeile: dict[str, object] = {
+        "id": knoten_id,
         "name": knoten.name,
         "werte": werte,
         "summe": sum(werte),
         "tiefe": tiefe,
         "hat_kinder": bool(knoten.kinder),
+        # Direkte Kinder-IDs fuer aria-controls am Auf-/Zuklapp-Knopf - das JS selbst
+        # blendet zwar auch tiefer verschachtelte Nachfahren mit ein/aus, aber
+        # aria-controls beschreibt nur den unmittelbar gesteuerten Bereich, tiefere
+        # Ebenen haben ihren eigenen Knopf mit eigenem aria-controls.
+        "kinder_ids": [f"{knoten_id}-{i}" for i in range(len(knoten.kinder))],
     }
     zeilen = [zeile]
-    for kind in knoten.kinder:
-        zeilen.extend(_knoten_flach(kind, monate, tiefe=tiefe + 1))
+    for i, kind in enumerate(knoten.kinder):
+        zeilen.extend(_knoten_flach(kind, monate, tiefe=tiefe + 1, pfad=f"{pfad}-{i}"))
     return zeilen
 
 
@@ -766,7 +859,9 @@ async def schulungen(
         _kategorie_knoten(kategorie, kinder) for kategorie, kinder in gliederung.items()
     ]
     kategorie_zeilen = [
-        zeile for knoten in kategorie_knoten for zeile in _knoten_flach(knoten, monate)
+        zeile
+        for i, knoten in enumerate(kategorie_knoten)
+        for zeile in _knoten_flach(knoten, monate, pfad=str(i))
     ]
     gesamt_monate = _monate_summieren(kategorie_knoten)
     gesamt_werte = [gesamt_monate.get(monat, 0) for monat in monate]
@@ -778,7 +873,7 @@ async def schulungen(
         stichtag=date.today(),
         standardwerte=standardwerte,
         ab_jahr=jahr,
-        ab_jahr_optionen=AB_JAHR_OPTIONEN,
+        ab_jahr_optionen=tuple(range(STANDARD_AB_JAHR, date.today().year + 1)),
         anmeldungsverlauf=_figur_html(
             diagramme.anmeldungsverlauf_reihen(reihen, monate, mit_trend=trendlinien),
             mit_plotlyjs=True,

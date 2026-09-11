@@ -6,7 +6,7 @@
    sich dieses Makro deshalb bewusst nicht. #}
 {% macro regler_abschnitt(feldname, ueberschrift, hinweistext, platzhalter, wert, abweichend, zuruecksetzen_url, zuruecksetzen_text, form_id=none) %}
 <details class="regler-abschnitt" {{ "open" if abweichend }}>
-    <summary>{{ ueberschrift }} <span class="zusammenfassung">(optional)</span></summary>
+    <summary>{{ ueberschrift }}</summary>
     <div class="regler-gruppe">
         <label>{{ hinweistext }}
             <textarea name="{{ feldname }}"{% if form_id %} form="{{ form_id }}"{% endif %} rows="3" placeholder="{{ platzhalter }}">{{ wert }}</textarea>
