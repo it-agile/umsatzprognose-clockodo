@@ -86,7 +86,7 @@ if TYPE_CHECKING:
     from umsatzprognose.util import Monat
 
 from collections.abc import Sequence
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 from functools import partial
 
 import plotly
@@ -504,10 +504,8 @@ def _verbrauchsplan_aus_text(text: str) -> dict[str, tuple[int, int]]:
         if not name or "-" not in monat_text:
             continue
         jahr_text, monat_nr_text = monat_text.strip().split("-", 1)
-        try:
+        with suppress(ValueError):
             werte[name] = (int(jahr_text), int(monat_nr_text))
-        except ValueError:
-            continue
     return werte
 
 

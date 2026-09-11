@@ -11,6 +11,7 @@ from datetime import date, timedelta
 from decimal import Decimal
 
 import numpy as np
+import pandas as pd
 import pytest
 
 from umsatzprognose.clockodo import AuslastungRepository, BestandRepository
@@ -24,12 +25,15 @@ from umsatzprognose.darstellung.dashboard import (
 from umsatzprognose.darstellung.gestaltung import (
     ERGEBNIS_NEGATIV,
     ERGEBNIS_POSITIV,
+    FLAECHE,
     JAHRESFARBEN,
     KOSTEN,
     KOSTEN_HELL,
     PROGNOSE_DECKKRAFT,
     SCHULUNG,
     SERIE_HELL,
+    TABELLE_SPALTE_GERADE,
+    TABELLE_SPALTE_ZUSAMMENFASSUNG,
     TICKWINKEL,
     TINTE,
     VORLAEUFIG_DECKKRAFT,
@@ -63,7 +67,7 @@ from umsatzprognose.kosten import KostenRepository
 from umsatzprognose.schulungen import SchulungenRepository
 
 STICHTAG = date(2026, 8, 24)
-KUNDE = Kunde(id=7, name="Union Asset Management Holding AG")
+KUNDE = Kunde(id=7, name="Musterkunde Vermögensverwaltung AG")
 
 HISTORIE = Umsatzhistorie.zum_stichtag(
     [
@@ -1156,6 +1160,46 @@ def test_anmeldungstabelle_zeigt_teilnehmerzahl_je_kategorie_und_monat_mit_summe
     # keine Anmeldung) - siehe Docstring von tabellen.anmeldungstabelle.
     assert tabelle["Okt 2026"].tolist() == [3, "", "", 3]
     assert tabelle["Summe"].tolist() == [8, 2, 1, 11]
+
+
+def test_tabelle_als_grafik_hebt_zusammenfassungsspalten_hervor_unabhaengig_von_der_position():
+    """Summe UND Gewinn koennen in derselben Tabelle vorkommen (siehe
+    tabellen.umsatztabelle), an unterschiedlichen Positionen - beide muessen sich
+    unabhaengig davon von den umgebenden Spalten abheben, das Spaltenraster
+    dazwischen alterniert normal weiter."""
+    tabelle = pd.DataFrame(
+        [
+            {
+                "Monat": "Mär 2026",
+                "Schulungsanmeldungen": euro(Decimal("2000")),
+                "Summe": euro(Decimal("32000")),
+                "Kosten": euro(Decimal("28000")),
+                "Gewinn": euro(Decimal("4000")),
+            }
+        ]
+    )
+
+    figur = diagramme.tabelle_als_grafik("Titel", tabelle)
+
+    assert figur.data[0].cells.fill.color == (
+        FLAECHE,
+        TABELLE_SPALTE_GERADE,
+        TABELLE_SPALTE_ZUSAMMENFASSUNG,
+        TABELLE_SPALTE_GERADE,
+        TABELLE_SPALTE_ZUSAMMENFASSUNG,
+    )
+
+
+def test_tabelle_als_grafik_faerbt_gewinn_nach_vorzeichen():
+    """Eine 0 (kein Kostenplan geladen, oder ein Monat tatsaechlich exakt
+    ausgeglichen) bleibt neutral, weder Gewinn noch Verlust."""
+    tabelle = pd.DataFrame(
+        {"Gewinn": [euro(Decimal("4000")), euro(Decimal("-1000")), euro(Decimal("0"))]}
+    )
+
+    figur = diagramme.tabelle_als_grafik("Titel", tabelle)
+
+    assert figur.data[0].cells.font.color == ([ERGEBNIS_POSITIV, ERGEBNIS_NEGATIV, TINTE],)
 
 
 def test_dashboard_rechnet_kennzahlen_ohne_den_laufenden_monat():

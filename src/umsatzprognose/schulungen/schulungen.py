@@ -19,7 +19,8 @@ die alle uebergebenen Pflichtspalten enthaelt, statt ``zeilen[0]`` anzunehmen.
 **Ausgerechnet die Jahr-Spalte ist von dieser namentlichen Zuordnung ausgenommen** -
 verifiziert am Jahrgang 2024, wo die Kopfzeile dort nicht ``"Jahr"``, sondern einen
 Vertipper (``"x^"``) traegt. Weil sie deshalb kein verlaesslicher Pflichtspalten-Name
-ist, gehoert ``Jahr`` nicht zu den bei :func:`_kopfzeile_finden` verlangten Spalten,
+ist, gehoert ``Jahr`` nicht zu den bei :func:`~umsatzprognose.google_sheets.client.
+kopfzeile_finden` verlangten Spalten,
 und :func:`_jahr_spalte_ermitteln` faellt ohne eine Spalte namens ``"Jahr"`` auf die
 **erste Spalte des Blatts** zurueck - dort steht das Jahr laut Beobachtung immer, auch
 wenn ihre Kopfzeilenbeschriftung fehlerhaft ist.
@@ -183,9 +184,14 @@ def _zeilen_zu_anmeldungen(zeilen: list[list[str]]) -> list[Anmeldung]:
     if not zeilen:
         return []
     kopf_zeile, index = kopfzeile_finden(
-        zeilen, {SPALTE_MONAT, SPALTE_SCHULUNGSTYP, SPALTE_TEILNEHMERZAHL, SPALTE_FORMAT}
+        zeilen, {SPALTE_MONAT, SPALTE_SCHULUNGSTYP, SPALTE_TEILNEHMERZAHL}
     )
     jahr_spalte = _jahr_spalte_ermitteln(index)
+    # Anders als Monat/Schulungstyp/TN-Zahl keine Pflichtspalte fuer die Kopfzeilen-
+    # suche: faellt sie in einem Jahrgang weg, bleibt Anmeldung.format nur leer statt
+    # den gesamten Anmeldungsverlauf dieses Jahres auszuschliessen (analog zu
+    # SPALTE_KOSTENERFASSUNG in kosten.py, ebenso optional).
+    hat_format = SPALTE_FORMAT in index
 
     anmeldungen = []
     for zeile in zeilen[kopf_zeile + 1 :]:
@@ -206,7 +212,7 @@ def _zeilen_zu_anmeldungen(zeilen: list[list[str]]) -> list[Anmeldung]:
                 teilnehmerzahl=int(float(teilnehmerzahl_text.replace(",", ".")))
                 if teilnehmerzahl_text
                 else 0,
-                format=zelle(zeile, index, SPALTE_FORMAT).strip(),
+                format=zelle(zeile, index, SPALTE_FORMAT).strip() if hat_format else "",
             )
         )
     return anmeldungen

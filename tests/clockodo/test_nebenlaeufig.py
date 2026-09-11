@@ -170,6 +170,32 @@ def test_gleichzeitig_haelt_die_reihenfolge_der_argumente():
     assert synchron(gleichzeitig(nach(0.02, "erst"), nach(0.0, "dann"))) == ["erst", "dann"]
 
 
+def test_gleichzeitig_bricht_die_uebrigen_ab_wenn_einer_scheitert():
+    """Direkt an :func:`gleichzeitig`, nicht nur ueber ``BestandRepository.laden()``
+    (siehe ``test_ein_fehler_bricht_die_uebrigen_abrufe_ab`` oben): dort liesse sich ein
+    zu frueher Ausstieg nicht von echter Stornierung unterscheiden, weil ``asyncio.run``
+    beim Beenden ohnehin verbliebene Tasks abbricht. Hier meldet die haengende
+    Coroutine selbst, ob sie tatsaechlich ``asyncio.CancelledError`` bekam, waehrend
+    ``gleichzeitig`` noch laeuft."""
+    abgebrochen = False
+
+    async def scheitert() -> None:
+        raise ValueError("kaputt")
+
+    async def haengt() -> None:
+        nonlocal abgebrochen
+        try:
+            await asyncio.sleep(TIMEOUT)
+        except asyncio.CancelledError:
+            abgebrochen = True
+            raise
+
+    with pytest.raises(ValueError, match="kaputt"):
+        synchron(gleichzeitig(scheitert(), haengt()))
+
+    assert abgebrochen
+
+
 def test_zweiter_ladevorgang_laeuft_im_neuen_loop():
     """Jeder synchrone Aufruf bringt einen eigenen Event-Loop mit.
 

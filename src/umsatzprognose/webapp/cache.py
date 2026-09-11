@@ -39,6 +39,7 @@ from __future__ import annotations
 import asyncio
 import os
 import time
+from contextlib import suppress
 from datetime import date, timedelta
 from typing import TYPE_CHECKING
 
@@ -75,10 +76,10 @@ def standard_ttl_sekunden() -> int:
     wert = os.environ.get(TTL_ENV)
     if wert is None:
         return STANDARD_TTL_SEKUNDEN
-    try:
-        return int(wert)
-    except ValueError:
-        return STANDARD_TTL_SEKUNDEN
+    ergebnis = STANDARD_TTL_SEKUNDEN
+    with suppress(ValueError):
+        ergebnis = int(wert)
+    return ergebnis
 
 
 # Dieselben fuenf fertigen Statuszeilen wie in scripts/wochenbericht.py/

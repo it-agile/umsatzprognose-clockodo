@@ -16,6 +16,7 @@ from conftest import CREDS, client_mit
 from umsatzprognose.clockodo import ClockodoClient, ClockodoCredentials, ClockodoError, cache
 from umsatzprognose.clockodo.client import (
     GATEWAY_TIMEOUT_MAX_VERSUCHE,
+    NETZWERK_MAX_VERSUCHE,
     RATE_LIMIT_MAX_VERSUCHE,
     EntryGroupV2,
     entrygroups_zusammenfuehren,
@@ -257,6 +258,42 @@ def test_get_wirft_nach_ausgeschoepften_versuchen_weiterhin_den_gateway_timeout(
         synchron(client.entrygroups(["projects"]))
 
     assert len(requests) == GATEWAY_TIMEOUT_MAX_VERSUCHE
+
+
+def test_get_wiederholt_bei_verbindungsabbruch_und_liefert_dann_die_antwort(monkeypatch):
+    """Wie live beobachtet bei /v4/absences: der Server trennt die Verbindung, bevor
+    ueberhaupt eine Antwort eintrifft - kein HTTP-Statuscode, gegen den die
+    Ratenbegrenzungs-/Gateway-Timeout-Behandlung greifen wuerde."""
+    monkeypatch.setattr("umsatzprognose.clockodo.client.asyncio.sleep", _ohne_wartezeit)
+    aufrufe = {"anzahl": 0}
+
+    def handler(request):
+        aufrufe["anzahl"] += 1
+        if aufrufe["anzahl"] < 2:
+            raise httpx2.RemoteProtocolError("Server disconnected without sending a response")
+        return httpx2.Response(200, json={"data": [{"id": 1}]})
+
+    client, requests = client_mit(handler)
+    projekte, _paging = synchron(client.projects())
+
+    assert projekte == [{"id": 1}]
+    assert len(requests) == 2
+
+
+def test_get_wirft_nach_ausgeschoepften_versuchen_weiterhin_die_verbindungsausnahme(monkeypatch):
+    monkeypatch.setattr("umsatzprognose.clockodo.client.asyncio.sleep", _ohne_wartezeit)
+
+    def handler(request):
+        raise httpx2.RemoteProtocolError("Server disconnected without sending a response")
+
+    client, requests = client_mit(handler)
+
+    # Anders als bei 429/504: es gibt keine Antwort mit einem Body, deshalb kein
+    # ClockodoError, sondern die urspruengliche httpx2-Ausnahme.
+    with pytest.raises(httpx2.RemoteProtocolError):
+        synchron(client.entrygroups(["projects"]))
+
+    assert len(requests) == NETZWERK_MAX_VERSUCHE
 
 
 def test_zu_lange_anwendungskennung_wird_abgelehnt():

@@ -10,6 +10,7 @@ from __future__ import annotations
 from datetime import date
 from decimal import Decimal
 
+import pandas as pd
 import pytest
 
 from umsatzprognose.darstellung import Dashboard
@@ -29,6 +30,7 @@ from umsatzprognose.domaene import (
     Schwellenwerte,
     Umsatzhistorie,
 )
+from umsatzprognose.domaene.zahlen import euro
 
 fastapi = pytest.importorskip("fastapi")
 from fastapi.testclient import TestClient  # noqa: E402
@@ -811,6 +813,69 @@ def test_standard_anzeige_ab_jahr_vor_dem_mindestmonat_ist_das_vorjahr():
 def test_standard_anzeige_ab_jahr_faellt_nie_vor_standard_ab_jahr():
     heute = date(app_modul.STANDARD_AB_JAHR, 1, 1)
     assert app_modul._standard_anzeige_ab_jahr(heute=heute) == app_modul.STANDARD_AB_JAHR
+
+
+@pytest.mark.parametrize(
+    ("wert", "erwartet"),
+    [
+        (euro(Decimal("4000")), '<span class="gewinn-positiv">4.000,00 EUR</span>'),
+        (euro(Decimal("-1000")), '<span class="gewinn-negativ">-1.000,00 EUR</span>'),
+        (euro(Decimal("0")), "0,00 EUR"),
+        ("", ""),
+    ],
+)
+def test_gewinn_eingefaerbt(wert: str, erwartet: str) -> None:
+    # Exakt der Vorzeichen-Bug, der zuvor uebersehen wurde: euro_parsen() waere hier
+    # faelschlich immer positiv, weil es ein Minuszeichen als "unerlaubtes Zeichen"
+    # entfernt - _gewinn_eingefaerbt() muss stattdessen betrag_parsen() nutzen.
+    assert app_modul._gewinn_eingefaerbt(wert) == erwartet
+
+
+def test_tabelle_html_hebt_summe_ohne_und_gewinn_mit_fettung_hervor():
+    tabelle = pd.DataFrame(
+        [
+            {
+                "Monat": "Mär 2026",
+                "Summe": euro(Decimal("32000")),
+                "Kosten": euro(Decimal("28000")),
+                "Gewinn": euro(Decimal("4000")),
+            }
+        ]
+    )
+
+    html = app_modul._tabelle_html(tabelle, element_id="tabelle-monat")
+
+    # Summe (Position 2) ohne, Gewinn (Position 4) mit font-weight - unabhaengig
+    # davon, dass Summe hier nicht die letzte Spalte ist.
+    assert "th:nth-child(2), #tabelle-monat td:nth-child(2)" in html
+    regel_summe = html[html.index("nth-child(2)") : html.index("nth-child(4)")]
+    assert "font-weight" not in regel_summe
+    assert "th:nth-child(4), #tabelle-monat td:nth-child(4) { border-left" in html
+    assert "font-weight: 600" in html
+    assert 'id="tabelle-monat"' in html
+    assert '<span class="gewinn-positiv">4.000,00 EUR</span>' in html
+
+
+def test_tabelle_html_ohne_element_id_erzeugt_keine_zusaetzliche_style_regel():
+    tabelle = pd.DataFrame([{"Monat": "Mär 2026", "Gewinn": euro(Decimal("4000"))}])
+
+    html = app_modul._tabelle_html(tabelle)
+
+    assert "<style>" not in html
+    assert "id=" not in html
+
+
+def test_tabelle_html_ohne_gewinnspalte_escaped_weiterhin_sonderzeichen():
+    # escape=False gilt tabellenweit und ist nur unbedenklich, solange keine
+    # Gewinn-Spalte mit injiziertem HTML vorhanden ist (siehe Kommentar in
+    # _tabelle_html) - eine Tabelle ohne Gewinn-Spalte (z. B. Projekte ohne Budget,
+    # mit echten Kunden-/Projektnamen) muss weiterhin escapen.
+    tabelle = pd.DataFrame([{"Projekt": "Musterkunde & Co. KG", "Grund": ""}])
+
+    html = app_modul._tabelle_html(tabelle)
+
+    assert "Musterkunde &amp; Co. KG" in html
+    assert "Musterkunde & Co. KG" not in html
 
 
 def test_schulungen_wechsel_des_jahres_laedt_nicht_neu(_fake_caches):

@@ -1,7 +1,7 @@
 """Abbildung von ``/v3/customers`` auf :class:`~umsatzprognose.domaene.kunde.Kunde`.
 
 Der Kundenname ist keine Rechengroesse, sondern Beschriftung - ``/v4/projects`` fuehrt
-nur ``customers_id``. Ohne Namen waere eine Tabelle aus 44 Zahlen-IDs nicht pruefbar.
+nur ``customers_id``. Ohne Namen waere eine Tabelle aus reinen Zahlen-IDs nicht pruefbar.
 """
 
 from __future__ import annotations

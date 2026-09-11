@@ -47,6 +47,10 @@ def synchron[T](coro: Coroutine[Any, Any, T]) -> T:
     except RuntimeError:
         return asyncio.run(coro)
 
+    # max_workers=1 statt mehr: der Pool entsteht hier frisch je Aufruf und bekommt nie
+    # mehr als diesen einen Auftrag - ein hoeherer Wert wuerde keinen zusaetzlichen
+    # Worker-Thread erzeugen (die entstehen bedarfsgesteuert je submit()) und haette
+    # deshalb keinerlei Effekt, weder auf Nebenlaeufigkeit noch auf Performance.
     with ThreadPoolExecutor(max_workers=1, thread_name_prefix="clockodo") as pool:
         return pool.submit(asyncio.run, coro).result()  # ty: ignore[invalid-return-type]
 
@@ -83,6 +87,10 @@ async def gleichzeitig(*coroutinen: Coroutine[Any, Any, Any]) -> list[Any]:
     * Faellt ein Abruf aus, werden die uebrigen abgebrochen. ``asyncio.gather`` laesst
       sie sonst weiterlaufen: ein 400 auf die Entrygroups wuerde erst gemeldet, wenn
       auch die fuenf anderen Antworten da sind, deren Ergebnis niemand mehr braucht.
+      Das Abbrechen steht in einem ``finally`` statt einem ``except``: eine bereits
+      abgeschlossene Task laesst sich gefahrlos nochmal "abbrechen" (``cancel()`` ist
+      dann ein No-op) und nochmal "einsammeln" (``gather()`` liefert einfach wieder ihr
+      Ergebnis) - im Erfolgsfall bleibt das Aufraeumen also folgenlos.
     """
     sperre = asyncio.Semaphore(MAX_GLEICHZEITIG)
 
@@ -93,8 +101,7 @@ async def gleichzeitig(*coroutinen: Coroutine[Any, Any, Any]) -> list[Any]:
     aufgaben = [asyncio.create_task(begrenzt(coro)) for coro in coroutinen]
     try:
         return await asyncio.gather(*aufgaben)
-    except BaseException:
+    finally:
         for aufgabe in aufgaben:
             aufgabe.cancel()
         await asyncio.gather(*aufgaben, return_exceptions=True)
-        raise

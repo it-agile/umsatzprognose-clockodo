@@ -116,6 +116,15 @@ GATEWAY_TIMEOUT_STATUS = 504
 GATEWAY_TIMEOUT_MAX_VERSUCHE = 3
 GATEWAY_TIMEOUT_WARTEZEIT_SEKUNDEN = 5.0
 
+# Vereinzelt bricht Clockodo die Verbindung ab, bevor ueberhaupt eine Antwort
+# eintrifft (``httpx2.TransportError``, z. B. ``RemoteProtocolError: Server
+# disconnected without sending a response``, live beobachtet bei /v4/absences) - kein
+# HTTP-Statuscode, gegen den die obige Fallunterscheidung greifen wuerde, sondern ein
+# Abbruch schon auf Transportebene. Aus derselben Ueberlegung wie beim 504 ein
+# einzelner Aussetzer, keine Ratenbegrenzung, deshalb dieselbe kurze Verschnaufpause.
+NETZWERK_MAX_VERSUCHE = 3
+NETZWERK_WARTEZEIT_SEKUNDEN = 5.0
+
 SEKUNDEN_JE_STUNDE = 3600.0
 
 # Untere Grenze des Verbrauchsfensters. ``revenue_kumuliert`` ist der
@@ -416,18 +425,28 @@ class ClockodoClient:
         (Gateway Timeout, siehe :data:`GATEWAY_TIMEOUT_STATUS`) ist kein
         :class:`ClockodoError`, sondern ein Hinweis, kurz zu warten und erneut zu
         versuchen - siehe :func:`_wartezeit_vor_wiederholung`. Bleibt es beim Fehler,
-        wird doch ein :class:`ClockodoError` geworfen.
+        wird doch ein :class:`ClockodoError` geworfen. Ein Abbruch schon auf
+        Transportebene (:data:`NETZWERK_MAX_VERSUCHE`, kein HTTP-Statuscode und damit
+        kein Fall fuer :func:`_wartezeit_vor_wiederholung`) wird ebenso wiederholt;
+        bleibt es dabei, wird die urspruengliche ``httpx2``-Ausnahme weitergereicht,
+        kein :class:`ClockodoError` - es gibt ja keine Antwort, die einen Body haette.
         """
         versuch = 0
         while True:
             versuch += 1
-            async with httpx2.AsyncClient(
-                base_url=self.base_url,
-                headers=self.credentials.headers(),
-                timeout=self.timeout,
-                transport=self._transport,
-            ) as client:
-                response = await client.get(path, params=dict(params) if params else None)
+            try:
+                async with httpx2.AsyncClient(
+                    base_url=self.base_url,
+                    headers=self.credentials.headers(),
+                    timeout=self.timeout,
+                    transport=self._transport,
+                ) as client:
+                    response = await client.get(path, params=dict(params) if params else None)
+            except httpx2.TransportError:
+                if versuch >= NETZWERK_MAX_VERSUCHE:
+                    raise
+                await asyncio.sleep(NETZWERK_WARTEZEIT_SEKUNDEN + random.uniform(0, 5))
+                continue
             wartezeit = _wartezeit_vor_wiederholung(response.status_code, versuch)
             if wartezeit is None:
                 break
@@ -563,7 +582,7 @@ class ClockodoClient:
     ) -> list[EntryGroupV2]:
         """Verbrauch je Projekt, darunter die Monate.
 
-        Achutng: ``group`` der Untergruppe ist der Monat als String
+        Achtung: ``group`` der Untergruppe ist der Monat als String
         ``"JJJJMM"``, und die Untergruppen sind **nach Dauer absteigend** sortiert und
         nicht chronologisch - siehe
         :meth:`~umsatzprognose.domaene.verbrauchsverlauf.Verbrauchsverlauf.fuer`.

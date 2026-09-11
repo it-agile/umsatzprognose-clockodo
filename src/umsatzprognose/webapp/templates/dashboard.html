@@ -25,8 +25,8 @@
 <div class="tabelle-wrapper">{{ umsatztabelle | safe }}</div>
 
 <label>Anzahl Projekte mit offenem Budget
-    <input type="range" name="restvolumen_top" min="1" max="{{ restvolumen_top_max }}"
-           value="{{ restvolumen_top }}" form="dashboard-form"
+    <input type="range" name="restvolumen_top" min="{{ 0 if restvolumen_top_max == 0 else 1 }}"
+           max="{{ restvolumen_top_max }}" value="{{ restvolumen_top }}" form="dashboard-form"
            oninput="this.nextElementSibling.textContent = this.value"
            onchange="this.form.submit()">
     <output>{{ restvolumen_top }}</output>

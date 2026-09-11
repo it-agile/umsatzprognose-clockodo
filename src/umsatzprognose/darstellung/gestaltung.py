@@ -27,8 +27,13 @@ KOSTEN_HELL = "#d9a09f"
 # Farben fuer den Ergebnis-Balken (Umsatz minus Kosten): Vorzeichen entscheidet die
 # Farbe, nicht die Quelle - deshalb ein eigenes Grün/Rot-Paar statt einer Saettigung
 # von SERIE oder KOSTEN. ERGEBNIS_NEGATIV ist bewusst ein anderer Farbton als KOSTEN,
-# damit beide Balken nebeneinander unterscheidbar bleiben.
-ERGEBNIS_POSITIV = "#3f7d54"
+# damit beide Balken nebeneinander unterscheidbar bleiben. ERGEBNIS_POSITIV ist
+# dunkler als ein "typisches" Gruen, weil dieselbe Farbe auch als Schriftfarbe der
+# Gewinn-Spalte auf den helleren Zusammenfassungsspalten-Flaechen dient (Webapp
+# TABELLE_SPALTE_ZUSAMMENFASSUNG-Analog #f0f0f0, Export #eae9e4) und dort WCAG-AA
+# (4,5:1 fuer Text) einhalten muss - ein helleres Gruen wie #3f7d54 unterschritt das
+# knapp (4,04:1 auf der dunkelsten der beiden Flaechen).
+ERGEBNIS_POSITIV = "#2c5c3e"
 ERGEBNIS_NEGATIV = "#8c2f2f"
 # Trendlinie (lineare Ausgleichsgerade): dunkelrot wie die Trendlinie der internen
 # ZDF-Praesentation (dort exponentiell geglaettet, hier linear - Farbe unveraendert

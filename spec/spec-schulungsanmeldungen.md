@@ -36,10 +36,11 @@ Pflegequalität der Quelle selbst.
 |---|---|---|
 | Schulungsumsatz je Termin | Google Sheets API (OAuth-Client-ID, kein Service-Account - siehe Abschnitt 5.3), Tabellenblatt `Öffentliche Schulungen` | `Jahr`, `Monat`, `Umsatz gesamt` |
 
-Weitere vorhandene, hier ungenutzte Spalten: `Schulung`, `Trainer`, `Datum`, `TN Zahl`,
+Weitere vorhandene, für den Schulungsumsatz ungenutzte Spalten: `Trainer`, `Datum`,
 diverse Rabattstufen-Spalten (`TN`/`Umsatz` je Rabattart), `Kostenfreie TN`,
-`Präsenz/Online`, `Bemerkungen`, sowie eine zweite Spaltengruppe `TN Zahl`, `Max Zahl`,
-`Restplätze`, `Auslastung`.
+`Bemerkungen`, sowie eine zweite Spaltengruppe `Max Zahl`, `Restplätze`, `Auslastung`.
+`Schulung`, `TN Zahl` und `Präsenz/Online` sind dagegen keine ungenutzten Spalten mehr
+– sie fließen in die Zusatzauswertung Anmeldungsverlauf ein (siehe Abschnitt 9).
 
 - **Die Kopfzeile steht nicht zuverlässig in Zeile 1.** Der eigentlichen Tabelle kann im
   selben Tabellenblatt noch etwas anderes vorausgehen, das nicht alle Pflichtspalten
@@ -131,10 +132,10 @@ Google-Sheets-Infrastruktur in `google_sheets/` (`GoogleSheetsConfig`,
 `GoogleSheetsClient`, seit dem Baustein Kosten geteilt mit `kosten/`, siehe
 `spec-kosten.md`) (4, 5.3), sowie die additive Darstellung in
 `diagramme.umsatzverlauf()`, `tabellen.umsatztabelle()` und `Dashboard.schulungen_laden()`
-(6). Die inhaltsbasierte Kopfzeilensuche `schulungen._kopfzeile_finden()` und der
-positionsbasierte Rückfall `schulungen._jahr_spalte_ermitteln()` für die `Jahr`-Spalte
-(4) decken sowohl `_zeilen_zu_terminen()` als auch `_zeilen_zu_anmeldungen()` (Abschnitt
-9) ab.
+(6). Die inhaltsbasierte Kopfzeilensuche `google_sheets.client.kopfzeile_finden()`
+(geteilt mit `kosten/`, siehe `spec-kosten.md`) und der positionsbasierte Rückfall
+`schulungen._jahr_spalte_ermitteln()` für die `Jahr`-Spalte (4) decken sowohl
+`_zeilen_zu_terminen()` als auch `_zeilen_zu_anmeldungen()` (Abschnitt 9) ab.
 
 ## 9. Zusatzauswertung: Anmeldungsverlauf (Teilnehmerzahl)
 
@@ -146,7 +147,12 @@ eigenständigen, rein diagnostischen Blick auf dieselbe Tabelle, ohne dass Umsat
 Restvolumen, Abrufquote oder Kapazitätsdeckel davon berührt werden.
 
 - **Spalten:** `Jahr` (positionsbasiert, siehe Abschnitt 4), `Monat`, `Schulung`
-  (Schulungstyp) und `TN Zahl`. Die Kopfzeile trägt `TN Zahl` laut Abschnitt 4 zweimal -
+  (Schulungstyp), `TN Zahl` und `Präsenz/Online` (`Anmeldung.format`). Anders als
+  `Monat`/`Schulung`/`TN Zahl` ist `Präsenz/Online` dabei keine Pflichtspalte für die
+  Kopfzeilensuche (analog zu `Kostenerfassung` in `spec-kosten.md`): fehlt sie in einem
+  Jahrgang, bleibt `Anmeldung.format` für diesen Jahrgang nur leer, statt den gesamten
+  Anmeldungsverlauf des Jahres auszuschließen. Die Kopfzeile trägt `TN Zahl` laut
+  Abschnitt 4 zweimal -
   einmal als Gesamtsumme direkt vor `Umsatz gesamt`, einmal in der Gruppe mit `Max
   Zahl`/`Restplätze`/`Auslastung`; verifiziert am Jahrgang 2024 tragen beide denselben
   Wert. Gelesen wird die **zuletzt (am weitesten rechts) stehende** Spalte dieses Namens.

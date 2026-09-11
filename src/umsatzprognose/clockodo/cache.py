@@ -39,6 +39,7 @@ import hashlib
 import json
 import os
 import time
+from contextlib import suppress
 from datetime import date
 from pathlib import Path
 
@@ -75,10 +76,10 @@ def ttl_sekunden() -> int | None:
     wert = os.environ.get(TTL_ENV)
     if wert is None:
         return None
-    try:
-        return int(wert)
-    except ValueError:
-        return STANDARD_TTL_SEKUNDEN
+    ergebnis = STANDARD_TTL_SEKUNDEN
+    with suppress(ValueError):
+        ergebnis = int(wert)
+    return ergebnis
 
 
 def cutoff_monate(uebersteuerung: int | None = None) -> int:
@@ -92,10 +93,10 @@ def cutoff_monate(uebersteuerung: int | None = None) -> int:
     wert = os.environ.get(CUTOFF_ENV)
     if wert is None:
         return STANDARD_CUTOFF_MONATE
-    try:
-        return int(wert)
-    except ValueError:
-        return STANDARD_CUTOFF_MONATE
+    ergebnis = STANDARD_CUTOFF_MONATE
+    with suppress(ValueError):
+        ergebnis = int(wert)
+    return ergebnis
 
 
 def cutoff_datum(time_until: str, *, monate: int) -> str:

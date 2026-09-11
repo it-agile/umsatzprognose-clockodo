@@ -291,7 +291,14 @@ Dashboard-Notebook auch.
   `webapp/templates/`) statt einer eigenen JS-Anwendung – die vorhandenen
   Plotly-Figuren aus `darstellung/diagramme.py` und die pandas-Tabellen aus
   `darstellung/tabellen.py` lassen sich unverändert per `to_html()` einbetten, ohne
-  eine eigene JSON-API zu brauchen.
+  eine eigene JSON-API zu brauchen. `plotly.js` selbst liefert die Webapp aus dem
+  installierten `plotly`-Paket lokal aus (`app.mount("/static/plotly", ...)`, vor dem
+  allgemeinen `/static`-Mount registriert, da Starlette Mounts in
+  Registrierungsreihenfolge prüft) statt von einem Drittanbieter-CDN – eine interne
+  Anwendung soll nicht von dessen Erreichbarkeit abhängen. Das macht `webapp/app.py`
+  zur einzigen Ausnahme von „`darstellung/` ist der einzige Ort mit plotly" (siehe
+  „Aufbau" oben): ein echter, nicht nur typprüfungsbedingter `import plotly`, einzig
+  um `plotly.__file__` für den Mount-Pfad zu lesen.
 - **Vier navigierbare Seiten**, verlinkt über eine gemeinsame Navigation
   (`webapp/templates/basis.html`), jede mit dem Inhalt genau einer Notebook-Zelle
   statt einer eigenen Auswahl: `/` deckt sich mit `notebooks/00_datencheck.ipynb`
@@ -690,6 +697,16 @@ gleichzeitig um dasselbe Kontingent konkurrierende Zweige). Beide Wiederholungsf
 laufen über dieselbe Fallunterscheidung, `_wartezeit_vor_wiederholung()` in
 `client.py`.
 
+**Ein Verbindungsabbruch schon vor jeder Antwort (`httpx2.TransportError`, live
+beobachtet bei `/v4/absences` als `RemoteProtocolError: Server disconnected without
+sending a response`) wird ebenso wiederholt** – anders als 429/504 kein HTTP-Statuscode
+und damit kein Fall für `_wartezeit_vor_wiederholung()`, sondern ein eigener
+`try`/`except` um den Request in `get()`. `NETZWERK_MAX_VERSUCHE`-mal nach
+`NETZWERK_WARTEZEIT_SEKUNDEN` (plus 0–5 Sekunden Streuung, wie beim 504 ein einzelner
+Aussetzer). Bleibt es beim Abbruch, wird die ursprüngliche `httpx2`-Ausnahme
+weitergereicht statt eines `ClockodoError` – es gibt keine Antwort, die einen Body
+hätte.
+
 Abweichungen von `spec/clocodo-api.yaml`, verifiziert über echte Antworten:
 
 - `EntryGroupV2.group` ist als `string` deklariert, kommt aber bei `group == 0` und bei
@@ -773,8 +790,9 @@ gelesen wird pauschal `1:20`, weder Kopfzeilen-Zeile noch Spaltenlage stimmen
 jahrgangsweise verlässlich überein (verifiziert am Jahrgang 2022, wo der eigentlichen
 Monatsübersicht im selben Zeilenbereich noch eine andere Tabelle vorausgeht, etwa eine
 Mitarbeiteraufstellung mit eigener, ähnlicher aber nicht identischer Kopfzeile).
-`_kopfzeile_finden()` sucht deshalb inhaltsbasiert die erste Zeile, die sowohl
-`Gesamtkosten` als auch `Allgemeinkosten` trägt. `Monat` hat aber nicht in jedem
+`google_sheets.client.kopfzeile_finden()` (geteilt mit `schulungen/`) sucht deshalb
+inhaltsbasiert die erste Zeile, die sowohl `Gesamtkosten` als auch `Allgemeinkosten`
+trägt. `Monat` hat aber nicht in jedem
 Jahrgang eine eigene Kopfzeilen-Bezeichnung – ohne sie ermittelt
 `_monat_spalte_ermitteln()` die Monatsspalte anhand
 ihres Inhalts (die Spalte mit den meisten als deutscher Monatsname erkannten Zellen)
