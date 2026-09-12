@@ -39,7 +39,12 @@ if TYPE_CHECKING:
     )
 
 from umsatzprognose.clockodo import AuslastungRepository, BestandRepository, gleichzeitig, synchron
-from umsatzprognose.domaene import Auslastungssumme, NochKeinePrognose
+from umsatzprognose.domaene import (
+    Auslastungssumme,
+    InterneArbeitBandbreite,
+    NochKeinePrognose,
+    durchschnittlicher_anteil_interner_arbeit,
+)
 from umsatzprognose.domaene.projekt import sonderfall
 from umsatzprognose.kosten import KostenRepository
 from umsatzprognose.schulungen import SchulungenRepository
@@ -523,10 +528,19 @@ class Dashboard:
         )
 
     def simuliere(
-        self, *, monate: int = 3, laeufe: int = 10_000, fortschritt: Fortschritt | None = None
+        self,
+        *,
+        monate: int = 3,
+        laeufe: int = 10_000,
+        interne_arbeit_abschlag: float = 0.0,
+        fortschritt: Fortschritt | None = None,
     ) -> None:
         """Fuehrt die Monte-Carlo-Simulation aus und haelt das Ergebnis in
         :attr:`prognose` fuer die anderen Ansichten bereit.
+
+        ``interne_arbeit_abschlag`` siehe
+        :meth:`~umsatzprognose.domaene.bestand.Bestand.simulieren`; Standard 0.0 laesst
+        das Ergebnis unveraendert, wie bisher.
 
         ``fortschritt``, sofern angegeben, wird einmal nach Abschluss mit einer
         fertigen Statuszeile (Laeufe, Horizont, Dauer) aufgerufen - dieselbe Form wie
@@ -539,7 +553,9 @@ class Dashboard:
         Anschein von Fortschritt ohne echten Informationsgewinn.
         """
         with _Stoppuhr() as t:
-            self.prognose = self.bestand.simulieren(monate=monate, laeufe=laeufe)
+            self.prognose = self.bestand.simulieren(
+                monate=monate, laeufe=laeufe, interne_arbeit_abschlag=interne_arbeit_abschlag
+            )
         if fortschritt is not None:
             fortschritt(
                 f"Simulation abgeschlossen: {humanize.intcomma(laeufe)} Laeufe ueber "
@@ -547,7 +563,12 @@ class Dashboard:
             )
 
     async def simuliere_async(
-        self, *, monate: int = 3, laeufe: int = 10_000, fortschritt: Fortschritt | None = None
+        self,
+        *,
+        monate: int = 3,
+        laeufe: int = 10_000,
+        interne_arbeit_abschlag: float = 0.0,
+        fortschritt: Fortschritt | None = None,
     ) -> None:
         """Wie :meth:`simuliere`, aber nebenlaeufigkeitsfreundlich: die Monte-Carlo-Rechnung
         laeuft in einem eigenen ``asyncio.to_thread``-Worker, damit sie parallel zu anderen
@@ -565,7 +586,12 @@ class Dashboard:
 
         def _simulieren() -> None:
             humanize.i18n.activate("de_DE")
-            self.simuliere(monate=monate, laeufe=laeufe, fortschritt=fortschritt)
+            self.simuliere(
+                monate=monate,
+                laeufe=laeufe,
+                interne_arbeit_abschlag=interne_arbeit_abschlag,
+                fortschritt=fortschritt,
+            )
 
         await asyncio.to_thread(_simulieren)
 
@@ -666,6 +692,16 @@ class Dashboard:
         """Das offene Auftragsvolumen der groessten Projekte."""
         return diagramme.restvolumen_je_projekt(self.bestand.im_prognose_scope, top=top)
 
+    def _auslastung_abgeschlossen(self) -> list[Auslastungsmonat]:
+        """Die geladenen Auslastungsmonate ohne den laufenden (Stichtags-)Monat - der
+        ist unvollstaendig gebucht und wuerde jede Kennzahl daraus verfaelschen.
+        Gemeinsame Grundlage von :meth:`kapazitaet_je_mitarbeiter`,
+        :meth:`auslastung_je_mitarbeiter`, :meth:`anteil_interner_arbeit`,
+        :meth:`anteil_interner_arbeit_tabelle` und
+        :meth:`durchschnittlicher_anteil_interner_arbeit`."""
+        stichtagsmonat = (self.bestand.stichtag.year, self.bestand.stichtag.month)
+        return [a for a in self.auslastung if (a.jahr, a.monat) != stichtagsmonat]
+
     def kapazitaet_je_mitarbeiter(self, top: int = STANDARD_TOP) -> go.Figure:
         """Wer ueber die abgeschlossenen Monate des Fensters am meisten Kapazitaet hatte.
 
@@ -674,8 +710,7 @@ class Dashboard:
         :meth:`auslastung_je_mitarbeiter`. Massgeblich sind dieselben abgeschlossenen
         Monate aus dem beim Laden angefragten Fenster (``auslastung_monate``).
         """
-        stichtagsmonat = (self.bestand.stichtag.year, self.bestand.stichtag.month)
-        abgeschlossen = [a for a in self.auslastung if (a.jahr, a.monat) != stichtagsmonat]
+        abgeschlossen = self._auslastung_abgeschlossen()
         kapazitaeten = sorted(
             (
                 (summe.mitarbeiter, summe.verfuegbare_stunden)
@@ -706,11 +741,39 @@ class Dashboard:
         ``self.auslastung`` ist bereits mit :meth:`laden`/:meth:`laden_async` geladen -
         wer das Dashboard direkt konstruiert (etwa in Tests), traegt es selbst nach.
         """
-        stichtagsmonat = (self.bestand.stichtag.year, self.bestand.stichtag.month)
-        abgeschlossen = [a for a in self.auslastung if (a.jahr, a.monat) != stichtagsmonat]
         return diagramme.auslastung_je_mitarbeiter(
-            Auslastungssumme.je_mitarbeiter(abgeschlossen), top=top
+            Auslastungssumme.je_mitarbeiter(self._auslastung_abgeschlossen()), top=top
         )
+
+    def anteil_interner_arbeit(self) -> go.Figure:
+        """Anteil interner Arbeit je Monat (Minimum/Durchschnitt/Maximum ueber alle
+        Personen mit gebuchter Zeit), ueber dieselben abgeschlossenen Monate des beim
+        Laden angefragten Fensters (``auslastung_monate``) wie
+        :meth:`auslastung_je_mitarbeiter` - reine Vergangenheitsbetrachtung (siehe
+        :class:`~umsatzprognose.domaene.auslastung.InterneArbeitBandbreite`).
+
+        Fliesst nicht automatisch in :meth:`simuliere` ein - siehe dort fuer den
+        optionalen ``interne_arbeit_abschlag`` und
+        :meth:`durchschnittlicher_anteil_interner_arbeit` fuer einen aus dieser
+        Beobachtung abgeleiteten Vorschlagswert.
+        """
+        return diagramme.anteil_interner_arbeit(
+            InterneArbeitBandbreite.je_monat(self._auslastung_abgeschlossen())
+        )
+
+    def anteil_interner_arbeit_tabelle(self) -> pd.DataFrame:
+        """Dieselben Zahlen wie :meth:`anteil_interner_arbeit`, zum Nachlesen."""
+        return tabellen.anteil_interner_arbeit_tabelle(
+            InterneArbeitBandbreite.je_monat(self._auslastung_abgeschlossen())
+        )
+
+    def durchschnittlicher_anteil_interner_arbeit(self) -> float | None:
+        """Gewichteter Durchschnitt ueber dieselben abgeschlossenen Monate wie
+        :meth:`anteil_interner_arbeit` - Vorschlagswert fuer ``interne_arbeit_abschlag``
+        in :meth:`simuliere`, ``None`` ohne jede gebuchte Stunde im Fenster (siehe
+        :func:`~umsatzprognose.domaene.auslastung.durchschnittlicher_anteil_interner_arbeit`).
+        """
+        return durchschnittlicher_anteil_interner_arbeit(self._auslastung_abgeschlossen())
 
     def umsatztabelle(self) -> pd.DataFrame:
         """Dieselben Monate wie im Verlaufsdiagramm, zum Nachlesen - inklusive Prognose."""

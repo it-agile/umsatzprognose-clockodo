@@ -15,6 +15,7 @@ if TYPE_CHECKING:
     from umsatzprognose.domaene import (
         Anmeldungsverlauf,
         Hinweis,
+        InterneArbeitBandbreite,
         Kostenplan,
         Prognose,
         Projekt,
@@ -29,7 +30,7 @@ import pandas as pd
 
 from umsatzprognose.domaene import NochKeinePrognose
 from umsatzprognose.domaene.umsatzhistorie import MONATSNAMEN
-from umsatzprognose.domaene.zahlen import euro
+from umsatzprognose.domaene.zahlen import euro, prozent
 
 _KEINE_PROGNOSE = NochKeinePrognose()
 
@@ -199,6 +200,21 @@ def hinweistabelle(hinweise: Sequence[Hinweis], *, max_anzahl_betroffen: int = 1
 def monatsbeschriftung(monat: tuple[int, int]) -> str:
     jahr, monatsnummer = monat
     return f"{MONATSNAMEN[monatsnummer - 1]} {jahr}"
+
+
+def anteil_interner_arbeit_tabelle(bandbreiten: Sequence[InterneArbeitBandbreite]) -> pd.DataFrame:
+    """Dieselben Zahlen wie :func:`~umsatzprognose.darstellung.diagramme.anteil_interner_arbeit`,
+    zum Nachlesen: Minimum, Durchschnitt und Maximum je Monat, ueber alle Personen mit
+    gebuchter Zeit."""
+    return pd.DataFrame(
+        {
+            "Monat": [monatsbeschriftung((b.jahr, b.monat)) for b in bandbreiten],
+            "fakturierende Personen": [b.anzahl_personen for b in bandbreiten],
+            "Min": [prozent(b.minimum, nachkommastellen=1) for b in bandbreiten],
+            "Ø": [prozent(b.durchschnitt, nachkommastellen=1) for b in bandbreiten],
+            "Max": [prozent(b.maximum, nachkommastellen=1) for b in bandbreiten],
+        }
+    )
 
 
 def anmeldungstabelle(verlauf: Anmeldungsverlauf, kategorien: Kategorisierung) -> pd.DataFrame:

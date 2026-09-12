@@ -15,8 +15,10 @@ Form::
   abrechenbar (etwa interne Taetigkeiten), 1 abrechenbar (noch nicht fakturiert),
   2 bereits fakturiert. **Abrechenbar heisst hier 1 und 2 zusammen** - beide sind Zeit,
   die einem Kunden in Rechnung gestellt werden kann oder wurde, der Fakturierungsstand
-  selbst ist fuer die Auslastung ohne Belang. Der Filter erlaubt nur einen Wert je
-  Abruf, deshalb zwei Abrufe statt eines mit einer Werteliste.
+  selbst ist fuer die Auslastung ohne Belang. Status 0 wird zusaetzlich separat
+  abgerufen (``interne_stunden``, reine Vergangenheitsbeobachtung, siehe
+  :mod:`umsatzprognose.domaene.auslastung`). Der Filter erlaubt nur einen Wert je
+  Abruf, deshalb drei Abrufe statt eines mit einer Werteliste.
 * Aufbau der Antwort sonst wie bei der Projekt-x-Monat-Gruppierung
   (:mod:`.verbrauchsverlauf`): ``group`` der aeusseren Ebene ist hier die Personen-ID,
   ``group`` der Untergruppe der Monat als String ``"JJJJMM"``. Die Faltung zu Stunden
@@ -48,6 +50,7 @@ from .client import ClockodoClient, stunden_je_person_und_monat, verbrauch_bis
 from .config import ClockodoCredentials
 from .nebenlaeufig import gleichzeitig, synchron
 
+BILLABLE_INTERN = 0
 BILLABLE_ABRECHENBAR = 1
 BILLABLE_FAKTURIERT = 2
 
@@ -74,12 +77,15 @@ class AuslastungRepository:
     ) -> tuple[Auslastungsmonat, ...]:
         """Die letzten ``monate`` Monate bis einschliesslich des Stichtagsmonats.
 
-        Zwei gleichzeitige Abrufe - abrechenbar und bereits fakturiert - weil
+        Drei gleichzeitige Abrufe - intern, abrechenbar und bereits fakturiert - weil
         ``filter[billable]`` nur einen Wert je Abruf zulaesst.
         """
         zeitraum = _letzte_monate(stichtag, monate)
         von = f"{zeitraum[0][0]:04d}-{zeitraum[0][1]:02d}-01T00:00:00Z"
-        abrechenbar, fakturiert = await gleichzeitig(
+        intern, abrechenbar, fakturiert = await gleichzeitig(
+            self._client.entrygroups_je_person_und_monat(
+                billable=BILLABLE_INTERN, time_since=von, time_until=verbrauch_bis(stichtag)
+            ),
             self._client.entrygroups_je_person_und_monat(
                 billable=BILLABLE_ABRECHENBAR, time_since=von, time_until=verbrauch_bis(stichtag)
             ),
@@ -87,32 +93,35 @@ class AuslastungRepository:
                 billable=BILLABLE_FAKTURIERT, time_since=von, time_until=verbrauch_bis(stichtag)
             ),
         )
-        return self.abbilden(abrechenbar, fakturiert, mitarbeiter, monate=zeitraum)
+        return self.abbilden(intern, abrechenbar, fakturiert, mitarbeiter, monate=zeitraum)
 
     @staticmethod
     def abbilden(
+        intern: list[EntryGroupV2],
         abrechenbar: list[EntryGroupV2],
         fakturiert: list[EntryGroupV2],
         mitarbeiter: Mapping[int, Mitarbeiter],
         *,
         monate: list[Monat],
     ) -> tuple[Auslastungsmonat, ...]:
-        """Abrechenbare und fakturierte Stunden je Person und Monat zusammenfassen.
+        """Interne, abrechenbare und fakturierte Stunden je Person und Monat zusammenfassen.
 
         Personen-IDs ohne bekannten Mitarbeiter (etwa laengst inaktive Accounts, die
         nicht mehr aus ``/v3/users`` geladen wurden) werden uebersprungen, analog zu
         :meth:`~umsatzprognose.clockodo.verbrauchsverlauf.VerbrauchsverlaufRepository.abbilden`.
-        Monate ohne jede abrechenbare Buchung fehlen in der Antwort und werden hier mit
-        0 aufgefuellt, damit jede Person fuer jeden angefragten Monat einen Wert traegt.
+        Monate ohne jede Buchung fehlen in der Antwort und werden hier mit 0
+        aufgefuellt, damit jede Person fuer jeden angefragten Monat einen Wert traegt.
         """
-        stunden = stunden_je_person_und_monat(abrechenbar, fakturiert)
+        interne_stunden = stunden_je_person_und_monat(intern)
+        abrechenbare_stunden = stunden_je_person_und_monat(abrechenbar, fakturiert)
 
         return tuple(
             Auslastungsmonat(
                 mitarbeiter=person,
                 jahr=jahr,
                 monat=monat_nr,
-                abrechenbare_stunden=stunden.get((person.id, (jahr, monat_nr)), 0.0),
+                abrechenbare_stunden=abrechenbare_stunden.get((person.id, (jahr, monat_nr)), 0.0),
+                interne_stunden=interne_stunden.get((person.id, (jahr, monat_nr)), 0.0),
             )
             for person in mitarbeiter.values()
             for jahr, monat_nr in monate

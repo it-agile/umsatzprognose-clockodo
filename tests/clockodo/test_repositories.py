@@ -300,14 +300,16 @@ def test_stunden_je_person_und_monat_addiert_mehrere_gruppierungen_und_ueberspri
     assert stunden == {(301, (2026, 9)): 1.5}  # 3600s + 1800s = 1.5h
 
 
-def test_auslastung_summiert_abrechenbar_und_fakturiert_und_ueberspringt_unbekannte(
-    person_monat_abrechenbar_antwort, person_monat_fakturiert_antwort
+def test_auslastung_summiert_intern_abrechenbar_und_fakturiert_und_ueberspringt_unbekannte(
+    person_monat_intern_antwort, person_monat_abrechenbar_antwort, person_monat_fakturiert_antwort
 ):
     def entrygroups(request):
         billable = request.url.params["filter[billable]"]
-        return {"1": person_monat_abrechenbar_antwort, "2": person_monat_fakturiert_antwort}[
-            billable
-        ]
+        return {
+            "0": person_monat_intern_antwort,
+            "1": person_monat_abrechenbar_antwort,
+            "2": person_monat_fakturiert_antwort,
+        }[billable]
 
     client, requests = client_mit_routen({"/v2/entrygroups": entrygroups})
     anna = Mitarbeiter(id=301, name="Anna", aktiv=True)
@@ -315,12 +317,14 @@ def test_auslastung_summiert_abrechenbar_und_fakturiert_und_ueberspringt_unbekan
         {301: anna}, stichtag=date(2026, 9, 24), monate=2
     )
 
-    # Zwei Abrufe (abrechenbar, fakturiert), zwei angefragte Monate, eine bekannte Person.
-    assert len(requests) == 2
+    # Drei Abrufe (intern, abrechenbar, fakturiert), zwei angefragte Monate, eine bekannte Person.
+    assert len(requests) == 3
     september = next(a for a in auslastungen if (a.jahr, a.monat) == (2026, 9))
     august = next(a for a in auslastungen if (a.jahr, a.monat) == (2026, 8))
     assert september.abrechenbare_stunden == 60.0  # 40h abrechenbar + 20h fakturiert
+    assert september.interne_stunden == 5.0  # 18000s / 3600
     assert august.abrechenbare_stunden == 0.0  # kein Monat ohne Buchung fehlt
+    assert august.interne_stunden == 0.0
     assert {a.mitarbeiter.id for a in auslastungen} == {301}  # Person 999 uebersprungen
     assert requests[0].url.params["time_since"] == "2026-08-01T00:00:00Z"
 

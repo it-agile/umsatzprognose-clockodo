@@ -212,10 +212,19 @@ def dashboard(
     return _dashboard
 
 
-def simulieren(dashboard: Dashboard, *, monate: int = 3, laeufe: int = 10_000) -> None:
+def simulieren(
+    dashboard: Dashboard,
+    *,
+    monate: int = 3,
+    laeufe: int = 10_000,
+    interne_arbeit_abschlag: float = 0.0,
+) -> None:
     """Fuehrt die Monte-Carlo-Simulation aus (siehe ``Dashboard.simuliere``) und zeigt
     dabei einen unbestimmten grafischen Fortschrittsbalken, ersetzt durch das Ergebnis,
     sobald es da ist.
+
+    ``interne_arbeit_abschlag`` siehe ``Dashboard.simuliere`` - Standard 0.0 laesst die
+    Simulation unveraendert, wie bisher.
 
     Anders als beim Laden nur eine einzelne Zeile statt einer Mehrzeilen-Anzeige: die
     Simulation ist eine einzige vektorisierte Rechnung ohne sinnvolle Zwischenschritte
@@ -231,7 +240,12 @@ def simulieren(dashboard: Dashboard, *, monate: int = 3, laeufe: int = 10_000) -
     def _melden(text: str) -> None:
         anzeige.aktualisieren("Simulation", text)
 
-    dashboard.simuliere(monate=monate, laeufe=laeufe, fortschritt=_melden)
+    dashboard.simuliere(
+        monate=monate,
+        laeufe=laeufe,
+        interne_arbeit_abschlag=interne_arbeit_abschlag,
+        fortschritt=_melden,
+    )
 
 
 def anmeldungsverlauf(*, ab_jahr: int = 2022) -> Anmeldungsverlauf:

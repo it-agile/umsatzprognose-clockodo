@@ -9,7 +9,12 @@ pruefbar bleibt - und dass Clockodos Eigenarten nicht in die Fachbegriffe sicker
 
 from umsatzprognose.domaene.abrufquote import Abrufquote, Abrufquotenverteilung
 from umsatzprognose.domaene.anmeldung import Anmeldung, Anmeldungsknoten, Anmeldungsverlauf
-from umsatzprognose.domaene.auslastung import Auslastungsmonat, Auslastungssumme
+from umsatzprognose.domaene.auslastung import (
+    Auslastungsmonat,
+    Auslastungssumme,
+    InterneArbeitBandbreite,
+    durchschnittlicher_anteil_interner_arbeit,
+)
 from umsatzprognose.domaene.bestand import Bestand
 from umsatzprognose.domaene.hinweis import Hinweis
 from umsatzprognose.domaene.kosten import Erfasst, Geschaetzt, Kostenplan, Kostenposten
@@ -56,6 +61,7 @@ __all__ = [
     "Gesamtbudget",
     "Geschaetzt",
     "Hinweis",
+    "InterneArbeitBandbreite",
     "IntervallBudget",
     "KeinBudget",
     "Kostenplan",
@@ -81,4 +87,5 @@ __all__ = [
     "Wochenarbeitszeit",
     "bewerten",
     "bewertungen",
+    "durchschnittlicher_anteil_interner_arbeit",
 ]

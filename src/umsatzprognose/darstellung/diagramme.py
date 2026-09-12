@@ -21,6 +21,7 @@ if TYPE_CHECKING:
         Anmeldungsverlauf,
         Auslastungsmonat,
         Auslastungssumme,
+        InterneArbeitBandbreite,
         Kostenplan,
         Kurzarbeitsbewertung,
         Mitarbeiter,
@@ -1183,6 +1184,43 @@ def auslastung_je_mitarbeiter(
         ticktext=[_gekuerzt(str(a.mitarbeiter), MAXIMALE_PROJEKTLAENGE) for a, _ in umgekehrt],
         hovertemplate="<b>%{y}</b><br>%{text}<extra></extra>",
     )
+    return fig
+
+
+def anteil_interner_arbeit(
+    bandbreiten: Sequence[InterneArbeitBandbreite], *, hoehe: int = 420
+) -> go.Figure:
+    """Anteil interner Arbeit je Monat: eine Linie fuer den Durchschnitt ueber alle
+    Personen mit gebuchter Zeit, mit Fehlerbalken bis zu Minimum und Maximum -
+    reine Vergangenheitsbetrachtung, unabhaengig von der Bestand-Simulation (siehe
+    Moduldocstring von :mod:`umsatzprognose.domaene.auslastung`).
+    """
+    beschriftungen = [f"{MONATSNAMEN[b.monat - 1]} {b.jahr}" for b in bandbreiten]
+    fig = figur("Anteil interner Arbeit je Monat", hoehe=hoehe)
+    achsen(fig)
+    fig.add_scatter(
+        x=beschriftungen,
+        y=[b.durchschnitt for b in bandbreiten],
+        mode="lines+markers",
+        line={"color": SERIE},
+        marker={"color": SERIE},
+        error_y={
+            "type": "data",
+            "symmetric": False,
+            "array": [b.maximum - b.durchschnitt for b in bandbreiten],
+            "arrayminus": [b.durchschnitt - b.minimum for b in bandbreiten],
+            "color": SERIE,
+        },
+        customdata=[
+            [prozent(b.minimum), prozent(b.maximum), b.anzahl_personen] for b in bandbreiten
+        ],
+        hovertemplate=(
+            "<b>%{x}</b><br>Ø %{y:.1%}<br>Min %{customdata[0]} - Max %{customdata[1]}<br>"
+            "%{customdata[2]} Person(en)<extra></extra>"
+        ),
+    )
+    fig.update_yaxes(tickformat=".0%")
+    fig.update_xaxes(tickangle=TICKWINKEL)
     return fig
 
 

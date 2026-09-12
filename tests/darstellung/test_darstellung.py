@@ -46,6 +46,7 @@ from umsatzprognose.domaene import (
     Erfasst,
     Gesamtbudget,
     Hinweis,
+    InterneArbeitBandbreite,
     Kostenplan,
     Kostenposten,
     Kunde,
@@ -636,6 +637,43 @@ def test_auslastung_je_mitarbeiter_zeigt_prozent_und_laesst_none_weg():
     # Kleinster Wert unten (Position 0): Anna (80/176 ≈ 45 %) vor Bert (160/176 ≈ 91 %).
     assert len(balken.x) == 2
     assert list(balken.text) == ["45 %", "91 %"]
+
+
+def test_anteil_interner_arbeit_zeigt_durchschnitt_und_fehlerbalken_bis_min_max():
+    bandbreiten = [
+        InterneArbeitBandbreite(
+            jahr=2026, monat=8, minimum=0.1, durchschnitt=0.2, maximum=0.3, anzahl_personen=2
+        ),
+        InterneArbeitBandbreite(
+            jahr=2026, monat=9, minimum=0.15, durchschnitt=0.25, maximum=0.4, anzahl_personen=3
+        ),
+    ]
+
+    fig = diagramme.anteil_interner_arbeit(bandbreiten)
+    spur = fig.data[0]
+
+    assert list(spur.x) == ["Aug 2026", "Sep 2026"]
+    assert list(spur.y) == [0.2, 0.25]
+    assert list(spur.error_y.array) == [pytest.approx(0.1), pytest.approx(0.15)]
+    assert list(spur.error_y.arrayminus) == [pytest.approx(0.1), pytest.approx(0.1)]
+
+
+def test_anteil_interner_arbeit_tabelle_formatiert_prozent_und_personenzahl():
+    bandbreiten = [
+        InterneArbeitBandbreite(
+            jahr=2026, monat=9, minimum=0.1, durchschnitt=0.2, maximum=0.3, anzahl_personen=2
+        )
+    ]
+
+    tabelle = tabellen.anteil_interner_arbeit_tabelle(bandbreiten)
+
+    assert list(tabelle.columns) == ["Monat", "fakturierende Personen", "Min", "Ø", "Max"]
+    zeile = tabelle.iloc[0]
+    assert zeile["Monat"] == "Sep 2026"
+    assert zeile["Min"] == "10,0 %"
+    assert zeile["Ø"] == "20,0 %"
+    assert zeile["Max"] == "30,0 %"
+    assert zeile["fakturierende Personen"] == 2
 
 
 def test_umsatzverlauf_ohne_prognose_zeigt_nur_die_historie_balken():
@@ -1448,6 +1486,58 @@ def test_dashboard_auslastung_je_mitarbeiter_summiert_abgeschlossene_monate():
 
     verfuegbar = anna.verfuegbare_kapazitaet(2026, 6) + anna.verfuegbare_kapazitaet(2026, 7)
     assert fig.data[0].x[0] == pytest.approx((100.0 + 80.0) / verfuegbar)
+
+
+def test_dashboard_anteil_interner_arbeit_schliesst_laufenden_monat_aus():
+    vollzeit = Wochenarbeitszeit(
+        stunden_je_wochentag=(8.0, 8.0, 8.0, 8.0, 8.0, 0.0, 0.0), gueltig_ab=date(2020, 1, 1)
+    )
+    anna = Mitarbeiter(id=1, name="Anna", aktiv=True, arbeitszeiten=(vollzeit,))
+    bestand = Bestand(stichtag=STICHTAG, mitarbeiter=(anna,))  # STICHTAG: 24.08.2026
+    auslastung = (
+        Auslastungsmonat(
+            mitarbeiter=anna, jahr=2026, monat=7, abrechenbare_stunden=80.0, interne_stunden=20.0
+        ),
+        # August ist der laufende (Stichtags-)Monat und faellt heraus.
+        Auslastungsmonat(mitarbeiter=anna, jahr=2026, monat=8, interne_stunden=999.0),
+    )
+    dashboard = Dashboard(bestand, SCHULUNGSPLAN, KOSTENPLAN, auslastung)
+
+    fig = dashboard.anteil_interner_arbeit()
+
+    assert list(fig.data[0].x) == ["Jul 2026"]
+    assert fig.data[0].y[0] == pytest.approx(0.2)  # 20 / (20 + 80)
+
+
+def test_dashboard_anteil_interner_arbeit_tabelle_deckt_sich_mit_der_grafik():
+    anna = Mitarbeiter(id=1, name="Anna", aktiv=True)
+    bestand = Bestand(stichtag=STICHTAG, mitarbeiter=(anna,))
+    auslastung = (
+        Auslastungsmonat(
+            mitarbeiter=anna, jahr=2026, monat=7, abrechenbare_stunden=80.0, interne_stunden=20.0
+        ),
+    )
+    dashboard = Dashboard(bestand, SCHULUNGSPLAN, KOSTENPLAN, auslastung)
+
+    tabelle = dashboard.anteil_interner_arbeit_tabelle()
+
+    assert list(tabelle["Monat"]) == ["Jul 2026"]
+    assert tabelle["Ø"].iloc[0] == "20,0 %"
+
+
+def test_dashboard_durchschnittlicher_anteil_interner_arbeit_schliesst_laufenden_monat_aus():
+    anna = Mitarbeiter(id=1, name="Anna", aktiv=True)
+    bestand = Bestand(stichtag=STICHTAG, mitarbeiter=(anna,))  # STICHTAG: 24.08.2026
+    auslastung = (
+        Auslastungsmonat(
+            mitarbeiter=anna, jahr=2026, monat=7, abrechenbare_stunden=80.0, interne_stunden=20.0
+        ),
+        # August ist der laufende (Stichtags-)Monat und faellt heraus.
+        Auslastungsmonat(mitarbeiter=anna, jahr=2026, monat=8, interne_stunden=999.0),
+    )
+    dashboard = Dashboard(bestand, SCHULUNGSPLAN, KOSTENPLAN, auslastung)
+
+    assert dashboard.durchschnittlicher_anteil_interner_arbeit() == pytest.approx(0.2)
 
 
 def test_dashboard_ohne_auslastung_bleibt_leer():

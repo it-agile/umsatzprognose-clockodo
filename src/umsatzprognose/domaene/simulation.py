@@ -209,7 +209,9 @@ class _Aufbau:
     plan_betrag: np.ndarray
 
 
-def _aufbauen(bestand: Bestand, scope: tuple[Projekt, ...], monate: int) -> _Aufbau:
+def _aufbauen(
+    bestand: Bestand, scope: tuple[Projekt, ...], monate: int, *, interne_arbeit_abschlag: float
+) -> _Aufbau:
     """Baut die laufunabhaengigen Arrays vor der Monte-Carlo-Schleife in
     :func:`simulieren` (siehe Moduldocstring, Abschnitt Kapazitaeten)."""
     horizont = _horizontmonate(bestand.stichtag, monate)
@@ -244,7 +246,9 @@ def _aufbauen(bestand: Bestand, scope: tuple[Projekt, ...], monate: int) -> _Auf
     kapazitaet = np.array(
         [
             [
-                kapazitaet_je_id[mid].verfuegbare_kapazitaet(*monat)
+                kapazitaet_je_id[mid].verfuegbare_kapazitaet(
+                    *monat, interne_arbeit_abschlag=interne_arbeit_abschlag
+                )
                 if mid in kapazitaet_je_id
                 else 0.0
                 for mid in mitarbeiter_ids
@@ -333,6 +337,7 @@ def simulieren(
     *,
     laeufe: int = 10000,
     zufall: np.random.Generator | None = None,
+    interne_arbeit_abschlag: float = 0.0,
 ) -> Prognose:
     """Die Monte-Carlo-Simulation.
 
@@ -346,9 +351,20 @@ def simulieren(
         zufall: der Zufallsgenerator; wer den Startwert setzt, ist der Aufrufer - ein
             Lauf muss wiederholbar sein (siehe
             :meth:`~umsatzprognose.domaene.abrufquote.Abrufquotenverteilung.ziehen`).
+        interne_arbeit_abschlag: Anteil (0.0 bis 1.0), um den die verfuegbare
+            Kapazitaet jeder Person in jedem Horizontmonat gleichmaessig gesenkt wird
+            (siehe :meth:`~umsatzprognose.domaene.mitarbeiter.Mitarbeiter.
+            verfuegbare_kapazitaet`) - Standard 0.0 laesst die Simulation unveraendert,
+            wie bisher. Kein Sonderfall fuer den angebrochenen Monat 1: derselbe Anteil
+            gilt einheitlich fuer den ganzen Horizont.
     """
     if monate < 1:
         raise ValueError(f"Der Horizont braucht mindestens einen Monat, nicht {monate}")
+    if not 0.0 <= interne_arbeit_abschlag <= 1.0:
+        raise ValueError(
+            "interne_arbeit_abschlag muss zwischen 0.0 und 1.0 liegen, nicht "
+            f"{interne_arbeit_abschlag}"
+        )
 
     verteilung = bestand.abrufquotenverteilung()
     scope = bestand.im_prognose_scope
@@ -356,7 +372,7 @@ def simulieren(
         return NochKeinePrognose()
 
     zufall = zufall if zufall is not None else np.random.default_rng()
-    aufbau = _aufbauen(bestand, scope, monate)
+    aufbau = _aufbauen(bestand, scope, monate, interne_arbeit_abschlag=interne_arbeit_abschlag)
 
     # Lauf-Zustand: alle ``laeufe`` Restvolumen-Verlaeufe gleichzeitig als Array
     # (laeufe, Projekte im Scope) statt 10.000 Dictionaries.

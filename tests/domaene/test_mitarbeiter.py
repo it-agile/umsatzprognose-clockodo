@@ -162,6 +162,18 @@ def test_verfuegbare_kapazitaet_ohne_feiertage_und_abwesenheit():
     assert person.verfuegbare_kapazitaet(2026, 10) == 22 * 7.0
 
 
+def test_verfuegbare_kapazitaet_interne_arbeit_abschlag_senkt_ergebnis_gleichmaessig():
+    person = Mitarbeiter(id=1, arbeitszeiten=(Wochenarbeitszeit(SIEBEN_STUNDEN, date(2020, 1, 1)),))
+    assert person.verfuegbare_kapazitaet(2026, 10, interne_arbeit_abschlag=0.2) == (22 * 7.0) * 0.8
+
+
+def test_verfuegbare_kapazitaet_ohne_abschlag_bleibt_unveraendert():
+    person = Mitarbeiter(id=1, arbeitszeiten=(Wochenarbeitszeit(SIEBEN_STUNDEN, date(2020, 1, 1)),))
+    assert person.verfuegbare_kapazitaet(
+        2026, 10, interne_arbeit_abschlag=0.0
+    ) == person.verfuegbare_kapazitaet(2026, 10)
+
+
 def test_verfuegbare_kapazitaet_zieht_feiertage_ab():
     person = Mitarbeiter(
         id=1,

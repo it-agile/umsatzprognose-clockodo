@@ -16,6 +16,20 @@
             {% endfor %}
         </select>
     </label>
+    <details class="regler-abschnitt" {{ "open" if interne_arbeit_abschlag_abweichend }}>
+        <summary>Interne Arbeit in der Simulation <span class="zusammenfassung">(Abschlag auf die verfügbare Kapazität: {{ interne_arbeit_abschlag_prozent }} %)</span></summary>
+        <div class="regler-gruppe">
+            <label>Abschlag auf die verfügbare Kapazität
+                <input type="range" name="interne_arbeit_abschlag_prozent" min="0" max="100" step="1"
+                       value="{{ interne_arbeit_abschlag_prozent }}"
+                       oninput="this.nextElementSibling.textContent = this.value + ' %'"
+                       onchange="this.form.submit()">
+                <output>{{ interne_arbeit_abschlag_prozent }} %</output>
+            </label>
+            <p>Ohne eigene Auswahl vorbelegt mit dem historischen Durchschnitt (Details dazu auf /dashboard) - die Simulation selbst kennt interne Arbeit sonst nicht.</p>
+            <a class="zuruecksetzen" href="/{{ interne_arbeit_abschlag_zuruecksetzen_query }}">Auf historischen Durchschnitt zurücksetzen</a>
+        </div>
+    </details>
     {{ regler_abschnitt(
         "verbrauchsplan",
         "Verbrauchsplan-Übersteuerung",

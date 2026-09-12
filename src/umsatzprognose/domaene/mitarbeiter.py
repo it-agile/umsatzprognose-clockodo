@@ -206,11 +206,21 @@ class Mitarbeiter:
             0.0,
         )
 
-    def verfuegbare_kapazitaet(self, jahr: int, monat: int) -> float:
+    def verfuegbare_kapazitaet(
+        self, jahr: int, monat: int, *, interne_arbeit_abschlag: float = 0.0
+    ) -> float:
         """Verfuegbare Kapazitaet in diesem Monat.
 
         ``Sollstunden - Feiertage - geplante Abwesenheit`` - der Abschlag fuer
         ungeplante Abwesenheit fehlt hier bewusst, er wird im MVP ignoriert.
+
+        ``interne_arbeit_abschlag`` (Standard 0.0, unveraendertes Verhalten) senkt das
+        Ergebnis gleichmaessig um diesen Anteil - eine optionale Annahme, wie viel der
+        sonst als frei fuer Kundenprojekte gerechneten Zeit tatsaechlich in interne
+        Arbeit fliesst (siehe
+        :func:`~umsatzprognose.domaene.auslastung.durchschnittlicher_anteil_interner_arbeit`
+        fuer einen aus der Vergangenheit abgeleiteten Vorschlagswert). Diese Methode
+        verrechnet nur, was ihr uebergeben wird - sie liest den Anteil nicht selbst aus.
 
         Gerechnet wird **taggenau**, nicht als drei separate Summen: jeder Kalendertag
         des Monats zaehlt hoechstens einmal als belegt, auch wenn ein Feiertag und eine
@@ -236,7 +246,7 @@ class Mitarbeiter:
             if abwesenheit.beginnt <= tag <= abwesenheit.endet
         }
 
-        return sum(
+        kapazitaet = sum(
             (
                 arbeitszeit.stunden_je_wochentag[tag.weekday()]
                 for tag in alle_tage
@@ -245,3 +255,4 @@ class Mitarbeiter:
             ),
             0.0,
         )
+        return kapazitaet * (1.0 - interne_arbeit_abschlag)

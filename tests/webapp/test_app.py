@@ -17,12 +17,14 @@ from umsatzprognose.darstellung import Dashboard
 from umsatzprognose.domaene import (
     Anmeldung,
     Anmeldungsverlauf,
+    Auslastungsmonat,
     Bestand,
     Gesamtbudget,
     Hinweis,
     Kostenplan,
     Kunde,
     Kurzarbeitsbewertung,
+    Mitarbeiter,
     Monatsumsatz,
     Projekt,
     Schulungsplan,
@@ -192,6 +194,36 @@ def test_uebersicht_zeigt_stichtag_und_die_drei_datencheck_grafiken():
     assert antwort.status_code == 200
     assert "24.08.2026" in antwort.text
     assert "plotly" in antwort.text.lower()
+
+
+def test_uebersicht_zeigt_interne_arbeit_abschlag_regler_ohne_grafik_oder_tabelle():
+    client = TestClient(app_modul.app)
+
+    antwort = client.get("/")
+
+    assert 'name="interne_arbeit_abschlag_prozent"' in antwort.text
+    assert "<h2>Anteil interner Arbeit</h2>" not in antwort.text
+    # Der Regler steht vor der Verbrauchsplan-Übersteuerung im Formular.
+    assert antwort.text.index("interne_arbeit_abschlag_prozent") < antwort.text.index(
+        "Verbrauchsplan-Übersteuerung"
+    )
+
+
+def test_dashboard_seite_interne_arbeit_abschlag_regler_steht_vor_verbrauchsplan():
+    client = TestClient(app_modul.app)
+
+    antwort = client.get("/dashboard")
+
+    assert antwort.text.index("interne_arbeit_abschlag_prozent") < antwort.text.index(
+        "Verbrauchsplan-Übersteuerung"
+    )
+    # Die Grafik/Tabelle stehen direkt unter der Monatstabelle, vor dem
+    # Restvolumen-Regler weiter unten auf der Seite.
+    assert (
+        antwort.text.index("Monatstabelle")
+        < antwort.text.index("Anteil interner Arbeit")
+        < antwort.text.index("Anzahl Projekte mit offenem Budget")
+    )
 
 
 def test_uebersicht_gibt_url_parameter_an_den_cache_weiter(_fake_caches):
@@ -400,7 +432,7 @@ def test_dashboard_seite_verbrauchsplan_veraendert_nicht_das_gecachte_dashboard(
     ``DashboardCache`` gehaltene, von allen Besuchenden geteilte Dashboard nicht
     veraendern - sonst saehen andere Besuchende bis zum naechsten TTL-Reload dieselbe,
     von dieser einen Anfrage uebersteuerte Prognose."""
-    dashboard_cache, _, _ = _fake_caches
+    _, _, _ = _fake_caches
     aufrufe: list[object] = []
     original_simuliere = Dashboard.simuliere
 
@@ -415,6 +447,85 @@ def test_dashboard_seite_verbrauchsplan_veraendert_nicht_das_gecachte_dashboard(
 
     assert antwort.status_code == 200
     assert len(aufrufe) == 1
+
+
+def test_interne_arbeit_abschlag_prozent_ohne_parameter_nutzt_historischen_durchschnitt():
+    anna = Mitarbeiter(id=1, name="Anna", aktiv=True)
+    bestand = Bestand(stichtag=STICHTAG, mitarbeiter=(anna,))
+    auslastung = (
+        Auslastungsmonat(
+            mitarbeiter=anna, jahr=2026, monat=7, abrechenbare_stunden=80.0, interne_stunden=20.0
+        ),
+    )
+    dashboard = Dashboard(bestand, SCHULUNGSPLAN, Kostenplan(), auslastung)
+
+    assert app_modul._interne_arbeit_abschlag_prozent(dashboard, None) == 20  # 20/(20+80)
+
+
+def test_interne_arbeit_abschlag_prozent_mit_parameter_uebersteuert_den_durchschnitt():
+    assert app_modul._interne_arbeit_abschlag_prozent(DASHBOARD, 50) == 50
+
+
+def test_interne_arbeit_abschlag_prozent_ohne_auslastung_ist_null():
+    assert app_modul._interne_arbeit_abschlag_prozent(DASHBOARD, None) == 0
+
+
+def test_dashboard_seite_zeigt_anteil_interner_arbeit_abschnitt():
+    client = TestClient(app_modul.app)
+
+    antwort = client.get("/dashboard")
+
+    assert "<h2>Anteil interner Arbeit</h2>" in antwort.text
+    assert 'name="interne_arbeit_abschlag_prozent"' in antwort.text
+
+
+def test_dashboard_seite_interne_arbeit_abschlag_uebernimmt_historischen_durchschnitt(
+    _fake_caches,
+):
+    dashboard_cache, _, _ = _fake_caches
+    anna = Mitarbeiter(id=1, name="Anna", aktiv=True)
+    bestand = Bestand(
+        stichtag=STICHTAG, projekte=PROJEKTE, mitarbeiter=(anna,), umsatzhistorie=HISTORIE
+    )
+    auslastung = (
+        Auslastungsmonat(
+            mitarbeiter=anna, jahr=2026, monat=7, abrechenbare_stunden=80.0, interne_stunden=20.0
+        ),
+    )
+    dashboard = Dashboard(bestand, SCHULUNGSPLAN, Kostenplan(), auslastung)
+    dashboard.simuliere(monate=1, laeufe=10)
+    dashboard_cache.ergebnis = dashboard
+    client = TestClient(app_modul.app)
+
+    antwort = client.get("/dashboard")
+
+    assert 'value="20"' in antwort.text
+
+
+def test_dashboard_seite_interne_arbeit_abschlag_veraendert_nicht_das_gecachte_dashboard(
+    _fake_caches, monkeypatch
+):
+    """Wie test_dashboard_seite_verbrauchsplan_veraendert_nicht_das_gecachte_dashboard,
+    hier fuer den Abschlag-Regler: ein gesetzter Wert loest eine Neusimulation aus,
+    darf aber das im DashboardCache gehaltene, geteilte Dashboard nicht veraendern."""
+    dashboard_cache, _, _ = _fake_caches
+    original_prognose = DASHBOARD.prognose
+    aufrufe: list[object] = []
+    original_simuliere = Dashboard.simuliere
+
+    def _tracking_simuliere(self, *args, **kwargs):
+        aufrufe.append(self)
+        return original_simuliere(self, *args, **kwargs)
+
+    monkeypatch.setattr(Dashboard, "simuliere", _tracking_simuliere)
+    client = TestClient(app_modul.app)
+
+    antwort = client.get("/dashboard", params={"interne_arbeit_abschlag_prozent": "50"})
+
+    assert antwort.status_code == 200
+    assert len(aufrufe) == 1
+    assert aufrufe[0] is not DASHBOARD
+    assert dashboard_cache.ergebnis.prognose is original_prognose
     assert aufrufe[0] is not dashboard_cache.ergebnis
     assert dashboard_cache.ergebnis.bestand.projekte[0].verbrauchsplan_zielmonat is None
 

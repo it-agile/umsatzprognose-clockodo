@@ -87,6 +87,7 @@ DIAGRAMME_DASHBOARD = {
     "kapazitaet-je-mitarbeiter": Dashboard.kapazitaet_je_mitarbeiter,
     "kapazitaet-je-projekt": Dashboard.kapazitaet_je_projekt,
     "auslastung-je-mitarbeiter": Dashboard.auslastung_je_mitarbeiter,
+    "anteil-interner-arbeit": Dashboard.anteil_interner_arbeit,
 }
 
 # Name auf der Kommandozeile -> (Dashboard-Methode, Bildtitel). Anders als

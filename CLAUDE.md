@@ -65,9 +65,11 @@ keine Verletzung:
   Dateien (z. B. zwischen `scripts/wochenbericht.py` und
   `scripts/diagramme_exportieren.py`, weil keins von beiden Teil des installierten
   Pakets ist) bleibt nur so lange eine legitime Ausnahme, wie sie tatsächlich
-  synchron gehalten wird – laufen Kopien wiederholt auseinander, gehört die
-  gemeinsame Logik in ein von beiden importiertes, gemeinsames Modul (siehe
-  `scripts/_fortschritt.py`).
+  synchron gehalten wird. Sobald Kopien wiederholt auseinanderlaufen (beobachtet:
+  fehlende Ladedauer oder abweichender Wortlaut bei derselben Meldung in nur einer
+  der beiden Kopien), ist das ein Signal, die gemeinsame Logik in ein von beiden
+  importiertes, gemeinsames Modul zu extrahieren (siehe `scripts/_fortschritt.py`)
+  statt die Duplizierung weiter hinzunehmen.
 - **`__slots__` statt `__dict__`, wo sinnvoll**: bei den unveränderlichen
   `@dataclass(frozen=True)`-Fachobjekten in `domaene/` per `slots=True` am
   Dataclass-Decorator (ab Python 3.10 direkt unterstützt) – spart Speicher und
@@ -78,6 +80,39 @@ keine Verletzung:
   Kommentar dort) – `__slots__` und ein von `cached_property` gebrauchtes `__dict__`
   schließen sich gegenseitig aus, sofern `__dict__` nicht explizit als eigener Slot
   aufgeführt wird – das würde den Speichervorteil von `__slots__` dort zunichtemachen.
+- **Web-Standards für `webapp/`** – gängige, bereits im Code etablierte Praxis, an der
+  sich neue Templates/Routen messen lassen:
+  - Semantisches HTML5 (`<nav>`, `<main id="hauptinhalt">`), `lang="de"` auf `<html>`,
+    ein Skip-Link zum Hauptinhalt mit eigenem, sichtbarem Fokusstil (`basis.html`).
+  - Formularelemente immer durch Verschachtelung in `<label>` mit ihrer Beschriftung
+    verbunden, nie durch bloße Nähe im Markup.
+  - ARIA-Attribute (`aria-expanded`/`aria-controls`) nur dort, wo semantisches HTML den
+    Zustand nicht schon selbst trägt – etwa am Auf-/Zuklapp-Button des
+    Kategorie-Drilldowns (`schulungen.html`), nicht pauschal auf jedem Element.
+  - Farbkontrast nach WCAG-AA (mindestens 4,5:1), am Beispiel der aktiven
+    Navigationsfarbe direkt im CSS-Kommentar mit dem tatsächlichen Kontrastverhältnis
+    belegt (`basis.html`) statt einer bloßen Behauptung.
+  - `scope="col"` auf jedem Tabellen-Header, auch bei automatisch aus einem
+    `pandas.DataFrame` erzeugten Tabellen (`_tabelle_html()` fügt es nachträglich ein).
+  - Responsiv über relative Einheiten (`rem`/`em`) und horizontal scrollende
+    `.tabelle-wrapper`-Container statt fester Breakpoints/Media-Queries – passend zu
+    einer internen, datengetriebenen Anwendung ohne komplexes Mehrspalten-Layout.
+  - Serverseitiges Escaping bleibt die Regel: Jinja2s Autoescaping wird nicht
+    abgeschaltet; `escape=False` (bei `pandas.DataFrame.to_html()`, nicht bei Jinja2)
+    ausschließlich für selbst injiziertes, kontrolliertes Markup wie die
+    Gewinn-Einfärbung in `_tabelle_html()`, nie für Werte aus einer externen Quelle.
+  - Nur lesende `GET`-Routen, keine schreibenden/destruktiven HTTP-Methoden – passend
+    zur fehlenden Benutzerverwaltung (siehe Abschnitt „Web-Frontend").
+  - Keine Drittanbieter-CDN-Abhängigkeit für Assets: `plotly.js` wird aus dem
+    installierten Paket ausgeliefert statt von einem externen Anbieter geladen (siehe
+    Abschnitt „Web-Frontend").
+- **`try`/`except` möglichst vermeiden** – wo sich eine Bedingung vorab prüfen lässt
+  (Look-Before-You-Leap statt Easier-to-Ask-Forgiveness) oder `contextlib.suppress()`
+  bzw. ein Default-Wert genügt, das bevorzugen. Ein `try`/`except`-Block bleibt nur dort
+  gerechtfertigt, wo eine vorherige Prüfung nicht möglich oder unverhältnismäßig
+  aufwendig ist – klassisch bei E/A-Fehlern externer Systeme (z. B. der
+  Wiederholungslogik in `clockodo/client.py` bei 429/504/Verbindungsabbruch) oder beim
+  Parsen von Fremdformaten, deren Gültigkeit sich nicht anders vorab feststellen lässt.
 
 ## Aufbau
 
@@ -122,7 +157,14 @@ der sechs Pakete darf `util/` importieren.
   (`Prognose`-Protocol, `NochKeinePrognose`), `hinweis.py`, `zahlen.py` (deutsche
   Zahlformate ohne `locale`), `kurzarbeit.py` (`Personenmonat`, `Rollenzuordnung`,
   `Schwellenwerte`, `Kurzarbeitsbewertung`, `bewerten()`/`bewertungen()` – siehe
-  „Was das Modul fachlich tut" unten, eigenständiger Baustein ohne Bezug zum Rest).
+  „Was das Modul fachlich tut" unten, eigenständiger Baustein ohne Bezug zum Rest),
+  `auslastung.py` (`Auslastungsmonat`, `Auslastungssumme` – Anteil abrechenbarer
+  Stunden an `Mitarbeiter.verfuegbare_kapazitaet()`, additiv und unabhängig von der
+  Bestand-Simulation wie `kosten.py`/`schulung.py`; dieselben Klassen tragen zusätzlich
+  `interne_stunden`/`anteil_interner_arbeit` – reine Vergangenheitsbetrachtung, siehe
+  `InterneArbeitBandbreite.je_monat()` und `durchschnittlicher_anteil_interner_arbeit()`
+  sowie Abschnitt „Rechenkern" unten für den daraus ableitbaren, optionalen
+  Kapazitätsabschlag in der Simulation).
 - `src/umsatzprognose/clockodo/` – **alles, was Clockodo weiß, weiß nur dieses Paket.**
   `config.py` (Zugangsdaten, benannte Konstruktoren `automatisch`, `aus_umgebung`,
   `aus_colab_secrets`), `client.py` (`ClockodoClient`: HTTP, Paginierung, verifizierte
@@ -133,7 +175,10 @@ der sechs Pakete darf `util/` importieren.
   `verbrauchsverlauf.py` und `bestand.py` (`BestandRepository`, der eine Einstieg),
   dazu additiv `kurzarbeit.py` (`KurzarbeitRepository`,
   `rollenzuordnung_automatisch()` – eigenständiger Baustein, kein Teil von
-  `BestandRepository`s sieben gleichzeitigen Abrufen).
+  `BestandRepository`s sieben gleichzeitigen Abrufen) und additiv `auslastung.py`
+  (`AuslastungRepository` – drei gleichzeitige `/v2/entrygroups`-Abrufe, `billable` 0/1/2
+  getrennt, da der Filter nur einen Wert je Abruf zulässt; ebenfalls kein Teil von
+  `BestandRepository`s Abrufen, siehe `darstellung.dashboard.Dashboard.auslastung`).
 - `src/umsatzprognose/google_sheets/` – **der gemeinsame Google-Sheets-Zugriff, den
   `schulungen/` und `kosten/` beide nutzen.** `config.py` (`GoogleSheetsConfig`,
   dieselben benannten Konstruktoren wie bei `ClockodoCredentials`, liest u. a.
@@ -155,7 +200,10 @@ der sechs Pakete darf `util/` importieren.
   `clockodo/` oder `schulungen/`.
 - `src/umsatzprognose/darstellung/` – der einzige Ort mit plotly (`diagramme.py`,
   `gestaltung.py`) und pandas (`tabellen.py`), dazu `dashboard.py` mit der Fassade
-  `Dashboard`, die die Notebooks benutzen. `kurzarbeit.py` steht eigenständig daneben
+  `Dashboard`, die die Notebooks benutzen (u. a. `Dashboard.anteil_interner_arbeit()`/
+  `.anteil_interner_arbeit_tabelle()`/`.durchschnittlicher_anteil_interner_arbeit()` –
+  schließen wie `auslastung_je_mitarbeiter()` den laufenden Stichtagsmonat aus, siehe
+  „Rechenkern" unten). `kurzarbeit.py` steht eigenständig daneben
   (`kurzarbeit_bericht()`, `kurzarbeit_hinweise_bericht()` – Text-Berichte für
   `notebooks/04_kurzarbeit.ipynb`, unabhängig von `Dashboard` wie der ganze Baustein).
 - `tests/` – pytest, in Unterordnern gespiegelt nach den sechs Bausteinen plus
@@ -305,7 +353,9 @@ Dashboard-Notebook auch.
   (Gewinn/Verlust je Monat, Gewinn/Verlust je Jahr, kumulierte Umsatzrendite);
   `/dashboard` mit `notebooks/01_dashboard.ipynb` (Umsatzverlauf, die zugehörige
   Monatstabelle `Dashboard.umsatztabelle()`, offenes Auftragsvolumen je Projekt,
-  Projekte ohne Budget);
+  Projekte ohne Budget, dazu zusätzlich der Anteil interner Arbeit je Monat und ein
+  Regler für den Kapazitätsabschlag in der Simulation, siehe unten und Abschnitt
+  „Rechenkern");
   `/schulungen` mit `notebooks/03_schulungsanmeldungen.ipynb` (der
   Anmeldungsverlauf), zusätzlich mit zwei Ergänzungen, die nur die Webapp zeigt:
 
@@ -375,10 +425,12 @@ Dashboard-Notebook auch.
   Monate vorüber sind, sonst zusätzlich das Vorjahr – eine Standardansicht mit nur
   ein oder zwei Monaten wäre zu dünn für einen sinnvollen Blick auf den
   Anmeldungsverlauf.
-  `auslastung_monate` aus `Dashboard.laden_async()` ist **kein** URL-Parameter
-  (mehr): keine der drei Seiten zeigt etwas, das davon abhängt – eine feste
-  Standardkombination genügt, ein Dropdown ohne sichtbare Wirkung wäre nur
-  verwirrend. `stichtag` bleibt ebenfalls kein URL-Parameter: anders als die
+  `auslastung_monate` aus `Dashboard.laden_async()` selbst ist **kein** URL-Parameter:
+  obwohl `/dashboard` inzwischen etwas zeigt, das von den geladenen Auslastungsmonaten
+  abhängt (Anteil interner Arbeit, siehe unten), genügt eine feste
+  Standardkombination (`STANDARD_AUSLASTUNG_MONATE`) – ein weiteres Dropdown nur für
+  die Fensterbreite dieser einen zusätzlichen Ansicht wäre unverhältnismäßig.
+  `stichtag` bleibt ebenfalls kein URL-Parameter: anders als die
   anderen gibt es dafür keinen sinnvollen Standard für alle Besuchenden
   gleichzeitig. `Dashboard.gewinn_verlust_monatlich()` akzeptiert seit der
   "alle"-Option auch `monate=None` (zeigt die gesamte geladene Historie, nicht nur
@@ -406,12 +458,29 @@ Dashboard-Notebook auch.
   `verbrauchsplan`**: `Dashboard.verbrauchsplan_uebersteuern()` verändert `self.bestand`
   in-place – richtig für ein Notebook mit einem eigenen `Dashboard` im eigenen Kernel,
   falsch für die Webapp, deren `DashboardCache` ein einziges, von allen Besuchenden
-  geteiltes `Dashboard` hält (keine Benutzertrennung, siehe oben). `_mit_verbrauchsplan()`
+  geteiltes `Dashboard` hält (keine Benutzertrennung, siehe oben). `_simuliertes_dashboard()`
   in `webapp/app.py` baut deshalb bei gesetztem Parameter ein **transientes** `Dashboard`
   mit übersteuertem `Bestand` und einer eigenen, synchronen Neusimulation
   (`schulungsplan`/`kostenplan`/`auslastung` bleiben vom Original übernommen, kein
   erneuter Abruf) – das gecachte Original bleibt für alle anderen Besuchenden
-  unverändert. Leerer Parameter (Normalfall) überspringt das komplett.
+  unverändert. Leerer Parameter (Normalfall) überspringt das komplett. Derselbe
+  Mechanismus bedient auf **beiden** Seiten (`/` **und** `/dashboard`) einen zweiten,
+  unabhängigen Auslöser: `interne_arbeit_abschlag_prozent` (Regler "Interne Arbeit in
+  der Simulation", 0–100 %, `Annotated[int | None, ...]` – `None` steht für "noch nicht
+  übersteuert"; auf beiden Seiten bewusst **vor** der Verbrauchsplan-Übersteuerung
+  platziert). Ohne gesetzten Wert verwendet `_interne_arbeit_abschlag_prozent()` den aus
+  den geladenen Auslastungsmonaten abgeleiteten historischen Durchschnitt
+  (`Dashboard.durchschnittlicher_anteil_interner_arbeit()`, kaufmännisch gerundet, 0
+  ohne jede gebuchte Stunde) statt eines festen Standardwerts wie bei den übrigen
+  Reglern – deshalb fehlt dieser Parameter bewusst in `_STANDARDWERTE_START`/
+  `_STANDARDWERTE_DASHBOARD`, genau wie `ab_jahr` auf `/schulungen`. Nur `/dashboard`
+  zeigt zusätzlich, direkt unter der Monatstabelle, das zugrunde liegende
+  Diagramm/Tabelle (`Dashboard.anteil_interner_arbeit()`/
+  `.anteil_interner_arbeit_tabelle()`, Spalten Monat/fakturierende Personen/Min/Ø/Max) – rein
+  informativ, unabhängig vom Regler; `/` zeigt nur den Regler, ohne Diagramm/Tabelle.
+  Eine Person ganz ohne abrechenbare Stunde in einem Monat (100 % intern) gilt in
+  beiden als Ausreisser und zählt weder in die Bandbreite/den Durchschnitt noch in den
+  Vorschlagswert für den Regler (siehe `domaene.auslastung._ausschliesslich_intern()`).
 - **Zwei verschiedene Cache-Strategien, je nachdem, ob ein engerer Parameter
   wirklich weniger laedt oder nur anders anzeigt** (siehe Klassendocstrings in
   `webapp/cache.py`): `DashboardCache` haelt je angefragter
@@ -640,6 +709,29 @@ Abwesenheit, taggenau gerechnet (ein Tag zählt nie doppelt). Feiertag setzt die
 Sollstunden seines Wochentags auf 0, ob ganz oder halb. Als Abwesenheit vom Arbeiten
 zählen nur Urlaub und Krankheit, schon ab Status „beantragt" – siehe
 `domaene.mitarbeiter.TYPEN_ABWESEND` und `Abwesenheit.zaehlt_als_kapazitaetsabzug`.
+
+**Interne Arbeit ist im Modell selbst kein Abzug** – ohne weiteres Zutun geht die volle
+verfügbare Kapazität in die Simulation ein, unabhängig davon, wie viel davon in der
+Vergangenheit tatsächlich auf interne statt kundenbezogene Zeit entfiel (`billable == 0`
+bei Clockodo). `verfuegbare_kapazitaet()` nimmt dafür optional
+`interne_arbeit_abschlag` (0.0 bis 1.0, Standard 0.0) entgegen und senkt das Ergebnis
+gleichmäßig um diesen Anteil, einheitlich für den ganzen Horizont (kein Sonderfall für
+den angebrochenen Monat 1). `simulation.simulieren()`/`Bestand.simulieren()`/
+`Dashboard.simuliere()` reichen denselben Parameter nur durch, ohne ihn selbst
+herzuleiten – ein sinnvoller Vorschlagswert kommt aus den geladenen Auslastungsmonaten
+(`domaene.auslastung.durchschnittlicher_anteil_interner_arbeit()`, gewichtet nach
+gebuchter Zeit statt als einfacher Durchschnitt über Personen-Monate). Eine Person ganz
+ohne abrechenbare Stunde in einem Monat (100 % intern, `_ausschliesslich_intern()`)
+zählt dabei nicht mit – sonst würde etwa eine einzelne, ausschließlich intern tätige
+Person diesen Vorschlagswert trotz Gewichtung unverhältnismäßig verzerren; dieselbe
+Regel gilt für `InterneArbeitBandbreite.je_monat()` (Minimum/Durchschnitt/Maximum je
+Monat über alle Personen). In der Webapp ist das ein Regler ("Interne Arbeit in der
+Simulation", vorbelegt mit diesem Durchschnitt, siehe Web-Frontend oben) auf **beiden**
+Seiten `/` und `/dashboard`; in den Notebooks eine eigene, editierbare Zelle vor
+„Simulation ausführen". `01_dashboard.ipynb` zeigt zusätzlich, direkt unter der dortigen
+Monatstabelle (deutlich später im Notebook, nach der Simulation), das zugrunde liegende
+Diagramm/Tabelle – `00_datencheck.ipynb` übernimmt nur die Regler-Zelle, ohne eigene
+Grafik/Tabelle.
 
 ## Clockodo-API
 

@@ -332,6 +332,26 @@ def projekt_monats_antwort() -> dict:
 
 
 @pytest.fixture
+def person_monat_intern_antwort() -> dict:
+    """Dieselbe Doppelgruppierung, ``filter[billable]=0`` (nicht abrechenbar/intern)."""
+    return {
+        "groups": [
+            {
+                "group": "301",
+                "name": "Beispielperson",
+                "duration": 18000,
+                "revenue": 0.0,
+                "grouped_by": "users_id",
+                "sub_groups": [
+                    {"group": "202609", "name": "202609", "duration": 18000,
+                     "revenue": 0.0, "grouped_by": "month"},
+                ],
+            },
+        ]
+    }  # fmt: skip
+
+
+@pytest.fixture
 def person_monat_abrechenbar_antwort() -> dict:
     """Verbrauch je Person mit Monats-Untergruppen, ``filter[billable]=1`` (abrechenbar)."""
     return {

@@ -12,7 +12,11 @@ Drei Seiten, je mit dem Inhalt einer Notebook-Zelle statt mit einer eigenen Ausw
 - ``/`` deckt sich mit ``notebooks/00_datencheck.ipynb`` - Gewinn/Verlust je Monat,
   Gewinn/Verlust je Jahr, kumulierte Umsatzrendite je Jahr.
 - ``/dashboard`` deckt sich mit ``notebooks/01_dashboard.ipynb`` - Umsatzverlauf,
-  die zugehoerige Monatstabelle, offenes Auftragsvolumen je Projekt.
+  die zugehoerige Monatstabelle, offenes Auftragsvolumen je Projekt, dazu zusaetzlich
+  der Anteil interner Arbeit je Monat (:meth:`Dashboard.anteil_interner_arbeit`, reine
+  Vergangenheitsbetrachtung) und ein Regler, der einen daraus abgeleiteten Abschlag auf
+  die verfuegbare Kapazitaet in die Simulation gibt (siehe
+  ``interne_arbeit_abschlag_prozent``/:data:`InterneArbeitAbschlagProzent`).
 - ``/schulungen`` deckt sich mit ``notebooks/03_schulungsanmeldungen.ipynb`` - der
   Anmeldungsverlauf oeffentlicher Schulungen.
 
@@ -27,11 +31,11 @@ nur auf ``/``; Optionen :data:`HISTORISCHE_MONATE_OPTIONEN`, inklusive ``"alle"`
 ``Anmeldungsverlauf`` nur noch in-memory - siehe Klassendocstring von
 :class:`~umsatzprognose.webapp.cache.AnmeldungsverlaufCache` fuer den Unterschied
 zu ``horizont_monate``, das tatsaechlich neu laedt). ``auslastung_monate`` aus
-:meth:`Dashboard.laden_async` ist
-dagegen **kein** URL-Parameter mehr: keine der drei Seiten zeigt etwas, das davon
-abhaengt (die Auslastungs-Ansichten selbst sind bislang auf keiner Webapp-Seite
-vertreten) - eine feste Standardkombination genuegt, ein Dropdown ohne sichtbare
-Wirkung waere nur verwirrend.
+:meth:`Dashboard.laden_async` selbst ist dagegen **kein** URL-Parameter: obwohl
+``/dashboard`` inzwischen etwas zeigt, das von den geladenen Auslastungsmonaten
+abhaengt (Anteil interner Arbeit, siehe oben), genuegt eine feste
+Standardkombination (:data:`STANDARD_AUSLASTUNG_MONATE`) - ein weiteres Dropdown nur
+fuer die Fensterbreite dieser einen zusaetzlichen Ansicht waere unverhaeltnismaessig.
 
 Jeder Parameter ist auf eine feste, kuratierte Auswahl beschraenkt statt eines freien
 Zahlenbereichs (via ``typing.Literal``, siehe :data:`HorizontMonate` &co.) - das ist
@@ -154,6 +158,16 @@ RestvolumenTop = Annotated[int, Query(ge=1)]
 # leer bleibt ohne Wirkung (siehe _verbrauchsplan_aus_text()/_ohne_budget_filter_aus_text()).
 Verbrauchsplan = Annotated[str, Query()]
 OhneBudgetFilter = Annotated[str, Query()]
+
+# Volle Prozentpunkte (step=1) wie bei AnteilInterneArbeitProzent unten - ein anderer
+# Regler mit demselben Wertebereich, aber anderer Bedeutung: dort ein Schwellenwert der
+# Kurzarbeit-Regel, hier ein Abschlag auf die verfuegbare Kapazitaet in der
+# Bestand-Simulation (siehe Mitarbeiter.verfuegbare_kapazitaet). ``None`` (kein
+# Query-Parameter gesetzt) steht fuer "noch nicht uebersteuert" - der tatsaechlich
+# verwendete Wert ist dann der aus den geladenen Auslastungsmonaten abgeleitete
+# historische Durchschnitt (siehe _interne_arbeit_abschlag_prozent()), kein fester
+# Standardwert wie bei den uebrigen Reglern.
+InterneArbeitAbschlagProzent = Annotated[int | None, Query(ge=0, le=100)]
 
 # Die vier unabhaengigen Filter-Dropdowns (Mehrfachauswahl) fuer den Anmeldungsverlauf
 # auf /schulungen (siehe _anmeldungsreihen()) - anders als HorizontMonate & Co. keine
@@ -516,37 +530,58 @@ def _ohne_budget_filter_aus_text(text: str) -> list[str]:
     return [zeile.strip() for zeile in text.splitlines() if zeile.strip()]
 
 
-async def _mit_verbrauchsplan(
-    dashboard: Dashboard, *, verbrauchsplan: str, horizont_monate: int
-) -> Dashboard:
-    """Liefert bei gesetztem ``verbrauchsplan`` ein **transientes** ``Dashboard`` mit
-    angewendeter Uebersteuerung und frischer Simulation, sonst unveraendert das
-    uebergebene.
+def _interne_arbeit_abschlag_prozent(
+    dashboard: Dashboard, prozent: InterneArbeitAbschlagProzent
+) -> int:
+    """Der tatsaechlich zu verwendende Prozentwert: der uebergebene, oder ohne
+    Query-Parameter der aus den geladenen Auslastungsmonaten abgeleitete historische
+    Durchschnitt, kaufmaennisch auf volle Prozent gerundet (0 ohne jede gebuchte
+    Stunde im Fenster) - kein fester Standardwert wie bei den uebrigen Reglern, siehe
+    :data:`InterneArbeitAbschlagProzent`."""
+    if prozent is not None:
+        return prozent
+    durchschnitt = dashboard.durchschnittlicher_anteil_interner_arbeit()
+    return round(durchschnitt * 100) if durchschnitt is not None else 0
 
-    Absichtlich kein ``dashboard.verbrauchsplan_uebersteuern(...)`` auf dem
-    uebergebenen Objekt: dieses ``Dashboard`` ist bei einem Treffer im
-    ``DashboardCache`` **derselbe, geteilte** Stand fuer alle Besuchenden (siehe
-    Moduldocstring - keine Benutzertrennung). Eine In-Place-Uebersteuerung durch eine
-    einzelne Anfrage wuerde bis zum naechsten TTL-Reload allen anderen Besuchenden
-    dieselbe uebersteuerte Prognose zeigen. Stattdessen entsteht ein neues
-    ``Dashboard`` mit einem neuen, unveraenderlichen ``Bestand``
+
+async def _simuliertes_dashboard(
+    dashboard: Dashboard,
+    *,
+    verbrauchsplan: str,
+    horizont_monate: int,
+    interne_arbeit_abschlag: float = 0.0,
+) -> Dashboard:
+    """Liefert bei gesetztem ``verbrauchsplan`` und/oder ``interne_arbeit_abschlag``
+    ein **transientes** ``Dashboard`` mit angewendeter Uebersteuerung und frischer
+    Simulation, sonst unveraendert das uebergebene.
+
+    Absichtlich kein ``dashboard.verbrauchsplan_uebersteuern(...)``/
+    ``dashboard.simuliere(...)`` auf dem uebergebenen Objekt: dieses ``Dashboard`` ist
+    bei einem Treffer im ``DashboardCache`` **derselbe, geteilte** Stand fuer alle
+    Besuchenden (siehe Moduldocstring - keine Benutzertrennung). Eine In-Place-
+    Uebersteuerung durch eine einzelne Anfrage wuerde bis zum naechsten TTL-Reload
+    allen anderen Besuchenden dieselbe uebersteuerte Prognose zeigen. Stattdessen
+    entsteht ein neues ``Dashboard`` mit einem neuen, unveraenderlichen ``Bestand``
     (``mit_verbrauchsplan_uebersteuerungen``) und einer eigenen Neusimulation -
     ``schulungsplan``/``kostenplan``/``auslastung`` werden vom Original uebernommen,
     kein erneuter Abruf. ``simuliere_async()`` statt ``simuliere()``: ein direkter,
     blockierender Aufruf wuerde den einzigen Event-Loop-Thread des Servers fuer die
     Dauer dieser Neusimulation einfrieren - je Anfrage mit gesetztem
-    ``verbrauchsplan``, nicht nur beim seltenen Neuladen des Caches.
+    ``verbrauchsplan``/``interne_arbeit_abschlag``, nicht nur beim seltenen Neuladen
+    des Caches.
     """
     werte = _verbrauchsplan_aus_text(verbrauchsplan)
-    if not werte:
+    if not werte and interne_arbeit_abschlag == 0.0:
         return dashboard
-    uebersteuert = Dashboard(
-        dashboard.bestand.mit_verbrauchsplan_uebersteuerungen(werte),
-        dashboard.schulungsplan,
-        dashboard.kostenplan,
-        dashboard.auslastung,
+    bestand = (
+        dashboard.bestand.mit_verbrauchsplan_uebersteuerungen(werte) if werte else dashboard.bestand
     )
-    await uebersteuert.simuliere_async(monate=horizont_monate)
+    uebersteuert = Dashboard(
+        bestand, dashboard.schulungsplan, dashboard.kostenplan, dashboard.auslastung
+    )
+    await uebersteuert.simuliere_async(
+        monate=horizont_monate, interne_arbeit_abschlag=interne_arbeit_abschlag
+    )
     return uebersteuert
 
 
@@ -556,6 +591,7 @@ async def uebersicht(
     horizont_monate: HorizontMonate = STANDARD_HORIZONT_MONATE,
     gewinn_verlust_monate: GewinnVerlustMonate = STANDARD_GEWINN_VERLUST_MONATE,
     verbrauchsplan: Verbrauchsplan = "",
+    interne_arbeit_abschlag_prozent: InterneArbeitAbschlagProzent = None,
 ) -> HTMLResponse:
     """Deckt sich mit notebooks/00_datencheck.ipynb: Gewinn/Verlust und Umsatzrendite."""
     horizont_zahl = int(horizont_monate)
@@ -568,8 +604,12 @@ async def uebersicht(
     )
     if isinstance(ergebnis, HTMLResponse):
         return ergebnis
-    dashboard = await _mit_verbrauchsplan(
-        ergebnis, verbrauchsplan=verbrauchsplan, horizont_monate=horizont_zahl
+    abschlag_prozent = _interne_arbeit_abschlag_prozent(ergebnis, interne_arbeit_abschlag_prozent)
+    dashboard = await _simuliertes_dashboard(
+        ergebnis,
+        verbrauchsplan=verbrauchsplan,
+        horizont_monate=horizont_zahl,
+        interne_arbeit_abschlag=abschlag_prozent / 100,
     )
 
     gewinn_verlust_zahl = None if gewinn_verlust_monate == "alle" else int(gewinn_verlust_monate)
@@ -588,6 +628,11 @@ async def uebersicht(
         verbrauchsplan_zuruecksetzen_query=_anfrage_query(
             request, _STANDARDWERTE_START, ohne=frozenset({"verbrauchsplan"})
         ),
+        interne_arbeit_abschlag_prozent=abschlag_prozent,
+        interne_arbeit_abschlag_abweichend=interne_arbeit_abschlag_prozent is not None,
+        interne_arbeit_abschlag_zuruecksetzen_query=_anfrage_query(
+            request, _STANDARDWERTE_START, ohne=frozenset({"interne_arbeit_abschlag_prozent"})
+        ),
         gewinn_verlust_monatlich=_figur_html(
             dashboard.gewinn_verlust_monatlich(monate=gewinn_verlust_zahl), mit_plotlyjs=True
         ),
@@ -605,6 +650,7 @@ async def dashboard_seite(
     restvolumen_top: RestvolumenTop = STANDARD_RESTVOLUMEN_TOP,
     verbrauchsplan: Verbrauchsplan = "",
     ohne_budget_filter: OhneBudgetFilter = "",
+    interne_arbeit_abschlag_prozent: InterneArbeitAbschlagProzent = None,
 ) -> HTMLResponse:
     """Deckt sich mit notebooks/01_dashboard.ipynb: Umsatzverlauf und offenes Volumen."""
     horizont_zahl = int(horizont_monate)
@@ -617,8 +663,12 @@ async def dashboard_seite(
     )
     if isinstance(ergebnis, HTMLResponse):
         return ergebnis
-    dashboard = await _mit_verbrauchsplan(
-        ergebnis, verbrauchsplan=verbrauchsplan, horizont_monate=horizont_zahl
+    abschlag_prozent = _interne_arbeit_abschlag_prozent(ergebnis, interne_arbeit_abschlag_prozent)
+    dashboard = await _simuliertes_dashboard(
+        ergebnis,
+        verbrauchsplan=verbrauchsplan,
+        horizont_monate=horizont_zahl,
+        interne_arbeit_abschlag=abschlag_prozent / 100,
     )
     restvolumen_top_max = len(dashboard.bestand.ohne_budget())
     # Der Slider traegt max="{{ restvolumen_top_max }}", aber Query(ge=1) allein
@@ -657,6 +707,13 @@ async def dashboard_seite(
         projekte_ohne_budget=_tabelle_html(
             dashboard.projekte_ohne_budget(_ohne_budget_filter_aus_text(ohne_budget_filter))
         ),
+        interne_arbeit_abschlag_prozent=abschlag_prozent,
+        interne_arbeit_abschlag_abweichend=interne_arbeit_abschlag_prozent is not None,
+        interne_arbeit_abschlag_zuruecksetzen_query=_anfrage_query(
+            request, _STANDARDWERTE_DASHBOARD, ohne=frozenset({"interne_arbeit_abschlag_prozent"})
+        ),
+        anteil_interner_arbeit=_figur_html(dashboard.anteil_interner_arbeit(), mit_plotlyjs=False),
+        anteil_interner_arbeit_tabelle=_tabelle_html(dashboard.anteil_interner_arbeit_tabelle()),
     )
 
 

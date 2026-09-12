@@ -220,7 +220,12 @@ class Bestand:
         )
 
     def simulieren(
-        self, *, monate: int = 3, laeufe: int = 10000, zufall: np.random.Generator | None = None
+        self,
+        *,
+        monate: int = 3,
+        laeufe: int = 10000,
+        zufall: np.random.Generator | None = None,
+        interne_arbeit_abschlag: float = 0.0,
     ) -> Prognose:
         """Die Monte-Carlo-Simulation.
 
@@ -233,8 +238,16 @@ class Bestand:
             monate: Laenge des Prognosehorizonts; default: 3.
             laeufe: Anzahl der Monte-Carlo-Laeufe, default: 10.000.
             zufall: der Zufallsgenerator; ungesetzt erzeugt jeder Aufruf einen neuen.
+            interne_arbeit_abschlag: siehe :func:`~umsatzprognose.domaene.simulation.simulieren`;
+                default 0.0 (unveraendertes Verhalten).
         """
-        return simulieren(self, monate, laeufe=laeufe, zufall=zufall)
+        return simulieren(
+            self,
+            monate,
+            laeufe=laeufe,
+            zufall=zufall,
+            interne_arbeit_abschlag=interne_arbeit_abschlag,
+        )
 
     def ohne_budget(self, *, filter: Iterable[str] | None = None) -> list[Projekt]:
         if filter is None:

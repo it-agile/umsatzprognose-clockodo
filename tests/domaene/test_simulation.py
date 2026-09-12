@@ -76,6 +76,47 @@ def test_monat_muss_mindestens_eins_sein():
         b.simulieren(monate=0)
 
 
+def test_interne_arbeit_abschlag_muss_zwischen_null_und_eins_liegen():
+    b = Bestand(stichtag=STICHTAG, verbrauchsverlaeufe=(historie(0.5),))
+    with pytest.raises(ValueError, match="interne_arbeit_abschlag"):
+        b.simulieren(monate=1, interne_arbeit_abschlag=1.5)
+
+
+def test_interne_arbeit_abschlag_kann_kapazitaet_zum_limitierenden_faktor_machen():
+    """Wie test_einfacher_lauf_ohne_kapazitaetsdeckel (ueppige Kapazitaet, Quote 0.5,
+    volle Nachfrage von 4000 Euro), aber mit einem so hohen Abschlag, dass selbst diese
+    ueppige Kapazitaet zum Engpass wird."""
+    anna = mitarbeiter(1, "Anna")
+    projekt = Projekt(
+        id=1,
+        name="Projekt",
+        kunde=KUNDE,
+        aktiv=True,
+        budget=Gesamtbudget(betrag=Decimal("10000.0")),
+        verbrauchtes_volumen=Decimal("2000.0"),
+        verbrauchte_stunden=40.0,  # effektiver Stundensatz 50.0
+        anteile=(Projektanteil(anna, stunden=40.0),),
+    )
+    b = Bestand(
+        stichtag=STICHTAG,
+        projekte=(projekt,),
+        mitarbeiter=(anna,),
+        verbrauchsverlaeufe=(historie(0.5),),
+    )
+    abschlag = 0.999
+
+    prognose = b.simulieren(
+        monate=1, laeufe=5, zufall=np.random.default_rng(1), interne_arbeit_abschlag=abschlag
+    )
+
+    kapazitaet = anna.verfuegbare_kapazitaet(2026, 9, interne_arbeit_abschlag=abschlag)
+    erwarteter_umsatz = kapazitaet * 50.0
+    assert erwarteter_umsatz < 4000.0  # ohne Abschlag waere die volle Nachfrage gedeckt
+    for werte in prognose.monatswerte().values():
+        assert [float(w) for w in werte] == [pytest.approx(erwarteter_umsatz, abs=0.01)]
+    assert prognose.kapazitaet_limitierend_anteil() == 1.0
+
+
 def test_einfacher_lauf_ohne_kapazitaetsdeckel():
     """Ein Monat, eine Quote von 0.5, ausreichend Kapazitaet: die Rechnung geht exakt auf."""
     anna = mitarbeiter(1, "Anna")
