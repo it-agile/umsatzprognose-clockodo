@@ -81,7 +81,11 @@ def test_figuren_exportiert_tabellen_ueber_tabelle_als_grafik(monkeypatch):
     assert isinstance(figuren["umsatztabelle"], go.Figure)
 
 
-def test_figuren_baut_verlauf_und_tabelle_aus_demselben_fenster():
+def test_figuren_baut_verlauf_und_tabelle_aus_demselben_fenster(monkeypatch):
+    # kategorien_automatisch() liest sonst SCHULUNGEN_KATEGORIEN aus der echten Umgebung
+    # (siehe schulungen.kategorien_automatisch) - hier fest verdrahtet, damit der Test
+    # ohne .env/Secrets laeuft (derselbe Kniff wie in tests/webapp/test_app.py).
+    monkeypatch.setattr(script, "kategorien_automatisch", dict)
     fenster = Anmeldungsverlauf()
 
     figuren = script._figuren(
