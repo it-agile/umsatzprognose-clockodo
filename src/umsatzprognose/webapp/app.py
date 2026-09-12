@@ -13,10 +13,14 @@ Drei Seiten, je mit dem Inhalt einer Notebook-Zelle statt mit einer eigenen Ausw
   Gewinn/Verlust je Jahr, kumulierte Umsatzrendite je Jahr.
 - ``/dashboard`` deckt sich mit ``notebooks/01_dashboard.ipynb`` - Umsatzverlauf,
   die zugehoerige Monatstabelle, offenes Auftragsvolumen je Projekt, dazu zusaetzlich
-  der Anteil interner Arbeit je Monat (:meth:`Dashboard.anteil_interner_arbeit`, reine
-  Vergangenheitsbetrachtung) und ein Regler, der einen daraus abgeleiteten Abschlag auf
-  die verfuegbare Kapazitaet in die Simulation gibt (siehe
-  ``interne_arbeit_abschlag_prozent``/:data:`InterneArbeitAbschlagProzent`).
+  der Anteil fakturierbarer Arbeit je Monat
+  (:meth:`Dashboard.anteil_fakturierbarer_arbeit`, reine Vergangenheitsbetrachtung)
+  samt Verteilung ueber einzelne Personen-Monate
+  (:meth:`Dashboard.anteil_fakturierbarer_arbeit_verteilung`) und ein Dropdown
+  (:data:`InterneArbeitModus`), das zwischen drei Simulationsverteilungen fuer diesen
+  Anteil waehlen laesst: "Pauschal" (Standard, ein fester Wert, vorbelegt mit dem
+  historischen Durchschnitt), "Weibull" und "Gauss" (parametrisch, mit aus der Historie
+  per Momentenmethode vorbelegten Parametern, siehe :func:`_interne_arbeit_regler_werte`).
 - ``/schulungen`` deckt sich mit ``notebooks/03_schulungsanmeldungen.ipynb`` - der
   Anmeldungsverlauf oeffentlicher Schulungen.
 
@@ -33,7 +37,7 @@ nur auf ``/``; Optionen :data:`HISTORISCHE_MONATE_OPTIONEN`, inklusive ``"alle"`
 zu ``horizont_monate``, das tatsaechlich neu laedt). ``auslastung_monate`` aus
 :meth:`Dashboard.laden_async` selbst ist dagegen **kein** URL-Parameter: obwohl
 ``/dashboard`` inzwischen etwas zeigt, das von den geladenen Auslastungsmonaten
-abhaengt (Anteil interner Arbeit, siehe oben), genuegt eine feste
+abhaengt (Anteil fakturierbarer Arbeit, siehe oben), genuegt eine feste
 Standardkombination (:data:`STANDARD_AUSLASTUNG_MONATE`) - ein weiteres Dropdown nur
 fuer die Fensterbreite dieser einen zusaetzlichen Ansicht waere unverhaeltnismaessig.
 
@@ -85,12 +89,17 @@ if TYPE_CHECKING:
     import pandas as pd
     import plotly.graph_objects as go
 
-    from umsatzprognose.domaene import Anmeldungsverlauf, Kurzarbeitsbewertung
+    from umsatzprognose.domaene import (
+        Anmeldungsverlauf,
+        FakturierbareArbeitZiehung,
+        Kurzarbeitsbewertung,
+    )
     from umsatzprognose.domaene.anmeldung import Kategorisierung
     from umsatzprognose.util import Monat
 
 from collections.abc import Sequence
 from contextlib import asynccontextmanager, suppress
+from dataclasses import dataclass
 from functools import partial
 
 import plotly
@@ -101,7 +110,12 @@ from fastapi.templating import Jinja2Templates
 
 from umsatzprognose.clockodo import kurzarbeit_aktiv
 from umsatzprognose.darstellung import Dashboard, diagramme, tabellen
-from umsatzprognose.domaene import Anmeldungsknoten, Schwellenwerte
+from umsatzprognose.domaene import (
+    Anmeldungsknoten,
+    GaussFakturierbareArbeit,
+    Schwellenwerte,
+    WeibullFakturierbareArbeit,
+)
 from umsatzprognose.domaene.anmeldung import KATEGORIE_SONSTIGE
 from umsatzprognose.domaene.zahlen import betrag_parsen
 from umsatzprognose.schulungen import kategorien_automatisch
@@ -159,15 +173,65 @@ RestvolumenTop = Annotated[int, Query(ge=1)]
 Verbrauchsplan = Annotated[str, Query()]
 OhneBudgetFilter = Annotated[str, Query()]
 
-# Volle Prozentpunkte (step=1) wie bei AnteilInterneArbeitProzent unten - ein anderer
-# Regler mit demselben Wertebereich, aber anderer Bedeutung: dort ein Schwellenwert der
-# Kurzarbeit-Regel, hier ein Abschlag auf die verfuegbare Kapazitaet in der
-# Bestand-Simulation (siehe Mitarbeiter.verfuegbare_kapazitaet). ``None`` (kein
-# Query-Parameter gesetzt) steht fuer "noch nicht uebersteuert" - der tatsaechlich
-# verwendete Wert ist dann der aus den geladenen Auslastungsmonaten abgeleitete
-# historische Durchschnitt (siehe _interne_arbeit_abschlag_prozent()), kein fester
-# Standardwert wie bei den uebrigen Reglern.
-InterneArbeitAbschlagProzent = Annotated[int | None, Query(ge=0, le=100)]
+# Drei Simulationsverteilungen fuer den Anteil fakturierbarer Arbeit, waehlbar ueber
+# ein Dropdown statt eines einzelnen Reglers: "pauschal" (Standard, ein fester Wert
+# ueber alle Laeufe gleich, per Regler einstellbar - siehe anteil_fakturierbar_prozent
+# unten), "weibull" und "gauss" (parametrische Alternativen, siehe domaene.simulation.
+# WeibullFakturierbareArbeit/GaussFakturierbareArbeit) - deren Parameterfelder werden
+# nur gezeigt, wenn der jeweilige Modus gewaehlt ist (siehe
+# _interne_arbeit_ziehung()/dashboard.html). Anders als bei den uebrigen Dropdowns
+# (HorizontMonate & Co.) hat dieses einen festen Standardwert und steht deshalb in
+# _STANDARDWERTE_START/_STANDARDWERTE_DASHBOARD.
+InterneArbeitModusWert = Literal["pauschal", "weibull", "gauss"]
+InterneArbeitModus = Annotated[InterneArbeitModusWert, Query()]
+STANDARD_INTERNE_ARBEIT_MODUS: InterneArbeitModusWert = "pauschal"
+INTERNE_ARBEIT_MODUS_OPTIONEN = get_args(InterneArbeitModusWert)
+INTERNE_ARBEIT_MODUS_BESCHRIFTUNGEN: dict[InterneArbeitModusWert, str] = {
+    "pauschal": "Pauschal",
+    "weibull": "Weibull-Verteilung",
+    "gauss": "Gauss-Verteilung",
+}
+
+# Modus "Pauschal": ``None`` (kein Query-Parameter gesetzt) steht fuer "noch nicht
+# uebersteuert" - der tatsaechlich verwendete Wert ist dann der historische
+# Durchschnitt (siehe _interne_arbeit_ziehung()), kein fester Standardwert wie bei den
+# uebrigen Reglern.
+AnteilFakturierbarProzent = Annotated[int | None, Query(ge=0, le=100)]
+
+# Modus "Weibull"/"Gauss": dieselbe ``None``-Konvention wie oben - der tatsaechlich
+# verwendete Wert ist dann der aus der historischen Verteilung per Momentenmethode
+# abgeleitete Vorschlag (siehe _interne_arbeit_regler_werte()).
+# Formparameter (k) ist ein dimensionsloser Formfaktor ohne Prozent-Interpretation und
+# bleibt deshalb eine reine Fliesskommazahl. Skalenparameter (λ) und Mittelwert (μ)
+# leben dagegen in derselben Werte-Domaene wie der Anteil fakturierbarer Arbeit selbst
+# (0.0 bis 1.0, bei Skalenparameter je nach Formparameter auch etwas darueber) - als
+# Prozentzahl deutlich leichter einzuschaetzen als eine Nachkommazahl, deshalb
+# ``*_prozent``-Query-Parameter; die Umrechnung auf den fraktionalen Fachobjekt-Wert
+# passiert ausschliesslich in _interne_arbeit_regler_werte(). Standardabweichung (σ)
+# bleibt dagegen eine reine Fliesskommazahl (kein ``_prozent``-Parameter): anders als
+# ein Anteilswert ist eine Streuung keine intuitiv in Prozent gedachte Groesse.
+# Formparameter/Skalenparameter/Standardabweichung sind als Skalen einer Verteilung nie
+# negativ; der Mittelwert dagegen schon (0 % ist kein Extremwert). Obere Grenzen sind
+# grosszuegig gewaehlte Regler-Bereiche (siehe _regler.html), keine fachliche
+# Einschraenkung - ein tatsaechlich ausserhalb liegender Momentenschaetzer wird beim
+# Rendern auf den Regler-Bereich gekappt.
+InterneArbeitWeibullFormparameter = Annotated[float | None, Query(gt=0)]
+InterneArbeitWeibullSkalenparameterProzent = Annotated[float | None, Query(ge=0)]
+InterneArbeitGaussMittelwertProzent = Annotated[float | None, Query(ge=0, le=100)]
+InterneArbeitGaussStandardabweichung = Annotated[float | None, Query(ge=0, le=0.5)]
+
+# Der Ausreisser-Bereich der Verteilungsgrafik (Dashboard.
+# anteil_fakturierbarer_arbeit_verteilung()) als ein Doppel-Schieberegler mit zwei
+# Boeppeln (siehe _regler.html: doppel_regler()/basis.html:
+# doppelReglerAktualisieren()) - technisch weiterhin zwei unabhaengige Query-Parameter,
+# rein darstellend wie restvolumen_top/ohne_budget_filter (siehe unten), kein Teil des
+# Cache-Schluessels. le=99/ge=1 statt le=100/ge=0 auf der jeweils anderen Seite: ein
+# Bereich braucht mindestens einen Prozentpunkt Breite (siehe die Absicherung in
+# dashboard_seite()).
+InterneArbeitVerteilungMinProzent = Annotated[int, Query(ge=0, le=99)]
+InterneArbeitVerteilungMaxProzent = Annotated[int, Query(ge=1, le=100)]
+STANDARD_INTERNE_ARBEIT_VERTEILUNG_MIN_PROZENT = 0
+STANDARD_INTERNE_ARBEIT_VERTEILUNG_MAX_PROZENT = 100
 
 # Die vier unabhaengigen Filter-Dropdowns (Mehrfachauswahl) fuer den Anmeldungsverlauf
 # auf /schulungen (siehe _anmeldungsreihen()) - anders als HorizontMonate & Co. keine
@@ -198,13 +262,34 @@ _STANDARDWERTE_START: dict[str, str] = {
     "horizont_monate": STANDARD_HORIZONT_MONATE,
     "gewinn_verlust_monate": STANDARD_GEWINN_VERLUST_MONATE,
     "verbrauchsplan": "",
+    "interne_arbeit_modus": STANDARD_INTERNE_ARBEIT_MODUS,
 }
 _STANDARDWERTE_DASHBOARD: dict[str, str] = {
     "horizont_monate": STANDARD_HORIZONT_MONATE,
     "restvolumen_top": str(STANDARD_RESTVOLUMEN_TOP),
     "verbrauchsplan": "",
     "ohne_budget_filter": "",
+    "interne_arbeit_modus": STANDARD_INTERNE_ARBEIT_MODUS,
 }
+
+# Je Modus die eigenen Parameter - Grundlage sowohl des jeweiligen "Parameter auf
+# Historie zuruecksetzen"-Knopfs (setzt nur diese Parameter zurueck, laesst den Modus
+# unveraendert) als auch (vereinigt) des uebergreifenden "Zurueck zu 'Pauschal'"-Knopfs
+# (setzt zusaetzlich den Modus selbst zurueck) - auf beiden Seiten (``/``/``/dashboard``)
+# gleich, deshalb hier gemeinsam definiert statt an jeder Route wiederholt.
+_INTERNE_ARBEIT_PAUSCHAL_PARAMETER = frozenset({"anteil_fakturierbar_prozent"})
+_INTERNE_ARBEIT_WEIBULL_PARAMETER = frozenset(
+    {"interne_arbeit_weibull_formparameter", "interne_arbeit_weibull_skalenparameter_prozent"}
+)
+_INTERNE_ARBEIT_GAUSS_PARAMETER = frozenset(
+    {"interne_arbeit_gauss_mittelwert_prozent", "interne_arbeit_gauss_standardabweichung"}
+)
+_INTERNE_ARBEIT_PARAMETER = (
+    frozenset({"interne_arbeit_modus"})
+    | _INTERNE_ARBEIT_PAUSCHAL_PARAMETER
+    | _INTERNE_ARBEIT_WEIBULL_PARAMETER
+    | _INTERNE_ARBEIT_GAUSS_PARAMETER
+)
 
 
 def _standard_anzeige_ab_jahr(*, heute: date | None = None) -> int:
@@ -531,18 +616,124 @@ def _ohne_budget_filter_aus_text(text: str) -> list[str]:
     return [zeile.strip() for zeile in text.splitlines() if zeile.strip()]
 
 
-def _interne_arbeit_abschlag_prozent(
-    dashboard: Dashboard, prozent: InterneArbeitAbschlagProzent
-) -> int:
-    """Der tatsaechlich zu verwendende Prozentwert: der uebergebene, oder ohne
-    Query-Parameter der aus den geladenen Auslastungsmonaten abgeleitete historische
-    Durchschnitt, kaufmaennisch auf volle Prozent gerundet (0 ohne jede gebuchte
-    Stunde im Fenster) - kein fester Standardwert wie bei den uebrigen Reglern, siehe
-    :data:`InterneArbeitAbschlagProzent`."""
-    if prozent is not None:
-        return prozent
-    durchschnitt = dashboard.durchschnittlicher_anteil_interner_arbeit()
-    return round(durchschnitt * 100) if durchschnitt is not None else 0
+@dataclass(frozen=True, slots=True)
+class _InterneArbeitAnzeige:
+    """Ein vollstaendiger Satz Regler-Anzeigewerte - die Prozentgroessen (alle ausser
+    ``weibull_formparameter``/``gauss_standardabweichung``) bereits als Prozent (nicht
+    als Fachobjekt-Fraktion 0.0-1.0). Dieselbe Form fuer die aktuell wirksamen Werte
+    (:attr:`_InterneArbeitReglerWerte.aktuell`) wie fuer die aus der Historie
+    abgeleiteten Vorschlagswerte (:attr:`_InterneArbeitReglerWerte.historisch`), damit
+    Templates beide identisch behandeln koennen (siehe interne_arbeit_regler_abschnitt()
+    in _regler.html)."""
+
+    pauschal_prozent: int
+    weibull_formparameter: float
+    weibull_skalenparameter_prozent: float
+    gauss_mittelwert_prozent: float
+    gauss_standardabweichung: float
+
+
+@dataclass(frozen=True, slots=True)
+class _InterneArbeitReglerWerte:
+    """Ergebnis von :func:`_interne_arbeit_regler_werte`."""
+
+    weibull: WeibullFakturierbareArbeit
+    gauss: GaussFakturierbareArbeit
+    aktuell: _InterneArbeitAnzeige
+    historisch: _InterneArbeitAnzeige
+
+
+def _interne_arbeit_regler_werte(
+    dashboard: Dashboard,
+    *,
+    anteil_fakturierbar_prozent: int | None,
+    weibull_formparameter: float | None,
+    weibull_skalenparameter_prozent: float | None,
+    gauss_mittelwert_prozent: float | None,
+    gauss_standardabweichung: float | None,
+) -> _InterneArbeitReglerWerte:
+    """Loest die drei Regler-Parametersaetze zur Anzeige auf - unabhaengig vom
+    gewaehlten Modus alle drei berechnet, damit die jeweils nicht gewaehlten Regler
+    beim Umschalten nicht auf 0 zurueckfallen, sondern ihren zuletzt aufgeloesten bzw.
+    aus der Historie vorgeschlagenen Wert behalten. ``aktuell.weibull``/``.gauss`` (ueber
+    :attr:`_InterneArbeitReglerWerte.weibull`/``.gauss``) sind zugleich die
+    tatsaechlich zu verwendende Ziehungsquelle, wenn "Weibull"/"Gauss" gewaehlt ist
+    (siehe Aufrufstellen) - fuer "Pauschal" gilt das nicht: siehe dort fuer den eigenen
+    Cache-Kurzschluss. ``historisch`` traegt denselben Werte-Satz, aber immer aus der
+    Historie abgeleitet, unabhaengig von jeder Uebersteuerung - reine Anzeige (Hilfstext
+    "Historischer Vorschlag" neben jedem Regler), keine Eingabe der Simulation.
+
+    Ohne eigene Auswahl vorbelegt aus der historischen Verteilung
+    (Momentenmethode, siehe ``WeibullFakturierbareArbeit.aus_stichprobe()``/
+    ``GaussFakturierbareArbeit.aus_stichprobe()`` bzw. ``Dashboard.
+    durchschnittlicher_anteil_fakturierbarer_arbeit()`` fuer "Pauschal", kaufmaennisch
+    auf volle Prozent gerundet, 100 % ohne jede gebuchte Stunde). Mit weniger als zwei
+    Beobachtungen laesst sich kein Weibull-Formparameter schaetzen; Standard ist dann
+    eine Exponentialverteilung (Formparameter 1.0) um den einen beobachteten Wert bzw.
+    0.0 ganz ohne jede Beobachtung.
+    """
+    werte = dashboard.fakturierbare_arbeit_verteilung().werte
+    durchschnitt = dashboard.durchschnittlicher_anteil_fakturierbarer_arbeit()
+    start_pauschal_prozent = round(durchschnitt * 100) if durchschnitt is not None else 100
+    start_weibull = (
+        WeibullFakturierbareArbeit.aus_stichprobe(werte)
+        if len(werte) >= 2
+        else WeibullFakturierbareArbeit(
+            formparameter=1.0, skalenparameter=werte[0] if werte else 0.0
+        )
+    )
+    start_gauss = (
+        GaussFakturierbareArbeit.aus_stichprobe(werte)
+        if werte
+        else GaussFakturierbareArbeit(0.0, 0.0)
+    )
+    pauschal_prozent = (
+        anteil_fakturierbar_prozent
+        if anteil_fakturierbar_prozent is not None
+        else start_pauschal_prozent
+    )
+    weibull = WeibullFakturierbareArbeit(
+        formparameter=(
+            weibull_formparameter
+            if weibull_formparameter is not None
+            else start_weibull.formparameter
+        ),
+        skalenparameter=(
+            weibull_skalenparameter_prozent / 100
+            if weibull_skalenparameter_prozent is not None
+            else start_weibull.skalenparameter
+        ),
+    )
+    gauss = GaussFakturierbareArbeit(
+        mittelwert=(
+            gauss_mittelwert_prozent / 100
+            if gauss_mittelwert_prozent is not None
+            else start_gauss.mittelwert
+        ),
+        standardabweichung=(
+            gauss_standardabweichung
+            if gauss_standardabweichung is not None
+            else start_gauss.standardabweichung
+        ),
+    )
+    return _InterneArbeitReglerWerte(
+        weibull=weibull,
+        gauss=gauss,
+        aktuell=_InterneArbeitAnzeige(
+            pauschal_prozent=pauschal_prozent,
+            weibull_formparameter=weibull.formparameter,
+            weibull_skalenparameter_prozent=weibull.skalenparameter * 100,
+            gauss_mittelwert_prozent=gauss.mittelwert * 100,
+            gauss_standardabweichung=gauss.standardabweichung,
+        ),
+        historisch=_InterneArbeitAnzeige(
+            pauschal_prozent=start_pauschal_prozent,
+            weibull_formparameter=start_weibull.formparameter,
+            weibull_skalenparameter_prozent=start_weibull.skalenparameter * 100,
+            gauss_mittelwert_prozent=start_gauss.mittelwert * 100,
+            gauss_standardabweichung=start_gauss.standardabweichung,
+        ),
+    )
 
 
 async def _simuliertes_dashboard(
@@ -550,11 +741,24 @@ async def _simuliertes_dashboard(
     *,
     verbrauchsplan: str,
     horizont_monate: int,
-    interne_arbeit_abschlag: float = 0.0,
+    anteil_fakturierbar: float | None,
+    interne_arbeit_ziehung: FakturierbareArbeitZiehung | None,
 ) -> Dashboard:
-    """Liefert bei gesetztem ``verbrauchsplan`` und/oder ``interne_arbeit_abschlag``
-    ein **transientes** ``Dashboard`` mit angewendeter Uebersteuerung und frischer
-    Simulation, sonst unveraendert das uebergebene.
+    """Liefert bei gesetztem ``verbrauchsplan``/``anteil_fakturierbar``/
+    ``interne_arbeit_ziehung`` ein **transientes** ``Dashboard`` mit angewendeter
+    Uebersteuerung und frischer Simulation, sonst unveraendert das uebergebene.
+
+    ``anteil_fakturierbar``/``interne_arbeit_ziehung``: beide ``None`` (Modus
+    "Pauschal" ohne eigene Auswahl) uebernimmt unveraendert das Verhalten des
+    gecachten Basis-``Dashboard`` (siehe ``DashboardCache.anstossen`` -
+    ``Dashboard.simuliere_async()`` zieht dort ohne eigene Argumente bereits
+    standardmaessig den historischen Durchschnitt heran, siehe ``Dashboard.
+    simuliere``) - eine Neusimulation ist dafuer nicht noetig. Ein gesetzter
+    ``anteil_fakturierbar`` (manueller Pauschalwert) oder ein uebergebenes
+    ``interne_arbeit_ziehung``-Objekt (``WeibullFakturierbareArbeit``/
+    ``GaussFakturierbareArbeit``, siehe :func:`_interne_arbeit_regler_werte`)
+    erzwingt dagegen die gewaehlte Verteilung, die die gecachte Simulation
+    ueberschreibt.
 
     Absichtlich kein ``dashboard.verbrauchsplan_uebersteuern(...)``/
     ``dashboard.simuliere(...)`` auf dem uebergebenen Objekt: dieses ``Dashboard`` ist
@@ -568,11 +772,11 @@ async def _simuliertes_dashboard(
     kein erneuter Abruf. ``simuliere_async()`` statt ``simuliere()``: ein direkter,
     blockierender Aufruf wuerde den einzigen Event-Loop-Thread des Servers fuer die
     Dauer dieser Neusimulation einfrieren - je Anfrage mit gesetztem
-    ``verbrauchsplan``/``interne_arbeit_abschlag``, nicht nur beim seltenen Neuladen
+    ``verbrauchsplan``/``interne_arbeit_ziehung``, nicht nur beim seltenen Neuladen
     des Caches.
     """
     werte = _verbrauchsplan_aus_text(verbrauchsplan)
-    if not werte and interne_arbeit_abschlag == 0.0:
+    if not werte and anteil_fakturierbar is None and interne_arbeit_ziehung is None:
         return dashboard
     bestand = (
         dashboard.bestand.mit_verbrauchsplan_uebersteuerungen(werte) if werte else dashboard.bestand
@@ -581,7 +785,9 @@ async def _simuliertes_dashboard(
         bestand, dashboard.schulungsplan, dashboard.kostenplan, dashboard.auslastung
     )
     await uebersteuert.simuliere_async(
-        monate=horizont_monate, interne_arbeit_abschlag=interne_arbeit_abschlag
+        monate=horizont_monate,
+        anteil_fakturierbar=anteil_fakturierbar,
+        fakturierbare_arbeit_ziehung=interne_arbeit_ziehung,
     )
     return uebersteuert
 
@@ -592,7 +798,14 @@ async def uebersicht(
     horizont_monate: HorizontMonate = STANDARD_HORIZONT_MONATE,
     gewinn_verlust_monate: GewinnVerlustMonate = STANDARD_GEWINN_VERLUST_MONATE,
     verbrauchsplan: Verbrauchsplan = "",
-    interne_arbeit_abschlag_prozent: InterneArbeitAbschlagProzent = None,
+    interne_arbeit_modus: InterneArbeitModus = STANDARD_INTERNE_ARBEIT_MODUS,
+    anteil_fakturierbar_prozent: AnteilFakturierbarProzent = None,
+    interne_arbeit_weibull_formparameter: InterneArbeitWeibullFormparameter = None,
+    interne_arbeit_weibull_skalenparameter_prozent: (
+        InterneArbeitWeibullSkalenparameterProzent
+    ) = None,
+    interne_arbeit_gauss_mittelwert_prozent: InterneArbeitGaussMittelwertProzent = None,
+    interne_arbeit_gauss_standardabweichung: InterneArbeitGaussStandardabweichung = None,
 ) -> HTMLResponse:
     """Deckt sich mit notebooks/00_datencheck.ipynb: Gewinn/Verlust und Umsatzrendite."""
     horizont_zahl = int(horizont_monate)
@@ -605,12 +818,30 @@ async def uebersicht(
     )
     if isinstance(ergebnis, HTMLResponse):
         return ergebnis
-    abschlag_prozent = _interne_arbeit_abschlag_prozent(ergebnis, interne_arbeit_abschlag_prozent)
+    regler = _interne_arbeit_regler_werte(
+        ergebnis,
+        anteil_fakturierbar_prozent=anteil_fakturierbar_prozent,
+        weibull_formparameter=interne_arbeit_weibull_formparameter,
+        weibull_skalenparameter_prozent=interne_arbeit_weibull_skalenparameter_prozent,
+        gauss_mittelwert_prozent=interne_arbeit_gauss_mittelwert_prozent,
+        gauss_standardabweichung=interne_arbeit_gauss_standardabweichung,
+    )
+    ziehung: FakturierbareArbeitZiehung | None
+    if interne_arbeit_modus == "weibull":
+        anteil_fakturierbar, ziehung = None, regler.weibull
+    elif interne_arbeit_modus == "gauss":
+        anteil_fakturierbar, ziehung = None, regler.gauss
+    else:
+        anteil_fakturierbar = (
+            anteil_fakturierbar_prozent / 100 if anteil_fakturierbar_prozent is not None else None
+        )
+        ziehung = None
     dashboard = await _simuliertes_dashboard(
         ergebnis,
         verbrauchsplan=verbrauchsplan,
         horizont_monate=horizont_zahl,
-        interne_arbeit_abschlag=abschlag_prozent / 100,
+        anteil_fakturierbar=anteil_fakturierbar,
+        interne_arbeit_ziehung=ziehung,
     )
 
     gewinn_verlust_zahl = None if gewinn_verlust_monate == "alle" else int(gewinn_verlust_monate)
@@ -629,10 +860,26 @@ async def uebersicht(
         verbrauchsplan_zuruecksetzen_query=_anfrage_query(
             request, _STANDARDWERTE_START, ohne=frozenset({"verbrauchsplan"})
         ),
-        interne_arbeit_abschlag_prozent=abschlag_prozent,
-        interne_arbeit_abschlag_abweichend=interne_arbeit_abschlag_prozent is not None,
+        interne_arbeit_modus=interne_arbeit_modus,
+        interne_arbeit_modus_optionen=INTERNE_ARBEIT_MODUS_OPTIONEN,
+        interne_arbeit_modus_beschriftungen=INTERNE_ARBEIT_MODUS_BESCHRIFTUNGEN,
+        interne_arbeit_regler_aktuell=regler.aktuell,
+        interne_arbeit_regler_historisch=regler.historisch,
+        interne_arbeit_abschlag_abweichend=(
+            interne_arbeit_modus != STANDARD_INTERNE_ARBEIT_MODUS
+            or anteil_fakturierbar_prozent is not None
+        ),
         interne_arbeit_abschlag_zuruecksetzen_query=_anfrage_query(
-            request, _STANDARDWERTE_START, ohne=frozenset({"interne_arbeit_abschlag_prozent"})
+            request, _STANDARDWERTE_START, ohne=_INTERNE_ARBEIT_PARAMETER
+        ),
+        interne_arbeit_pauschal_zuruecksetzen_query=_anfrage_query(
+            request, _STANDARDWERTE_START, ohne=_INTERNE_ARBEIT_PAUSCHAL_PARAMETER
+        ),
+        interne_arbeit_weibull_zuruecksetzen_query=_anfrage_query(
+            request, _STANDARDWERTE_START, ohne=_INTERNE_ARBEIT_WEIBULL_PARAMETER
+        ),
+        interne_arbeit_gauss_zuruecksetzen_query=_anfrage_query(
+            request, _STANDARDWERTE_START, ohne=_INTERNE_ARBEIT_GAUSS_PARAMETER
         ),
         gewinn_verlust_monatlich=_figur_html(
             dashboard.gewinn_verlust_monatlich(monate=gewinn_verlust_zahl), mit_plotlyjs=True
@@ -651,8 +898,21 @@ async def dashboard_seite(
     restvolumen_top: RestvolumenTop = STANDARD_RESTVOLUMEN_TOP,
     verbrauchsplan: Verbrauchsplan = "",
     ohne_budget_filter: OhneBudgetFilter = "",
-    interne_arbeit_abschlag_prozent: InterneArbeitAbschlagProzent = None,
+    interne_arbeit_modus: InterneArbeitModus = STANDARD_INTERNE_ARBEIT_MODUS,
+    anteil_fakturierbar_prozent: AnteilFakturierbarProzent = None,
+    interne_arbeit_weibull_formparameter: InterneArbeitWeibullFormparameter = None,
+    interne_arbeit_weibull_skalenparameter_prozent: (
+        InterneArbeitWeibullSkalenparameterProzent
+    ) = None,
+    interne_arbeit_gauss_mittelwert_prozent: InterneArbeitGaussMittelwertProzent = None,
+    interne_arbeit_gauss_standardabweichung: InterneArbeitGaussStandardabweichung = None,
     interne_arbeit_trend_werte: TrendlinienWerte = ("an",),
+    interne_arbeit_verteilung_min_prozent: InterneArbeitVerteilungMinProzent = (
+        STANDARD_INTERNE_ARBEIT_VERTEILUNG_MIN_PROZENT
+    ),
+    interne_arbeit_verteilung_max_prozent: InterneArbeitVerteilungMaxProzent = (
+        STANDARD_INTERNE_ARBEIT_VERTEILUNG_MAX_PROZENT
+    ),
 ) -> HTMLResponse:
     """Deckt sich mit notebooks/01_dashboard.ipynb: Umsatzverlauf und offenes Volumen."""
     horizont_zahl = int(horizont_monate)
@@ -665,13 +925,31 @@ async def dashboard_seite(
     )
     if isinstance(ergebnis, HTMLResponse):
         return ergebnis
-    abschlag_prozent = _interne_arbeit_abschlag_prozent(ergebnis, interne_arbeit_abschlag_prozent)
+    regler = _interne_arbeit_regler_werte(
+        ergebnis,
+        anteil_fakturierbar_prozent=anteil_fakturierbar_prozent,
+        weibull_formparameter=interne_arbeit_weibull_formparameter,
+        weibull_skalenparameter_prozent=interne_arbeit_weibull_skalenparameter_prozent,
+        gauss_mittelwert_prozent=interne_arbeit_gauss_mittelwert_prozent,
+        gauss_standardabweichung=interne_arbeit_gauss_standardabweichung,
+    )
+    ziehung: FakturierbareArbeitZiehung | None
+    if interne_arbeit_modus == "weibull":
+        anteil_fakturierbar, ziehung = None, regler.weibull
+    elif interne_arbeit_modus == "gauss":
+        anteil_fakturierbar, ziehung = None, regler.gauss
+    else:
+        anteil_fakturierbar = (
+            anteil_fakturierbar_prozent / 100 if anteil_fakturierbar_prozent is not None else None
+        )
+        ziehung = None
     interne_arbeit_trend = "an" in interne_arbeit_trend_werte
     dashboard = await _simuliertes_dashboard(
         ergebnis,
         verbrauchsplan=verbrauchsplan,
         horizont_monate=horizont_zahl,
-        interne_arbeit_abschlag=abschlag_prozent / 100,
+        anteil_fakturierbar=anteil_fakturierbar,
+        interne_arbeit_ziehung=ziehung,
     )
     restvolumen_top_max = len(dashboard.bestand.ohne_budget())
     # Der Slider traegt max="{{ restvolumen_top_max }}", aber Query(ge=1) allein
@@ -679,6 +957,13 @@ async def dashboard_seite(
     # sonst zeigt der Slider einen Wert ausserhalb seines eigenen Maximalattributs.
     if restvolumen_top_max:
         restvolumen_top = min(restvolumen_top, restvolumen_top_max)
+    # Query(ge=0, le=99)/Query(ge=1, le=100) allein verhindern nicht, dass ein manuell
+    # gesetztes Minimum ueber (oder gleichauf mit) dem Maximum liegt - ein Bereich
+    # braucht mindestens einen Prozentpunkt Breite (siehe
+    # diagramme.anteil_fakturierbarer_arbeit_verteilung()s eigene Validierung).
+    interne_arbeit_verteilung_max_prozent = max(
+        interne_arbeit_verteilung_max_prozent, interne_arbeit_verteilung_min_prozent + 1
+    )
 
     return _antwort(
         request,
@@ -710,16 +995,44 @@ async def dashboard_seite(
         projekte_ohne_budget=_tabelle_html(
             dashboard.projekte_ohne_budget(_ohne_budget_filter_aus_text(ohne_budget_filter))
         ),
-        interne_arbeit_abschlag_prozent=abschlag_prozent,
-        interne_arbeit_abschlag_abweichend=interne_arbeit_abschlag_prozent is not None,
+        interne_arbeit_modus=interne_arbeit_modus,
+        interne_arbeit_modus_optionen=INTERNE_ARBEIT_MODUS_OPTIONEN,
+        interne_arbeit_modus_beschriftungen=INTERNE_ARBEIT_MODUS_BESCHRIFTUNGEN,
+        interne_arbeit_regler_aktuell=regler.aktuell,
+        interne_arbeit_regler_historisch=regler.historisch,
+        interne_arbeit_abschlag_abweichend=(
+            interne_arbeit_modus != STANDARD_INTERNE_ARBEIT_MODUS
+            or anteil_fakturierbar_prozent is not None
+        ),
         interne_arbeit_abschlag_zuruecksetzen_query=_anfrage_query(
-            request, _STANDARDWERTE_DASHBOARD, ohne=frozenset({"interne_arbeit_abschlag_prozent"})
+            request, _STANDARDWERTE_DASHBOARD, ohne=_INTERNE_ARBEIT_PARAMETER
+        ),
+        interne_arbeit_pauschal_zuruecksetzen_query=_anfrage_query(
+            request, _STANDARDWERTE_DASHBOARD, ohne=_INTERNE_ARBEIT_PAUSCHAL_PARAMETER
+        ),
+        interne_arbeit_weibull_zuruecksetzen_query=_anfrage_query(
+            request, _STANDARDWERTE_DASHBOARD, ohne=_INTERNE_ARBEIT_WEIBULL_PARAMETER
+        ),
+        interne_arbeit_gauss_zuruecksetzen_query=_anfrage_query(
+            request, _STANDARDWERTE_DASHBOARD, ohne=_INTERNE_ARBEIT_GAUSS_PARAMETER
         ),
         interne_arbeit_trend=interne_arbeit_trend,
-        anteil_interner_arbeit=_figur_html(
-            dashboard.anteil_interner_arbeit(mit_trend=interne_arbeit_trend), mit_plotlyjs=False
+        anteil_fakturierbarer_arbeit=_figur_html(
+            dashboard.anteil_fakturierbarer_arbeit(mit_trend=interne_arbeit_trend),
+            mit_plotlyjs=False,
         ),
-        anteil_interner_arbeit_tabelle=_tabelle_html(dashboard.anteil_interner_arbeit_tabelle()),
+        anteil_fakturierbarer_arbeit_tabelle=_tabelle_html(
+            dashboard.anteil_fakturierbarer_arbeit_tabelle()
+        ),
+        interne_arbeit_verteilung_min_prozent=interne_arbeit_verteilung_min_prozent,
+        interne_arbeit_verteilung_max_prozent=interne_arbeit_verteilung_max_prozent,
+        anteil_fakturierbarer_arbeit_verteilung=_figur_html(
+            dashboard.anteil_fakturierbarer_arbeit_verteilung(
+                minimum=interne_arbeit_verteilung_min_prozent / 100,
+                maximum=interne_arbeit_verteilung_max_prozent / 100,
+            ),
+            mit_plotlyjs=False,
+        ),
     )
 
 

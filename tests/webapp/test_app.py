@@ -31,6 +31,7 @@ from umsatzprognose.domaene import (
     Schulungstermin,
     Schwellenwerte,
     Umsatzhistorie,
+    WeibullFakturierbareArbeit,
 )
 from umsatzprognose.domaene.zahlen import euro
 
@@ -196,32 +197,32 @@ def test_uebersicht_zeigt_stichtag_und_die_drei_datencheck_grafiken():
     assert "plotly" in antwort.text.lower()
 
 
-def test_uebersicht_zeigt_interne_arbeit_abschlag_regler_ohne_grafik_oder_tabelle():
+def test_uebersicht_zeigt_interne_arbeit_regler_ohne_grafik_oder_tabelle():
     client = TestClient(app_modul.app)
 
     antwort = client.get("/")
 
-    assert 'name="interne_arbeit_abschlag_prozent"' in antwort.text
-    assert "<h2>Anteil interner Arbeit</h2>" not in antwort.text
+    assert 'name="interne_arbeit_modus"' in antwort.text
+    assert "<h2>Anteil fakturierbarer Arbeit</h2>" not in antwort.text
     # Der Regler steht vor der Verbrauchsplan-Übersteuerung im Formular.
-    assert antwort.text.index("interne_arbeit_abschlag_prozent") < antwort.text.index(
+    assert antwort.text.index("interne_arbeit_modus") < antwort.text.index(
         "Verbrauchsplan-Übersteuerung"
     )
 
 
-def test_dashboard_seite_interne_arbeit_abschlag_regler_steht_vor_verbrauchsplan():
+def test_dashboard_seite_interne_arbeit_regler_steht_vor_verbrauchsplan():
     client = TestClient(app_modul.app)
 
     antwort = client.get("/dashboard")
 
-    assert antwort.text.index("interne_arbeit_abschlag_prozent") < antwort.text.index(
+    assert antwort.text.index("interne_arbeit_modus") < antwort.text.index(
         "Verbrauchsplan-Übersteuerung"
     )
     # Die Grafik/Tabelle stehen direkt unter der Monatstabelle, vor dem
     # Restvolumen-Regler weiter unten auf der Seite.
     assert (
         antwort.text.index("Monatstabelle")
-        < antwort.text.index("Anteil interner Arbeit")
+        < antwort.text.index("Anteil fakturierbarer Arbeit")
         < antwort.text.index("Anzahl Projekte mit offenem Budget")
     )
 
@@ -449,7 +450,10 @@ def test_dashboard_seite_verbrauchsplan_veraendert_nicht_das_gecachte_dashboard(
     assert len(aufrufe) == 1
 
 
-def test_interne_arbeit_abschlag_prozent_ohne_parameter_nutzt_historischen_durchschnitt():
+def test_interne_arbeit_regler_werte_ohne_uebersteuerung_nutzt_historischen_durchschnitt():
+    """Ohne eigenen Pauschalwert kommt der Vorschlag aus
+    ``Dashboard.durchschnittlicher_anteil_fakturierbarer_arbeit()``, kaufmaennisch
+    auf volle Prozent gerundet."""
     anna = Mitarbeiter(id=1, name="Anna", aktiv=True)
     bestand = Bestand(stichtag=STICHTAG, mitarbeiter=(anna,))
     auslastung = (
@@ -459,25 +463,157 @@ def test_interne_arbeit_abschlag_prozent_ohne_parameter_nutzt_historischen_durch
     )
     dashboard = Dashboard(bestand, SCHULUNGSPLAN, Kostenplan(), auslastung)
 
-    assert app_modul._interne_arbeit_abschlag_prozent(dashboard, None) == 20  # 20/(20+80)
+    regler = app_modul._interne_arbeit_regler_werte(
+        dashboard,
+        anteil_fakturierbar_prozent=None,
+        weibull_formparameter=None,
+        weibull_skalenparameter_prozent=None,
+        gauss_mittelwert_prozent=None,
+        gauss_standardabweichung=None,
+    )
+
+    assert regler.aktuell.pauschal_prozent == 80  # 80/(20+80)
 
 
-def test_interne_arbeit_abschlag_prozent_mit_parameter_uebersteuert_den_durchschnitt():
-    assert app_modul._interne_arbeit_abschlag_prozent(DASHBOARD, 50) == 50
+def test_interne_arbeit_regler_werte_pauschal_uebersteuerung_gewinnt_gegen_die_historie():
+    regler = app_modul._interne_arbeit_regler_werte(
+        DASHBOARD,
+        anteil_fakturierbar_prozent=42,
+        weibull_formparameter=None,
+        weibull_skalenparameter_prozent=None,
+        gauss_mittelwert_prozent=None,
+        gauss_standardabweichung=None,
+    )
+
+    assert regler.aktuell.pauschal_prozent == 42
 
 
-def test_interne_arbeit_abschlag_prozent_ohne_auslastung_ist_null():
-    assert app_modul._interne_arbeit_abschlag_prozent(DASHBOARD, None) == 0
+def test_interne_arbeit_regler_werte_weibull_ohne_uebersteuerung_nutzt_die_historie():
+    anna = Mitarbeiter(id=1, name="Anna", aktiv=True)
+    bestand = Bestand(stichtag=STICHTAG, mitarbeiter=(anna,))
+    auslastung = (
+        Auslastungsmonat(
+            mitarbeiter=anna, jahr=2026, monat=7, abrechenbare_stunden=80.0, interne_stunden=20.0
+        ),
+        Auslastungsmonat(
+            mitarbeiter=anna, jahr=2026, monat=6, abrechenbare_stunden=90.0, interne_stunden=10.0
+        ),
+    )
+    dashboard = Dashboard(bestand, SCHULUNGSPLAN, Kostenplan(), auslastung)
+
+    regler = app_modul._interne_arbeit_regler_werte(
+        dashboard,
+        anteil_fakturierbar_prozent=None,
+        weibull_formparameter=None,
+        weibull_skalenparameter_prozent=None,
+        gauss_mittelwert_prozent=None,
+        gauss_standardabweichung=None,
+    )
+
+    erwartet = WeibullFakturierbareArbeit.aus_stichprobe(
+        dashboard.fakturierbare_arbeit_verteilung().werte
+    )
+    assert regler.weibull.formparameter == pytest.approx(erwartet.formparameter)
+    assert regler.weibull.skalenparameter == pytest.approx(erwartet.skalenparameter)
 
 
-def test_dashboard_seite_zeigt_anteil_interner_arbeit_abschnitt():
+def test_interne_arbeit_regler_werte_gauss_uebersteuerung_gewinnt_gegen_die_historie():
+    regler = app_modul._interne_arbeit_regler_werte(
+        DASHBOARD,
+        anteil_fakturierbar_prozent=None,
+        weibull_formparameter=None,
+        weibull_skalenparameter_prozent=None,
+        gauss_mittelwert_prozent=42,
+        gauss_standardabweichung=0.07,
+    )
+
+    assert regler.gauss.mittelwert == pytest.approx(0.42)
+    assert regler.gauss.standardabweichung == pytest.approx(0.07)
+    assert regler.aktuell.gauss_mittelwert_prozent == pytest.approx(42)
+    assert regler.aktuell.gauss_standardabweichung == pytest.approx(0.07)
+
+
+def test_interne_arbeit_regler_werte_ohne_historie_faellt_neutral_zurueck():
+    """DASHBOARD (Modulkonstante) hat keine geladene Auslastung - die Weibull-
+    Momentenmethode braucht aber mindestens zwei Beobachtungen, siehe
+    WeibullFakturierbareArbeit.aus_stichprobe()."""
+    regler = app_modul._interne_arbeit_regler_werte(
+        DASHBOARD,
+        anteil_fakturierbar_prozent=None,
+        weibull_formparameter=None,
+        weibull_skalenparameter_prozent=None,
+        gauss_mittelwert_prozent=None,
+        gauss_standardabweichung=None,
+    )
+
+    # ohne Historie: volle Kapazitaet als neutraler Vorschlag
+    assert regler.aktuell.pauschal_prozent == 100
+    assert regler.weibull.formparameter == 1.0
+    assert regler.weibull.skalenparameter == 0.0
+    assert regler.gauss.mittelwert == 0.0
+    assert regler.gauss.standardabweichung == 0.0
+
+
+def test_dashboard_seite_zeigt_anteil_fakturierbarer_arbeit_abschnitt():
     client = TestClient(app_modul.app)
 
     antwort = client.get("/dashboard")
 
-    assert "<h2>Anteil interner Arbeit</h2>" in antwort.text
-    assert 'name="interne_arbeit_abschlag_prozent"' in antwort.text
+    assert "<h2>Anteil fakturierbarer Arbeit</h2>" in antwort.text
+    assert 'name="interne_arbeit_modus"' in antwort.text
     assert 'name="interne_arbeit_trend_werte"' in antwort.text
+    assert "<h3>Verteilung über Personen-Monate</h3>" in antwort.text
+    assert 'name="interne_arbeit_verteilung_min_prozent"' in antwort.text
+    assert 'name="interne_arbeit_verteilung_max_prozent"' in antwort.text
+
+
+def test_dashboard_seite_interne_arbeit_verteilung_regler_blenden_ausreisser_aus(_fake_caches):
+    dashboard_cache, _, _ = _fake_caches
+    anna = Mitarbeiter(id=1, name="Anna", aktiv=True)
+    bert = Mitarbeiter(id=2, name="Bert", aktiv=True)
+    bestand = Bestand(
+        stichtag=STICHTAG, projekte=PROJEKTE, mitarbeiter=(anna, bert), umsatzhistorie=HISTORIE
+    )
+    auslastung = (
+        Auslastungsmonat(
+            mitarbeiter=anna, jahr=2026, monat=7, abrechenbare_stunden=95.0, interne_stunden=5.0
+        ),  # 5%
+        Auslastungsmonat(
+            mitarbeiter=bert, jahr=2026, monat=7, abrechenbare_stunden=70.0, interne_stunden=30.0
+        ),  # 30%
+    )
+    dashboard = Dashboard(bestand, SCHULUNGSPLAN, Kostenplan(), auslastung)
+    dashboard.simuliere(monate=1, laeufe=10)
+    dashboard_cache.ergebnis = dashboard
+    client = TestClient(app_modul.app)
+
+    antwort = client.get(
+        "/dashboard",
+        params={
+            "interne_arbeit_verteilung_min_prozent": "10",
+            "interne_arbeit_verteilung_max_prozent": "50",
+        },
+    )
+
+    assert antwort.status_code == 200
+    assert 'value="10"' in antwort.text
+    assert 'value="50"' in antwort.text
+
+
+def test_dashboard_seite_interne_arbeit_verteilung_regler_erzwingt_mindestbreite():
+    client = TestClient(app_modul.app)
+
+    antwort = client.get(
+        "/dashboard",
+        params={
+            "interne_arbeit_verteilung_min_prozent": "80",
+            "interne_arbeit_verteilung_max_prozent": "20",
+        },
+    )
+
+    assert antwort.status_code == 200
+    assert 'value="80"' in antwort.text  # Minimum unveraendert uebernommen
+    assert 'value="81"' in antwort.text  # Maximum auf Minimum + 1 angehoben
 
 
 def _checkbox_markup(text: str, feldname: str) -> str:
@@ -505,9 +641,7 @@ def test_dashboard_seite_trendlinie_ausgeschaltet_zeigt_keine_trendspur():
     assert '"Trend"' not in antwort.text
 
 
-def test_dashboard_seite_interne_arbeit_abschlag_uebernimmt_historischen_durchschnitt(
-    _fake_caches,
-):
+def test_dashboard_seite_gauss_modus_uebernimmt_historischen_mittelwert(_fake_caches):
     dashboard_cache, _, _ = _fake_caches
     anna = Mitarbeiter(id=1, name="Anna", aktiv=True)
     bestand = Bestand(
@@ -523,9 +657,100 @@ def test_dashboard_seite_interne_arbeit_abschlag_uebernimmt_historischen_durchsc
     dashboard_cache.ergebnis = dashboard
     client = TestClient(app_modul.app)
 
-    antwort = client.get("/dashboard")
+    antwort = client.get("/dashboard", params={"interne_arbeit_modus": "gauss"})
 
-    assert 'value="20"' in antwort.text
+    assert 'value="80.0"' in antwort.text  # 80/(20+80) als Prozent, aus der einen Beobachtung
+
+
+def test_dashboard_seite_weibull_skalenparameter_uebersteuerung_wirkt_als_prozent(_fake_caches):
+    dashboard_cache, _, _ = _fake_caches
+    anna = Mitarbeiter(id=1, name="Anna", aktiv=True)
+    bestand = Bestand(
+        stichtag=STICHTAG, projekte=PROJEKTE, mitarbeiter=(anna,), umsatzhistorie=HISTORIE
+    )
+    dashboard = Dashboard(bestand, SCHULUNGSPLAN, Kostenplan())
+    dashboard.simuliere(monate=1, laeufe=10)
+    dashboard_cache.ergebnis = dashboard
+    client = TestClient(app_modul.app)
+
+    antwort = client.get(
+        "/dashboard",
+        params={
+            "interne_arbeit_modus": "weibull",
+            "interne_arbeit_weibull_skalenparameter_prozent": "75",
+        },
+    )
+
+    assert 'name="interne_arbeit_weibull_skalenparameter_prozent"' in antwort.text
+    assert 'value="75.0"' in antwort.text
+
+
+def test_dashboard_seite_gauss_standardabweichung_bleibt_fliesskommazahl(_fake_caches):
+    """Anders als Mittelwert/Skalenparameter ist die Standardabweichung kein Anteilswert
+    und bleibt deshalb eine reine Fliesskommazahl, kein ``_prozent``-Parameter."""
+    dashboard_cache, _, _ = _fake_caches
+    anna = Mitarbeiter(id=1, name="Anna", aktiv=True)
+    bestand = Bestand(
+        stichtag=STICHTAG, projekte=PROJEKTE, mitarbeiter=(anna,), umsatzhistorie=HISTORIE
+    )
+    dashboard = Dashboard(bestand, SCHULUNGSPLAN, Kostenplan())
+    dashboard.simuliere(monate=1, laeufe=10)
+    dashboard_cache.ergebnis = dashboard
+    client = TestClient(app_modul.app)
+
+    antwort = client.get(
+        "/dashboard",
+        params={"interne_arbeit_modus": "gauss", "interne_arbeit_gauss_standardabweichung": "0.12"},
+    )
+
+    assert 'name="interne_arbeit_gauss_standardabweichung"' in antwort.text
+    assert "interne_arbeit_gauss_standardabweichung_prozent" not in antwort.text
+    assert 'value="0.120"' in antwort.text
+
+
+def test_dashboard_seite_zeigt_historischen_vorschlag_je_modus(_fake_caches):
+    """Der historische Vorschlagswert steht direkt in der Regler-Beschriftung, egal ob
+    der aktuelle Wert davon abweicht - Orientierung beim manuellen Einstellen."""
+    dashboard_cache, _, _ = _fake_caches
+    anna = Mitarbeiter(id=1, name="Anna", aktiv=True)
+    bestand = Bestand(
+        stichtag=STICHTAG, projekte=PROJEKTE, mitarbeiter=(anna,), umsatzhistorie=HISTORIE
+    )
+    auslastung = (
+        Auslastungsmonat(
+            mitarbeiter=anna, jahr=2026, monat=7, abrechenbare_stunden=80.0, interne_stunden=20.0
+        ),
+    )
+    dashboard = Dashboard(bestand, SCHULUNGSPLAN, Kostenplan(), auslastung)
+    dashboard.simuliere(monate=1, laeufe=10)
+    dashboard_cache.ergebnis = dashboard
+    client = TestClient(app_modul.app)
+
+    pauschal = client.get(
+        "/dashboard",
+        params={"interne_arbeit_modus": "pauschal", "anteil_fakturierbar_prozent": "10"},
+    )
+    assert "historischer Durchschnitt" in pauschal.text
+    assert "80 %" in pauschal.text  # historischer Wert, unabhaengig vom uebersteuerten Regler
+
+    weibull = client.get(
+        "/dashboard",
+        params={
+            "interne_arbeit_modus": "weibull",
+            "interne_arbeit_weibull_skalenparameter_prozent": "5",
+        },
+    )
+    assert "historischer Vorschlag" in weibull.text
+
+    gauss = client.get(
+        "/dashboard",
+        params={
+            "interne_arbeit_modus": "gauss",
+            "interne_arbeit_gauss_mittelwert_prozent": "5",
+        },
+    )
+    assert "historischer Mittelwert" in gauss.text
+    assert "80 %" in gauss.text  # historischer Mittelwert, unabhaengig vom uebersteuerten Regler
 
 
 def test_dashboard_seite_interne_arbeit_abschlag_veraendert_nicht_das_gecachte_dashboard(
@@ -546,7 +771,7 @@ def test_dashboard_seite_interne_arbeit_abschlag_veraendert_nicht_das_gecachte_d
     monkeypatch.setattr(Dashboard, "simuliere", _tracking_simuliere)
     client = TestClient(app_modul.app)
 
-    antwort = client.get("/dashboard", params={"interne_arbeit_abschlag_prozent": "50"})
+    antwort = client.get("/dashboard", params={"interne_arbeit_modus": "weibull"})
 
     assert antwort.status_code == 200
     assert len(aufrufe) == 1

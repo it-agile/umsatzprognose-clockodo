@@ -15,7 +15,7 @@ from IPython.display import HTML, display, update_display
 
 from umsatzprognose import Dashboard
 from umsatzprognose.clockodo import KurzarbeitRepository, anzahl_ladeschritte
-from umsatzprognose.domaene import Anmeldungsverlauf, Personenmonat
+from umsatzprognose.domaene import Anmeldungsverlauf, FakturierbareArbeitZiehung, Personenmonat
 from umsatzprognose.schulungen import SchulungenRepository
 from umsatzprognose.util import Monat
 
@@ -217,14 +217,18 @@ def simulieren(
     *,
     monate: int = 3,
     laeufe: int = 10_000,
-    interne_arbeit_abschlag: float = 0.0,
+    anteil_fakturierbar: float | None = None,
+    fakturierbare_arbeit_ziehung: FakturierbareArbeitZiehung | None = None,
 ) -> None:
     """Fuehrt die Monte-Carlo-Simulation aus (siehe ``Dashboard.simuliere``) und zeigt
     dabei einen unbestimmten grafischen Fortschrittsbalken, ersetzt durch das Ergebnis,
     sobald es da ist.
 
-    ``interne_arbeit_abschlag`` siehe ``Dashboard.simuliere`` - Standard 0.0 laesst die
-    Simulation unveraendert, wie bisher.
+    ``anteil_fakturierbar``/``fakturierbare_arbeit_ziehung`` siehe
+    ``Dashboard.simuliere`` - Standard (beide ``None``) verwendet den historischen
+    Durchschnitt als festen Anteil, ein uebergebenes ``WeibullFakturierbareArbeit``/
+    ``GaussFakturierbareArbeit`` (siehe ``umsatzprognose.domaene.simulation``) zieht
+    stattdessen je Lauf aus der jeweiligen parametrischen Verteilung.
 
     Anders als beim Laden nur eine einzelne Zeile statt einer Mehrzeilen-Anzeige: die
     Simulation ist eine einzige vektorisierte Rechnung ohne sinnvolle Zwischenschritte
@@ -243,7 +247,8 @@ def simulieren(
     dashboard.simuliere(
         monate=monate,
         laeufe=laeufe,
-        interne_arbeit_abschlag=interne_arbeit_abschlag,
+        anteil_fakturierbar=anteil_fakturierbar,
+        fakturierbare_arbeit_ziehung=fakturierbare_arbeit_ziehung,
         fortschritt=_melden,
     )
 

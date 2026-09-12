@@ -30,6 +30,7 @@ if TYPE_CHECKING:
     from .mitarbeiter import Mitarbeiter
     from .prognose import Prognose
     from .projekt import Projekt
+    from .simulation import FakturierbareArbeitZiehung
     from .umsatzhistorie import Umsatzhistorie
     from .verbrauchsverlauf import Verbrauchsverlauf
 
@@ -226,6 +227,7 @@ class Bestand:
         laeufe: int = 10000,
         zufall: np.random.Generator | None = None,
         interne_arbeit_abschlag: float = 0.0,
+        fakturierbare_arbeit_verteilung: FakturierbareArbeitZiehung | None = None,
     ) -> Prognose:
         """Die Monte-Carlo-Simulation.
 
@@ -240,6 +242,13 @@ class Bestand:
             zufall: der Zufallsgenerator; ungesetzt erzeugt jeder Aufruf einen neuen.
             interne_arbeit_abschlag: siehe :func:`~umsatzprognose.domaene.simulation.simulieren`;
                 default 0.0 (unveraendertes Verhalten).
+            fakturierbare_arbeit_verteilung: siehe
+                :func:`~umsatzprognose.domaene.simulation.simulieren`; default ``None``
+                (unveraendertes Verhalten). Der ``Bestand`` selbst kennt keine
+                Auslastungsmonate (siehe Moduldocstring von
+                :mod:`umsatzprognose.domaene.auslastung`) - wer diese Verteilung
+                herleitet, ist der Aufrufer (siehe
+                :meth:`~umsatzprognose.darstellung.dashboard.Dashboard.simuliere`).
         """
         return simulieren(
             self,
@@ -247,6 +256,7 @@ class Bestand:
             laeufe=laeufe,
             zufall=zufall,
             interne_arbeit_abschlag=interne_arbeit_abschlag,
+            fakturierbare_arbeit_verteilung=fakturierbare_arbeit_verteilung,
         )
 
     def ohne_budget(self, *, filter: Iterable[str] | None = None) -> list[Projekt]:

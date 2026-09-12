@@ -12,8 +12,10 @@ from umsatzprognose.domaene.anmeldung import Anmeldung, Anmeldungsknoten, Anmeld
 from umsatzprognose.domaene.auslastung import (
     Auslastungsmonat,
     Auslastungssumme,
-    InterneArbeitBandbreite,
-    durchschnittlicher_anteil_interner_arbeit,
+    FakturierbareArbeitBandbreite,
+    FakturierbareArbeitVerteilung,
+    anteile_fakturierbarer_arbeit,
+    durchschnittlicher_anteil_fakturierbarer_arbeit,
 )
 from umsatzprognose.domaene.bestand import Bestand
 from umsatzprognose.domaene.hinweis import Hinweis
@@ -41,7 +43,12 @@ from umsatzprognose.domaene.projekt import (
 )
 from umsatzprognose.domaene.projektanteil import Projektanteil
 from umsatzprognose.domaene.schulung import Schulungsplan, Schulungstermin
-from umsatzprognose.domaene.simulation import MonteCarloPrognose
+from umsatzprognose.domaene.simulation import (
+    FakturierbareArbeitZiehung,
+    GaussFakturierbareArbeit,
+    MonteCarloPrognose,
+    WeibullFakturierbareArbeit,
+)
 from umsatzprognose.domaene.umsatzhistorie import Monatsumsatz, Umsatzhistorie
 from umsatzprognose.domaene.verbrauchsverlauf import Verbrauchsverlauf
 
@@ -58,10 +65,13 @@ __all__ = [
     "Bestand",
     "Budget",
     "Erfasst",
+    "FakturierbareArbeitBandbreite",
+    "FakturierbareArbeitVerteilung",
+    "FakturierbareArbeitZiehung",
+    "GaussFakturierbareArbeit",
     "Gesamtbudget",
     "Geschaetzt",
     "Hinweis",
-    "InterneArbeitBandbreite",
     "IntervallBudget",
     "KeinBudget",
     "Kostenplan",
@@ -84,8 +94,10 @@ __all__ = [
     "TeilprojektBudget",
     "Umsatzhistorie",
     "Verbrauchsverlauf",
+    "WeibullFakturierbareArbeit",
     "Wochenarbeitszeit",
+    "anteile_fakturierbarer_arbeit",
     "bewerten",
     "bewertungen",
-    "durchschnittlicher_anteil_interner_arbeit",
+    "durchschnittlicher_anteil_fakturierbarer_arbeit",
 ]

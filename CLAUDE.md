@@ -153,18 +153,29 @@ der sechs Pakete darf `util/` importieren.
   Monatsverbrauch je Projekt, Rückrechnung des Restvolumens, Beobachtungsfenster),
   `abrufquote.py` (`Abrufquote`, `Abrufquotenverteilung` – empirische Verteilung samt
   Ziehung mit Zurücklegen), `bestand.py` (`Bestand`, das Aggregat), `simulation.py`
-  (`simulieren()`, `MonteCarloPrognose` – der Rechenkern, siehe unten), `prognose.py`
+  (`simulieren()`, `MonteCarloPrognose` – der Rechenkern, siehe unten; dazu
+  `FakturierbareArbeitZiehung` – ein `Protocol` für den Anteil fakturierbarer Arbeit,
+  mit dem die verfügbare Kapazität je Lauf multipliziert wird, siehe „Rechenkern" –
+  sowie dessen zwei parametrische Erfüller `WeibullFakturierbareArbeit`/
+  `GaussFakturierbareArbeit`, je mit `aus_stichprobe()`-Momentenschätzer), `prognose.py`
   (`Prognose`-Protocol, `NochKeinePrognose`), `hinweis.py`, `zahlen.py` (deutsche
   Zahlformate ohne `locale`), `kurzarbeit.py` (`Personenmonat`, `Rollenzuordnung`,
   `Schwellenwerte`, `Kurzarbeitsbewertung`, `bewerten()`/`bewertungen()` – siehe
   „Was das Modul fachlich tut" unten, eigenständiger Baustein ohne Bezug zum Rest),
   `auslastung.py` (`Auslastungsmonat`, `Auslastungssumme` – Anteil abrechenbarer
-  Stunden an `Mitarbeiter.verfuegbare_kapazitaet()`, additiv und unabhängig von der
-  Bestand-Simulation wie `kosten.py`/`schulung.py`; dieselben Klassen tragen zusätzlich
-  `interne_stunden`/`anteil_interner_arbeit` – reine Vergangenheitsbetrachtung, siehe
-  `InterneArbeitBandbreite.je_monat()` und `durchschnittlicher_anteil_interner_arbeit()`
-  sowie Abschnitt „Rechenkern" unten für den daraus ableitbaren, optionalen
-  Kapazitätsabschlag in der Simulation).
+  Stunden an `Mitarbeiter.verfuegbare_kapazitaet()`, additiv wie `kosten.py`/
+  `schulung.py`: kein Teil von `BestandRepository`s Abrufen, keine eigene
+  Bandbreite/kein eigener Monte-Carlo-Lauf; dieselben Klassen tragen zusätzlich
+  `interne_stunden`/`anteil_fakturierbarer_arbeit` – reine Vergangenheitsbetrachtung,
+  siehe `FakturierbareArbeitBandbreite.je_monat()` (aggregiert je Kalendermonat) und
+  `durchschnittlicher_anteil_fakturierbarer_arbeit()` (ein einzelner Gesamtwert, beide
+  schließen den Ausreißer "ausschließlich nicht fakturierbar" (0 % fakturierbar) aus,
+  siehe `_ausschliesslich_nicht_fakturierbar()`). `anteile_fakturierbarer_arbeit()`
+  (dieselben Werte unaggregiert je Personen-Monat, **ohne** diesen Ausschluss) ist
+  dagegen **nicht** mehr rein additiv: sie ist sowohl Grundlage von
+  `darstellung.diagramme.anteil_fakturierbarer_arbeit_verteilung()` als auch von
+  `FakturierbareArbeitVerteilung`, die – anders als der Rest des Moduls – optional
+  direkt in die Bestand-Simulation eingeht (siehe Abschnitt „Rechenkern" unten).
 - `src/umsatzprognose/clockodo/` – **alles, was Clockodo weiß, weiß nur dieses Paket.**
   `config.py` (Zugangsdaten, benannte Konstruktoren `automatisch`, `aus_umgebung`,
   `aus_colab_secrets`), `client.py` (`ClockodoClient`: HTTP, Paginierung, verifizierte
@@ -200,8 +211,9 @@ der sechs Pakete darf `util/` importieren.
   `clockodo/` oder `schulungen/`.
 - `src/umsatzprognose/darstellung/` – der einzige Ort mit plotly (`diagramme.py`,
   `gestaltung.py`) und pandas (`tabellen.py`), dazu `dashboard.py` mit der Fassade
-  `Dashboard`, die die Notebooks benutzen (u. a. `Dashboard.anteil_interner_arbeit()`/
-  `.anteil_interner_arbeit_tabelle()`/`.durchschnittlicher_anteil_interner_arbeit()` –
+  `Dashboard`, die die Notebooks benutzen (u. a. `Dashboard.anteil_fakturierbarer_arbeit()`/
+  `.anteil_fakturierbarer_arbeit_tabelle()`/`.anteil_fakturierbarer_arbeit_verteilung()`/
+  `.fakturierbare_arbeit_verteilung()`/`.durchschnittlicher_anteil_fakturierbarer_arbeit()` –
   schließen wie `auslastung_je_mitarbeiter()` den laufenden Stichtagsmonat aus, siehe
   „Rechenkern" unten). `kurzarbeit.py` steht eigenständig daneben
   (`kurzarbeit_bericht()`, `kurzarbeit_hinweise_bericht()` – Text-Berichte für
@@ -353,8 +365,8 @@ Dashboard-Notebook auch.
   (Gewinn/Verlust je Monat, Gewinn/Verlust je Jahr, kumulierte Umsatzrendite);
   `/dashboard` mit `notebooks/01_dashboard.ipynb` (Umsatzverlauf, die zugehörige
   Monatstabelle `Dashboard.umsatztabelle()`, offenes Auftragsvolumen je Projekt,
-  Projekte ohne Budget, dazu zusätzlich der Anteil interner Arbeit je Monat und ein
-  Regler für den Kapazitätsabschlag in der Simulation, siehe unten und Abschnitt
+  Projekte ohne Budget, dazu zusätzlich der Anteil fakturierbarer Arbeit je Monat und
+  ein Regler für dessen Verwendung in der Simulation, siehe unten und Abschnitt
   „Rechenkern");
   `/schulungen` mit `notebooks/03_schulungsanmeldungen.ipynb` (der
   Anmeldungsverlauf), zusätzlich mit zwei Ergänzungen, die nur die Webapp zeigt:
@@ -427,7 +439,7 @@ Dashboard-Notebook auch.
   Anmeldungsverlauf.
   `auslastung_monate` aus `Dashboard.laden_async()` selbst ist **kein** URL-Parameter:
   obwohl `/dashboard` inzwischen etwas zeigt, das von den geladenen Auslastungsmonaten
-  abhängt (Anteil interner Arbeit, siehe unten), genügt eine feste
+  abhängt (Anteil fakturierbarer Arbeit, siehe unten), genügt eine feste
   Standardkombination (`STANDARD_AUSLASTUNG_MONATE`) – ein weiteres Dropdown nur für
   die Fensterbreite dieser einen zusätzlichen Ansicht wäre unverhältnismäßig.
   `stichtag` bleibt ebenfalls kein URL-Parameter: anders als die
@@ -465,22 +477,109 @@ Dashboard-Notebook auch.
   erneuter Abruf) – das gecachte Original bleibt für alle anderen Besuchenden
   unverändert. Leerer Parameter (Normalfall) überspringt das komplett. Derselbe
   Mechanismus bedient auf **beiden** Seiten (`/` **und** `/dashboard`) einen zweiten,
-  unabhängigen Auslöser: `interne_arbeit_abschlag_prozent` (Regler "Interne Arbeit in
-  der Simulation", 0–100 %, `Annotated[int | None, ...]` – `None` steht für "noch nicht
-  übersteuert"; auf beiden Seiten bewusst **vor** der Verbrauchsplan-Übersteuerung
-  platziert). Ohne gesetzten Wert verwendet `_interne_arbeit_abschlag_prozent()` den aus
-  den geladenen Auslastungsmonaten abgeleiteten historischen Durchschnitt
-  (`Dashboard.durchschnittlicher_anteil_interner_arbeit()`, kaufmännisch gerundet, 0
-  ohne jede gebuchte Stunde) statt eines festen Standardwerts wie bei den übrigen
-  Reglern – deshalb fehlt dieser Parameter bewusst in `_STANDARDWERTE_START`/
-  `_STANDARDWERTE_DASHBOARD`, genau wie `ab_jahr` auf `/schulungen`. Nur `/dashboard`
-  zeigt zusätzlich, direkt unter der Monatstabelle, das zugrunde liegende
-  Diagramm/Tabelle (`Dashboard.anteil_interner_arbeit()`/
-  `.anteil_interner_arbeit_tabelle()`, Spalten Monat/fakturierende Personen/Min/Ø/Max) – rein
-  informativ, unabhängig vom Regler; `/` zeigt nur den Regler, ohne Diagramm/Tabelle.
-  Eine Person ganz ohne abrechenbare Stunde in einem Monat (100 % intern) gilt in
-  beiden als Ausreisser und zählt weder in die Bandbreite/den Durchschnitt noch in den
-  Vorschlagswert für den Regler (siehe `domaene.auslastung._ausschliesslich_intern()`).
+  unabhängigen Auslöser: `interne_arbeit_modus` (Dropdown "Interne Arbeit in der
+  Simulation", `Literal["pauschal", "weibull", "gauss"]`, Standard `"pauschal"`;
+  auf beiden Seiten bewusst **vor** der Verbrauchsplan-Übersteuerung platziert) wählt
+  zwischen drei Simulationsquellen für den Anteil fakturierbarer Arbeit, mit dem die
+  verfügbare Kapazität multipliziert wird: "Pauschal" ist ein fester, über alle Läufe
+  gleicher Anteil (Regler `anteil_fakturierbar_prozent`, 0–100 %, Vorbelegung der
+  historische Durchschnitt aus den geladenen Auslastungsmonaten,
+  `Dashboard.durchschnittlicher_anteil_fakturierbarer_arbeit()`), mit eigenem
+  Zurücksetzen-Link "Auf historischen Durchschnitt zurücksetzen"; "Weibull"/"Gauss"
+  sind parametrische Alternativen (`domaene.simulation.WeibullFakturierbareArbeit`/
+  `GaussFakturierbareArbeit`, je zwei Regler: Formparameter (k)/Skalenparameter (λ)
+  bzw. Mittelwert (μ)/Standardabweichung (σ) – die mathematischen Kürzel stehen direkt
+  in der Regler-Beschriftung). Formparameter (k) und Standardabweichung (σ) sind beide
+  reine Fließkommazahlen: Formparameter (k) ein dimensionsloser Formfaktor ohne
+  Prozent-Interpretation, Standardabweichung (σ) eine Streuung, die anders als ein
+  Anteilswert nicht intuitiv in Prozent gedacht wird. Skalenparameter (λ) und
+  Mittelwert (μ) leben dagegen in derselben Werte-Domäne wie der Anteil fakturierbarer
+  Arbeit selbst (0.0 bis 1.0) und stehen deshalb als Prozentzahl (0–100 % bzw. 0–300 %
+  bei Skalenparameter) statt als Fließkommazahl – als Regler-Wert deutlich leichter
+  einzuschätzen; die Umrechnung auf den fraktionalen Fachobjekt-Wert passiert
+  ausschließlich an der Webapp-Grenze (`_interne_arbeit_regler_werte()`), die
+  Fachobjekte selbst bleiben unverändert fraktional. Alle sieben Regler (der
+  Pauschal-Prozentwert plus die vier Verteilungsparameter) sind waagerechte
+  Schieberegler (`<input type="range">`, kein Zahlenfeld mit Pfeiltasten) mit
+  Live-Anzeige des aktuellen Werts (`oninput`-Handler aktualisiert ein
+  `<output>`-Element) und lösen wie das Modus-Dropdown selbst bei Loslassen einen
+  vollen Seitenreload aus (`onchange="this.form.submit()"`). Anders als
+  `interne_arbeit_modus` selbst (fester Standardwert, deshalb in
+  `_STANDARDWERTE_START`/`_STANDARDWERTE_DASHBOARD`) haben die Pauschal- und die vier
+  Verteilungs-Parameterfelder `None` als Standard ("noch nicht übersteuert") –
+  `_interne_arbeit_regler_werte()` in `webapp/app.py` löst **immer alle drei**
+  Regler-Parametersätze auf, unabhängig vom gerade gewählten Modus (sonst würde ein
+  nicht angezeigter Regler beim Umschalten auf 0 zurückfallen statt seinen zuletzt
+  aufgelösten bzw. historisch vorgeschlagenen Wert zu behalten): ohne eigene Auswahl
+  per Momentenmethode aus `Dashboard.fakturierbare_arbeit_verteilung()` geschätzt
+  (`WeibullFakturierbareArbeit.aus_stichprobe()`/`GaussFakturierbareArbeit.
+  aus_stichprobe()` in `domaene/simulation.py`, Pauschalwert kaufmännisch auf volle
+  Prozent gerundet), mit weniger als zwei Beobachtungen fällt der Weibull-Formparameter
+  auf eine Exponentialverteilung (1.0) zurück, der Pauschalwert ganz ohne Beobachtung
+  auf 100 % (neutral: volle Kapazität). Das Ergebnis ist ein
+  `_InterneArbeitReglerWerte`-Objekt mit zwei symmetrisch aufgebauten
+  `_InterneArbeitAnzeige`-Anzeigewerte-Sätzen (je Pauschal-Prozent, Weibull-
+  Formparameter, Weibull-Skalenparameter-Prozent, Gauss-Mittelwert-Prozent,
+  Gauss-Standardabweichung – letztere als Fließkommazahl, nicht als Prozent, siehe
+  oben): `aktuell` (der gerade wirksame, ggf. übersteuerte Wert, für die
+  Regler-Stellung) und `historisch` (immer der aus der Historie abgeleitete Vorschlag,
+  unabhängig von jeder Übersteuerung) – letzterer erscheint direkt in der
+  Regler-Beschriftung selbst ("Mittelwert (μ) (historischer Mittelwert: 45 %)"), nicht
+  in einem separaten Hilfstext darunter, damit beim manuellen Einstellen eine
+  Orientierung an der Vergangenheit sichtbar bleibt, ohne den Blick vom Regler weg auf
+  einen Absatz darunter zu lenken. Die beiden Fachobjekte selbst (schon mit
+  angewendeter Übersteuerung, fraktional) stehen daneben auf oberster Ebene des
+  `_InterneArbeitReglerWerte`-Ergebnisses (`regler.weibull`/`regler.gauss`) - die
+  Routen (`uebersicht()`/`dashboard_seite()`) lösen aus Modus plus diesen beiden direkt
+  auf, was tatsächlich simuliert wird (`anteil_fakturierbar` bei "Pauschal", sonst das
+  passende `WeibullFakturierbareArbeit`/`GaussFakturierbareArbeit`-Objekt als
+  `FakturierbareArbeitZiehung`). Die Templates zeigen nur die zum gewählten Modus
+  passenden Regler (`{% if/elif %}` statt Client-JS, da ein Moduswechsel ohnehin einen
+  vollen Seitenreload auslöst) – gemeinsamer Baustein
+  `interne_arbeit_regler_abschnitt()`-Makro in `webapp/templates/_regler.html`,
+  identisch auf beiden Seiten. Jeder Modus hat einen eigenen Zurücksetzen-Link, der nur
+  dessen Parameter auf die historisch abgeleiteten Werte zurücksetzt, ohne den Modus
+  selbst zu ändern; "Weibull"/"Gauss" tragen zusätzlich einen zweiten Link "Zurück zu
+  'Pauschal'", der den Modus wechselt. Ohne jede Übersteuerung (weder Verbrauchsplan
+  noch dieser Regler, also Modus "Pauschal" ohne eigenen Prozentwert) liefert
+  `_simuliertes_dashboard()` unverändert das gecachte `Dashboard` zurück – dessen
+  eigene, im `DashboardCache` bereits gelaufene Simulation zieht schon standardmäßig
+  denselben historischen Durchschnitt heran (siehe `DashboardCache.anstossen()`), eine
+  Neusimulation wäre dafür überflüssig. Nur `/dashboard` zeigt zusätzlich, direkt unter
+  der Monatstabelle, das zugrunde liegende
+  Diagramm/Tabelle (`Dashboard.anteil_fakturierbarer_arbeit()`/
+  `.anteil_fakturierbarer_arbeit_tabelle()`, Spalten Monat/fakturierende Personen/Min/Ø/Max) –
+  rein informativ, unabhängig vom Regler; `/` zeigt nur den Regler, ohne
+  Diagramm/Tabelle. Darunter zusätzlich `Dashboard.anteil_fakturierbarer_arbeit_verteilung()`:
+  ein Histogramm (Standard 20 Balken über den vollen Bereich 0–100 %, `diagramme.
+  anteil_fakturierbarer_arbeit_verteilung()`) über dieselben rohen Anteile einzelner
+  Personen-Monate (`Dashboard.fakturierbare_arbeit_verteilung()`, siehe „Rechenkern"
+  unten), aus denen auch die Simulation im Modus "Pauschal" ihren Vorschlagswert bzw.
+  "Weibull"/"Gauss" ihre Momentenschätzung ableiten – zeigt die Streuung hinter der
+  Zeitreihe, ebenfalls nur auf `/dashboard`, nicht auf `/`. Ein Doppel-Schieberegler
+  (`interne_arbeit_verteilung_min_prozent`/`_max_prozent`, rein darstellend, kein Teil
+  des Cache-Schlüssels wie `restvolumen_top`/`ohne_budget_filter` unten) blendet
+  Ausreißer am unteren bzw. oberen Ende gezielt aus dieser einen Grafik aus (nicht aus
+  der Simulation): zwei übereinanderliegende `<input type="range">` mit demselben
+  Wertebereich (`doppel_regler()`-Makro in `_regler.html`), per CSS auf einer
+  gemeinsamen Schiene (`basis.html`: `.doppel-regler`, `.doppel-regler-schiene`,
+  `.doppel-regler-fuellung`, transparente Spur/Pointer-Events nur auf dem
+  Schieberegler-Knopf) und einem kleinen, eigenständigen Skript
+  (`doppelReglerAktualisieren()`) übereinandergelegt – der linke Knopf setzt das
+  Minimum, der rechte das Maximum, statt zweier unabhängiger Regler untereinander.
+  `max` liegt dabei immer mindestens einen Prozentpunkt über `min` (serverseitig
+  erzwungen in `dashboard_seite()`, da `Query(ge=.../le=...)` allein einen manuell
+  vertauschten URL-Parameter nicht verhindert). Dasselbe Einschränken steht im
+  Notebook als zwei Variablen vor der Zelle
+  (`anteil_fakturierbarer_arbeit_verteilung_minimum`/`_maximum`, Standard 0.0/1.0 –
+  voller Bereich). Eine Person ganz ohne abrechenbare Stunde in einem Monat (0 %
+  fakturierbar) gilt nur für die **Bandbreite**
+  (`FakturierbareArbeitBandbreite.je_monat()`) und den **Vorschlagswert für die
+  Regler-Anzeige** (`durchschnittlicher_anteil_fakturierbarer_arbeit()`) als Ausreisser
+  und zählt dort nicht mit (siehe
+  `domaene.auslastung._ausschliesslich_nicht_fakturierbar()`) – die Verteilungsgrafik
+  und die Simulationsziehung selbst schließen diesen seltenen, aber real vorgekommenen
+  Fall bewusst **nicht** aus.
 - **Zwei verschiedene Cache-Strategien, je nachdem, ob ein engerer Parameter
   wirklich weniger laedt oder nur anders anzeigt** (siehe Klassendocstrings in
   `webapp/cache.py`): `DashboardCache` haelt je angefragter
@@ -710,27 +809,103 @@ Sollstunden seines Wochentags auf 0, ob ganz oder halb. Als Abwesenheit vom Arbe
 zählen nur Urlaub und Krankheit, schon ab Status „beantragt" – siehe
 `domaene.mitarbeiter.TYPEN_ABWESEND` und `Abwesenheit.zaehlt_als_kapazitaetsabzug`.
 
-**Interne Arbeit ist im Modell selbst kein Abzug** – ohne weiteres Zutun geht die volle
-verfügbare Kapazität in die Simulation ein, unabhängig davon, wie viel davon in der
-Vergangenheit tatsächlich auf interne statt kundenbezogene Zeit entfiel (`billable == 0`
-bei Clockodo). `verfuegbare_kapazitaet()` nimmt dafür optional
-`interne_arbeit_abschlag` (0.0 bis 1.0, Standard 0.0) entgegen und senkt das Ergebnis
-gleichmäßig um diesen Anteil, einheitlich für den ganzen Horizont (kein Sonderfall für
-den angebrochenen Monat 1). `simulation.simulieren()`/`Bestand.simulieren()`/
-`Dashboard.simuliere()` reichen denselben Parameter nur durch, ohne ihn selbst
-herzuleiten – ein sinnvoller Vorschlagswert kommt aus den geladenen Auslastungsmonaten
-(`domaene.auslastung.durchschnittlicher_anteil_interner_arbeit()`, gewichtet nach
-gebuchter Zeit statt als einfacher Durchschnitt über Personen-Monate). Eine Person ganz
-ohne abrechenbare Stunde in einem Monat (100 % intern, `_ausschliesslich_intern()`)
-zählt dabei nicht mit – sonst würde etwa eine einzelne, ausschließlich intern tätige
-Person diesen Vorschlagswert trotz Gewichtung unverhältnismäßig verzerren; dieselbe
-Regel gilt für `InterneArbeitBandbreite.je_monat()` (Minimum/Durchschnitt/Maximum je
-Monat über alle Personen). In der Webapp ist das ein Regler ("Interne Arbeit in der
-Simulation", vorbelegt mit diesem Durchschnitt, siehe Web-Frontend oben) auf **beiden**
-Seiten `/` und `/dashboard`; in den Notebooks eine eigene, editierbare Zelle vor
-„Simulation ausführen". `01_dashboard.ipynb` zeigt zusätzlich, direkt unter der dortigen
-Monatstabelle (deutlich später im Notebook, nach der Simulation), das zugrunde liegende
-Diagramm/Tabelle – `00_datencheck.ipynb` übernimmt nur die Regler-Zelle, ohne eigene
+**Der Anteil fakturierbarer Arbeit ist im Modell selbst kein fixer Abzug, sondern
+standardmäßig ein fester Pauschalwert neben der gezogenen Abrufquote, wahlweise selbst
+eine weitere gezogene Unsicherheit.** `verfuegbare_kapazitaet()` nimmt optional
+`interne_arbeit_abschlag` (0.0 bis 1.0, Standard 0.0 – ein reiner
+Kapazitäts-Mechanismus, der selbst nichts von "fakturierbar" oder Verteilungen weiß,
+deshalb unverändert beim alten Namen) entgegen und senkt das Ergebnis gleichmäßig um
+diesen einen, über den ganzen Horizont gleichen Anteil (kein Sonderfall für den
+angebrochenen Monat 1). Auf `simulation.simulieren()`-Ebene zieht stattdessen wahlweise
+`fakturierbare_arbeit_verteilung` (ein `domaene.simulation.FakturierbareArbeitZiehung`
+– ein `typing.Protocol` mit einer einzigen Methode, `ziehen_array(form, zufall)`, siehe
+Code-Qualität oben): **je Lauf, Horizontmonat und Person unabhängig** gezogen und
+direkt mit der verfügbaren Kapazität multipliziert (kein Abzug/Komplement wie bei
+`interne_arbeit_abschlag`), statt eines einzelnen, für alle Läufe gleichen Werts – ein
+Lauf kann dadurch auch einen selten beobachteten bzw. seltenen parametrischen
+Extremfall treffen, statt jeden Lauf gleich zu behandeln. `interne_arbeit_abschlag` und
+`fakturierbare_arbeit_verteilung` schließen sich gegenseitig aus
+(`simulation.simulieren()` wirft sonst einen `ValueError`).
+
+Drei Klassen erfüllen `FakturierbareArbeitZiehung` strukturell:
+
+- `domaene.auslastung.FakturierbareArbeitVerteilung` – die **historische** (empirische)
+  Verteilung, siehe unten.
+- `domaene.simulation.WeibullFakturierbareArbeit` (`formparameter`, `skalenparameter`)
+  – zieht aus einer Weibull-Verteilung.
+- `domaene.simulation.GaussFakturierbareArbeit` (`mittelwert`, `standardabweichung`) –
+  zieht aus einer Normalverteilung.
+
+Beide parametrischen Klassen tragen einen `aus_stichprobe(werte)`-Klassenkonstruktor,
+der ihre Parameter per Momentenmethode aus einer Stichprobe herleitet (Mittelwert und
+Standardabweichung der resultierenden Verteilung stimmen dann mit denen der Stichprobe
+überein; bei Weibull über eine Bisektion auf den Formparameter, siehe
+`_weibull_formparameter_aus_variationskoeffizient()` – kein zusätzliches
+`scipy`-Abhängigkeit, `math.gamma` reicht). Weibull braucht mindestens zwei Werte
+(sonst `ValueError`), Gauss mindestens einen (Standardabweichung 0 bei genau einem
+Wert). Beide Ziehungen werden auf `[0.0, 1.0]` gekappt (`numpy.clip`): ein Anteil
+fakturierbarer Arbeit außerhalb dieses Bereichs ist fachlich nicht sinnvoll, während
+Weibull/Gauss rechnerisch beliebige Werte liefern können – die historische Verteilung
+braucht diese Kappung nicht, sie kann nur tatsächlich beobachtete (also gültige) Werte
+ziehen.
+
+`Dashboard.simuliere()`/`.simuliere_async()` lösen die Automatik auf: ihre Parameter
+heißen `anteil_fakturierbar` (`float | None`, Standard `None`) und
+`fakturierbare_arbeit_ziehung` (`FakturierbareArbeitZiehung | None`, Standard `None`,
+schließen sich gegenseitig aus). Sind **beide** `None` (der Normalfall, Modus
+"Pauschal" ohne eigenen Regler-Wert), verwendet `simuliere()` selbst
+`durchschnittlicher_anteil_fakturierbarer_arbeit()` als festen, über alle Läufe
+gleichen Anteil (1.0 – also unveränderte Kapazität – ganz ohne geladene Auslastung) –
+anders als zuvor **keine** automatische Ziehung aus der vollen historischen Streuung
+mehr, sondern derselbe einzelne Durchschnittswert, den auch der Pauschal-Regler in der
+Webapp vorschlägt. Ein gesetztes `anteil_fakturierbar` erzwingt stattdessen diesen
+festen Wert direkt (Modus "Pauschal" mit eigenem Regler-Wert), ein übergebenes
+`fakturierbare_arbeit_ziehung`-Objekt (`WeibullFakturierbareArbeit`,
+`GaussFakturierbareArbeit`, oder eine selbst zusammengestellte
+`FakturierbareArbeitVerteilung` für eine Ziehung aus der vollen historischen Streuung)
+ersetzt die Pauschale durch eine je Lauf gezogene Verteilung (Modus "Weibull"/"Gauss").
+`Bestand.simulieren()` selbst kennt diese Automatik **nicht** – dort bleiben
+`interne_arbeit_abschlag`/`fakturierbare_arbeit_verteilung` einzelne Parameter mit den
+alten Standardwerten (`0.0`/`None`, unverändertes Verhalten), weil der `Bestand` keine
+Auslastungsmonate kennt (siehe oben); die Automatik lebt bewusst nur in
+`Dashboard.simuliere()`, das genau diese Daten hält.
+
+`domaene.auslastung.anteile_fakturierbarer_arbeit()` liefert die Rohwerte je
+Personen-Monat für `FakturierbareArbeitVerteilung.aus_auslastungen()` – **ohne** den
+„ausschließlich nicht fakturierbar"-Ausschluss (`_ausschliesslich_nicht_fakturierbar()`,
+0 % fakturierbare Arbeit in einem Monat): anders als bei den beiden folgenden
+Aggregatzahlen ist die Verteilung kein einzelner Kennwert, den ein solcher Ausreißer
+verzerren könnte, sondern der Vorrat, aus dem gezogen wird – ein selten vorgekommener
+0-%-Monat soll dort mit seinem eigenen, kleinen Anteil auftauchen dürfen. Der
+Ausschluss gilt weiterhin für `FakturierbareArbeitBandbreite.je_monat()`
+(Minimum/Durchschnitt/Maximum je Monat über alle Personen) und für
+`durchschnittlicher_anteil_fakturierbarer_arbeit()` (ein gewichteter Gesamtdurchschnitt,
+gewichtet nach gebuchter Zeit statt als einfacher Durchschnitt über Personen-Monate) –
+hier würde eine einzelne, ausschließlich intern tätige Person diese eine Kennzahl
+unverhältnismäßig verzerren. `durchschnittlicher_anteil_fakturierbarer_arbeit()` ist
+**keine direkte** Eingabe der Simulation, sondern eine Anzeigekennzahl und zugleich der
+Standardwert, den `Dashboard.simuliere()` im Modus "Pauschal" ohne eigenen Regler-Wert
+heranzieht (siehe oben und Web-Frontend oben für die Regler-Vorbelegung).
+
+In der Webapp ist das ein Dropdown ("Interne Arbeit in der Simulation", siehe
+Web-Frontend oben für Modus-Auswahl und Regler) auf **beiden** Seiten `/` und
+`/dashboard`. In den Notebooks dieselbe Wahl über zwei eigene Variablen vor „Simulation
+ausführen" (`anteil_fakturierbar: float | None`, Standard `None` fuer den historischen
+Durchschnitt; `fakturierbare_arbeit_ziehung: WeibullFakturierbareArbeit |
+GaussFakturierbareArbeit | None`, Standard `None` – bei Bedarf direkt per
+`WeibullFakturierbareArbeit.aus_stichprobe(dashboard.
+fakturierbare_arbeit_verteilung().werte)`/`GaussFakturierbareArbeit.aus_stichprobe(...)`
+befüllt oder mit eigenen Parametern von Hand konstruiert, kein separater Moduswähler
+nötig, weil eine Notebook-Zelle gewöhnlicher Python-Code ist statt einer
+Formular-Auswahl). Beide Frontends teilen sich damit dieselbe Domänen-API
+(`WeibullFakturierbareArbeit`/`GaussFakturierbareArbeit`), nicht nur dieselbe Idee.
+`01_dashboard.ipynb` zeigt zusätzlich, direkt unter der dortigen Monatstabelle
+(deutlich später im Notebook, nach der Simulation), das zugrunde liegende
+Diagramm/Tabelle sowie die Verteilungsgrafik
+(`Dashboard.anteil_fakturierbarer_arbeit_verteilung()`, aus `Dashboard.
+fakturierbare_arbeit_verteilung()` – derselben `FakturierbareArbeitVerteilung`, aus der
+auch der Pauschal-Durchschnitt bzw. die Weibull-/Gauss-Momentenschätzung abgeleitet
+werden) – `00_datencheck.ipynb` übernimmt nur die Regler-Zelle, ohne eigene
 Grafik/Tabelle.
 
 ## Clockodo-API

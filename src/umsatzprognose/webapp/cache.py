@@ -229,7 +229,10 @@ class DashboardCache:
             # Monte-Carlo-Rechnung einfrieren - saemtliche anderen gleichzeitigen
             # Anfragen (auch die der anderen beiden Caches, siehe _vorladen() in
             # webapp/app.py) muessten darauf warten, statt wirklich gleichzeitig zu
-            # laufen.
+            # laufen. Ohne eigenes interne_arbeit_abschlag-Argument zieht die
+            # Simulation hier bereits standardmaessig aus der historischen Verteilung
+            # (siehe Dashboard.simuliere) - _simuliertes_dashboard() in webapp/app.py
+            # weicht davon nur bei einem manuell gesetzten Regler-Wert ab.
             await dashboard.simuliere_async(monate=horizont_monate, fortschritt=melden)
             return dashboard
 

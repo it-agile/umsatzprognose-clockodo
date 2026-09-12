@@ -140,6 +140,10 @@ fixable = ["B", "C", "E", "F", "I"]
 unfixable = []
 dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
 mccabe.max-complexity = 10
+# Griechische Buchstaben fuer Verteilungsparameter (Weibull-Formparameter k, Gauss-
+# Mittelwert/Standardabweichung) in Regler-Beschriftungen/CLI-Hilfetexten - bewusste
+# mathematische Kuerzel, keine Tippfehler mit einem lateinischen Verwechslungszeichen.
+allowed-confusables = ["σ", "μ", "λ"]
 
 [tool.ruff.lint.per-file-ignores]
 "*.ipynb" = ["E402"]

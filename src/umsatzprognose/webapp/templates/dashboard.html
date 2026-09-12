@@ -1,5 +1,5 @@
 {% extends "basis.html" %}
-{% from "_regler.html" import regler_abschnitt %}
+{% from "_regler.html" import regler_abschnitt, interne_arbeit_regler_abschnitt, doppel_regler %}
 {% block inhalt %}
 <form method="get" class="parameter" id="dashboard-form">
     <label>Prognosehorizont
@@ -9,20 +9,18 @@
             {% endfor %}
         </select>
     </label>
-    <details class="regler-abschnitt" {{ "open" if interne_arbeit_abschlag_abweichend }}>
-        <summary>Interne Arbeit in der Simulation <span class="zusammenfassung">(Abschlag auf die verfügbare Kapazität: {{ interne_arbeit_abschlag_prozent }} %)</span></summary>
-        <div class="regler-gruppe">
-            <label>Abschlag auf die verfügbare Kapazität
-                <input type="range" name="interne_arbeit_abschlag_prozent" min="0" max="100" step="1"
-                       value="{{ interne_arbeit_abschlag_prozent }}"
-                       oninput="this.nextElementSibling.textContent = this.value + ' %'"
-                       onchange="this.form.submit()">
-                <output>{{ interne_arbeit_abschlag_prozent }} %</output>
-            </label>
-            <p>Ohne eigene Auswahl vorbelegt mit dem historischen Durchschnitt aus "Anteil interner Arbeit" weiter unten - die Simulation selbst kennt interne Arbeit sonst nicht.</p>
-            <a class="zuruecksetzen" href="/dashboard{{ interne_arbeit_abschlag_zuruecksetzen_query }}">Auf historischen Durchschnitt zurücksetzen</a>
-        </div>
-    </details>
+    {{ interne_arbeit_regler_abschnitt(
+        modus=interne_arbeit_modus,
+        modus_optionen=interne_arbeit_modus_optionen,
+        modus_beschriftungen=interne_arbeit_modus_beschriftungen,
+        aktuell=interne_arbeit_regler_aktuell,
+        historisch=interne_arbeit_regler_historisch,
+        abweichend=interne_arbeit_abschlag_abweichend,
+        zuruecksetzen_url="/dashboard" ~ interne_arbeit_abschlag_zuruecksetzen_query,
+        pauschal_zuruecksetzen_url="/dashboard" ~ interne_arbeit_pauschal_zuruecksetzen_query,
+        weibull_zuruecksetzen_url="/dashboard" ~ interne_arbeit_weibull_zuruecksetzen_query,
+        gauss_zuruecksetzen_url="/dashboard" ~ interne_arbeit_gauss_zuruecksetzen_query
+    ) }}
     {{ regler_abschnitt(
         "verbrauchsplan",
         "Verbrauchsplan-Übersteuerung",
@@ -38,11 +36,12 @@
 <h2>Monatstabelle</h2>
 <div class="tabelle-wrapper">{{ umsatztabelle | safe }}</div>
 
-<h2>Anteil interner Arbeit</h2>
+<h2>Anteil fakturierbarer Arbeit</h2>
 <p>Minimum, Durchschnitt und Maximum je Monat über alle Personen mit gebuchter Zeit
    (Zeit ohne Kundenbezug) - reine Vergangenheitsbetrachtung über die abgeschlossenen
-   Monate des geladenen Auslastungsfensters. Fließt nicht automatisch in die Simulation
-   ein; siehe "Interne Arbeit in der Simulation" oben für den einstellbaren Abschlag.</p>
+   Monate des geladenen Auslastungsfensters. Die Simulation zieht standardmäßig aus
+   genau dieser historischen Verteilung; siehe "Interne Arbeit in der Simulation" oben,
+   um stattdessen einen Pauschalwert oder eine Weibull-/Gauss-Verteilung zu wählen.</p>
 <label>
     <input type="hidden" name="interne_arbeit_trend_werte" value="aus" form="dashboard-form">
     <input type="checkbox" name="interne_arbeit_trend_werte" value="an" form="dashboard-form"
@@ -50,8 +49,22 @@
            onchange="this.form.submit()">
     Trendlinie anzeigen
 </label>
-{{ anteil_interner_arbeit | safe }}
-<div class="tabelle-wrapper">{{ anteil_interner_arbeit_tabelle | safe }}</div>
+{{ anteil_fakturierbarer_arbeit | safe }}
+<div class="tabelle-wrapper">{{ anteil_fakturierbarer_arbeit_tabelle | safe }}</div>
+
+<h3>Verteilung über Personen-Monate</h3>
+<p>Wie sich die einzelnen Personen-Monate hinter Durchschnitt und Bandbreite oben
+   verteilen - je Balken ein Prozentbereich, über dasselbe Fenster gezählt. Der Regler
+   blendet Ausreißer am unteren bzw. oberen Ende gezielt aus der Anzeige aus (linker
+   Böppel: Minimum, rechter Böppel: Maximum).</p>
+{{ doppel_regler(
+    "interne_arbeit_verteilung_min_prozent",
+    "interne_arbeit_verteilung_max_prozent",
+    interne_arbeit_verteilung_min_prozent,
+    interne_arbeit_verteilung_max_prozent,
+    "dashboard-form"
+) }}
+{{ anteil_fakturierbarer_arbeit_verteilung | safe }}
 
 <label>Anzahl Projekte mit offenem Budget
     <input type="range" name="restvolumen_top" min="{{ 0 if restvolumen_top_max == 0 else 1 }}"

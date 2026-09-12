@@ -21,7 +21,7 @@ if TYPE_CHECKING:
         Anmeldungsverlauf,
         Auslastungsmonat,
         Auslastungssumme,
-        InterneArbeitBandbreite,
+        FakturierbareArbeitBandbreite,
         Kostenplan,
         Kurzarbeitsbewertung,
         Mitarbeiter,
@@ -33,10 +33,12 @@ if TYPE_CHECKING:
     )
     from umsatzprognose.util import Monat
 
+import itertools
 import textwrap
 from dataclasses import dataclass
 from decimal import Decimal
 
+import numpy as np
 import plotly.graph_objects as go
 
 from umsatzprognose.darstellung.gestaltung import (
@@ -1187,10 +1189,14 @@ def auslastung_je_mitarbeiter(
     return fig
 
 
-def anteil_interner_arbeit(
-    bandbreiten: Sequence[InterneArbeitBandbreite], *, mit_trend: bool = False, hoehe: int = 420
+def anteil_fakturierbarer_arbeit(
+    bandbreiten: Sequence[FakturierbareArbeitBandbreite],
+    *,
+    mit_trend: bool = False,
+    mit_beschriftung: bool = False,
+    hoehe: int = 420,
 ) -> go.Figure:
-    """Anteil interner Arbeit je Monat: eine Linie fuer den Durchschnitt ueber alle
+    """Anteil fakturierbarer Arbeit je Monat: eine Linie fuer den Durchschnitt ueber alle
     Personen mit gebuchter Zeit, mit Fehlerbalken bis zu Minimum und Maximum -
     reine Vergangenheitsbetrachtung, unabhaengig von der Bestand-Simulation (siehe
     Moduldocstring von :mod:`umsatzprognose.domaene.auslastung`).
@@ -1200,10 +1206,18 @@ def anteil_interner_arbeit(
     bei :func:`anmeldungsverlauf_reihen` (``webapp/templates/schulungen.html``) - hier
     mit eigenem Legendeneintrag wie bei :func:`anmeldungsverlauf`, weil diese Grafik nur
     die eine Durchschnittslinie zeigt, keine mehreren, gleichzeitig eingefaerbten Reihen.
+
+    ``mit_beschriftung`` zeigt den Durchschnittswert je Monat zusaetzlich als Text an -
+    fuer den statischen Bildexport ohne Hover-Tooltip (siehe :func:`kurzarbeit_grafik`).
+    Die Beschriftung sitzt als Annotation oberhalb des oberen Fehlerbalken-Endes
+    (Maximum), nicht auf der Durchschnittslinie selbst - dort wuerde sie den
+    Fehlerbalken durchkreuzen bzw. verdecken. Je Monat genau ein Wert auf der
+    kategorialen Monatsachse, die Beschriftungen ueberlappen deshalb auch bei vielen
+    Monaten nicht.
     """
     beschriftungen = [f"{MONATSNAMEN[b.monat - 1]} {b.jahr}" for b in bandbreiten]
     durchschnitt = [b.durchschnitt for b in bandbreiten]
-    fig = figur("Anteil interner Arbeit je Monat", hoehe=hoehe)
+    fig = figur("Anteil fakturierbarer Arbeit je Monat", hoehe=hoehe)
     achsen(fig)
     fig.add_scatter(
         x=beschriftungen,
@@ -1227,6 +1241,16 @@ def anteil_interner_arbeit(
             "%{customdata[2]} Person(en)<extra></extra>"
         ),
     )
+    if mit_beschriftung:
+        for beschriftung, b in zip(beschriftungen, bandbreiten, strict=True):
+            fig.add_annotation(
+                x=beschriftung,
+                y=b.maximum,
+                text=prozent(b.durchschnitt),
+                showarrow=False,
+                yshift=10,
+                font={"color": SERIE, "size": 11},
+            )
     if mit_trend:
         fig.add_scatter(
             x=beschriftungen,
@@ -1238,6 +1262,71 @@ def anteil_interner_arbeit(
         _horizontale_legende(fig)
     fig.update_yaxes(tickformat=".0%")
     fig.update_xaxes(tickangle=TICKWINKEL)
+    return fig
+
+
+def anteil_fakturierbarer_arbeit_verteilung(
+    werte: Sequence[float],
+    *,
+    minimum: float = 0.0,
+    maximum: float = 1.0,
+    bins: int = 20,
+    mit_beschriftung: bool = False,
+    hoehe: int = 420,
+) -> go.Figure:
+    """Verteilung des Anteils fakturierbarer Arbeit ueber einzelne Personen-Monate, als
+    Histogramm ueber feste Prozentpunkt-Balken zwischen ``minimum`` und ``maximum``
+    (Standard: der volle Bereich 0% bis 100%, in 20 Balken zu je 5 Prozentpunkten).
+
+    Zeigt die Streuung hinter Durchschnitt und Bandbreite von
+    :func:`anteil_fakturierbarer_arbeit`, die dort nur je Kalendermonat sichtbar wird -
+    hier stattdessen ueber alle Personen-Monate des Beobachtungsfensters zusammen, ohne
+    Zeitachse. ``werte`` kommt aus
+    :func:`~umsatzprognose.domaene.auslastung.anteile_fakturierbarer_arbeit`, weiterhin
+    inklusive ausschliesslich intern taetiger Personen-Monate (siehe dort).
+
+    ``minimum``/``maximum`` engen den gezeigten Bereich manuell ein (z. B. ueber einen
+    Regler in der Webapp/einer Notebook-Variable) - Werte ausserhalb fallen aus der
+    Zaehlung heraus (``numpy.histogram``s ``range``), statt nur ausserhalb des
+    sichtbaren Achsenausschnitts zu liegen. Ein bewusstes Werkzeug gegen einzelne
+    Ausreisser, die sonst die Balkenhoehen der uebrigen, haeufigeren Bereiche
+    stauchen wuerden.
+
+    ``mit_beschriftung`` zeigt die Haeufigkeit je Balken zusaetzlich als Text an - fuer
+    den statischen Bildexport ohne Hover-Tooltip (siehe :func:`kurzarbeit_grafik`).
+    Leere Balken (Haeufigkeit 0) bleiben unbeschriftet, sonst wuerde bei einem eng
+    eingegrenzten Bereich eine lange Reihe von "0"-Texten die tatsaechlich besetzten
+    Balken zudecken statt sie hervorzuheben. ``cliponaxis=False`` haelt die
+    Beschriftung des hoechsten Balkens sichtbar, auch wenn sie ueber die
+    Standard-Achsenhoehe hinausragt.
+    """
+    if not 0.0 <= minimum < maximum <= 1.0:
+        raise ValueError(
+            f"minimum ({minimum}) muss kleiner als maximum ({maximum}) sein, beide "
+            "zwischen 0.0 und 1.0"
+        )
+    haeufigkeiten, kanten = np.histogram(werte, bins=bins, range=(minimum, maximum))
+    untertitel = (
+        f"Bereich {prozent(minimum)} - {prozent(maximum)}" if minimum > 0.0 or maximum < 1.0 else ""
+    )
+    fig = figur("Verteilung Anteil fakturierbarer Arbeit", untertitel=untertitel, hoehe=hoehe)
+    achsen(fig)
+    fig.add_bar(
+        x=(kanten[:-1] + kanten[1:]) / 2,
+        y=haeufigkeiten,
+        width=(kanten[1] - kanten[0]) * 0.9,
+        marker={"color": SERIE},
+        text=[str(h) if h > 0 else "" for h in haeufigkeiten] if mit_beschriftung else None,
+        textposition="outside",
+        cliponaxis=False,
+        customdata=[
+            [prozent(links), prozent(rechts)] for links, rechts in itertools.pairwise(kanten)
+        ],
+        hovertemplate=(
+            "%{customdata[0]} - %{customdata[1]}<br>%{y} Personen-Monate<extra></extra>"
+        ),
+    )
+    fig.update_xaxes(tickformat=".0%")
     return fig
 
 

@@ -1,5 +1,5 @@
 {% extends "basis.html" %}
-{% from "_regler.html" import regler_abschnitt %}
+{% from "_regler.html" import regler_abschnitt, interne_arbeit_regler_abschnitt %}
 {% block inhalt %}
 <form method="get" class="parameter">
     <label>Historische Monate
@@ -16,20 +16,18 @@
             {% endfor %}
         </select>
     </label>
-    <details class="regler-abschnitt" {{ "open" if interne_arbeit_abschlag_abweichend }}>
-        <summary>Interne Arbeit in der Simulation <span class="zusammenfassung">(Abschlag auf die verfügbare Kapazität: {{ interne_arbeit_abschlag_prozent }} %)</span></summary>
-        <div class="regler-gruppe">
-            <label>Abschlag auf die verfügbare Kapazität
-                <input type="range" name="interne_arbeit_abschlag_prozent" min="0" max="100" step="1"
-                       value="{{ interne_arbeit_abschlag_prozent }}"
-                       oninput="this.nextElementSibling.textContent = this.value + ' %'"
-                       onchange="this.form.submit()">
-                <output>{{ interne_arbeit_abschlag_prozent }} %</output>
-            </label>
-            <p>Ohne eigene Auswahl vorbelegt mit dem historischen Durchschnitt (Details dazu auf /dashboard) - die Simulation selbst kennt interne Arbeit sonst nicht.</p>
-            <a class="zuruecksetzen" href="/{{ interne_arbeit_abschlag_zuruecksetzen_query }}">Auf historischen Durchschnitt zurücksetzen</a>
-        </div>
-    </details>
+    {{ interne_arbeit_regler_abschnitt(
+        modus=interne_arbeit_modus,
+        modus_optionen=interne_arbeit_modus_optionen,
+        modus_beschriftungen=interne_arbeit_modus_beschriftungen,
+        aktuell=interne_arbeit_regler_aktuell,
+        historisch=interne_arbeit_regler_historisch,
+        abweichend=interne_arbeit_abschlag_abweichend,
+        zuruecksetzen_url="/" ~ interne_arbeit_abschlag_zuruecksetzen_query,
+        pauschal_zuruecksetzen_url="/" ~ interne_arbeit_pauschal_zuruecksetzen_query,
+        weibull_zuruecksetzen_url="/" ~ interne_arbeit_weibull_zuruecksetzen_query,
+        gauss_zuruecksetzen_url="/" ~ interne_arbeit_gauss_zuruecksetzen_query
+    ) }}
     {{ regler_abschnitt(
         "verbrauchsplan",
         "Verbrauchsplan-Übersteuerung",

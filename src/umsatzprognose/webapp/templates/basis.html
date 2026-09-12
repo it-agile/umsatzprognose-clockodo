@@ -183,6 +183,41 @@
         .fortschritt { list-style: none; padding: 0; color: #555; }
         .fortschritt li { padding: 0.2rem 0; }
         .fehler { color: #a00; border-left: 3px solid #a00; padding-left: 0.6rem; }
+        /* Doppel-Schieberegler fuer den Ausreisser-Bereich der Verteilungsgrafik auf
+           /dashboard (siehe doppelReglerAktualisieren() unten): zwei uebereinander
+           liegende <input type="range"> statt eines einzelnen - HTML kennt keinen
+           nativen Bereichs-Regler mit zwei Boeppeln. Beide Schienen werden unsichtbar
+           gemacht (nur noch die eigene .doppel-regler-schiene unten zeigt eine
+           Linie) und ihre Treffflaeche auf den Boeppel selbst beschraenkt
+           (pointer-events: none auf der Eingabe, wieder an auf dem Boeppel-Pseudo-
+           element) - so bleiben beide Boeppel unabhaengig voneinander greifbar, obwohl
+           die Eingabefelder exakt uebereinander liegen. */
+        .doppel-regler { position: relative; height: 1.6rem; width: min(100%, 28rem); margin: 0.4rem 0; }
+        .doppel-regler-schiene {
+            position: absolute; top: 50%; left: 0; right: 0; height: 4px;
+            background: #e1e0d9; border-radius: 2px; transform: translateY(-50%);
+        }
+        .doppel-regler-fuellung {
+            position: absolute; top: 50%; height: 4px; background: #2a78d6;
+            border-radius: 2px; transform: translateY(-50%);
+        }
+        .doppel-regler input[type="range"] {
+            position: absolute; top: 0; left: 0; width: 100%; margin: 0; height: 1.6rem;
+            -webkit-appearance: none; appearance: none; background: none; pointer-events: none;
+        }
+        .doppel-regler input[type="range"]::-webkit-slider-runnable-track { background: none; }
+        .doppel-regler input[type="range"]::-moz-range-track { background: none; }
+        .doppel-regler input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none; pointer-events: auto; width: 16px; height: 16px;
+            border-radius: 50%; background: #2a78d6; border: 2px solid #fff;
+            box-shadow: 0 0 0 1px #2a78d6; cursor: pointer; margin-top: 0.2rem;
+        }
+        .doppel-regler input[type="range"]::-moz-range-thumb {
+            pointer-events: auto; width: 16px; height: 16px; border-radius: 50%;
+            background: #2a78d6; border: 2px solid #fff; box-shadow: 0 0 0 1px #2a78d6;
+            cursor: pointer;
+        }
+        .doppel-regler-text { color: #555; }
     </style>
 </head>
 <body>
@@ -205,5 +240,33 @@
         <h1>{{ seiten_titel.get(aktive_seite, "Umsatzprognose") }} — {% if stichtag %}Stand: {{ stichtag.strftime("%d.%m.%Y") }}{% else %}Daten werden geladen …{% endif %}</h1>
         {% block inhalt %}{% endblock %}
     </main>
+    <script>
+        // Aktualisiert Fuellbalken und Text des Doppel-Schiebereglers (siehe CSS oben)
+        // bei jeder Bewegung eines der beiden Boeppel - reine Anzeige, das Absenden
+        // selbst loest weiterhin onchange auf den einzelnen <input>-Elementen aus.
+        // Verhindert zusaetzlich, dass sich die Boeppel ueberkreuzen (mindestens ein
+        // Prozentpunkt Abstand, deckungsgleich mit der serverseitigen Absicherung in
+        // app.dashboard_seite()).
+        function doppelReglerAktualisieren(eingabe) {
+            var gruppe = eingabe.closest(".doppel-regler");
+            var minEingabe = gruppe.querySelector('input[data-doppel-regler="min"]');
+            var maxEingabe = gruppe.querySelector('input[data-doppel-regler="max"]');
+            if (Number(minEingabe.value) >= Number(maxEingabe.value)) {
+                if (eingabe === minEingabe) {
+                    minEingabe.value = Number(maxEingabe.value) - 1;
+                } else {
+                    maxEingabe.value = Number(minEingabe.value) + 1;
+                }
+            }
+            var minWert = Number(minEingabe.value);
+            var maxWert = Number(maxEingabe.value);
+            gruppe.querySelector(".doppel-regler-fuellung").style.left = minWert + "%";
+            gruppe.querySelector(".doppel-regler-fuellung").style.right = (100 - maxWert) + "%";
+            var text = gruppe.parentElement.querySelector(".doppel-regler-text");
+            if (text) {
+                text.textContent = minWert + " % – " + maxWert + " %";
+            }
+        }
+    </script>
 </body>
 </html>

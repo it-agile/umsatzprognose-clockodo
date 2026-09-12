@@ -18,3 +18,112 @@
     </div>
 </details>
 {% endmacro %}
+
+{# Der Regler "Interne Arbeit in der Simulation" auf / und /dashboard: identisches
+   Markup auf beiden Seiten (nur die Zuruecksetzen-Links unterscheiden sich, siehe
+   Aufrufstellen) - ein Dropdown waehlt zwischen drei Simulationsverteilungen fuer den
+   Anteil fakturierbarer Arbeit: "Pauschal" (ein fester, ueber alle Laeufe gleicher
+   Anteil, per Regler einstellbar, Vorbelegung der historische Durchschnitt),
+   "Weibull"/"Gauss" (parametrisch, je zwei Regler, aus der Historie per Momentenmethode
+   vorbelegt - siehe app._interne_arbeit_regler_werte). Nur die zum gewaehlten Modus
+   passenden Felder werden gezeigt, serverseitig per Jinja-Bedingung statt per
+   Client-JS, weil die Auswahl ohnehin einen vollen Seitenreload ausloest
+   (onchange="this.form.submit()"). Je Modus ein eigener Zuruecksetzen-Link, der nur
+   dessen Parameter auf die historisch abgeleiteten Werte zuruecksetzt, aber den Modus
+   nicht veraendert - "Zurueck zu Pauschal" wechselt zusaetzlich den Modus selbst.
+
+   ``aktuell``/``historisch`` sind je ein app._InterneArbeitAnzeige - dieselbe Form fuer
+   den gerade wirksamen Wert (Regler-Stellung) wie fuer den aus der Historie
+   abgeleiteten Vorschlag. Der historische Wert steht direkt in der Regler-Beschriftung
+   ("Mittelwert (μ) (historischer Mittelwert: 45 %)"), nicht in einem separaten
+   Hilfstext darunter - Orientierung beim manuellen Einstellen, unabhaengig von einer
+   eigenen Uebersteuerung, ohne den Blick vom Regler weg auf einen Absatz darunter zu
+   lenken. Skalenparameter (λ) und Mittelwert (μ) stehen als Prozentzahl (0-100, bei
+   Skalenparameter bis 300) statt als Fliesskommazahl 0.0-1.0 - leichter einzuschaetzen
+   als ein Anteil an "wie viel Kapazitaet ist fakturierbar"; Formparameter (k) und
+   Standardabweichung (σ) bleiben dagegen Fliesskommazahlen (siehe app.py fuer die
+   Begruendung je Parameter). #}
+{% macro interne_arbeit_regler_abschnitt(modus, modus_optionen, modus_beschriftungen, aktuell, historisch, abweichend, zuruecksetzen_url, pauschal_zuruecksetzen_url, weibull_zuruecksetzen_url, gauss_zuruecksetzen_url, form_id=none) %}
+<details class="regler-abschnitt" {{ "open" if abweichend }}>
+    <summary>Interne Arbeit in der Simulation <span class="zusammenfassung">({% if modus == "pauschal" %}Pauschal: {{ aktuell.pauschal_prozent }} % fakturierbar{% else %}{{ modus_beschriftungen[modus] }}{% endif %})</span></summary>
+    <div class="regler-gruppe">
+        <label>Verteilung
+            <select name="interne_arbeit_modus"{% if form_id %} form="{{ form_id }}"{% endif %} onchange="this.form.submit()">
+                {% for wert in modus_optionen %}
+                <option value="{{ wert }}" {{ "selected" if wert == modus }}>{{ modus_beschriftungen[wert] }}</option>
+                {% endfor %}
+            </select>
+        </label>
+        {% if modus == "pauschal" %}
+        <label>Anteil fakturierbarer Arbeit (historischer Durchschnitt: {{ historisch.pauschal_prozent }} %)
+            <input type="range" name="anteil_fakturierbar_prozent"{% if form_id %} form="{{ form_id }}"{% endif %}
+                   min="0" max="100" step="1" value="{{ aktuell.pauschal_prozent }}"
+                   oninput="this.nextElementSibling.textContent = this.value + ' %'"
+                   onchange="this.form.submit()">
+            <output>{{ aktuell.pauschal_prozent }} %</output>
+        </label>
+        <p>Ein fester Anteil (0–100 %), mit dem die verfügbare Kapazität in jedem Simulationslauf gleichermaßen multipliziert wird.</p>
+        <a class="zuruecksetzen" href="{{ pauschal_zuruecksetzen_url }}">Auf historischen Durchschnitt zurücksetzen</a>
+        {% elif modus == "weibull" %}
+        <label>Formparameter (k) (historischer Vorschlag: {{ "%.2f"|format(historisch.weibull_formparameter) }})
+            <input type="range" name="interne_arbeit_weibull_formparameter"{% if form_id %} form="{{ form_id }}"{% endif %}
+                   min="0.1" max="20" step="0.01" value="{{ "%.4f"|format(aktuell.weibull_formparameter) }}"
+                   oninput="this.nextElementSibling.textContent = Number(this.value).toFixed(2)"
+                   onchange="this.form.submit()">
+            <output>{{ "%.2f"|format(aktuell.weibull_formparameter) }}</output>
+        </label>
+        <label>Skalenparameter (λ) (historischer Vorschlag: {{ "%.0f"|format(historisch.weibull_skalenparameter_prozent) }} %)
+            <input type="range" name="interne_arbeit_weibull_skalenparameter_prozent"{% if form_id %} form="{{ form_id }}"{% endif %}
+                   min="0" max="300" step="1" value="{{ "%.1f"|format(aktuell.weibull_skalenparameter_prozent) }}"
+                   oninput="this.nextElementSibling.textContent = Number(this.value).toFixed(0) + ' %'"
+                   onchange="this.form.submit()">
+            <output>{{ "%.0f"|format(aktuell.weibull_skalenparameter_prozent) }} %</output>
+        </label>
+        <p>Formparameter &lt; 1 betont seltene, sehr hohe Anteile; Formparameter &gt; 1 bündelt die Ziehungen enger um einen typischen Wert. Skalenparameter (in Prozent des Anteils fakturierbarer Arbeit) verschiebt diesen typischen Wert insgesamt nach oben oder unten. Ziehungen außerhalb von 0,0 bis 1,0 werden gekappt.</p>
+        <div class="regler-aktionen">
+            <a class="zuruecksetzen" href="{{ weibull_zuruecksetzen_url }}">Parameter auf Historie zurücksetzen</a>
+            <a class="zuruecksetzen" href="{{ zuruecksetzen_url }}">Zurück zu "Pauschal"</a>
+        </div>
+        {% elif modus == "gauss" %}
+        <label>Mittelwert (μ) (historischer Mittelwert: {{ "%.0f"|format(historisch.gauss_mittelwert_prozent) }} %)
+            <input type="range" name="interne_arbeit_gauss_mittelwert_prozent"{% if form_id %} form="{{ form_id }}"{% endif %}
+                   min="0" max="100" step="1" value="{{ "%.1f"|format(aktuell.gauss_mittelwert_prozent) }}"
+                   oninput="this.nextElementSibling.textContent = Number(this.value).toFixed(0) + ' %'"
+                   onchange="this.form.submit()">
+            <output>{{ "%.0f"|format(aktuell.gauss_mittelwert_prozent) }} %</output>
+        </label>
+        <label>Standardabweichung (σ) (historischer Wert: {{ "%.2f"|format(historisch.gauss_standardabweichung) }})
+            <input type="range" name="interne_arbeit_gauss_standardabweichung"{% if form_id %} form="{{ form_id }}"{% endif %}
+                   min="0" max="0.5" step="0.01" value="{{ "%.3f"|format(aktuell.gauss_standardabweichung) }}"
+                   oninput="this.nextElementSibling.textContent = Number(this.value).toFixed(2)"
+                   onchange="this.form.submit()">
+            <output>{{ "%.2f"|format(aktuell.gauss_standardabweichung) }}</output>
+        </label>
+        <p>Ziehungen außerhalb von 0,0 bis 1,0 werden auf diesen Bereich gekappt.</p>
+        <div class="regler-aktionen">
+            <a class="zuruecksetzen" href="{{ gauss_zuruecksetzen_url }}">Parameter auf Historie zurücksetzen</a>
+            <a class="zuruecksetzen" href="{{ zuruecksetzen_url }}">Zurück zu "Pauschal"</a>
+        </div>
+        {% endif %}
+    </div>
+</details>
+{% endmacro %}
+
+{# Ein Doppel-Schieberegler (siehe CSS/JS in basis.html: .doppel-regler,
+   doppelReglerAktualisieren()) fuer einen Prozentbereich mit zwei Boeppeln - der linke
+   setzt das Minimum, der rechte das Maximum, statt zweier unabhaengiger Regler
+   untereinander. #}
+{% macro doppel_regler(min_feldname, max_feldname, minimum, maximum, form_id=none) %}
+<div class="doppel-regler">
+    <div class="doppel-regler-schiene">
+        <div class="doppel-regler-fuellung" style="left: {{ minimum }}%; right: {{ 100 - maximum }}%;"></div>
+    </div>
+    <input type="range" name="{{ min_feldname }}"{% if form_id %} form="{{ form_id }}"{% endif %}
+           data-doppel-regler="min" min="0" max="100" step="1" value="{{ minimum }}"
+           oninput="doppelReglerAktualisieren(this)" onchange="this.form.submit()">
+    <input type="range" name="{{ max_feldname }}"{% if form_id %} form="{{ form_id }}"{% endif %}
+           data-doppel-regler="max" min="0" max="100" step="1" value="{{ maximum }}"
+           oninput="doppelReglerAktualisieren(this)" onchange="this.form.submit()">
+</div>
+<p class="doppel-regler-text">{{ minimum }} % – {{ maximum }} %</p>
+{% endmacro %}

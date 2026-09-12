@@ -30,6 +30,7 @@ if TYPE_CHECKING:
     from umsatzprognose.domaene import (
         Auslastungsmonat,
         Bestand,
+        FakturierbareArbeitZiehung,
         Kostenplan,
         Mitarbeiter,
         Monatsumsatz,
@@ -41,9 +42,10 @@ if TYPE_CHECKING:
 from umsatzprognose.clockodo import AuslastungRepository, BestandRepository, gleichzeitig, synchron
 from umsatzprognose.domaene import (
     Auslastungssumme,
-    InterneArbeitBandbreite,
+    FakturierbareArbeitBandbreite,
+    FakturierbareArbeitVerteilung,
     NochKeinePrognose,
-    durchschnittlicher_anteil_interner_arbeit,
+    durchschnittlicher_anteil_fakturierbarer_arbeit,
 )
 from umsatzprognose.domaene.projekt import sonderfall
 from umsatzprognose.kosten import KostenRepository
@@ -532,15 +534,34 @@ class Dashboard:
         *,
         monate: int = 3,
         laeufe: int = 10_000,
-        interne_arbeit_abschlag: float = 0.0,
+        anteil_fakturierbar: float | None = None,
+        fakturierbare_arbeit_ziehung: FakturierbareArbeitZiehung | None = None,
         fortschritt: Fortschritt | None = None,
     ) -> None:
         """Fuehrt die Monte-Carlo-Simulation aus und haelt das Ergebnis in
         :attr:`prognose` fuer die anderen Ansichten bereit.
 
-        ``interne_arbeit_abschlag`` siehe
-        :meth:`~umsatzprognose.domaene.bestand.Bestand.simulieren`; Standard 0.0 laesst
-        das Ergebnis unveraendert, wie bisher.
+        Genau eine der beiden folgenden Interne-Arbeit-Quellen darf zugleich gesetzt
+        sein (siehe :meth:`~umsatzprognose.domaene.bestand.Bestand.simulieren` fuer die
+        Validierung):
+
+        ``anteil_fakturierbar``: ein fester Anteil (0.0 bis 1.0), mit dem die
+        verfuegbare Kapazitaet jeder Person in jedem Horizontmonat gleichmaessig
+        multipliziert wird (Modus "Pauschal") - ``None`` (Standard) verwendet den
+        historischen Durchschnitt
+        (:meth:`durchschnittlicher_anteil_fakturierbarer_arbeit`, 1.0 - also
+        unveraenderte Kapazitaet - ohne jede geladene Auslastung).
+
+        ``fakturierbare_arbeit_ziehung``: die Quelle einer je Lauf, Horizontmonat und
+        Person unabhaengig gezogenen Kapazitaetsmultiplikation (siehe
+        :class:`~umsatzprognose.domaene.simulation.FakturierbareArbeitZiehung`) - z. B.
+        :class:`~umsatzprognose.domaene.simulation.WeibullFakturierbareArbeit`/
+        :class:`~umsatzprognose.domaene.simulation.GaussFakturierbareArbeit` (Modus
+        "Weibull"/"Gauss"), oder eine eigene
+        :class:`~umsatzprognose.domaene.auslastung.FakturierbareArbeitVerteilung` fuer
+        eine Ziehung aus der vollen historischen Streuung statt nur ihres
+        Durchschnitts. ``None`` (Standard) laesst die Kapazitaet unveraendert durch
+        diesen Parameter (nur ``anteil_fakturierbar`` wirkt dann).
 
         ``fortschritt``, sofern angegeben, wird einmal nach Abschluss mit einer
         fertigen Statuszeile (Laeufe, Horizont, Dauer) aufgerufen - dieselbe Form wie
@@ -552,9 +573,16 @@ class Dashboard:
         Verlaufscache-Zugriff genuegt, eine feingranulare Zwischenanzeige waere nur
         Anschein von Fortschritt ohne echten Informationsgewinn.
         """
+        if anteil_fakturierbar is None and fakturierbare_arbeit_ziehung is None:
+            durchschnitt = self.durchschnittlicher_anteil_fakturierbarer_arbeit()
+            anteil_fakturierbar = durchschnitt if durchschnitt is not None else 1.0
+        abschlag = 1.0 - anteil_fakturierbar if anteil_fakturierbar is not None else 0.0
         with _Stoppuhr() as t:
             self.prognose = self.bestand.simulieren(
-                monate=monate, laeufe=laeufe, interne_arbeit_abschlag=interne_arbeit_abschlag
+                monate=monate,
+                laeufe=laeufe,
+                interne_arbeit_abschlag=abschlag,
+                fakturierbare_arbeit_verteilung=fakturierbare_arbeit_ziehung,
             )
         if fortschritt is not None:
             fortschritt(
@@ -567,7 +595,8 @@ class Dashboard:
         *,
         monate: int = 3,
         laeufe: int = 10_000,
-        interne_arbeit_abschlag: float = 0.0,
+        anteil_fakturierbar: float | None = None,
+        fakturierbare_arbeit_ziehung: FakturierbareArbeitZiehung | None = None,
         fortschritt: Fortschritt | None = None,
     ) -> None:
         """Wie :meth:`simuliere`, aber nebenlaeufigkeitsfreundlich: die Monte-Carlo-Rechnung
@@ -589,7 +618,8 @@ class Dashboard:
             self.simuliere(
                 monate=monate,
                 laeufe=laeufe,
-                interne_arbeit_abschlag=interne_arbeit_abschlag,
+                anteil_fakturierbar=anteil_fakturierbar,
+                fakturierbare_arbeit_ziehung=fakturierbare_arbeit_ziehung,
                 fortschritt=fortschritt,
             )
 
@@ -696,9 +726,9 @@ class Dashboard:
         """Die geladenen Auslastungsmonate ohne den laufenden (Stichtags-)Monat - der
         ist unvollstaendig gebucht und wuerde jede Kennzahl daraus verfaelschen.
         Gemeinsame Grundlage von :meth:`kapazitaet_je_mitarbeiter`,
-        :meth:`auslastung_je_mitarbeiter`, :meth:`anteil_interner_arbeit`,
-        :meth:`anteil_interner_arbeit_tabelle` und
-        :meth:`durchschnittlicher_anteil_interner_arbeit`."""
+        :meth:`auslastung_je_mitarbeiter`, :meth:`anteil_fakturierbarer_arbeit`,
+        :meth:`anteil_fakturierbarer_arbeit_tabelle` und
+        :meth:`durchschnittlicher_anteil_fakturierbarer_arbeit`."""
         stichtagsmonat = (self.bestand.stichtag.year, self.bestand.stichtag.month)
         return [a for a in self.auslastung if (a.jahr, a.monat) != stichtagsmonat]
 
@@ -745,39 +775,73 @@ class Dashboard:
             Auslastungssumme.je_mitarbeiter(self._auslastung_abgeschlossen()), top=top
         )
 
-    def anteil_interner_arbeit(self, *, mit_trend: bool = False) -> go.Figure:
-        """Anteil interner Arbeit je Monat (Minimum/Durchschnitt/Maximum ueber alle
+    def anteil_fakturierbarer_arbeit(
+        self, *, mit_trend: bool = False, mit_beschriftung: bool = False
+    ) -> go.Figure:
+        """Anteil fakturierbarer Arbeit je Monat (Minimum/Durchschnitt/Maximum ueber alle
         Personen mit gebuchter Zeit), ueber dieselben abgeschlossenen Monate des beim
         Laden angefragten Fensters (``auslastung_monate``) wie
         :meth:`auslastung_je_mitarbeiter` - reine Vergangenheitsbetrachtung (siehe
-        :class:`~umsatzprognose.domaene.auslastung.InterneArbeitBandbreite`).
+        :class:`~umsatzprognose.domaene.auslastung.FakturierbareArbeitBandbreite`).
 
-        ``mit_trend`` siehe :func:`~umsatzprognose.darstellung.diagramme.
-        anteil_interner_arbeit` - Standard aus, wie beim Trendlinien-Regler auf
-        ``/schulungen``.
+        ``mit_trend``/``mit_beschriftung`` siehe :func:`~umsatzprognose.darstellung.
+        diagramme.anteil_fakturierbarer_arbeit` - beide Standard aus, wie beim
+        Trendlinien-Regler auf ``/schulungen`` bzw. dem statischen Bildexport
+        (``scripts/diagramme_exportieren.py``).
 
-        Fliesst nicht automatisch in :meth:`simuliere` ein - siehe dort fuer den
-        optionalen ``interne_arbeit_abschlag`` und
-        :meth:`durchschnittlicher_anteil_interner_arbeit` fuer einen aus dieser
-        Beobachtung abgeleiteten Vorschlagswert.
+        Fliesst nicht direkt hier, aber ueber :meth:`fakturierbare_arbeit_verteilung` in
+        :meth:`simuliere` ein (Modus "Weibull"/"Gauss") bzw. ueber
+        :meth:`durchschnittlicher_anteil_fakturierbarer_arbeit` (Modus "Pauschal") -
+        siehe dort.
         """
-        return diagramme.anteil_interner_arbeit(
-            InterneArbeitBandbreite.je_monat(self._auslastung_abgeschlossen()), mit_trend=mit_trend
+        return diagramme.anteil_fakturierbarer_arbeit(
+            FakturierbareArbeitBandbreite.je_monat(self._auslastung_abgeschlossen()),
+            mit_trend=mit_trend,
+            mit_beschriftung=mit_beschriftung,
         )
 
-    def anteil_interner_arbeit_tabelle(self) -> pd.DataFrame:
-        """Dieselben Zahlen wie :meth:`anteil_interner_arbeit`, zum Nachlesen."""
-        return tabellen.anteil_interner_arbeit_tabelle(
-            InterneArbeitBandbreite.je_monat(self._auslastung_abgeschlossen())
+    def anteil_fakturierbarer_arbeit_tabelle(self) -> pd.DataFrame:
+        """Dieselben Zahlen wie :meth:`anteil_fakturierbarer_arbeit`, zum Nachlesen."""
+        return tabellen.anteil_fakturierbarer_arbeit_tabelle(
+            FakturierbareArbeitBandbreite.je_monat(self._auslastung_abgeschlossen())
         )
 
-    def durchschnittlicher_anteil_interner_arbeit(self) -> float | None:
+    def fakturierbare_arbeit_verteilung(self) -> FakturierbareArbeitVerteilung:
+        """Die empirische Verteilung des Anteils fakturierbarer Arbeit ueber dieselben
+        abgeschlossenen Monate des beim Laden angefragten Fensters
+        (``auslastung_monate``) wie :meth:`anteil_fakturierbarer_arbeit` - Grundlage
+        sowohl von :meth:`anteil_fakturierbarer_arbeit_verteilung` als auch der
+        verteilungsbasierten Ziehung in :meth:`simuliere` (Modus "Weibull"/"Gauss")."""
+        return FakturierbareArbeitVerteilung.aus_auslastungen(self._auslastung_abgeschlossen())
+
+    def anteil_fakturierbarer_arbeit_verteilung(
+        self, *, minimum: float = 0.0, maximum: float = 1.0, mit_beschriftung: bool = False
+    ) -> go.Figure:
+        """Verteilung des Anteils fakturierbarer Arbeit ueber einzelne Personen-Monate -
+        anders als :meth:`anteil_fakturierbarer_arbeit` ungeglaettet je Personen-Monat
+        statt aggregiert je Kalendermonat, siehe :meth:`fakturierbare_arbeit_verteilung`.
+
+        ``minimum``/``maximum`` siehe :func:`~umsatzprognose.darstellung.diagramme.
+        anteil_fakturierbarer_arbeit_verteilung` - blenden Ausreisser am unteren bzw.
+        oberen Ende gezielt aus der Anzeige aus, Standard der volle Bereich 0.0 bis 1.0.
+        ``mit_beschriftung`` siehe dort - Standard aus, wie beim statischen Bildexport
+        (``scripts/diagramme_exportieren.py``).
+        """
+        return diagramme.anteil_fakturierbarer_arbeit_verteilung(
+            self.fakturierbare_arbeit_verteilung().werte,
+            minimum=minimum,
+            maximum=maximum,
+            mit_beschriftung=mit_beschriftung,
+        )
+
+    def durchschnittlicher_anteil_fakturierbarer_arbeit(self) -> float | None:
         """Gewichteter Durchschnitt ueber dieselben abgeschlossenen Monate wie
-        :meth:`anteil_interner_arbeit` - Vorschlagswert fuer ``interne_arbeit_abschlag``
-        in :meth:`simuliere`, ``None`` ohne jede gebuchte Stunde im Fenster (siehe
-        :func:`~umsatzprognose.domaene.auslastung.durchschnittlicher_anteil_interner_arbeit`).
+        :meth:`anteil_fakturierbarer_arbeit` - Vorschlagswert fuer den Modus "Pauschal"
+        in :meth:`simuliere` sowie Vorbelegung des Webapp-/Notebook-Reglers, ``None``
+        ohne jede gebuchte Stunde im Fenster (siehe
+        :func:`~umsatzprognose.domaene.auslastung.durchschnittlicher_anteil_fakturierbarer_arbeit`).
         """
-        return durchschnittlicher_anteil_interner_arbeit(self._auslastung_abgeschlossen())
+        return durchschnittlicher_anteil_fakturierbarer_arbeit(self._auslastung_abgeschlossen())
 
     def umsatztabelle(self) -> pd.DataFrame:
         """Dieselben Monate wie im Verlaufsdiagramm, zum Nachlesen - inklusive Prognose."""

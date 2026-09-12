@@ -11,6 +11,7 @@ Verteilungen nicht mischen.
 
 from __future__ import annotations
 
+import statistics
 from datetime import date
 from decimal import Decimal
 
@@ -19,6 +20,8 @@ import pytest
 
 from umsatzprognose.domaene import (
     Bestand,
+    FakturierbareArbeitVerteilung,
+    GaussFakturierbareArbeit,
     Gesamtbudget,
     Kunde,
     Mitarbeiter,
@@ -26,6 +29,7 @@ from umsatzprognose.domaene import (
     Projekt,
     Projektanteil,
     Verbrauchsverlauf,
+    WeibullFakturierbareArbeit,
     Wochenarbeitszeit,
 )
 
@@ -115,6 +119,166 @@ def test_interne_arbeit_abschlag_kann_kapazitaet_zum_limitierenden_faktor_machen
     for werte in prognose.monatswerte().values():
         assert [float(w) for w in werte] == [pytest.approx(erwarteter_umsatz, abs=0.01)]
     assert prognose.kapazitaet_limitierend_anteil() == 1.0
+
+
+def test_interne_arbeit_abschlag_und_fakturierbare_arbeit_verteilung_schliessen_sich_aus():
+    b = Bestand(stichtag=STICHTAG, verbrauchsverlaeufe=(historie(0.5),))
+    verteilung = FakturierbareArbeitVerteilung(werte=(0.5,))
+
+    with pytest.raises(ValueError, match="fakturierbare_arbeit_verteilung"):
+        b.simulieren(
+            monate=1, interne_arbeit_abschlag=0.5, fakturierbare_arbeit_verteilung=verteilung
+        )
+
+
+def test_fakturierbare_arbeit_verteilung_kann_kapazitaet_zum_limitierenden_faktor_machen():
+    """Wie test_interne_arbeit_abschlag_kann_kapazitaet_zum_limitierenden_faktor_machen,
+    hier mit einer Verteilung aus einem Einerbett statt eines festen Abschlags - eine
+    Ziehung aus einem Einerbett liefert immer denselben Wert, macht den Lauf also
+    ebenso vorhersagbar wie ein fester Abschlag."""
+    anna = mitarbeiter(1, "Anna")
+    projekt = Projekt(
+        id=1,
+        name="Projekt",
+        kunde=KUNDE,
+        aktiv=True,
+        budget=Gesamtbudget(betrag=Decimal("10000.0")),
+        verbrauchtes_volumen=Decimal("2000.0"),
+        verbrauchte_stunden=40.0,
+        anteile=(Projektanteil(anna, stunden=40.0),),
+    )
+    b = Bestand(
+        stichtag=STICHTAG,
+        projekte=(projekt,),
+        mitarbeiter=(anna,),
+        verbrauchsverlaeufe=(historie(0.5),),
+    )
+    abschlag = 0.999
+    # Die Verteilung zieht den Anteil fakturierbarer Arbeit direkt (kein Abschlag) -
+    # das Komplement des Abschlags oben, mit dem die Vergleichskapazitaet gerechnet wird.
+    verteilung = FakturierbareArbeitVerteilung(werte=(1.0 - abschlag,))
+
+    prognose = b.simulieren(
+        monate=1,
+        laeufe=5,
+        zufall=np.random.default_rng(1),
+        fakturierbare_arbeit_verteilung=verteilung,
+    )
+
+    kapazitaet = anna.verfuegbare_kapazitaet(2026, 9, interne_arbeit_abschlag=abschlag)
+    erwarteter_umsatz = kapazitaet * 50.0
+    assert erwarteter_umsatz < 4000.0
+    for werte in prognose.monatswerte().values():
+        assert [float(w) for w in werte] == [pytest.approx(erwarteter_umsatz, abs=0.01)]
+    assert prognose.kapazitaet_limitierend_anteil() == 1.0
+
+
+def test_fakturierbare_arbeit_verteilung_zieht_je_lauf_unabhaengig():
+    """Ein Vorrat aus zwei sehr unterschiedlichen Werten (voll bzw. kaum fakturierbar) -
+    unabhaengig je Lauf gezogen erzeugt das ueber genuegend Laeufe eine Mischung aus
+    kapazitaetslimitierten und nicht limitierten Laeufen, statt wie ein einzelner
+    fester Abschlag entweder alle oder keinen Lauf zu limitieren."""
+    anna = mitarbeiter(1, "Anna")
+    projekt = Projekt(
+        id=1,
+        name="Projekt",
+        kunde=KUNDE,
+        aktiv=True,
+        budget=Gesamtbudget(betrag=Decimal("10000.0")),
+        verbrauchtes_volumen=Decimal("2000.0"),
+        verbrauchte_stunden=40.0,
+        anteile=(Projektanteil(anna, stunden=40.0),),
+    )
+    b = Bestand(
+        stichtag=STICHTAG,
+        projekte=(projekt,),
+        mitarbeiter=(anna,),
+        verbrauchsverlaeufe=(historie(0.5),),
+    )
+    verteilung = FakturierbareArbeitVerteilung(werte=(1.0, 0.001))
+
+    prognose = b.simulieren(
+        monate=1,
+        laeufe=200,
+        zufall=np.random.default_rng(3),
+        fakturierbare_arbeit_verteilung=verteilung,
+    )
+
+    assert 0.0 < prognose.kapazitaet_limitierend_anteil() < 1.0
+
+
+def test_weibull_fakturierbare_arbeit_ziehen_array_liefert_angeforderte_form():
+    verteilung = WeibullFakturierbareArbeit(formparameter=2.0, skalenparameter=0.2)
+
+    gezogen = verteilung.ziehen_array((3, 4), np.random.default_rng(0))
+
+    assert gezogen.shape == (3, 4)
+
+
+def test_weibull_fakturierbare_arbeit_ziehen_array_kappt_auf_null_eins():
+    # Formparameter 0.3 (rechtsschief) und ein grosser Skalenparameter erzeugen
+    # zuverlaessig Werte weit ueber 1.0, ohne Kappung.
+    verteilung = WeibullFakturierbareArbeit(formparameter=0.3, skalenparameter=5.0)
+
+    gezogen = verteilung.ziehen_array((1000,), np.random.default_rng(0))
+
+    assert gezogen.min() >= 0.0
+    assert gezogen.max() <= 1.0
+    assert gezogen.max() == pytest.approx(1.0)  # Kappung tatsaechlich getroffen
+
+
+def test_weibull_fakturierbare_arbeit_aus_stichprobe_matcht_mittelwert_und_standardabweichung():
+    werte = [0.05, 0.1, 0.12, 0.2, 0.3, 0.08, 0.15, 0.25, 0.02, 0.18]
+
+    verteilung = WeibullFakturierbareArbeit.aus_stichprobe(werte)
+    gezogen = verteilung.ziehen_array((200_000,), np.random.default_rng(0))
+
+    assert gezogen.mean() == pytest.approx(statistics.fmean(werte), abs=0.01)
+    assert gezogen.std() == pytest.approx(statistics.pstdev(werte), abs=0.01)
+
+
+def test_weibull_fakturierbare_arbeit_aus_stichprobe_braucht_mindestens_zwei_werte():
+    with pytest.raises(ValueError, match="mindestens zwei Werte"):
+        WeibullFakturierbareArbeit.aus_stichprobe([0.1])
+
+
+def test_gauss_fakturierbare_arbeit_ziehen_array_liefert_angeforderte_form():
+    verteilung = GaussFakturierbareArbeit(mittelwert=0.2, standardabweichung=0.05)
+
+    gezogen = verteilung.ziehen_array((3, 4), np.random.default_rng(0))
+
+    assert gezogen.shape == (3, 4)
+
+
+def test_gauss_fakturierbare_arbeit_ziehen_array_kappt_auf_null_eins():
+    verteilung = GaussFakturierbareArbeit(mittelwert=0.0, standardabweichung=1.0)
+
+    gezogen = verteilung.ziehen_array((1000,), np.random.default_rng(0))
+
+    assert gezogen.min() >= 0.0
+    assert gezogen.max() <= 1.0
+    assert (gezogen == 0.0).any()  # untere Kappung tatsaechlich getroffen
+
+
+def test_gauss_fakturierbare_arbeit_aus_stichprobe():
+    werte = [0.1, 0.2, 0.3]
+
+    verteilung = GaussFakturierbareArbeit.aus_stichprobe(werte)
+
+    assert verteilung.mittelwert == pytest.approx(statistics.fmean(werte))
+    assert verteilung.standardabweichung == pytest.approx(statistics.pstdev(werte))
+
+
+def test_gauss_fakturierbare_arbeit_aus_stichprobe_mit_einem_wert_hat_keine_streuung():
+    verteilung = GaussFakturierbareArbeit.aus_stichprobe([0.2])
+
+    assert verteilung.mittelwert == 0.2
+    assert verteilung.standardabweichung == 0.0
+
+
+def test_gauss_fakturierbare_arbeit_aus_stichprobe_braucht_mindestens_einen_wert():
+    with pytest.raises(ValueError, match="mindestens ein Wert"):
+        GaussFakturierbareArbeit.aus_stichprobe([])
 
 
 def test_einfacher_lauf_ohne_kapazitaetsdeckel():

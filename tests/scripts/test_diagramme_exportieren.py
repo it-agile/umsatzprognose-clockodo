@@ -106,7 +106,19 @@ def test_daten_laden_async_laedt_dashboard_und_anmeldungsverlauf_gleichzeitig(mo
     sleep = 0.2
 
     class _FakeGeladenesDashboard:
-        async def simuliere_async(self, *, monate, fortschritt=None):
+        def fakturierbare_arbeit_verteilung(self):
+            from umsatzprognose.domaene import FakturierbareArbeitVerteilung
+
+            return FakturierbareArbeitVerteilung()
+
+        async def simuliere_async(
+            self,
+            *,
+            monate,
+            anteil_fakturierbar=None,
+            fakturierbare_arbeit_ziehung=None,
+            fortschritt=None,
+        ):
             pass  # kein weiterer sleep - der Zeittest misst nur laden_async/anmeldungsverlauf_laden
 
     class _FakeDashboardKlasse:
@@ -135,6 +147,7 @@ def test_daten_laden_async_laedt_dashboard_und_anmeldungsverlauf_gleichzeitig(mo
             stichtag=date(2026, 9, 1),
             horizont_monate=3,
             monate_fenster=6,
+            args=script._argumente([]),
         )
     )
     dauer = time.perf_counter() - start
@@ -163,6 +176,7 @@ def test_daten_laden_async_ueberspringt_anmeldungsverlauf_wenn_nicht_angefordert
             stichtag=date(2026, 9, 1),
             horizont_monate=3,
             monate_fenster=6,
+            args=script._argumente([]),
         )
     )
 

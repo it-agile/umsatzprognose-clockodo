@@ -6,6 +6,11 @@
     uv run python scripts/diagramme_exportieren.py -o export --horizont-monate 1
     uv run python scripts/diagramme_exportieren.py --diagramm anmeldungsverlauf --monate-fenster 6
     uv run python scripts/diagramme_exportieren.py --diagramm umsatztabelle
+    uv run python scripts/diagramme_exportieren.py \
+        --diagramm anteil-fakturierbarer-arbeit-verteilung \
+        --anteil-fakturierbar-minimum 0.1 --anteil-fakturierbar-maximum 0.9
+    uv run python scripts/diagramme_exportieren.py --interne-arbeit-modus gauss \
+        --gauss-mittelwert 0.85 --gauss-standardabweichung 0.05
 
 Lädt den Bestand wie die Notebooks (``Dashboard.laden()``) und schreibt dieselben
 Diagramme, die dort gezeigt werden, als Dateien in ein Verzeichnis. PNG- und
@@ -49,6 +54,7 @@ if TYPE_CHECKING:
     import pandas as pd
     import plotly.graph_objects as go
 
+    from umsatzprognose.domaene import FakturierbareArbeitZiehung
     from umsatzprognose.domaene.anmeldung import Anmeldungsverlauf
 
 import humanize
@@ -63,6 +69,7 @@ from _fortschritt import (
 from umsatzprognose import Dashboard
 from umsatzprognose.clockodo import gleichzeitig, synchron
 from umsatzprognose.darstellung import diagramme, tabellen
+from umsatzprognose.domaene import GaussFakturierbareArbeit, WeibullFakturierbareArbeit
 from umsatzprognose.schulungen import SchulungenRepository, kategorien_automatisch
 from umsatzprognose.util import aus_ordnung, ordnung
 
@@ -87,7 +94,8 @@ DIAGRAMME_DASHBOARD = {
     "kapazitaet-je-mitarbeiter": Dashboard.kapazitaet_je_mitarbeiter,
     "kapazitaet-je-projekt": Dashboard.kapazitaet_je_projekt,
     "auslastung-je-mitarbeiter": Dashboard.auslastung_je_mitarbeiter,
-    "anteil-interner-arbeit": Dashboard.anteil_interner_arbeit,
+    "anteil-fakturierbarer-arbeit": Dashboard.anteil_fakturierbarer_arbeit,
+    "anteil-fakturierbarer-arbeit-verteilung": Dashboard.anteil_fakturierbarer_arbeit_verteilung,
 }
 
 # Name auf der Kommandozeile -> (Dashboard-Methode, Bildtitel). Anders als
@@ -99,7 +107,7 @@ TABELLEN_DASHBOARD: dict[str, tuple[Callable[[Dashboard], pd.DataFrame], str]] =
     "projekttabelle": (Dashboard.projekttabelle, "Projekttabelle"),
 }
 
-# Diese vier kennen "mit_beschriftung" (siehe deren Dashboard-Methoden) - die uebrigen
+# Diese sechs kennen "mit_beschriftung" (siehe deren Dashboard-Methoden) - die uebrigen
 # (kennzahlen, restvolumen-je-projekt, kapazitaet-*, auslastung-je-mitarbeiter) haben
 # den Wert entweder schon fest eingezeichnet oder brauchen ihn nicht.
 MIT_BESCHRIFTUNG_FAEHIG = {
@@ -107,7 +115,14 @@ MIT_BESCHRIFTUNG_FAEHIG = {
     "gewinn-verlust-monatlich",
     "gewinn-verlust-je-jahr",
     "umsatzrendite-kumuliert",
+    "anteil-fakturierbarer-arbeit",
+    "anteil-fakturierbarer-arbeit-verteilung",
 }
+
+# Nur die Verteilungsgrafik kennt "minimum"/"maximum" (siehe
+# Dashboard.anteil_fakturierbarer_arbeit_verteilung()) - blendet Ausreisser am unteren
+# bzw. oberen Ende gezielt aus der Anzeige aus, wie die beiden Regler in der Webapp.
+MIT_AUSREISSER_BEREICH_FAEHIG = {"anteil-fakturierbarer-arbeit-verteilung"}
 
 ALLE_DIAGRAMME = sorted(
     {
@@ -166,7 +181,124 @@ def _argumente(argv: list[str]) -> argparse.Namespace:
             f"(Standard: {STANDARD_MONATE_FENSTER})."
         ),
     )
+    parser.add_argument(
+        "--interne-arbeit-modus",
+        choices=("pauschal", "weibull", "gauss"),
+        default="pauschal",
+        help=(
+            "Simulationsverteilung für den Anteil fakturierbarer Arbeit, wie der "
+            "gleichnamige Regler in der Webapp (Standard: pauschal)."
+        ),
+    )
+    parser.add_argument(
+        "--anteil-fakturierbar",
+        type=float,
+        default=None,
+        help=(
+            "Fester Anteil (0.0-1.0) im Modus 'pauschal' (Standard: der historische Durchschnitt)."
+        ),
+    )
+    parser.add_argument(
+        "--weibull-formparameter",
+        type=float,
+        default=None,
+        help="Formparameter (k) im Modus 'weibull' (Standard: aus der Historie geschätzt).",
+    )
+    parser.add_argument(
+        "--weibull-skalenparameter",
+        type=float,
+        default=None,
+        help="Skalenparameter (λ) im Modus 'weibull' (Standard: aus der Historie geschätzt).",
+    )
+    parser.add_argument(
+        "--gauss-mittelwert",
+        type=float,
+        default=None,
+        help="Mittelwert (μ) im Modus 'gauss' (Standard: aus der Historie geschätzt).",
+    )
+    parser.add_argument(
+        "--gauss-standardabweichung",
+        type=float,
+        default=None,
+        help="Standardabweichung (σ) im Modus 'gauss' (Standard: aus der Historie geschätzt).",
+    )
+    parser.add_argument(
+        "--anteil-fakturierbar-minimum",
+        type=float,
+        default=0.0,
+        help=(
+            "Unteres Ende des gezeigten Bereichs für "
+            f"'{next(iter(MIT_AUSREISSER_BEREICH_FAEHIG))}' (Standard: 0.0)."
+        ),
+    )
+    parser.add_argument(
+        "--anteil-fakturierbar-maximum",
+        type=float,
+        default=1.0,
+        help=(
+            "Oberes Ende des gezeigten Bereichs für "
+            f"'{next(iter(MIT_AUSREISSER_BEREICH_FAEHIG))}' (Standard: 1.0)."
+        ),
+    )
     return parser.parse_args(argv)
+
+
+def _interne_arbeit_ziehung(
+    dashboard: Dashboard, args: argparse.Namespace
+) -> tuple[float | None, FakturierbareArbeitZiehung | None]:
+    """Loest ``--interne-arbeit-modus`` (plus die zugehoerigen Parameter-Optionen) in
+    die beiden Eingaben fuer :meth:`Dashboard.simuliere_async` auf - dieselbe Idee wie
+    ``_interne_arbeit_ziehung()``/``_interne_arbeit_regler_werte()`` in
+    ``webapp/app.py``, hier bewusst dupliziert statt importiert: ``scripts/`` ist kein
+    Teil des installierten Pakets und haengt nicht von ``webapp/`` ab (siehe
+    Moduldocstring von ``notebooks/setup.py`` fuer dieselbe Ueberlegung).
+
+    Fuer "weibull"/"gauss" ohne explizit gesetzte Parameter-Optionen wird per
+    Momentenmethode aus der historischen Verteilung geschaetzt (siehe
+    ``WeibullFakturierbareArbeit.aus_stichprobe()``/
+    ``GaussFakturierbareArbeit.aus_stichprobe()``); mit weniger als zwei Beobachtungen
+    faellt der Weibull-Formparameter auf eine Exponentialverteilung (1.0) zurueck.
+    """
+    if args.interne_arbeit_modus == "pauschal":
+        return args.anteil_fakturierbar, None
+
+    werte = dashboard.fakturierbare_arbeit_verteilung().werte
+    if args.interne_arbeit_modus == "weibull":
+        start = (
+            WeibullFakturierbareArbeit.aus_stichprobe(werte)
+            if len(werte) >= 2
+            else WeibullFakturierbareArbeit(
+                formparameter=1.0, skalenparameter=werte[0] if werte else 0.0
+            )
+        )
+        return None, WeibullFakturierbareArbeit(
+            formparameter=(
+                args.weibull_formparameter
+                if args.weibull_formparameter is not None
+                else start.formparameter
+            ),
+            skalenparameter=(
+                args.weibull_skalenparameter
+                if args.weibull_skalenparameter is not None
+                else start.skalenparameter
+            ),
+        )
+
+    start_gauss = (
+        GaussFakturierbareArbeit.aus_stichprobe(werte)
+        if werte
+        else GaussFakturierbareArbeit(0.0, 0.0)
+    )
+    return None, GaussFakturierbareArbeit(
+        mittelwert=(
+            args.gauss_mittelwert if args.gauss_mittelwert is not None else start_gauss.mittelwert
+        ),
+        standardabweichung=(
+            args.gauss_standardabweichung
+            if args.gauss_standardabweichung is not None
+            else start_gauss.standardabweichung
+        ),
+    )
 
 
 async def _daten_laden_async(
@@ -176,6 +308,7 @@ async def _daten_laden_async(
     stichtag: date | None,
     horizont_monate: int,
     monate_fenster: int,
+    args: argparse.Namespace,
 ) -> tuple[Dashboard | None, Anmeldungsverlauf | None]:
     """Laedt Dashboard und Anmeldungsverlauf gleichzeitig statt nacheinander, wenn
     beide gebraucht werden - zwei voneinander unabhaengige Datenquellen (siehe
@@ -209,7 +342,13 @@ async def _daten_laden_async(
         dashboard = await Dashboard.laden_async(
             stichtag=stichtag, horizont_monate=horizont_monate, fortschritt=melden
         )
-        await dashboard.simuliere_async(monate=horizont_monate, fortschritt=melden)
+        anteil_fakturierbar, ziehung = _interne_arbeit_ziehung(dashboard, args)
+        await dashboard.simuliere_async(
+            monate=horizont_monate,
+            anteil_fakturierbar=anteil_fakturierbar,
+            fakturierbare_arbeit_ziehung=ziehung,
+            fortschritt=melden,
+        )
         return dashboard
 
     async def _anmeldungsverlauf_laden() -> Anmeldungsverlauf | None:
@@ -260,6 +399,8 @@ def _figuren(
     dashboard: Dashboard | None,
     anmeldungsverlauf_fenster: Anmeldungsverlauf | None,
     ausgabeformat: str,
+    anteil_fakturierbar_minimum: float = 0.0,
+    anteil_fakturierbar_maximum: float = 1.0,
 ) -> dict[str, go.Figure]:
     """Je angefordertem Namen die fertige Figur, aus bereits geladenen Daten.
 
@@ -274,15 +415,23 @@ def _figuren(
     dafuer geeigneten Diagramme dort zusaetzlich den Wert als Text. Tabellen
     (``TABELLEN_DASHBOARD``, ``anmeldungstabelle``) zeigen ihre Werte ohnehin schon als
     Text in der Tabelle - ``mit_beschriftung`` betrifft nur Diagramme.
+
+    ``anteil_fakturierbar_minimum``/``_maximum`` gelten nur fuer
+    ``MIT_AUSREISSER_BEREICH_FAEHIG`` (aktuell nur die Verteilungsgrafik) - zusaetzlich
+    zu, nicht anstelle von ``mit_beschriftung``: die Verteilungsgrafik steht in beiden
+    Mengen (``MIT_BESCHRIFTUNG_FAEHIG`` und ``MIT_AUSREISSER_BEREICH_FAEHIG``).
     """
     figuren: dict[str, go.Figure] = {}
     mit_beschriftung = ausgabeformat != "html"
 
     if dashboard is not None:
         for name in (name for name in namen if name in DIAGRAMME_DASHBOARD):
-            kwargs = (
-                {"mit_beschriftung": mit_beschriftung} if name in MIT_BESCHRIFTUNG_FAEHIG else {}
-            )
+            kwargs: dict[str, object] = {}
+            if name in MIT_BESCHRIFTUNG_FAEHIG:
+                kwargs["mit_beschriftung"] = mit_beschriftung
+            if name in MIT_AUSREISSER_BEREICH_FAEHIG:
+                kwargs["minimum"] = anteil_fakturierbar_minimum
+                kwargs["maximum"] = anteil_fakturierbar_maximum
             figuren[name] = DIAGRAMME_DASHBOARD[name](dashboard, **kwargs)
         for name in (name for name in namen if name in TABELLEN_DASHBOARD):
             methode, titel = TABELLEN_DASHBOARD[name]
@@ -395,6 +544,7 @@ def main(argv: list[str]) -> int:
             stichtag=args.stichtag,
             horizont_monate=args.horizont_monate,
             monate_fenster=args.monate_fenster,
+            args=args,
         )
     )
     figuren = _figuren(
@@ -402,6 +552,8 @@ def main(argv: list[str]) -> int:
         dashboard=dashboard,
         anmeldungsverlauf_fenster=anmeldungsverlauf_fenster,
         ausgabeformat=args.format,
+        anteil_fakturierbar_minimum=args.anteil_fakturierbar_minimum,
+        anteil_fakturierbar_maximum=args.anteil_fakturierbar_maximum,
     )
     # Die Leerzeile trennt die (auf stderr geschriebene) Ladeanzeige sichtbar von den
     # nachfolgenden Export-Balken.

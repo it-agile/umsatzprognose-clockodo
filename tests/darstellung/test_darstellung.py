@@ -44,9 +44,10 @@ from umsatzprognose.domaene import (
     Auslastungsmonat,
     Bestand,
     Erfasst,
+    FakturierbareArbeitBandbreite,
+    GaussFakturierbareArbeit,
     Gesamtbudget,
     Hinweis,
-    InterneArbeitBandbreite,
     Kostenplan,
     Kostenposten,
     Kunde,
@@ -639,50 +640,83 @@ def test_auslastung_je_mitarbeiter_zeigt_prozent_und_laesst_none_weg():
     assert list(balken.text) == ["45 %", "91 %"]
 
 
-def test_anteil_interner_arbeit_zeigt_durchschnitt_und_fehlerbalken_bis_min_max():
+def test_anteil_fakturierbarer_arbeit_zeigt_durchschnitt_und_fehlerbalken_bis_min_max():
     bandbreiten = [
-        InterneArbeitBandbreite(
-            jahr=2026, monat=8, minimum=0.1, durchschnitt=0.2, maximum=0.3, anzahl_personen=2
+        FakturierbareArbeitBandbreite(
+            jahr=2026, monat=8, minimum=0.7, durchschnitt=0.8, maximum=0.9, anzahl_personen=2
         ),
-        InterneArbeitBandbreite(
-            jahr=2026, monat=9, minimum=0.15, durchschnitt=0.25, maximum=0.4, anzahl_personen=3
+        FakturierbareArbeitBandbreite(
+            jahr=2026, monat=9, minimum=0.6, durchschnitt=0.75, maximum=0.85, anzahl_personen=3
         ),
     ]
 
-    fig = diagramme.anteil_interner_arbeit(bandbreiten)
+    fig = diagramme.anteil_fakturierbarer_arbeit(bandbreiten)
     spur = fig.data[0]
 
     assert list(spur.x) == ["Aug 2026", "Sep 2026"]
-    assert list(spur.y) == [0.2, 0.25]
-    assert list(spur.error_y.array) == [pytest.approx(0.1), pytest.approx(0.15)]
-    assert list(spur.error_y.arrayminus) == [pytest.approx(0.1), pytest.approx(0.1)]
+    assert list(spur.y) == [0.8, 0.75]
+    assert list(spur.error_y.array) == [pytest.approx(0.1), pytest.approx(0.1)]
+    assert list(spur.error_y.arrayminus) == [pytest.approx(0.1), pytest.approx(0.15)]
     assert len(fig.data) == 1  # ohne mit_trend keine zusaetzliche Spur
 
 
-def test_anteil_interner_arbeit_ohne_trend_zeigt_keine_trendspur():
+def test_anteil_fakturierbarer_arbeit_ohne_beschriftung_zeigt_keine_annotation():
     bandbreiten = [
-        InterneArbeitBandbreite(
-            jahr=2026, monat=8, minimum=0.1, durchschnitt=0.2, maximum=0.3, anzahl_personen=2
+        FakturierbareArbeitBandbreite(
+            jahr=2026, monat=8, minimum=0.7, durchschnitt=0.8, maximum=0.9, anzahl_personen=2
         )
     ]
 
-    fig = diagramme.anteil_interner_arbeit(bandbreiten, mit_trend=False)
+    fig = diagramme.anteil_fakturierbarer_arbeit(bandbreiten, mit_beschriftung=False)
+
+    assert len(fig.layout.annotations) == 0
+
+
+def test_anteil_fakturierbarer_arbeit_mit_beschriftung_zeigt_wert_ueber_fehlerbalken():
+    # y der Beschriftung liegt bewusst auf dem Maximum, nicht auf dem Durchschnitt -
+    # sonst wuerde sie den Fehlerbalken durchkreuzen statt frei darueber zu stehen.
+    bandbreiten = [
+        FakturierbareArbeitBandbreite(
+            jahr=2026, monat=8, minimum=0.7, durchschnitt=0.8, maximum=0.9, anzahl_personen=2
+        ),
+        FakturierbareArbeitBandbreite(
+            jahr=2026, monat=9, minimum=0.6, durchschnitt=0.75, maximum=0.85, anzahl_personen=3
+        ),
+    ]
+
+    fig = diagramme.anteil_fakturierbarer_arbeit(bandbreiten, mit_beschriftung=True)
+
+    annotationen = {a.x: a for a in fig.layout.annotations}
+    assert annotationen["Aug 2026"].y == pytest.approx(0.9)
+    assert annotationen["Aug 2026"].text == "80 %"
+    assert annotationen["Sep 2026"].y == pytest.approx(0.85)
+    assert annotationen["Sep 2026"].text == "75 %"
+
+
+def test_anteil_fakturierbarer_arbeit_ohne_trend_zeigt_keine_trendspur():
+    bandbreiten = [
+        FakturierbareArbeitBandbreite(
+            jahr=2026, monat=8, minimum=0.7, durchschnitt=0.8, maximum=0.9, anzahl_personen=2
+        )
+    ]
+
+    fig = diagramme.anteil_fakturierbarer_arbeit(bandbreiten, mit_trend=False)
 
     assert len(fig.data) == 1
     assert fig.layout.showlegend is not True
 
 
-def test_anteil_interner_arbeit_mit_trend_ergaenzt_gestrichelte_trendspur():
+def test_anteil_fakturierbarer_arbeit_mit_trend_ergaenzt_gestrichelte_trendspur():
     bandbreiten = [
-        InterneArbeitBandbreite(
-            jahr=2026, monat=8, minimum=0.1, durchschnitt=0.2, maximum=0.3, anzahl_personen=2
+        FakturierbareArbeitBandbreite(
+            jahr=2026, monat=8, minimum=0.7, durchschnitt=0.8, maximum=0.9, anzahl_personen=2
         ),
-        InterneArbeitBandbreite(
-            jahr=2026, monat=9, minimum=0.15, durchschnitt=0.4, maximum=0.5, anzahl_personen=3
+        FakturierbareArbeitBandbreite(
+            jahr=2026, monat=9, minimum=0.5, durchschnitt=0.6, maximum=0.85, anzahl_personen=3
         ),
     ]
 
-    fig = diagramme.anteil_interner_arbeit(bandbreiten, mit_trend=True)
+    fig = diagramme.anteil_fakturierbarer_arbeit(bandbreiten, mit_trend=True)
 
     assert len(fig.data) == 2
     trend = fig.data[1]
@@ -691,21 +725,100 @@ def test_anteil_interner_arbeit_mit_trend_ergaenzt_gestrichelte_trendspur():
     assert fig.layout.showlegend is True
 
 
-def test_anteil_interner_arbeit_tabelle_formatiert_prozent_und_personenzahl():
+def test_anteil_fakturierbarer_arbeit_verteilung_zaehlt_werte_in_ihre_prozentbereiche():
+    fig = diagramme.anteil_fakturierbarer_arbeit_verteilung([0.1, 0.12, 0.32])
+    balken = fig.data[0]
+
+    assert sum(balken.y) == 3
+    # 0.1 und 0.12 liegen im selben 5-Prozentpunkte-Bereich [10%, 15%), 0.32 in [30%, 35%).
+    index_10_bis_15 = list(balken.x).index(pytest.approx(0.125))
+    index_30_bis_35 = list(balken.x).index(pytest.approx(0.325))
+    assert balken.y[index_10_bis_15] == 2
+    assert balken.y[index_30_bis_35] == 1
+
+
+def test_anteil_fakturierbarer_arbeit_verteilung_formatiert_prozentbereiche_im_hovertext():
+    fig = diagramme.anteil_fakturierbarer_arbeit_verteilung([0.1])
+    balken = fig.data[0]
+
+    index = list(balken.x).index(pytest.approx(0.125))
+    assert balken.customdata[index][0] == "10 %"
+    assert balken.customdata[index][1] == "15 %"
+
+
+def test_anteil_fakturierbarer_arbeit_verteilung_ohne_werte_bleibt_leer():
+    fig = diagramme.anteil_fakturierbarer_arbeit_verteilung([])
+
+    assert sum(fig.data[0].y) == 0
+
+
+def test_anteil_fakturierbarer_arbeit_verteilung_minimum_maximum_blenden_ausreisser_aus():
+    fig = diagramme.anteil_fakturierbarer_arbeit_verteilung(
+        [0.05, 0.3, 0.95], minimum=0.2, maximum=0.5
+    )
+    breite = (0.5 - 0.2) / 20  # Standard-Balkenzahl 20, ueber den eingeschraenkten Bereich
+
+    assert sum(fig.data[0].y) == 1  # nur 0.3 liegt im Bereich, 0.05 und 0.95 fallen weg
+    assert min(fig.data[0].x) == pytest.approx(0.2 + breite / 2)
+    assert max(fig.data[0].x) == pytest.approx(0.5 - breite / 2)
+
+
+def test_anteil_fakturierbarer_arbeit_verteilung_zeigt_bereich_im_untertitel():
+    voller_bereich = diagramme.anteil_fakturierbarer_arbeit_verteilung([0.1])
+    eingeschraenkt = diagramme.anteil_fakturierbarer_arbeit_verteilung(
+        [0.1], minimum=0.1, maximum=0.9
+    )
+
+    assert voller_bereich.layout.title.text.count("<sup>") == 0
+    assert "10 %" in eingeschraenkt.layout.title.text
+    assert "90 %" in eingeschraenkt.layout.title.text
+
+
+def test_anteil_fakturierbarer_arbeit_verteilung_minimum_muss_kleiner_als_maximum_sein():
+    with pytest.raises(ValueError, match="minimum"):
+        diagramme.anteil_fakturierbarer_arbeit_verteilung([0.1], minimum=0.5, maximum=0.5)
+
+
+def test_anteil_fakturierbarer_arbeit_verteilung_ohne_beschriftung_zeigt_keinen_text():
+    fig = diagramme.anteil_fakturierbarer_arbeit_verteilung([0.1, 0.32], mit_beschriftung=False)
+
+    assert fig.data[0].text is None
+
+
+def test_anteil_fakturierbarer_arbeit_verteilung_mit_beschriftung_zeigt_haeufigkeit_je_balken():
+    fig = diagramme.anteil_fakturierbarer_arbeit_verteilung(
+        [0.1, 0.12, 0.32], mit_beschriftung=True
+    )
+    balken = fig.data[0]
+
+    index_10_bis_15 = list(balken.x).index(pytest.approx(0.125))
+    index_30_bis_35 = list(balken.x).index(pytest.approx(0.325))
+    assert balken.text[index_10_bis_15] == "2"
+    assert balken.text[index_30_bis_35] == "1"
+    # Leere Balken bleiben unbeschriftet, statt die besetzten mit einer langen Reihe
+    # von "0"-Texten zuzudecken.
+    assert all(
+        text == ""
+        for i, text in enumerate(balken.text)
+        if i not in (index_10_bis_15, index_30_bis_35)
+    )
+
+
+def test_anteil_fakturierbarer_arbeit_tabelle_formatiert_prozent_und_personenzahl():
     bandbreiten = [
-        InterneArbeitBandbreite(
-            jahr=2026, monat=9, minimum=0.1, durchschnitt=0.2, maximum=0.3, anzahl_personen=2
+        FakturierbareArbeitBandbreite(
+            jahr=2026, monat=9, minimum=0.7, durchschnitt=0.8, maximum=0.9, anzahl_personen=2
         )
     ]
 
-    tabelle = tabellen.anteil_interner_arbeit_tabelle(bandbreiten)
+    tabelle = tabellen.anteil_fakturierbarer_arbeit_tabelle(bandbreiten)
 
     assert list(tabelle.columns) == ["Monat", "fakturierende Personen", "Min", "Ø", "Max"]
     zeile = tabelle.iloc[0]
     assert zeile["Monat"] == "Sep 2026"
-    assert zeile["Min"] == "10,0 %"
-    assert zeile["Ø"] == "20,0 %"
-    assert zeile["Max"] == "30,0 %"
+    assert zeile["Min"] == "70,0 %"
+    assert zeile["Ø"] == "80,0 %"
+    assert zeile["Max"] == "90,0 %"
     assert zeile["fakturierende Personen"] == 2
 
 
@@ -1521,7 +1634,7 @@ def test_dashboard_auslastung_je_mitarbeiter_summiert_abgeschlossene_monate():
     assert fig.data[0].x[0] == pytest.approx((100.0 + 80.0) / verfuegbar)
 
 
-def test_dashboard_anteil_interner_arbeit_schliesst_laufenden_monat_aus():
+def test_dashboard_anteil_fakturierbarer_arbeit_schliesst_laufenden_monat_aus():
     vollzeit = Wochenarbeitszeit(
         stunden_je_wochentag=(8.0, 8.0, 8.0, 8.0, 8.0, 0.0, 0.0), gueltig_ab=date(2020, 1, 1)
     )
@@ -1536,14 +1649,14 @@ def test_dashboard_anteil_interner_arbeit_schliesst_laufenden_monat_aus():
     )
     dashboard = Dashboard(bestand, SCHULUNGSPLAN, KOSTENPLAN, auslastung)
 
-    fig = dashboard.anteil_interner_arbeit()
+    fig = dashboard.anteil_fakturierbarer_arbeit()
 
     assert list(fig.data[0].x) == ["Jul 2026"]
-    assert fig.data[0].y[0] == pytest.approx(0.2)  # 20 / (20 + 80)
+    assert fig.data[0].y[0] == pytest.approx(0.8)  # 80 / (20 + 80)
     assert len(fig.data) == 1  # mit_trend default aus
 
 
-def test_dashboard_anteil_interner_arbeit_reicht_mit_trend_durch():
+def test_dashboard_anteil_fakturierbarer_arbeit_reicht_mit_trend_durch():
     anna = Mitarbeiter(id=1, name="Anna", aktiv=True)
     bestand = Bestand(stichtag=STICHTAG, mitarbeiter=(anna,))
     auslastung = (
@@ -1553,13 +1666,13 @@ def test_dashboard_anteil_interner_arbeit_reicht_mit_trend_durch():
     )
     dashboard = Dashboard(bestand, SCHULUNGSPLAN, KOSTENPLAN, auslastung)
 
-    fig = dashboard.anteil_interner_arbeit(mit_trend=True)
+    fig = dashboard.anteil_fakturierbarer_arbeit(mit_trend=True)
 
     assert len(fig.data) == 2
     assert fig.data[1].name == "Trend"
 
 
-def test_dashboard_anteil_interner_arbeit_tabelle_deckt_sich_mit_der_grafik():
+def test_dashboard_anteil_fakturierbarer_arbeit_reicht_mit_beschriftung_durch():
     anna = Mitarbeiter(id=1, name="Anna", aktiv=True)
     bestand = Bestand(stichtag=STICHTAG, mitarbeiter=(anna,))
     auslastung = (
@@ -1569,13 +1682,28 @@ def test_dashboard_anteil_interner_arbeit_tabelle_deckt_sich_mit_der_grafik():
     )
     dashboard = Dashboard(bestand, SCHULUNGSPLAN, KOSTENPLAN, auslastung)
 
-    tabelle = dashboard.anteil_interner_arbeit_tabelle()
+    fig = dashboard.anteil_fakturierbarer_arbeit(mit_beschriftung=True)
+
+    assert len(fig.layout.annotations) == 1
+
+
+def test_dashboard_anteil_fakturierbarer_arbeit_tabelle_deckt_sich_mit_der_grafik():
+    anna = Mitarbeiter(id=1, name="Anna", aktiv=True)
+    bestand = Bestand(stichtag=STICHTAG, mitarbeiter=(anna,))
+    auslastung = (
+        Auslastungsmonat(
+            mitarbeiter=anna, jahr=2026, monat=7, abrechenbare_stunden=80.0, interne_stunden=20.0
+        ),
+    )
+    dashboard = Dashboard(bestand, SCHULUNGSPLAN, KOSTENPLAN, auslastung)
+
+    tabelle = dashboard.anteil_fakturierbarer_arbeit_tabelle()
 
     assert list(tabelle["Monat"]) == ["Jul 2026"]
-    assert tabelle["Ø"].iloc[0] == "20,0 %"
+    assert tabelle["Ø"].iloc[0] == "80,0 %"
 
 
-def test_dashboard_durchschnittlicher_anteil_interner_arbeit_schliesst_laufenden_monat_aus():
+def test_dashboard_anteil_fakturierbarer_arbeit_verteilung_schliesst_laufenden_monat_aus():
     anna = Mitarbeiter(id=1, name="Anna", aktiv=True)
     bestand = Bestand(stichtag=STICHTAG, mitarbeiter=(anna,))  # STICHTAG: 24.08.2026
     auslastung = (
@@ -1587,7 +1715,160 @@ def test_dashboard_durchschnittlicher_anteil_interner_arbeit_schliesst_laufenden
     )
     dashboard = Dashboard(bestand, SCHULUNGSPLAN, KOSTENPLAN, auslastung)
 
-    assert dashboard.durchschnittlicher_anteil_interner_arbeit() == pytest.approx(0.2)
+    fig = dashboard.anteil_fakturierbarer_arbeit_verteilung()
+
+    assert sum(fig.data[0].y) == 1  # nur Juli, August faellt heraus
+
+
+def test_dashboard_anteil_fakturierbarer_arbeit_verteilung_reicht_minimum_maximum_durch():
+    anna = Mitarbeiter(id=1, name="Anna", aktiv=True)
+    bert = Mitarbeiter(id=2, name="Bert", aktiv=True)
+    bestand = Bestand(stichtag=STICHTAG, mitarbeiter=(anna, bert))
+    auslastung = (
+        Auslastungsmonat(
+            mitarbeiter=anna, jahr=2026, monat=7, abrechenbare_stunden=95.0, interne_stunden=5.0
+        ),  # 95 % fakturierbar, bleibt
+        Auslastungsmonat(
+            mitarbeiter=bert, jahr=2026, monat=7, abrechenbare_stunden=70.0, interne_stunden=30.0
+        ),  # 70 % fakturierbar, faellt bei minimum=0.75 weg
+    )
+    dashboard = Dashboard(bestand, SCHULUNGSPLAN, KOSTENPLAN, auslastung)
+
+    fig = dashboard.anteil_fakturierbarer_arbeit_verteilung(minimum=0.75, maximum=1.0)
+
+    assert sum(fig.data[0].y) == 1
+
+
+def test_dashboard_anteil_fakturierbarer_arbeit_verteilung_reicht_mit_beschriftung_durch():
+    anna = Mitarbeiter(id=1, name="Anna", aktiv=True)
+    bestand = Bestand(stichtag=STICHTAG, mitarbeiter=(anna,))
+    auslastung = (
+        Auslastungsmonat(
+            mitarbeiter=anna, jahr=2026, monat=7, abrechenbare_stunden=80.0, interne_stunden=20.0
+        ),
+    )
+    dashboard = Dashboard(bestand, SCHULUNGSPLAN, KOSTENPLAN, auslastung)
+
+    fig = dashboard.anteil_fakturierbarer_arbeit_verteilung(mit_beschriftung=True)
+
+    assert fig.data[0].text is not None
+
+
+def test_dashboard_fakturierbare_arbeit_verteilung_liefert_dieselben_rohwerte():
+    anna = Mitarbeiter(id=1, name="Anna", aktiv=True)
+    bestand = Bestand(stichtag=STICHTAG, mitarbeiter=(anna,))
+    auslastung = (
+        Auslastungsmonat(
+            mitarbeiter=anna, jahr=2026, monat=7, abrechenbare_stunden=80.0, interne_stunden=20.0
+        ),
+    )
+    dashboard = Dashboard(bestand, SCHULUNGSPLAN, KOSTENPLAN, auslastung)
+
+    assert dashboard.fakturierbare_arbeit_verteilung().werte == (0.8,)
+
+
+def test_dashboard_simuliere_verwendet_standardmaessig_historischen_durchschnitt_als_pauschale():
+    """Ohne eigene Angabe verwendet die Simulation
+    ``dashboard.durchschnittlicher_anteil_fakturierbarer_arbeit()`` als festen,
+    ueber alle Laeufe gleichen Anteil fakturierbarer Arbeit (Modus "Pauschal") - hier
+    mit genau einer Beobachtung, macht den Lauf also vorhersagbar, ohne den
+    Zufallsgenerator zu kontrollieren, analog zu
+    tests/domaene/test_simulation.py::test_interne_arbeit_abschlag_kann_kapazitaet_zum_
+    limitierenden_faktor_machen."""
+    ample = Wochenarbeitszeit(
+        stunden_je_wochentag=(999.0, 999.0, 999.0, 999.0, 999.0, 0.0, 0.0),
+        gueltig_ab=date(2020, 1, 1),
+    )
+    anna = Mitarbeiter(id=1, name="Anna", aktiv=True, arbeitszeiten=(ample,))
+    projekt = Projekt(
+        id=1,
+        name="Projekt",
+        kunde=KUNDE,
+        aktiv=True,
+        budget=Gesamtbudget(betrag=Decimal("10000.0")),
+        verbrauchtes_volumen=Decimal("2000.0"),
+        verbrauchte_stunden=40.0,  # effektiver Stundensatz 50.0
+        anteile=(Projektanteil(anna, stunden=40.0),),
+    )
+    auslastung = (
+        Auslastungsmonat(
+            mitarbeiter=anna, jahr=2026, monat=7, abrechenbare_stunden=1.0, interne_stunden=999.0
+        ),
+    )
+    bestand = Bestand(
+        stichtag=date(2026, 9, 1),  # Monatsanfang, Skalierung in Monat 1 exakt 1.0
+        projekte=(projekt,),
+        mitarbeiter=(anna,),
+        verbrauchsverlaeufe=(_historie_fuer_abrufquote(0.5),),
+    )
+    dashboard = Dashboard(bestand, SCHULUNGSPLAN, KOSTENPLAN, auslastung)
+
+    dashboard.simuliere(monate=1, laeufe=5)
+
+    kapazitaet = anna.verfuegbare_kapazitaet(2026, 9, interne_arbeit_abschlag=999.0 / 1000.0)
+    erwarteter_umsatz = kapazitaet * 50.0
+    assert erwarteter_umsatz < 4000.0  # ohne Reduktion waere die volle Nachfrage gedeckt
+    for werte in dashboard.prognose.monatswerte().values():
+        assert [float(w) for w in werte] == [pytest.approx(erwarteter_umsatz, abs=0.01)]
+    assert dashboard.prognose.kapazitaet_limitierend_anteil() == 1.0
+
+
+def test_dashboard_simuliere_mit_eigener_ziehung_ignoriert_den_historischen_durchschnitt():
+    """Wie oben, aber mit explizit uebergebener ``fakturierbare_arbeit_ziehung`` (hier
+    ein GaussFakturierbareArbeit, der deterministisch immer 1.0 - volle Kapazitaet -
+    zieht) - obwohl dieselbe Auslastung wie oben (nur 1/1000 fakturierbar, eigentlich
+    stark limitierend) geladen ist, bleibt die Kapazitaet unveraendert, weil die
+    uebergebene Ziehung den historischen Durchschnitt ersetzt statt ihn zu ergaenzen."""
+    ample = Wochenarbeitszeit(
+        stunden_je_wochentag=(999.0, 999.0, 999.0, 999.0, 999.0, 0.0, 0.0),
+        gueltig_ab=date(2020, 1, 1),
+    )
+    anna = Mitarbeiter(id=1, name="Anna", aktiv=True, arbeitszeiten=(ample,))
+    projekt = Projekt(
+        id=1,
+        name="Projekt",
+        kunde=KUNDE,
+        aktiv=True,
+        budget=Gesamtbudget(betrag=Decimal("10000.0")),
+        verbrauchtes_volumen=Decimal("2000.0"),
+        verbrauchte_stunden=40.0,
+        anteile=(Projektanteil(anna, stunden=40.0),),
+    )
+    auslastung = (
+        Auslastungsmonat(
+            mitarbeiter=anna, jahr=2026, monat=7, abrechenbare_stunden=1.0, interne_stunden=999.0
+        ),
+    )
+    bestand = Bestand(
+        stichtag=date(2026, 9, 1),
+        projekte=(projekt,),
+        mitarbeiter=(anna,),
+        verbrauchsverlaeufe=(_historie_fuer_abrufquote(0.5),),
+    )
+    dashboard = Dashboard(bestand, SCHULUNGSPLAN, KOSTENPLAN, auslastung)
+
+    dashboard.simuliere(
+        monate=1, laeufe=5, fakturierbare_arbeit_ziehung=GaussFakturierbareArbeit(1.0, 0.0)
+    )
+
+    for werte in dashboard.prognose.monatswerte().values():
+        assert [float(w) for w in werte] == [pytest.approx(4000.0, abs=0.01)]
+    assert dashboard.prognose.kapazitaet_limitierend_anteil() == 0.0
+
+
+def test_dashboard_durchschnittlicher_anteil_fakturierbarer_arbeit_schliesst_laufenden_monat_aus():
+    anna = Mitarbeiter(id=1, name="Anna", aktiv=True)
+    bestand = Bestand(stichtag=STICHTAG, mitarbeiter=(anna,))  # STICHTAG: 24.08.2026
+    auslastung = (
+        Auslastungsmonat(
+            mitarbeiter=anna, jahr=2026, monat=7, abrechenbare_stunden=80.0, interne_stunden=20.0
+        ),
+        # August ist der laufende (Stichtags-)Monat und faellt heraus.
+        Auslastungsmonat(mitarbeiter=anna, jahr=2026, monat=8, interne_stunden=999.0),
+    )
+    dashboard = Dashboard(bestand, SCHULUNGSPLAN, KOSTENPLAN, auslastung)
+
+    assert dashboard.durchschnittlicher_anteil_fakturierbarer_arbeit() == pytest.approx(0.8)
 
 
 def test_dashboard_ohne_auslastung_bleibt_leer():

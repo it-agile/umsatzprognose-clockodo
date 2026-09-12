@@ -32,7 +32,10 @@ schon real gebucht ist.
 Kapazitaeten haengen nur an Stichtag und Horizontmonat, nicht am Lauf - sie werden daher
 einmal vor der Lauf-Schleife berechnet und nicht bei jedem der 10.000 Laeufe neu
 (:meth:`~umsatzprognose.domaene.mitarbeiter.Mitarbeiter.verfuegbare_kapazitaet` iteriert
-selbst schon ueber jeden Tag des Monats).
+selbst schon ueber jeden Tag des Monats). Das gilt fuer diese vorberechnete Basiskapazitaet
+weiterhin uneingeschraenkt; ist zusaetzlich eine ``fakturierbare_arbeit_verteilung``
+angegeben, wird sie darauf erst innerhalb der Schleife angewendet - je Lauf, Horizontmonat
+und Person unabhaengig gezogen, analog zur Abrufquote (siehe :func:`simulieren`).
 
 **Euro-Groessen laufen als ``Decimal`` an den Fachobjekten, als ``float`` in der
 Schleife selbst.** Die vektorisierte numpy-Rechnung (10.000 Laeufe gleichzeitig) traegt
@@ -45,14 +48,16 @@ zehntausender float-Additionen ohnehin keine belastbare Genauigkeit mehr.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Protocol
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
+    from collections.abc import Mapping, Sequence
 
     from .bestand import Bestand
     from .projekt import Projekt
 
+import math
+import statistics
 from calendar import monthrange
 from dataclasses import dataclass
 from datetime import date
@@ -65,6 +70,109 @@ from umsatzprognose.util import Monat, monatsfolge, ordnung
 from .prognose import KONFIDENZNIVEAUS, NochKeinePrognose, Prognose
 
 NULL_EURO = Decimal("0")
+
+
+class FakturierbareArbeitZiehung(Protocol):
+    """Eine Quelle unabhaengiger Ziehungen fuer den Anteil fakturierbarer Arbeit, mit
+    dem die verfuegbare Kapazitaet je Lauf multipliziert wird.
+
+    Ein ``typing.Protocol`` statt konkreter Kopplung (siehe CLAUDE.md, Abschnitt
+    Code-Qualitaet): :func:`simulieren` muss nicht wissen, ob eine Ziehung aus der
+    historischen Verteilung
+    (:class:`~umsatzprognose.domaene.auslastung.FakturierbareArbeitVerteilung`) oder aus
+    einer parametrischen Verteilung (:class:`WeibullFakturierbareArbeit`,
+    :class:`GaussFakturierbareArbeit`) kommt - alle drei erfuellen dieses Protocol
+    strukturell, ohne davon zu erben.
+    """
+
+    def ziehen_array(self, form: tuple[int, ...], zufall: np.random.Generator) -> np.ndarray: ...
+
+
+def _weibull_variationskoeffizient(formparameter: float) -> float:
+    """Variationskoeffizient (Standardabweichung/Mittelwert) einer Weibull-Verteilung
+    mit Skala 1 - haengt nur vom Formparameter ab und faellt streng monoton mit ihm,
+    Grundlage der Bisektion in :meth:`WeibullFakturierbareArbeit.aus_stichprobe`."""
+    verhaeltnis = math.gamma(1 + 2 / formparameter) / math.gamma(1 + 1 / formparameter) ** 2 - 1
+    return math.sqrt(max(verhaeltnis, 0.0))
+
+
+def _weibull_formparameter_aus_variationskoeffizient(ziel: float) -> float:
+    """Bisektion auf den Formparameter, dessen Variationskoeffizient ``ziel`` ergibt -
+    ``_weibull_variationskoeffizient`` faellt streng monoton von nahe unendlich (Form
+    nahe 0) auf nahe 0 (Form nahe unendlich), eine Nullstellensuche per Bisektion ist
+    hier deshalb sowohl zulaessig als auch ausreichend genau, ohne eine Wurzel aus
+    ``scipy`` zu brauchen (keine Projektabhaengigkeit)."""
+    unten, oben = 1e-2, 100.0
+    for _ in range(100):
+        mitte = (unten + oben) / 2
+        if _weibull_variationskoeffizient(mitte) > ziel:
+            unten = mitte
+        else:
+            oben = mitte
+    return (unten + oben) / 2
+
+
+@dataclass(frozen=True, slots=True)
+class WeibullFakturierbareArbeit:
+    """Anteil fakturierbarer Arbeit, unabhaengig je Lauf, Horizontmonat und Person aus
+    einer Weibull-Verteilung gezogen (Formparameter, Skalenparameter) - eine
+    parametrische Alternative zur historischen Verteilung
+    (:class:`~umsatzprognose.domaene.auslastung.FakturierbareArbeitVerteilung`), z. B. um
+    eine Annahme durchzuspielen, die (noch) nicht in der eigenen Historie beobachtet
+    wurde.
+
+    Ziehungen werden auf [0.0, 1.0] gekappt (``numpy.clip``): ein Anteil ausserhalb
+    dieses Bereichs ist fachlich nicht sinnvoll, waehrend eine Weibull-Verteilung
+    rechnerisch beliebig grosse Werte liefern kann.
+    """
+
+    formparameter: float
+    skalenparameter: float
+
+    @classmethod
+    def aus_stichprobe(cls, werte: Sequence[float]) -> WeibullFakturierbareArbeit:
+        """Formparameter/Skalenparameter per Momentenmethode aus einer Stichprobe -
+        Mittelwert und Standardabweichung der resultierenden Weibull-Verteilung
+        stimmen dann mit denen von ``werte`` ueberein (siehe
+        :func:`_weibull_formparameter_aus_variationskoeffizient`)."""
+        if len(werte) < 2:
+            raise ValueError(
+                "Fuer eine Momentenschaetzung werden mindestens zwei Werte gebraucht, "
+                f"nicht {len(werte)}"
+            )
+        mittelwert = statistics.fmean(werte)
+        ziel_variationskoeffizient = statistics.pstdev(werte) / mittelwert if mittelwert else 0.0
+        formparameter = _weibull_formparameter_aus_variationskoeffizient(ziel_variationskoeffizient)
+        skalenparameter = mittelwert / math.gamma(1 + 1 / formparameter)
+        return cls(formparameter=formparameter, skalenparameter=skalenparameter)
+
+    def ziehen_array(self, form: tuple[int, ...], zufall: np.random.Generator) -> np.ndarray:
+        gezogen = zufall.weibull(self.formparameter, size=form) * self.skalenparameter
+        return np.clip(gezogen, 0.0, 1.0)
+
+
+@dataclass(frozen=True, slots=True)
+class GaussFakturierbareArbeit:
+    """Anteil fakturierbarer Arbeit, unabhaengig je Lauf, Horizontmonat und Person aus
+    einer Normalverteilung (Mittelwert, Standardabweichung) gezogen - dieselbe Idee wie
+    :class:`WeibullFakturierbareArbeit`, mit einer symmetrischen statt rechtsschiefen
+    Form. Ziehungen werden ebenso auf [0.0, 1.0] gekappt."""
+
+    mittelwert: float
+    standardabweichung: float
+
+    @classmethod
+    def aus_stichprobe(cls, werte: Sequence[float]) -> GaussFakturierbareArbeit:
+        if not werte:
+            raise ValueError("Fuer eine Momentenschaetzung wird mindestens ein Wert gebraucht")
+        return cls(
+            mittelwert=statistics.fmean(werte),
+            standardabweichung=statistics.pstdev(werte) if len(werte) > 1 else 0.0,
+        )
+
+    def ziehen_array(self, form: tuple[int, ...], zufall: np.random.Generator) -> np.ndarray:
+        gezogen = zufall.normal(self.mittelwert, self.standardabweichung, size=form)
+        return np.clip(gezogen, 0.0, 1.0)
 
 
 def _euro(betrag: float) -> Decimal:
@@ -338,6 +446,7 @@ def simulieren(
     laeufe: int = 10000,
     zufall: np.random.Generator | None = None,
     interne_arbeit_abschlag: float = 0.0,
+    fakturierbare_arbeit_verteilung: FakturierbareArbeitZiehung | None = None,
 ) -> Prognose:
     """Die Monte-Carlo-Simulation.
 
@@ -356,7 +465,22 @@ def simulieren(
             (siehe :meth:`~umsatzprognose.domaene.mitarbeiter.Mitarbeiter.
             verfuegbare_kapazitaet`) - Standard 0.0 laesst die Simulation unveraendert,
             wie bisher. Kein Sonderfall fuer den angebrochenen Monat 1: derselbe Anteil
-            gilt einheitlich fuer den ganzen Horizont.
+            gilt einheitlich fuer den ganzen Horizont. Schliesst sich mit
+            ``fakturierbare_arbeit_verteilung`` gegenseitig aus. Ein reiner
+            Kapazitaets-Mechanismus (siehe
+            :meth:`~umsatzprognose.domaene.mitarbeiter.Mitarbeiter.verfuegbare_kapazitaet`)
+            - der Modus "Pauschal" in Webapp/Notebook setzt ihn ueber
+            ``1 - anteil_fakturierbar``.
+        fakturierbare_arbeit_verteilung: ersetzt den festen Abschlag durch eine je Lauf,
+            Horizontmonat und Person unabhaengig gezogene Kapazitaet, die direkt mit dem
+            gezogenen Anteil fakturierbarer Arbeit multipliziert wird (siehe
+            :class:`FakturierbareArbeitZiehung` - eine historische
+            (:class:`~umsatzprognose.domaene.auslastung.FakturierbareArbeitVerteilung`)
+            oder eine parametrische Quelle (:class:`WeibullFakturierbareArbeit`,
+            :class:`GaussFakturierbareArbeit`)), dieselbe Ziehungsidee wie bei der
+            Abrufquote, hier auf den Kapazitaetsdeckel angewendet, statt eines
+            einzelnen, ueber alle Laeufe gleichen Abschlags. ``None`` (Standard) laesst
+            die Kapazitaet unveraendert bzw. beim reinen ``interne_arbeit_abschlag``.
     """
     if monate < 1:
         raise ValueError(f"Der Horizont braucht mindestens einen Monat, nicht {monate}")
@@ -364,6 +488,11 @@ def simulieren(
         raise ValueError(
             "interne_arbeit_abschlag muss zwischen 0.0 und 1.0 liegen, nicht "
             f"{interne_arbeit_abschlag}"
+        )
+    if fakturierbare_arbeit_verteilung is not None and interne_arbeit_abschlag != 0.0:
+        raise ValueError(
+            "interne_arbeit_abschlag und fakturierbare_arbeit_verteilung schliessen "
+            "sich gegenseitig aus - nur eines von beiden angeben"
         )
 
     verteilung = bestand.abrufquotenverteilung()
@@ -406,6 +535,15 @@ def simulieren(
         # bräuchte, ungebaut (siehe Modul-Docstring).
         bedarf_je_person = gewuenscht_stunden @ aufbau.anteil_matrix
         verfuegbar = aufbau.kapazitaet[index] * skalierung
+        if fakturierbare_arbeit_verteilung is not None:
+            # Je Lauf und Person unabhaengig gezogen (wie die Abrufquote oben je Lauf
+            # und Projekt) statt eines einzelnen, ueber alle Laeufe gleichen Anteils -
+            # ``verfuegbar`` wird dadurch von (Personen,) auf (Laeufe, Personen)
+            # gebroadcastet, was mit ``bedarf_je_person`` unten bereits uebereinstimmt.
+            gezogener_anteil_fakturierbar = fakturierbare_arbeit_verteilung.ziehen_array(
+                (laeufe, aufbau.kapazitaet.shape[1]), zufall
+            )
+            verfuegbar = verfuegbar * gezogener_anteil_fakturierbar
         ueberschritten = bedarf_je_person > verfuegbar
         bedarf_sicher = np.where(bedarf_je_person > 0, bedarf_je_person, 1.0)
         faktor_je_person = np.where(ueberschritten, verfuegbar / bedarf_sicher, 1.0)

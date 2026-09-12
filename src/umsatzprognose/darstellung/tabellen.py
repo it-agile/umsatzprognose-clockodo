@@ -14,8 +14,8 @@ if TYPE_CHECKING:
 
     from umsatzprognose.domaene import (
         Anmeldungsverlauf,
+        FakturierbareArbeitBandbreite,
         Hinweis,
-        InterneArbeitBandbreite,
         Kostenplan,
         Prognose,
         Projekt,
@@ -202,9 +202,12 @@ def monatsbeschriftung(monat: tuple[int, int]) -> str:
     return f"{MONATSNAMEN[monatsnummer - 1]} {jahr}"
 
 
-def anteil_interner_arbeit_tabelle(bandbreiten: Sequence[InterneArbeitBandbreite]) -> pd.DataFrame:
-    """Dieselben Zahlen wie :func:`~umsatzprognose.darstellung.diagramme.anteil_interner_arbeit`,
-    zum Nachlesen: Minimum, Durchschnitt und Maximum je Monat, ueber alle Personen mit
+def anteil_fakturierbarer_arbeit_tabelle(
+    bandbreiten: Sequence[FakturierbareArbeitBandbreite],
+) -> pd.DataFrame:
+    """Dieselben Zahlen wie
+    :func:`~umsatzprognose.darstellung.diagramme.anteil_fakturierbarer_arbeit`, zum
+    Nachlesen: Minimum, Durchschnitt und Maximum je Monat, ueber alle Personen mit
     gebuchter Zeit."""
     return pd.DataFrame(
         {
