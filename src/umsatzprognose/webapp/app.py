@@ -177,10 +177,11 @@ KategorieFilter = Annotated[Sequence[str], Query()]
 SchulungFilter = Annotated[Sequence[str], Query()]
 FormatFilter = Annotated[Sequence[str], Query()]
 DauerFilter = Annotated[Sequence[str], Query()]
-# Checkbox-Wert per verstecktem Begleitfeld (siehe schulungen.html): ein einzelnes
-# HTML-Kontrollkaestchen kann seinen "aus"-Zustand nicht selbst senden, ein
+# Checkbox-Wert per verstecktem Begleitfeld (siehe schulungen.html/dashboard.html): ein
+# einzelnes HTML-Kontrollkaestchen kann seinen "aus"-Zustand nicht selbst senden, ein
 # Begleitfeld mit demselben Namen und Wert "aus" tut das immer, das Kontrollkaestchen
-# selbst nur zusaetzlich mit Wert "an", wenn angehakt.
+# selbst nur zusaetzlich mit Wert "an", wenn angehakt. Wiederverwendet fuer den
+# Trendlinien-Regler auf /dashboard (Anteil interner Arbeit), nicht nur /schulungen.
 TrendlinienWerte = Annotated[Sequence[str], Query()]
 
 ALLE_KATEGORIEN = "Alle Kategorien"
@@ -651,6 +652,7 @@ async def dashboard_seite(
     verbrauchsplan: Verbrauchsplan = "",
     ohne_budget_filter: OhneBudgetFilter = "",
     interne_arbeit_abschlag_prozent: InterneArbeitAbschlagProzent = None,
+    interne_arbeit_trend_werte: TrendlinienWerte = ("an",),
 ) -> HTMLResponse:
     """Deckt sich mit notebooks/01_dashboard.ipynb: Umsatzverlauf und offenes Volumen."""
     horizont_zahl = int(horizont_monate)
@@ -664,6 +666,7 @@ async def dashboard_seite(
     if isinstance(ergebnis, HTMLResponse):
         return ergebnis
     abschlag_prozent = _interne_arbeit_abschlag_prozent(ergebnis, interne_arbeit_abschlag_prozent)
+    interne_arbeit_trend = "an" in interne_arbeit_trend_werte
     dashboard = await _simuliertes_dashboard(
         ergebnis,
         verbrauchsplan=verbrauchsplan,
@@ -712,7 +715,10 @@ async def dashboard_seite(
         interne_arbeit_abschlag_zuruecksetzen_query=_anfrage_query(
             request, _STANDARDWERTE_DASHBOARD, ohne=frozenset({"interne_arbeit_abschlag_prozent"})
         ),
-        anteil_interner_arbeit=_figur_html(dashboard.anteil_interner_arbeit(), mit_plotlyjs=False),
+        interne_arbeit_trend=interne_arbeit_trend,
+        anteil_interner_arbeit=_figur_html(
+            dashboard.anteil_interner_arbeit(mit_trend=interne_arbeit_trend), mit_plotlyjs=False
+        ),
         anteil_interner_arbeit_tabelle=_tabelle_html(dashboard.anteil_interner_arbeit_tabelle()),
     )
 

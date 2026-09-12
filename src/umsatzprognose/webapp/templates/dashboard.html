@@ -43,6 +43,13 @@
    (Zeit ohne Kundenbezug) - reine Vergangenheitsbetrachtung über die abgeschlossenen
    Monate des geladenen Auslastungsfensters. Fließt nicht automatisch in die Simulation
    ein; siehe "Interne Arbeit in der Simulation" oben für den einstellbaren Abschlag.</p>
+<label>
+    <input type="hidden" name="interne_arbeit_trend_werte" value="aus" form="dashboard-form">
+    <input type="checkbox" name="interne_arbeit_trend_werte" value="an" form="dashboard-form"
+           {{ "checked" if interne_arbeit_trend }}
+           onchange="this.form.submit()">
+    Trendlinie anzeigen
+</label>
 {{ anteil_interner_arbeit | safe }}
 <div class="tabelle-wrapper">{{ anteil_interner_arbeit_tabelle | safe }}</div>
 

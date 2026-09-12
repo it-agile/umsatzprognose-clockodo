@@ -745,12 +745,16 @@ class Dashboard:
             Auslastungssumme.je_mitarbeiter(self._auslastung_abgeschlossen()), top=top
         )
 
-    def anteil_interner_arbeit(self) -> go.Figure:
+    def anteil_interner_arbeit(self, *, mit_trend: bool = False) -> go.Figure:
         """Anteil interner Arbeit je Monat (Minimum/Durchschnitt/Maximum ueber alle
         Personen mit gebuchter Zeit), ueber dieselben abgeschlossenen Monate des beim
         Laden angefragten Fensters (``auslastung_monate``) wie
         :meth:`auslastung_je_mitarbeiter` - reine Vergangenheitsbetrachtung (siehe
         :class:`~umsatzprognose.domaene.auslastung.InterneArbeitBandbreite`).
+
+        ``mit_trend`` siehe :func:`~umsatzprognose.darstellung.diagramme.
+        anteil_interner_arbeit` - Standard aus, wie beim Trendlinien-Regler auf
+        ``/schulungen``.
 
         Fliesst nicht automatisch in :meth:`simuliere` ein - siehe dort fuer den
         optionalen ``interne_arbeit_abschlag`` und
@@ -758,7 +762,7 @@ class Dashboard:
         Beobachtung abgeleiteten Vorschlagswert.
         """
         return diagramme.anteil_interner_arbeit(
-            InterneArbeitBandbreite.je_monat(self._auslastung_abgeschlossen())
+            InterneArbeitBandbreite.je_monat(self._auslastung_abgeschlossen()), mit_trend=mit_trend
         )
 
     def anteil_interner_arbeit_tabelle(self) -> pd.DataFrame:

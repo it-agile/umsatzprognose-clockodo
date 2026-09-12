@@ -95,6 +95,13 @@ class Personenmonat:
         unklassifiziert zusammen."""
         return self.interne_stunden + self.externe_stunden + self.unklassifizierte_stunden
 
+    @property
+    def anteil_interner_arbeit(self) -> float | None:
+        """Anteil von :attr:`interne_stunden` an :attr:`alle_arbeitsstunden`, ``None``
+        ohne gebuchte Arbeitsstunden in diesem Monat."""
+        arbeitsstunden = self.alle_arbeitsstunden
+        return self.interne_stunden / arbeitsstunden if arbeitsstunden else None
+
 
 @dataclass(frozen=True, slots=True)
 class Rollenzuordnung:
@@ -178,12 +185,12 @@ def _kategorie(
 ) -> str:
     """Die Kategorie einer Person in einem Monat - eine reine
     Klassifikationsfunktion ohne Zaehlerzustand, siehe :func:`bewerten`."""
-    if person.ueberstundenstand is None or person.alle_arbeitsstunden == 0:
+    anteil_intern = person.anteil_interner_arbeit
+    if person.ueberstundenstand is None or anteil_intern is None:
         return _NICHT_BESTIMMBAR
     if rollenzuordnung.ausgeschlossen(person.name):
         return _AUSGESCHLOSSEN
 
-    anteil_intern = person.interne_stunden / person.alle_arbeitsstunden
     erfuellt_intern = anteil_intern >= schwellenwerte.anteil_interne_arbeit
     erfuellt_ueberstunden = person.ueberstundenstand < schwellenwerte.ueberstunden_stunden
     if erfuellt_intern and erfuellt_ueberstunden:

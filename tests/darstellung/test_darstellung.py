@@ -656,6 +656,39 @@ def test_anteil_interner_arbeit_zeigt_durchschnitt_und_fehlerbalken_bis_min_max(
     assert list(spur.y) == [0.2, 0.25]
     assert list(spur.error_y.array) == [pytest.approx(0.1), pytest.approx(0.15)]
     assert list(spur.error_y.arrayminus) == [pytest.approx(0.1), pytest.approx(0.1)]
+    assert len(fig.data) == 1  # ohne mit_trend keine zusaetzliche Spur
+
+
+def test_anteil_interner_arbeit_ohne_trend_zeigt_keine_trendspur():
+    bandbreiten = [
+        InterneArbeitBandbreite(
+            jahr=2026, monat=8, minimum=0.1, durchschnitt=0.2, maximum=0.3, anzahl_personen=2
+        )
+    ]
+
+    fig = diagramme.anteil_interner_arbeit(bandbreiten, mit_trend=False)
+
+    assert len(fig.data) == 1
+    assert fig.layout.showlegend is not True
+
+
+def test_anteil_interner_arbeit_mit_trend_ergaenzt_gestrichelte_trendspur():
+    bandbreiten = [
+        InterneArbeitBandbreite(
+            jahr=2026, monat=8, minimum=0.1, durchschnitt=0.2, maximum=0.3, anzahl_personen=2
+        ),
+        InterneArbeitBandbreite(
+            jahr=2026, monat=9, minimum=0.15, durchschnitt=0.4, maximum=0.5, anzahl_personen=3
+        ),
+    ]
+
+    fig = diagramme.anteil_interner_arbeit(bandbreiten, mit_trend=True)
+
+    assert len(fig.data) == 2
+    trend = fig.data[1]
+    assert trend.name == "Trend"
+    assert trend.line.dash == "dash"
+    assert fig.layout.showlegend is True
 
 
 def test_anteil_interner_arbeit_tabelle_formatiert_prozent_und_personenzahl():
@@ -1507,6 +1540,23 @@ def test_dashboard_anteil_interner_arbeit_schliesst_laufenden_monat_aus():
 
     assert list(fig.data[0].x) == ["Jul 2026"]
     assert fig.data[0].y[0] == pytest.approx(0.2)  # 20 / (20 + 80)
+    assert len(fig.data) == 1  # mit_trend default aus
+
+
+def test_dashboard_anteil_interner_arbeit_reicht_mit_trend_durch():
+    anna = Mitarbeiter(id=1, name="Anna", aktiv=True)
+    bestand = Bestand(stichtag=STICHTAG, mitarbeiter=(anna,))
+    auslastung = (
+        Auslastungsmonat(
+            mitarbeiter=anna, jahr=2026, monat=7, abrechenbare_stunden=80.0, interne_stunden=20.0
+        ),
+    )
+    dashboard = Dashboard(bestand, SCHULUNGSPLAN, KOSTENPLAN, auslastung)
+
+    fig = dashboard.anteil_interner_arbeit(mit_trend=True)
+
+    assert len(fig.data) == 2
+    assert fig.data[1].name == "Trend"
 
 
 def test_dashboard_anteil_interner_arbeit_tabelle_deckt_sich_mit_der_grafik():

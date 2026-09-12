@@ -477,6 +477,32 @@ def test_dashboard_seite_zeigt_anteil_interner_arbeit_abschnitt():
 
     assert "<h2>Anteil interner Arbeit</h2>" in antwort.text
     assert 'name="interne_arbeit_abschlag_prozent"' in antwort.text
+    assert 'name="interne_arbeit_trend_werte"' in antwort.text
+
+
+def _checkbox_markup(text: str, feldname: str) -> str:
+    """Das vollstaendige (mehrzeilige) <input type="checkbox">-Tag zu ``feldname``,
+    ausgeschnitten zwischen seinem Namensattribut und dem naechsten '>'."""
+    start = text.index(f'name="{feldname}" value="an"')
+    ende = text.index(">", start)
+    return text[start:ende]
+
+
+def test_dashboard_seite_trendlinie_startet_angehakt():
+    client = TestClient(app_modul.app)
+
+    antwort = client.get("/dashboard")
+
+    assert "checked" in _checkbox_markup(antwort.text, "interne_arbeit_trend_werte")
+
+
+def test_dashboard_seite_trendlinie_ausgeschaltet_zeigt_keine_trendspur():
+    client = TestClient(app_modul.app)
+
+    antwort = client.get("/dashboard", params={"interne_arbeit_trend_werte": "aus"})
+
+    assert "checked" not in _checkbox_markup(antwort.text, "interne_arbeit_trend_werte")
+    assert '"Trend"' not in antwort.text
 
 
 def test_dashboard_seite_interne_arbeit_abschlag_uebernimmt_historischen_durchschnitt(

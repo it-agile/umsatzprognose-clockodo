@@ -1188,22 +1188,30 @@ def auslastung_je_mitarbeiter(
 
 
 def anteil_interner_arbeit(
-    bandbreiten: Sequence[InterneArbeitBandbreite], *, hoehe: int = 420
+    bandbreiten: Sequence[InterneArbeitBandbreite], *, mit_trend: bool = False, hoehe: int = 420
 ) -> go.Figure:
     """Anteil interner Arbeit je Monat: eine Linie fuer den Durchschnitt ueber alle
     Personen mit gebuchter Zeit, mit Fehlerbalken bis zu Minimum und Maximum -
     reine Vergangenheitsbetrachtung, unabhaengig von der Bestand-Simulation (siehe
     Moduldocstring von :mod:`umsatzprognose.domaene.auslastung`).
+
+    ``mit_trend`` ergaenzt eine gestrichelte lineare Trendlinie
+    (:func:`_linearer_trend`) durch den Durchschnitt, analog zum Trendlinien-Regler
+    bei :func:`anmeldungsverlauf_reihen` (``webapp/templates/schulungen.html``) - hier
+    mit eigenem Legendeneintrag wie bei :func:`anmeldungsverlauf`, weil diese Grafik nur
+    die eine Durchschnittslinie zeigt, keine mehreren, gleichzeitig eingefaerbten Reihen.
     """
     beschriftungen = [f"{MONATSNAMEN[b.monat - 1]} {b.jahr}" for b in bandbreiten]
+    durchschnitt = [b.durchschnitt for b in bandbreiten]
     fig = figur("Anteil interner Arbeit je Monat", hoehe=hoehe)
     achsen(fig)
     fig.add_scatter(
         x=beschriftungen,
-        y=[b.durchschnitt for b in bandbreiten],
+        y=durchschnitt,
         mode="lines+markers",
+        name="Ø",
         line={"color": SERIE},
-        marker={"color": SERIE},
+        marker={"size": 6, "color": SERIE},
         error_y={
             "type": "data",
             "symmetric": False,
@@ -1219,6 +1227,15 @@ def anteil_interner_arbeit(
             "%{customdata[2]} Person(en)<extra></extra>"
         ),
     )
+    if mit_trend:
+        fig.add_scatter(
+            x=beschriftungen,
+            y=_linearer_trend(durchschnitt),
+            mode="lines",
+            name="Trend",
+            line={"color": TREND, "width": 2, "dash": "dash"},
+        )
+        _horizontale_legende(fig)
     fig.update_yaxes(tickformat=".0%")
     fig.update_xaxes(tickangle=TICKWINKEL)
     return fig

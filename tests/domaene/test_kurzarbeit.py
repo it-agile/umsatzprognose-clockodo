@@ -34,6 +34,19 @@ def _person(
     )
 
 
+def test_anteil_interner_arbeit_bezieht_sich_auf_alle_arbeitsstunden():
+    # 40h intern von insgesamt 200h (40 intern + 120 extern + 40 unklassifiziert)
+    person = _person(1, intern=40.0, extern=120.0, gesamt=200.0)
+
+    assert person.anteil_interner_arbeit == 0.2
+
+
+def test_anteil_interner_arbeit_ohne_gebuchte_stunden_ist_none():
+    person = _person(1, intern=0.0, extern=0.0, gesamt=0.0)
+
+    assert person.anteil_interner_arbeit is None
+
+
 def test_kurzarbeitsfaehig_bei_ausreichend_interner_arbeit_und_wenig_ueberstunden():
     # 40 / 160 = 25% interne Arbeit (>= 24%), Ueberstundenstand 0 (< 14h)
     person = _person(1, intern=40.0, extern=120.0, ueberstunden=0.0)
