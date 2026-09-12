@@ -227,6 +227,136 @@ def test_dashboard_seite_interne_arbeit_regler_steht_vor_verbrauchsplan():
     )
 
 
+@pytest.mark.parametrize("pfad", ["/", "/dashboard"])
+def test_prognosehorizont_und_laeufe_stehen_im_simulations_parameter_abschnitt_vor_der_verteilung(
+    pfad,
+):
+    """Prognosehorizont und Anzahl Simulationsläufe gehören zur Simulation wie der
+    Anteil fakturierbarer Arbeit und stehen deshalb ganz oben im selben, gemeinsam
+    eingeklappten Abschnitt "Simulations-Parameter", vor der Verteilungsauswahl
+    (Pauschal/Weibull/Gauss)."""
+    client = TestClient(app_modul.app)
+
+    antwort = client.get(pfad)
+
+    assert (
+        antwort.text.index("Simulations-Parameter")
+        < antwort.text.index("Prognosehorizont")
+        < antwort.text.index("Anzahl Simulationsläufe")
+        < antwort.text.index("interne_arbeit_modus")
+    )
+
+
+@pytest.mark.parametrize("pfad", ["/", "/dashboard"])
+def test_laeufe_regler_zeigt_standardwert_und_wertebereich(pfad):
+    client = TestClient(app_modul.app)
+
+    antwort = client.get(pfad)
+
+    assert 'name="laeufe"' in antwort.text
+    assert 'min="1" max="1000000"' in antwort.text
+    assert 'value="10000"' in antwort.text
+    assert "10.000" in antwort.text  # Anzeige mit deutschem Tausendertrennzeichen
+    # Das Zahlenfeld neben dem Regler ist editierbar, ohne selbst einen eigenen
+    # Namen (und damit Submit-Bezug) zu tragen - siehe _regler.html.
+    assert '<input type="number"' in antwort.text
+
+
+@pytest.mark.parametrize("pfad", ["/", "/dashboard"])
+def test_laeufe_ausserhalb_des_wertebereichs_wird_zurueckgewiesen(pfad):
+    client = TestClient(app_modul.app)
+
+    assert client.get(pfad, params={"laeufe": 0}).status_code == 422
+    assert client.get(pfad, params={"laeufe": 1_000_001}).status_code == 422
+    assert client.get(pfad, params={"laeufe": 1}).status_code == 200
+    assert client.get(pfad, params={"laeufe": 1_000_000}).status_code == 200
+
+
+@pytest.mark.parametrize("pfad", ["/", "/dashboard"])
+def test_laeufe_abweichend_vom_standard_haelt_den_abschnitt_offen(pfad):
+    client = TestClient(app_modul.app)
+
+    antwort = client.get(pfad, params={"laeufe": 500})
+
+    assert '<details class="regler-abschnitt" open>' in antwort.text
+    assert "500 Läufe" in antwort.text
+
+
+@pytest.mark.parametrize("pfad", ["/", "/dashboard"])
+def test_laeufe_zuruecksetzen_link_entfernt_den_parameter(pfad):
+    client = TestClient(app_modul.app)
+
+    antwort = client.get(pfad, params={"laeufe": 500, "horizont_monate": "6"})
+
+    # Der Zuruecksetzen-Link behaelt andere abweichende Parameter (hier
+    # horizont_monate) bei und entfernt nur laeufe, das dadurch auf seinen
+    # Standardwert zurueckfaellt.
+    assert f'href="{pfad}?horizont_monate=6">Auf Standardwert zurücksetzen' in antwort.text
+
+
+@pytest.mark.parametrize("pfad", ["/", "/dashboard"])
+def test_simulations_parameter_und_verteilungs_parameter_sind_optisch_getrennt(pfad):
+    """Prognosehorizont/Anzahl Simulationsläufe stehen in einer eigenen Reglergruppe,
+    optisch abgesetzt (.regler-trenner) von der Verteilungsauswahl darunter."""
+    client = TestClient(app_modul.app)
+
+    antwort = client.get(pfad)
+
+    assert '<div class="regler-gruppe regler-trenner">' in antwort.text
+    assert antwort.text.index("Anzahl Simulationsläufe") < antwort.text.index(
+        '<div class="regler-gruppe regler-trenner">'
+    )
+
+
+@pytest.mark.parametrize("pfad", ["/", "/dashboard"])
+def test_zusammenfassung_zeigt_weibull_parameter_im_zugeklappten_zustand(pfad, _fake_caches):
+    dashboard_cache, _, _ = _fake_caches
+    anna = Mitarbeiter(id=1, name="Anna", aktiv=True)
+    bestand = Bestand(
+        stichtag=STICHTAG, projekte=PROJEKTE, mitarbeiter=(anna,), umsatzhistorie=HISTORIE
+    )
+    auslastung = (
+        Auslastungsmonat(
+            mitarbeiter=anna, jahr=2026, monat=7, abrechenbare_stunden=80.0, interne_stunden=20.0
+        ),
+        Auslastungsmonat(
+            mitarbeiter=anna, jahr=2026, monat=6, abrechenbare_stunden=90.0, interne_stunden=10.0
+        ),
+    )
+    dashboard = Dashboard(bestand, SCHULUNGSPLAN, Kostenplan(), auslastung)
+    dashboard.simuliere(monate=1, laeufe=10)
+    dashboard_cache.ergebnis = dashboard
+    client = TestClient(app_modul.app)
+
+    antwort = client.get(pfad, params={"interne_arbeit_modus": "weibull"})
+
+    assert "Weibull (k=" in antwort.text
+    assert "λ=" in antwort.text
+
+
+@pytest.mark.parametrize("pfad", ["/", "/dashboard"])
+def test_zusammenfassung_zeigt_gauss_parameter_im_zugeklappten_zustand(pfad, _fake_caches):
+    dashboard_cache, _, _ = _fake_caches
+    anna = Mitarbeiter(id=1, name="Anna", aktiv=True)
+    bestand = Bestand(
+        stichtag=STICHTAG, projekte=PROJEKTE, mitarbeiter=(anna,), umsatzhistorie=HISTORIE
+    )
+    auslastung = (
+        Auslastungsmonat(
+            mitarbeiter=anna, jahr=2026, monat=7, abrechenbare_stunden=80.0, interne_stunden=20.0
+        ),
+    )
+    dashboard = Dashboard(bestand, SCHULUNGSPLAN, Kostenplan(), auslastung)
+    dashboard.simuliere(monate=1, laeufe=10)
+    dashboard_cache.ergebnis = dashboard
+    client = TestClient(app_modul.app)
+
+    antwort = client.get(pfad, params={"interne_arbeit_modus": "gauss"})
+
+    assert "Gauss (μ=" in antwort.text
+    assert "σ=" in antwort.text
+
+
 def test_uebersicht_gibt_url_parameter_an_den_cache_weiter(_fake_caches):
     dashboard_cache, _, _ = _fake_caches
     dashboard_cache.ergebnis = None
@@ -779,6 +909,32 @@ def test_dashboard_seite_interne_arbeit_abschlag_veraendert_nicht_das_gecachte_d
     assert dashboard_cache.ergebnis.prognose is original_prognose
     assert aufrufe[0] is not dashboard_cache.ergebnis
     assert dashboard_cache.ergebnis.bestand.projekte[0].verbrauchsplan_zielmonat is None
+
+
+def test_dashboard_seite_laeufe_veraendert_nicht_das_gecachte_dashboard(_fake_caches, monkeypatch):
+    """Wie test_dashboard_seite_interne_arbeit_abschlag_veraendert_nicht_das_gecachte_dashboard,
+    hier fuer den Laeufe-Regler: ein von STANDARD_LAEUFE abweichender Wert loest eine
+    Neusimulation mit genau dieser Laeufe-Anzahl aus, darf aber das im DashboardCache
+    gehaltene, geteilte Dashboard nicht veraendern."""
+    dashboard_cache, _, _ = _fake_caches
+    original_prognose = DASHBOARD.prognose
+    aufrufe: list[tuple[object, int]] = []
+    original_simuliere = Dashboard.simuliere
+
+    def _tracking_simuliere(self, *, laeufe=10_000, **kwargs):
+        aufrufe.append((self, laeufe))
+        return original_simuliere(self, laeufe=laeufe, **kwargs)
+
+    monkeypatch.setattr(Dashboard, "simuliere", _tracking_simuliere)
+    client = TestClient(app_modul.app)
+
+    antwort = client.get("/dashboard", params={"laeufe": 500})
+
+    assert antwort.status_code == 200
+    assert len(aufrufe) == 1
+    assert aufrufe[0] == (aufrufe[0][0], 500)
+    assert aufrufe[0][0] is not DASHBOARD
+    assert dashboard_cache.ergebnis.prognose is original_prognose
 
 
 def test_dashboard_seite_ohne_gecachte_daten_zeigt_die_ladeseite(_fake_caches):

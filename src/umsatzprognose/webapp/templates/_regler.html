@@ -19,18 +19,33 @@
 </details>
 {% endmacro %}
 
-{# Der Regler "Interne Arbeit in der Simulation" auf / und /dashboard: identisches
+{# Der Regler "Simulations-Parameter" auf / und /dashboard: identisches
    Markup auf beiden Seiten (nur die Zuruecksetzen-Links unterscheiden sich, siehe
-   Aufrufstellen) - ein Dropdown waehlt zwischen drei Simulationsverteilungen fuer den
-   Anteil fakturierbarer Arbeit: "Pauschal" (ein fester, ueber alle Laeufe gleicher
-   Anteil, per Regler einstellbar, Vorbelegung der historische Durchschnitt),
-   "Weibull"/"Gauss" (parametrisch, je zwei Regler, aus der Historie per Momentenmethode
-   vorbelegt - siehe app._interne_arbeit_regler_werte). Nur die zum gewaehlten Modus
-   passenden Felder werden gezeigt, serverseitig per Jinja-Bedingung statt per
-   Client-JS, weil die Auswahl ohnehin einen vollen Seitenreload ausloest
-   (onchange="this.form.submit()"). Je Modus ein eigener Zuruecksetzen-Link, der nur
-   dessen Parameter auf die historisch abgeleiteten Werte zuruecksetzt, aber den Modus
-   nicht veraendert - "Zurueck zu Pauschal" wechselt zusaetzlich den Modus selbst.
+   Aufrufstellen). Traegt neben der Verteilung fuer den Anteil fakturierbarer Arbeit
+   auch die beiden anderen Simulationsparameter, Prognosehorizont und Anzahl
+   Monte-Carlo-Laeufe (``horizont_monate``/``laeufe``, siehe app.py: beide gehoeren zur
+   Simulation, nicht nur der Anteil fakturierbarer Arbeit) - ein Dropdown waehlt
+   zwischen drei Simulationsverteilungen fuer den Anteil fakturierbarer Arbeit:
+   "Pauschal" (ein fester, ueber alle Laeufe gleicher Anteil, per Regler einstellbar,
+   Vorbelegung der historische Durchschnitt), "Weibull"/"Gauss" (parametrisch, je zwei
+   Regler, aus der Historie per Momentenmethode vorbelegt - siehe
+   app._interne_arbeit_regler_werte). Nur die zum gewaehlten Modus passenden Felder
+   werden gezeigt, serverseitig per Jinja-Bedingung statt per Client-JS, weil die
+   Auswahl ohnehin einen vollen Seitenreload ausloest (onchange="this.form.submit()").
+   Je Modus ein eigener Zuruecksetzen-Link, der nur dessen Parameter auf die
+   historisch abgeleiteten Werte zuruecksetzt, aber den Modus nicht veraendert -
+   "Zurueck zu Pauschal" wechselt zusaetzlich den Modus selbst. Prognosehorizont hat
+   dagegen keinen eigenen Zuruecksetzen-Link (wie ``restvolumen_top``): eine kleine
+   Dropdown-Auswahl, bei der der Standardwert ohnehin nur einen Klick entfernt ist.
+   ``laeufe`` hat einen eigenen Link ("Auf Standardwert zuruecksetzen"), weil sein
+   Wertebereich (1 bis 1.000.000) zu gross ist, um den Standard per Regler oder
+   Zahlenfeld ebenso schnell wieder zu treffen. Das Zahlenfeld neben dem
+   ``laeufe``-Schieberegler ist editierbar (``<input type="number">`` statt eines
+   reinen ``<output>``) - Regler und Zahlenfeld sind ohne eigenen Namen/Submit-Bezug
+   nur per Client-JS gegenseitig synchronisiert (``oninput``); tatsaechlich
+   uebermittelt wird ausschliesslich der Regler-Wert (``name="laeufe"``), das
+   Zahlenfeld stoesst bei Aenderung per ``dispatchEvent(new Event("change"))`` auf dem
+   Regler denselben Seitenreload an wie ein direktes Ziehen am Regler selbst.
 
    ``aktuell``/``historisch`` sind je ein app._InterneArbeitAnzeige - dieselbe Form fuer
    den gerade wirksamen Wert (Regler-Stellung) wie fuer den aus der Historie
@@ -43,10 +58,37 @@
    als ein Anteil an "wie viel Kapazitaet ist fakturierbar"; Formparameter (k) und
    Standardabweichung (σ) bleiben dagegen Fliesskommazahlen (siehe app.py fuer die
    Begruendung je Parameter). #}
-{% macro interne_arbeit_regler_abschnitt(modus, modus_optionen, modus_beschriftungen, aktuell, historisch, abweichend, zuruecksetzen_url, pauschal_zuruecksetzen_url, weibull_zuruecksetzen_url, gauss_zuruecksetzen_url, form_id=none) %}
+{% macro interne_arbeit_regler_abschnitt(modus, modus_optionen, modus_beschriftungen, aktuell, historisch, abweichend, zuruecksetzen_url, pauschal_zuruecksetzen_url, weibull_zuruecksetzen_url, gauss_zuruecksetzen_url, horizont_monate, horizont_optionen, laeufe, laeufe_zuruecksetzen_url, form_id=none) %}
+{% if modus == "pauschal" %}
+{% set verteilung_text = "Pauschal: " ~ aktuell.pauschal_prozent ~ " % fakturierbar" %}
+{% elif modus == "weibull" %}
+{% set verteilung_text = "Weibull (k=" ~ ("%.2f"|format(aktuell.weibull_formparameter)) ~ ", λ=" ~ ("%.0f"|format(aktuell.weibull_skalenparameter_prozent)) ~ "%)" %}
+{% else %}
+{% set verteilung_text = "Gauss (μ=" ~ ("%.0f"|format(aktuell.gauss_mittelwert_prozent)) ~ "%, σ=" ~ ("%.2f"|format(aktuell.gauss_standardabweichung)) ~ ")" %}
+{% endif %}
 <details class="regler-abschnitt" {{ "open" if abweichend }}>
-    <summary>Interne Arbeit in der Simulation <span class="zusammenfassung">({% if modus == "pauschal" %}Pauschal: {{ aktuell.pauschal_prozent }} % fakturierbar{% else %}{{ modus_beschriftungen[modus] }}{% endif %})</span></summary>
+    <summary>Simulations-Parameter <span class="zusammenfassung">({{ horizont_monate }} Monate, {{ "{:,}".format(laeufe)|replace(",", ".") }} Läufe, {{ verteilung_text }})</span></summary>
     <div class="regler-gruppe">
+        <label>Prognosehorizont
+            <select name="horizont_monate"{% if form_id %} form="{{ form_id }}"{% endif %} onchange="this.form.submit()">
+                {% for wert in horizont_optionen %}
+                <option value="{{ wert }}" {{ "selected" if wert == horizont_monate }}>{{ wert }} Monate</option>
+                {% endfor %}
+            </select>
+        </label>
+        <label>Anzahl Simulationsläufe
+            <input type="range" name="laeufe"{% if form_id %} form="{{ form_id }}"{% endif %}
+                   min="1" max="1000000" step="1" value="{{ laeufe }}"
+                   oninput="this.nextElementSibling.value = this.value"
+                   onchange="this.form.submit()">
+            <input type="number"
+                   min="1" max="1000000" step="1" value="{{ laeufe }}"
+                   oninput="this.previousElementSibling.value = this.value"
+                   onchange="this.previousElementSibling.dispatchEvent(new Event('change'))">
+        </label>
+        <a class="zuruecksetzen" href="{{ laeufe_zuruecksetzen_url }}">Auf Standardwert zurücksetzen</a>
+    </div>
+    <div class="regler-gruppe regler-trenner">
         <label>Verteilung
             <select name="interne_arbeit_modus"{% if form_id %} form="{{ form_id }}"{% endif %} onchange="this.form.submit()">
                 {% for wert in modus_optionen %}

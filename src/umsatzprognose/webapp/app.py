@@ -45,7 +45,16 @@ Jeder Parameter ist auf eine feste, kuratierte Auswahl beschraenkt statt eines f
 Zahlenbereichs (via ``typing.Literal``, siehe :data:`HorizontMonate` &co.) - das ist
 zugleich die Dropdown-Optionsliste (``typing.get_args(...)``) und verhindert einen
 unbeschraenkt wachsenden Cache (siehe :mod:`.cache`) durch beliebig viele angefragte
-Kombinationen.
+Kombinationen. ``laeufe`` (Anzahl Monte-Carlo-Laeufe, Standard :data:`STANDARD_LAEUFE`)
+ist die eine Ausnahme davon: ein freier Schieberegler (1 bis 1.000.000) statt einer
+kuratierten Auswahl, weil hier ein kontinuierlicher Kompromiss zwischen Genauigkeit und
+Rechenzeit gefragt ist. ``laeufe`` ist deshalb, anders als ``horizont_monate``, auch
+kein Teil des ``DashboardCache``-Schluessels (siehe :func:`_simuliertes_dashboard` fuer
+die transiente Neusimulation bei abweichendem Wert). In der Weboberflaeche steht
+``laeufe`` zusammen mit ``horizont_monate`` im Abschnitt "Simulations-Parameter"
+(siehe :func:`_interne_arbeit_regler_werte` und
+``_regler.html:interne_arbeit_regler_abschnitt``), weil beide Parameter der Simulation
+sind, nicht nur der Anteil fakturierbarer Arbeit.
 
 **Nicht blockierend geladen**: ``/``, ``/dashboard`` und ``/schulungen`` prüfen über
 ``DashboardCache.bereit()``/``AnmeldungsverlaufCache.bereit()``, ob die angefragte
@@ -164,6 +173,19 @@ STANDARD_KURZARBEIT_MONATE: _KurzarbeitMonateWert = "6"
 # loest so nie einen erneuten Ladevorgang bei Clockodo aus.
 MAXIMALE_KURZARBEIT_MONATE = max(int(wert) for wert in KURZARBEIT_MONATE_OPTIONEN)
 
+# Anzahl Monte-Carlo-Laeufe je Simulation (siehe Dashboard.simuliere()) - anders als
+# horizont_monate & Co. keine kuratierte Auswahl, sondern ein freier Schieberegler
+# (1 bis 1.000.000): hier ist ein kontinuierlicher Kompromiss zwischen Genauigkeit und
+# Rechenzeit gefragt, keine fachlich diskrete Auswahl. Steht wie horizont_monate im
+# Abschnitt "Simulations-Parameter" auf / und /dashboard (siehe
+# _regler.html: interne_arbeit_regler_abschnitt()), weil beide Parameter der
+# Simulation sind. Anders als horizont_monate ist laeufe aber kein Teil des
+# DashboardCache-Schluessels (siehe .cache.DashboardCache) - ein abweichender Wert
+# loest stattdessen dieselbe transiente Neusimulation aus wie anteil_fakturierbar/
+# interne_arbeit_ziehung (siehe _simuliertes_dashboard()).
+Laeufe = Annotated[int, Query(ge=1, le=1_000_000)]
+STANDARD_LAEUFE = 10_000
+
 AbJahr = Annotated[int | None, Query(ge=STANDARD_AB_JAHR)]
 
 RestvolumenTop = Annotated[int, Query(ge=1)]
@@ -260,12 +282,14 @@ ALLE = "Alle"
 # _standard_anzeige_ab_jahr() und die Route selbst).
 _STANDARDWERTE_START: dict[str, str] = {
     "horizont_monate": STANDARD_HORIZONT_MONATE,
+    "laeufe": str(STANDARD_LAEUFE),
     "gewinn_verlust_monate": STANDARD_GEWINN_VERLUST_MONATE,
     "verbrauchsplan": "",
     "interne_arbeit_modus": STANDARD_INTERNE_ARBEIT_MODUS,
 }
 _STANDARDWERTE_DASHBOARD: dict[str, str] = {
     "horizont_monate": STANDARD_HORIZONT_MONATE,
+    "laeufe": str(STANDARD_LAEUFE),
     "restvolumen_top": str(STANDARD_RESTVOLUMEN_TOP),
     "verbrauchsplan": "",
     "ohne_budget_filter": "",
@@ -741,10 +765,11 @@ async def _simuliertes_dashboard(
     *,
     verbrauchsplan: str,
     horizont_monate: int,
+    laeufe: int,
     anteil_fakturierbar: float | None,
     interne_arbeit_ziehung: FakturierbareArbeitZiehung | None,
 ) -> Dashboard:
-    """Liefert bei gesetztem ``verbrauchsplan``/``anteil_fakturierbar``/
+    """Liefert bei gesetztem ``verbrauchsplan``/``laeufe``/``anteil_fakturierbar``/
     ``interne_arbeit_ziehung`` ein **transientes** ``Dashboard`` mit angewendeter
     Uebersteuerung und frischer Simulation, sonst unveraendert das uebergebene.
 
@@ -758,7 +783,11 @@ async def _simuliertes_dashboard(
     ``interne_arbeit_ziehung``-Objekt (``WeibullFakturierbareArbeit``/
     ``GaussFakturierbareArbeit``, siehe :func:`_interne_arbeit_regler_werte`)
     erzwingt dagegen die gewaehlte Verteilung, die die gecachte Simulation
-    ueberschreibt.
+    ueberschreibt. ``laeufe`` folgt derselben Logik: das gecachte ``Dashboard`` wurde
+    immer mit ``STANDARD_LAEUFE`` simuliert (``laeufe`` ist kein Teil des
+    ``DashboardCache``-Schluessels, anders als ``horizont_monate`` - siehe
+    :data:`Laeufe`), ein davon abweichender Regler-Wert erzwingt deshalb ebenfalls
+    eine Neusimulation.
 
     Absichtlich kein ``dashboard.verbrauchsplan_uebersteuern(...)``/
     ``dashboard.simuliere(...)`` auf dem uebergebenen Objekt: dieses ``Dashboard`` ist
@@ -776,7 +805,12 @@ async def _simuliertes_dashboard(
     des Caches.
     """
     werte = _verbrauchsplan_aus_text(verbrauchsplan)
-    if not werte and anteil_fakturierbar is None and interne_arbeit_ziehung is None:
+    if (
+        not werte
+        and anteil_fakturierbar is None
+        and interne_arbeit_ziehung is None
+        and laeufe == STANDARD_LAEUFE
+    ):
         return dashboard
     bestand = (
         dashboard.bestand.mit_verbrauchsplan_uebersteuerungen(werte) if werte else dashboard.bestand
@@ -786,6 +820,7 @@ async def _simuliertes_dashboard(
     )
     await uebersteuert.simuliere_async(
         monate=horizont_monate,
+        laeufe=laeufe,
         anteil_fakturierbar=anteil_fakturierbar,
         fakturierbare_arbeit_ziehung=interne_arbeit_ziehung,
     )
@@ -796,6 +831,7 @@ async def _simuliertes_dashboard(
 async def uebersicht(
     request: Request,
     horizont_monate: HorizontMonate = STANDARD_HORIZONT_MONATE,
+    laeufe: Laeufe = STANDARD_LAEUFE,
     gewinn_verlust_monate: GewinnVerlustMonate = STANDARD_GEWINN_VERLUST_MONATE,
     verbrauchsplan: Verbrauchsplan = "",
     interne_arbeit_modus: InterneArbeitModus = STANDARD_INTERNE_ARBEIT_MODUS,
@@ -840,6 +876,7 @@ async def uebersicht(
         ergebnis,
         verbrauchsplan=verbrauchsplan,
         horizont_monate=horizont_zahl,
+        laeufe=laeufe,
         anteil_fakturierbar=anteil_fakturierbar,
         interne_arbeit_ziehung=ziehung,
     )
@@ -853,6 +890,10 @@ async def uebersicht(
         standardwerte=_STANDARDWERTE_START,
         horizont_monate=horizont_monate,
         horizont_optionen=PROGNOSE_MONATE_OPTIONEN,
+        laeufe=laeufe,
+        laeufe_zuruecksetzen_query=_anfrage_query(
+            request, _STANDARDWERTE_START, ohne=frozenset({"laeufe"})
+        ),
         gewinn_verlust_monate=gewinn_verlust_monate,
         gewinn_verlust_optionen=HISTORISCHE_MONATE_OPTIONEN,
         verbrauchsplan=verbrauchsplan,
@@ -868,6 +909,8 @@ async def uebersicht(
         interne_arbeit_abschlag_abweichend=(
             interne_arbeit_modus != STANDARD_INTERNE_ARBEIT_MODUS
             or anteil_fakturierbar_prozent is not None
+            or horizont_monate != STANDARD_HORIZONT_MONATE
+            or laeufe != STANDARD_LAEUFE
         ),
         interne_arbeit_abschlag_zuruecksetzen_query=_anfrage_query(
             request, _STANDARDWERTE_START, ohne=_INTERNE_ARBEIT_PARAMETER
@@ -895,6 +938,7 @@ async def uebersicht(
 async def dashboard_seite(
     request: Request,
     horizont_monate: HorizontMonate = STANDARD_HORIZONT_MONATE,
+    laeufe: Laeufe = STANDARD_LAEUFE,
     restvolumen_top: RestvolumenTop = STANDARD_RESTVOLUMEN_TOP,
     verbrauchsplan: Verbrauchsplan = "",
     ohne_budget_filter: OhneBudgetFilter = "",
@@ -948,6 +992,7 @@ async def dashboard_seite(
         ergebnis,
         verbrauchsplan=verbrauchsplan,
         horizont_monate=horizont_zahl,
+        laeufe=laeufe,
         anteil_fakturierbar=anteil_fakturierbar,
         interne_arbeit_ziehung=ziehung,
     )
@@ -973,6 +1018,10 @@ async def dashboard_seite(
         standardwerte=_STANDARDWERTE_DASHBOARD,
         horizont_monate=horizont_monate,
         horizont_optionen=PROGNOSE_MONATE_OPTIONEN,
+        laeufe=laeufe,
+        laeufe_zuruecksetzen_query=_anfrage_query(
+            request, _STANDARDWERTE_DASHBOARD, ohne=frozenset({"laeufe"})
+        ),
         umsatzverlauf=_figur_html(dashboard.umsatzverlauf(), mit_plotlyjs=True),
         umsatztabelle=_tabelle_html(
             dashboard.umsatztabelle(), zusatzklasse="spaltenraster", element_id="tabelle-monat"
@@ -1003,6 +1052,8 @@ async def dashboard_seite(
         interne_arbeit_abschlag_abweichend=(
             interne_arbeit_modus != STANDARD_INTERNE_ARBEIT_MODUS
             or anteil_fakturierbar_prozent is not None
+            or horizont_monate != STANDARD_HORIZONT_MONATE
+            or laeufe != STANDARD_LAEUFE
         ),
         interne_arbeit_abschlag_zuruecksetzen_query=_anfrage_query(
             request, _STANDARDWERTE_DASHBOARD, ohne=_INTERNE_ARBEIT_PARAMETER

@@ -125,6 +125,14 @@
         .gewinn-negativ { color: #8c2f2f; }
         .regler-gruppe { display: flex; flex-direction: column; gap: 0.5rem; margin-top: 0.6rem; }
         .regler-gruppe label { color: #555; }
+        /* Trennt zwei aufeinanderfolgende .regler-gruppe-Bloecke innerhalb desselben
+           .regler-abschnitt optisch, wenn sie inhaltlich verschiedene Parametergruppen
+           bilden (Simulations-Parameter auf / und /dashboard: Prognosehorizont/Anzahl
+           Laeufe oben, Verteilungs-Parameter des Anteils fakturierbarer Arbeit
+           darunter) - eine zarte Linie wie --spalte-grenze oben, kein zusaetzlicher
+           Text noetig, weil "Verteilung" als Beschriftung des ersten Reglers darunter
+           bereits selbsterklaerend ist. */
+        .regler-trenner { border-top: 1px solid #ddd; padding-top: 0.6rem; }
         /* Filter-Dropdowns auf /schulungen (schulungen.html): mehrere Filter
            nebeneinander statt untereinander, je Filter die Beschriftung ueber statt
            neben der Auswahl - anders als .regler-gruppe oben, die stattdessen einen

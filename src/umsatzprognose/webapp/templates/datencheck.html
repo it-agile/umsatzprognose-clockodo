@@ -9,13 +9,6 @@
             {% endfor %}
         </select>
     </label>
-    <label>Prognosehorizont
-        <select name="horizont_monate" onchange="this.form.submit()">
-            {% for wert in horizont_optionen %}
-            <option value="{{ wert }}" {{ "selected" if wert == horizont_monate }}>{{ wert }} Monate</option>
-            {% endfor %}
-        </select>
-    </label>
     {{ interne_arbeit_regler_abschnitt(
         modus=interne_arbeit_modus,
         modus_optionen=interne_arbeit_modus_optionen,
@@ -26,7 +19,11 @@
         zuruecksetzen_url="/" ~ interne_arbeit_abschlag_zuruecksetzen_query,
         pauschal_zuruecksetzen_url="/" ~ interne_arbeit_pauschal_zuruecksetzen_query,
         weibull_zuruecksetzen_url="/" ~ interne_arbeit_weibull_zuruecksetzen_query,
-        gauss_zuruecksetzen_url="/" ~ interne_arbeit_gauss_zuruecksetzen_query
+        gauss_zuruecksetzen_url="/" ~ interne_arbeit_gauss_zuruecksetzen_query,
+        horizont_monate=horizont_monate,
+        horizont_optionen=horizont_optionen,
+        laeufe=laeufe,
+        laeufe_zuruecksetzen_url="/" ~ laeufe_zuruecksetzen_query
     ) }}
     {{ regler_abschnitt(
         "verbrauchsplan",

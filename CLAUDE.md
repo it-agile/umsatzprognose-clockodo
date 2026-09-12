@@ -428,7 +428,12 @@ Dashboard-Notebook auch.
   `GewinnVerlustMonate` in `webapp/app.py`): `horizont_monate` (Prognosehorizont – 3,
   4, 5 oder 6 Monate, auf `/` und `/dashboard`, weil beide denselben geladenen
   `Dashboard` zeigen) und `gewinn_verlust_monate` (historisches Fenster – 3, 6, 12,
-  24 Monate oder "alle", nur auf `/`). `ab_jahr` (nur auf `/schulungen`, filtert
+  24 Monate oder "alle", nur auf `/`). `horizont_monate` steht auf beiden Seiten,
+  zusammen mit `laeufe` (siehe unten), ganz oben im Abschnitt "Simulations-Parameter"
+  (`_regler.html`: `interne_arbeit_regler_abschnitt()`), weil beide
+  Parameter der Simulation sind, nicht nur der Anteil fakturierbarer Arbeit – ein
+  abweichender Wert hält den Abschnitt deshalb ebenso aufgeklappt wie ein
+  abweichender Modus/Pauschalwert. `ab_jahr` (nur auf `/schulungen`, filtert
   einen unabhängig geladenen `Anmeldungsverlauf`) bleibt ein zusammenhängender
   Zahlenbereich (`Query(ge=STANDARD_AB_JAHR, le=aktuelles Jahr)`), weil Jahre
   lückenlos sind; seine Dropdown-Optionen sind einfach dieser Bereich. Ohne Angabe
@@ -477,8 +482,8 @@ Dashboard-Notebook auch.
   erneuter Abruf) – das gecachte Original bleibt für alle anderen Besuchenden
   unverändert. Leerer Parameter (Normalfall) überspringt das komplett. Derselbe
   Mechanismus bedient auf **beiden** Seiten (`/` **und** `/dashboard`) einen zweiten,
-  unabhängigen Auslöser: `interne_arbeit_modus` (Dropdown "Interne Arbeit in der
-  Simulation", `Literal["pauschal", "weibull", "gauss"]`, Standard `"pauschal"`;
+  unabhängigen Auslöser: `interne_arbeit_modus` (Dropdown im Abschnitt
+  "Simulations-Parameter", `Literal["pauschal", "weibull", "gauss"]`, Standard `"pauschal"`;
   auf beiden Seiten bewusst **vor** der Verbrauchsplan-Übersteuerung platziert) wählt
   zwischen drei Simulationsquellen für den Anteil fakturierbarer Arbeit, mit dem die
   verfügbare Kapazität multipliziert wird: "Pauschal" ist ein fester, über alle Läufe
@@ -537,7 +542,40 @@ Dashboard-Notebook auch.
   passenden Regler (`{% if/elif %}` statt Client-JS, da ein Moduswechsel ohnehin einen
   vollen Seitenreload auslöst) – gemeinsamer Baustein
   `interne_arbeit_regler_abschnitt()`-Makro in `webapp/templates/_regler.html`,
-  identisch auf beiden Seiten. Jeder Modus hat einen eigenen Zurücksetzen-Link, der nur
+  identisch auf beiden Seiten. Der Abschnitt heißt "Simulations-Parameter" (nicht mehr
+  nur "Interne Arbeit in der Simulation"), weil er inzwischen mehr als den Anteil
+  fakturierbarer Arbeit trägt. Ganz oben in diesem Makro, vor der Modus-Auswahl selbst,
+  stehen zwei weitere Simulationsparameter, die zur Simulation gehören, nicht nur zum
+  Anteil fakturierbarer Arbeit: das Prognosehorizont-Dropdown (`horizont_monate`, siehe
+  oben) und ein Schieberegler "Anzahl Simulationsläufe" (`laeufe`, `Query(ge=1,
+  le=1_000_000)`, Standard `STANDARD_LAEUFE = 10_000` – siehe `Dashboard.simuliere()`s
+  gleichnamigen Parameter), daneben ein editierbares Zahlenfeld
+  (`<input type="number">`) mit demselben Wertebereich für die manuelle Eingabe eines
+  genauen Werts – Regler und Zahlenfeld sind rein clientseitig über `oninput`
+  gegenseitig synchronisiert, tatsächlich übermittelt (`name="laeufe"`) wird
+  ausschließlich der Regler; das Zahlenfeld stößt bei einer Änderung
+  (`dispatchEvent(new Event("change"))` auf dem Regler) denselben Seitenreload an wie
+  ein direktes Ziehen am Regler. Anders als `horizont_monate` ist `laeufe` kein Teil
+  des `DashboardCache`-Schlüssels (das gecachte `Dashboard` wird immer mit
+  `STANDARD_LAEUFE` simuliert); ein abweichender Wert nutzt stattdessen denselben
+  transienten Neusimulations-Mechanismus wie `anteil_fakturierbar`/
+  `interne_arbeit_ziehung` (`_simuliertes_dashboard()`). `horizont_monate` hat, wie die
+  übrigen kuratierten Dropdowns, keinen eigenen Zurücksetzen-Link (wie
+  `restvolumen_top`) – eine kleine Auswahl, deren Standardwert ohnehin nur einen Klick
+  entfernt ist. `laeufe` dagegen trägt einen eigenen Link "Auf Standardwert
+  zurücksetzen", weil sein Wertebereich (1 bis 1.000.000) dafür zu groß ist. Ein von
+  seinem Standard abweichender `horizont_monate`/`laeufe` hält den Abschnitt ebenso
+  aufgeklappt wie ein abweichender Modus/Pauschalwert. Die beiden `.regler-gruppe`-
+  Blöcke des Makros (Prognosehorizont/Anzahl Läufe oben, Verteilung/Modus-Regler
+  darunter) sind durch eine zarte Trennlinie (`.regler-trenner` in `basis.html`)
+  optisch voneinander abgesetzt, weil sie inhaltlich unterschiedliche Parametergruppen
+  sind. Die Zusammenfassung im zugeklappten Zustand zeigt bei "Weibull"/"Gauss" nicht
+  nur den Modusnamen, sondern die tatsächlich wirksamen Parameterwerte – z. B.
+  "Simulations-Parameter (3 Monate, 10.000 Läufe, Weibull (k=1.27, λ=49 %))" bzw. mit
+  "Gauss (μ=45 %, σ=0.12)" –, damit auch im eingeklappten Zustand sichtbar bleibt,
+  welche konkrete Verteilung gerade simuliert wird, nicht nur welcher Modus gewählt
+  ist.
+  Jeder Modus hat außerdem einen eigenen Zurücksetzen-Link, der nur
   dessen Parameter auf die historisch abgeleiteten Werte zurücksetzt, ohne den Modus
   selbst zu ändern; "Weibull"/"Gauss" tragen zusätzlich einen zweiten Link "Zurück zu
   'Pauschal'", der den Modus wechselt. Ohne jede Übersteuerung (weder Verbrauchsplan
@@ -887,7 +925,7 @@ unverhältnismäßig verzerren. `durchschnittlicher_anteil_fakturierbarer_arbeit
 Standardwert, den `Dashboard.simuliere()` im Modus "Pauschal" ohne eigenen Regler-Wert
 heranzieht (siehe oben und Web-Frontend oben für die Regler-Vorbelegung).
 
-In der Webapp ist das ein Dropdown ("Interne Arbeit in der Simulation", siehe
+In der Webapp ist das ein Dropdown (Abschnitt "Simulations-Parameter", siehe
 Web-Frontend oben für Modus-Auswahl und Regler) auf **beiden** Seiten `/` und
 `/dashboard`. In den Notebooks dieselbe Wahl über zwei eigene Variablen vor „Simulation
 ausführen" (`anteil_fakturierbar: float | None`, Standard `None` fuer den historischen
