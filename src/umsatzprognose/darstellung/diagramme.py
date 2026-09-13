@@ -329,6 +329,21 @@ def _datensicherheit_legende(fig: go.Figure, *, vorlaeufig: bool, prognose: bool
         _legendeintrag(fig, "Prognose", TINTE_ZWEITRANGIG, deckkraft=PROGNOSE_DECKKRAFT)
 
 
+def _deckkraft_abschluss(fig: go.Figure, deckkraft: Sequence[float]) -> None:
+    """Gemeinsamer Abschluss von :func:`gewinn_verlust_je_jahr` und
+    :func:`umsatzrendite_kumuliert`: Datensicherheit-Legende nur, wenn ``deckkraft``
+    tatsaechlich vorlaeufige oder prognostizierte Werte enthaelt, dazu die
+    Standard-Legende und -Achsen."""
+    if VORLAEUFIG_DECKKRAFT in deckkraft or PROGNOSE_DECKKRAFT in deckkraft:
+        _datensicherheit_legende(
+            fig,
+            vorlaeufig=VORLAEUFIG_DECKKRAFT in deckkraft,
+            prognose=PROGNOSE_DECKKRAFT in deckkraft,
+        )
+    _horizontale_legende(fig)
+    achsen(fig)
+
+
 def _monatsbeschriftung(jahr: int, monat: int) -> str:
     """Dieselbe Form wie :attr:`Monatsumsatz.beschriftung` - Voraussetzung fuers Stapeln."""
     return f"{MONATSNAMEN[monat - 1]} {jahr}"
@@ -981,14 +996,7 @@ def gewinn_verlust_je_jahr(
     if mit_beschriftung:
         _endpunkte_beschriften(fig, letzte_punkte, euro)
     fig.add_hline(y=0, line={"color": ACHSE, "width": 1})
-    if VORLAEUFIG_DECKKRAFT in deckkraft or PROGNOSE_DECKKRAFT in deckkraft:
-        _datensicherheit_legende(
-            fig,
-            vorlaeufig=VORLAEUFIG_DECKKRAFT in deckkraft,
-            prognose=PROGNOSE_DECKKRAFT in deckkraft,
-        )
-    _horizontale_legende(fig)
-    achsen(fig)
+    _deckkraft_abschluss(fig, deckkraft)
     fig.update_yaxes(tickformat=",.0f", ticksuffix=" €")
     _tickangle_setzen(fig, categoryorder="array", categoryarray=list(MONATSNAMEN))
     return fig
@@ -1046,14 +1054,7 @@ def umsatzrendite_kumuliert(
     if mit_beschriftung:
         _endpunkte_beschriften(fig, letzte_punkte, prozentformat)
     fig.add_hline(y=0, line={"color": ACHSE, "width": 1})
-    if VORLAEUFIG_DECKKRAFT in deckkraft or PROGNOSE_DECKKRAFT in deckkraft:
-        _datensicherheit_legende(
-            fig,
-            vorlaeufig=VORLAEUFIG_DECKKRAFT in deckkraft,
-            prognose=PROGNOSE_DECKKRAFT in deckkraft,
-        )
-    _horizontale_legende(fig)
-    achsen(fig)
+    _deckkraft_abschluss(fig, deckkraft)
     fig.update_yaxes(tickformat=",.1f", ticksuffix=" %")
     _tickangle_setzen(fig, categoryorder="array", categoryarray=list(MONATSNAMEN))
     return fig

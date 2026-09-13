@@ -293,7 +293,7 @@ def _mit_uebersteuerung[V](
     hält die Typprüfung des jeweiligen ``dataclasses.replace()``-Aufrufs an der
     Aufrufstelle scharf."""
     return tuple(
-        ersetzen(p, werte[_projekt_schluessel(p)]) if _projekt_schluessel(p) in werte else p
+        ersetzen(p, werte[schluessel]) if (schluessel := _projekt_schluessel(p)) in werte else p
         for p in projekte
     )
 

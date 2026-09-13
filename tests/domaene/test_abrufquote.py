@@ -2,60 +2,13 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from datetime import date
-
-    from umsatzprognose.util import Monat
-
 from decimal import Decimal
 
 import numpy as np
 import pytest
 
-from umsatzprognose.domaene import (
-    Abrufquote,
-    Abrufquotenverteilung,
-    Budget,
-    Gesamtbudget,
-    Kunde,
-    Projekt,
-    Projektanteil,
-)
-
-_STANDARD_BUDGET = Gesamtbudget(betrag=Decimal("100000.0"))
-
-
-def projekt(
-    *,
-    identifier: int = 1,
-    name: str | None = None,
-    kunde: Kunde | None = None,
-    aktiv: bool = True,
-    abgeschlossen: bool = False,
-    budget: Budget = _STANDARD_BUDGET,
-    verbrauchtes_volumen: Decimal = Decimal("0"),
-    verbrauchte_stunden: float = 0.0,
-    anteile: tuple[Projektanteil, ...] = (),
-    stundensatz_uebersteuerung: Decimal | None = None,
-    verbrauchsplan_zielmonat: Monat | None = None,
-    automatischer_abschluss: date | None = None,
-) -> Projekt:
-    return Projekt(
-        id=identifier,
-        name=name,
-        kunde=kunde,
-        aktiv=aktiv,
-        abgeschlossen=abgeschlossen,
-        budget=budget,
-        verbrauchtes_volumen=verbrauchtes_volumen,
-        verbrauchte_stunden=verbrauchte_stunden,
-        anteile=anteile,
-        stundensatz_uebersteuerung=stundensatz_uebersteuerung,
-        verbrauchsplan_zielmonat=verbrauchsplan_zielmonat,
-        automatischer_abschluss=automatischer_abschluss,
-    )
+from conftest import projekt
+from umsatzprognose.domaene import Abrufquote, Abrufquotenverteilung
 
 
 def test_ein_restvolumen_von_null_ist_keine_quote():

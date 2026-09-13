@@ -209,12 +209,11 @@ def anteile_fakturierbarer_arbeit(auslastungen: Iterable[Auslastungsmonat]) -> t
     fehlen darin - anders als bei den beiden Aggregatzahlen oben bleiben ausschliesslich
     intern taetige Personen-Monate (siehe :func:`_ausschliesslich_nicht_fakturierbar`)
     hier bewusst enthalten, siehe Moduldocstring."""
-    werte = []
-    for eintrag in auslastungen:
-        anteil = eintrag.anteil_fakturierbarer_arbeit
-        if anteil is not None:
-            werte.append(anteil)
-    return tuple(werte)
+    return tuple(
+        anteil
+        for eintrag in auslastungen
+        if (anteil := eintrag.anteil_fakturierbarer_arbeit) is not None
+    )
 
 
 def durchschnittlicher_anteil_fakturierbarer_arbeit(

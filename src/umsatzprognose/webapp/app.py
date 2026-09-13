@@ -764,6 +764,73 @@ def _interne_arbeit_regler_werte(
     )
 
 
+def _interne_arbeit_kontext(
+    request: Request,
+    dashboard: Dashboard,
+    standardwerte: dict[str, str],
+    *,
+    interne_arbeit_modus: InterneArbeitModus,
+    anteil_fakturierbar_prozent: int | None,
+    weibull_formparameter: float | None,
+    weibull_skalenparameter_prozent: float | None,
+    gauss_mittelwert_prozent: float | None,
+    gauss_standardabweichung: float | None,
+    horizont_monate: HorizontMonate,
+    laeufe: int,
+) -> tuple[float | None, FakturierbareArbeitZiehung | None, dict[str, object]]:
+    """Gemeinsamer Kern von ``uebersicht()``/``dashboard_seite()``: loest anhand von
+    ``interne_arbeit_modus`` auf, welcher Anteil fakturierbarer Arbeit tatsaechlich zu
+    simulieren ist (siehe :func:`_interne_arbeit_regler_werte`), und liefert dazu
+    gleich die zugehoerigen Template-Kwargs fuer den Abschnitt
+    "Simulations-Parameter" (``_regler.html``), die auf beiden Seiten identisch
+    aufgebaut sind."""
+    regler = _interne_arbeit_regler_werte(
+        dashboard,
+        anteil_fakturierbar_prozent=anteil_fakturierbar_prozent,
+        weibull_formparameter=weibull_formparameter,
+        weibull_skalenparameter_prozent=weibull_skalenparameter_prozent,
+        gauss_mittelwert_prozent=gauss_mittelwert_prozent,
+        gauss_standardabweichung=gauss_standardabweichung,
+    )
+    anteil_fakturierbar: float | None
+    ziehung: FakturierbareArbeitZiehung | None
+    if interne_arbeit_modus == "weibull":
+        anteil_fakturierbar, ziehung = None, regler.weibull
+    elif interne_arbeit_modus == "gauss":
+        anteil_fakturierbar, ziehung = None, regler.gauss
+    else:
+        anteil_fakturierbar = (
+            anteil_fakturierbar_prozent / 100 if anteil_fakturierbar_prozent is not None else None
+        )
+        ziehung = None
+    kontext: dict[str, object] = {
+        "interne_arbeit_modus": interne_arbeit_modus,
+        "interne_arbeit_modus_optionen": INTERNE_ARBEIT_MODUS_OPTIONEN,
+        "interne_arbeit_modus_beschriftungen": INTERNE_ARBEIT_MODUS_BESCHRIFTUNGEN,
+        "interne_arbeit_regler_aktuell": regler.aktuell,
+        "interne_arbeit_regler_historisch": regler.historisch,
+        "interne_arbeit_abschlag_abweichend": (
+            interne_arbeit_modus != STANDARD_INTERNE_ARBEIT_MODUS
+            or anteil_fakturierbar_prozent is not None
+            or horizont_monate != STANDARD_HORIZONT_MONATE
+            or laeufe != STANDARD_LAEUFE
+        ),
+        "interne_arbeit_abschlag_zuruecksetzen_query": _anfrage_query(
+            request, standardwerte, ohne=_INTERNE_ARBEIT_PARAMETER
+        ),
+        "interne_arbeit_pauschal_zuruecksetzen_query": _anfrage_query(
+            request, standardwerte, ohne=_INTERNE_ARBEIT_PAUSCHAL_PARAMETER
+        ),
+        "interne_arbeit_weibull_zuruecksetzen_query": _anfrage_query(
+            request, standardwerte, ohne=_INTERNE_ARBEIT_WEIBULL_PARAMETER
+        ),
+        "interne_arbeit_gauss_zuruecksetzen_query": _anfrage_query(
+            request, standardwerte, ohne=_INTERNE_ARBEIT_GAUSS_PARAMETER
+        ),
+    }
+    return anteil_fakturierbar, ziehung, kontext
+
+
 async def _simuliertes_dashboard(
     dashboard: Dashboard,
     *,
@@ -861,24 +928,19 @@ async def uebersicht(
     )
     if isinstance(ergebnis, HTMLResponse):
         return ergebnis
-    regler = _interne_arbeit_regler_werte(
+    anteil_fakturierbar, ziehung, interne_arbeit_kontext = _interne_arbeit_kontext(
+        request,
         ergebnis,
+        _STANDARDWERTE_START,
+        interne_arbeit_modus=interne_arbeit_modus,
         anteil_fakturierbar_prozent=anteil_fakturierbar_prozent,
         weibull_formparameter=interne_arbeit_weibull_formparameter,
         weibull_skalenparameter_prozent=interne_arbeit_weibull_skalenparameter_prozent,
         gauss_mittelwert_prozent=interne_arbeit_gauss_mittelwert_prozent,
         gauss_standardabweichung=interne_arbeit_gauss_standardabweichung,
+        horizont_monate=horizont_monate,
+        laeufe=laeufe,
     )
-    ziehung: FakturierbareArbeitZiehung | None
-    if interne_arbeit_modus == "weibull":
-        anteil_fakturierbar, ziehung = None, regler.weibull
-    elif interne_arbeit_modus == "gauss":
-        anteil_fakturierbar, ziehung = None, regler.gauss
-    else:
-        anteil_fakturierbar = (
-            anteil_fakturierbar_prozent / 100 if anteil_fakturierbar_prozent is not None else None
-        )
-        ziehung = None
     dashboard = await _simuliertes_dashboard(
         ergebnis,
         verbrauchsplan=verbrauchsplan,
@@ -912,37 +974,7 @@ async def uebersicht(
             _STANDARDWERTE_START,
             ohne=frozenset({"verbrauchsplan"}),
         ),
-        interne_arbeit_modus=interne_arbeit_modus,
-        interne_arbeit_modus_optionen=INTERNE_ARBEIT_MODUS_OPTIONEN,
-        interne_arbeit_modus_beschriftungen=INTERNE_ARBEIT_MODUS_BESCHRIFTUNGEN,
-        interne_arbeit_regler_aktuell=regler.aktuell,
-        interne_arbeit_regler_historisch=regler.historisch,
-        interne_arbeit_abschlag_abweichend=(
-            interne_arbeit_modus != STANDARD_INTERNE_ARBEIT_MODUS
-            or anteil_fakturierbar_prozent is not None
-            or horizont_monate != STANDARD_HORIZONT_MONATE
-            or laeufe != STANDARD_LAEUFE
-        ),
-        interne_arbeit_abschlag_zuruecksetzen_query=_anfrage_query(
-            request,
-            _STANDARDWERTE_START,
-            ohne=_INTERNE_ARBEIT_PARAMETER,
-        ),
-        interne_arbeit_pauschal_zuruecksetzen_query=_anfrage_query(
-            request,
-            _STANDARDWERTE_START,
-            ohne=_INTERNE_ARBEIT_PAUSCHAL_PARAMETER,
-        ),
-        interne_arbeit_weibull_zuruecksetzen_query=_anfrage_query(
-            request,
-            _STANDARDWERTE_START,
-            ohne=_INTERNE_ARBEIT_WEIBULL_PARAMETER,
-        ),
-        interne_arbeit_gauss_zuruecksetzen_query=_anfrage_query(
-            request,
-            _STANDARDWERTE_START,
-            ohne=_INTERNE_ARBEIT_GAUSS_PARAMETER,
-        ),
+        **interne_arbeit_kontext,
         gewinn_verlust_monatlich=_figur_html(
             dashboard.gewinn_verlust_monatlich(monate=gewinn_verlust_zahl),
             mit_plotlyjs=True,
@@ -990,24 +1022,19 @@ async def dashboard_seite(
     )
     if isinstance(ergebnis, HTMLResponse):
         return ergebnis
-    regler = _interne_arbeit_regler_werte(
+    anteil_fakturierbar, ziehung, interne_arbeit_kontext = _interne_arbeit_kontext(
+        request,
         ergebnis,
+        _STANDARDWERTE_DASHBOARD,
+        interne_arbeit_modus=interne_arbeit_modus,
         anteil_fakturierbar_prozent=anteil_fakturierbar_prozent,
         weibull_formparameter=interne_arbeit_weibull_formparameter,
         weibull_skalenparameter_prozent=interne_arbeit_weibull_skalenparameter_prozent,
         gauss_mittelwert_prozent=interne_arbeit_gauss_mittelwert_prozent,
         gauss_standardabweichung=interne_arbeit_gauss_standardabweichung,
+        horizont_monate=horizont_monate,
+        laeufe=laeufe,
     )
-    ziehung: FakturierbareArbeitZiehung | None
-    if interne_arbeit_modus == "weibull":
-        anteil_fakturierbar, ziehung = None, regler.weibull
-    elif interne_arbeit_modus == "gauss":
-        anteil_fakturierbar, ziehung = None, regler.gauss
-    else:
-        anteil_fakturierbar = (
-            anteil_fakturierbar_prozent / 100 if anteil_fakturierbar_prozent is not None else None
-        )
-        ziehung = None
     interne_arbeit_trend = "an" in interne_arbeit_trend_werte
     dashboard = await _simuliertes_dashboard(
         ergebnis,
@@ -1075,37 +1102,7 @@ async def dashboard_seite(
         projekte_ohne_budget=_tabelle_html(
             dashboard.projekte_ohne_budget(_ohne_budget_filter_aus_text(ohne_budget_filter)),
         ),
-        interne_arbeit_modus=interne_arbeit_modus,
-        interne_arbeit_modus_optionen=INTERNE_ARBEIT_MODUS_OPTIONEN,
-        interne_arbeit_modus_beschriftungen=INTERNE_ARBEIT_MODUS_BESCHRIFTUNGEN,
-        interne_arbeit_regler_aktuell=regler.aktuell,
-        interne_arbeit_regler_historisch=regler.historisch,
-        interne_arbeit_abschlag_abweichend=(
-            interne_arbeit_modus != STANDARD_INTERNE_ARBEIT_MODUS
-            or anteil_fakturierbar_prozent is not None
-            or horizont_monate != STANDARD_HORIZONT_MONATE
-            or laeufe != STANDARD_LAEUFE
-        ),
-        interne_arbeit_abschlag_zuruecksetzen_query=_anfrage_query(
-            request,
-            _STANDARDWERTE_DASHBOARD,
-            ohne=_INTERNE_ARBEIT_PARAMETER,
-        ),
-        interne_arbeit_pauschal_zuruecksetzen_query=_anfrage_query(
-            request,
-            _STANDARDWERTE_DASHBOARD,
-            ohne=_INTERNE_ARBEIT_PAUSCHAL_PARAMETER,
-        ),
-        interne_arbeit_weibull_zuruecksetzen_query=_anfrage_query(
-            request,
-            _STANDARDWERTE_DASHBOARD,
-            ohne=_INTERNE_ARBEIT_WEIBULL_PARAMETER,
-        ),
-        interne_arbeit_gauss_zuruecksetzen_query=_anfrage_query(
-            request,
-            _STANDARDWERTE_DASHBOARD,
-            ohne=_INTERNE_ARBEIT_GAUSS_PARAMETER,
-        ),
+        **interne_arbeit_kontext,
         interne_arbeit_trend=interne_arbeit_trend,
         anteil_fakturierbarer_arbeit=_figur_html(
             dashboard.anteil_fakturierbarer_arbeit(mit_trend=interne_arbeit_trend),

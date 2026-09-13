@@ -68,7 +68,6 @@ from _fortschritt import (
     fortschrittsbalken,
     relativer_pfad,
 )
-
 from umsatzprognose import Dashboard
 from umsatzprognose.clockodo import gleichzeitig, synchron
 from umsatzprognose.darstellung import diagramme, tabellen

@@ -11,12 +11,16 @@ sie so, wie die API sie liefert.
 from __future__ import annotations
 
 from collections.abc import Coroutine
+from decimal import Decimal
 from typing import TYPE_CHECKING
 
 import httpx2
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+    from datetime import date
+
+    from umsatzprognose.util import Monat
 
     # Ein Handler darf synchron oder eine Coroutine-Funktion sein - wie
     # httpx2._transports.mock.SyncHandler | AsyncHandler, aber nicht oeffentlich exportiert.
@@ -25,6 +29,7 @@ if TYPE_CHECKING:
 import pytest
 
 from umsatzprognose.clockodo import ClockodoClient, ClockodoCredentials
+from umsatzprognose.domaene import Budget, Gesamtbudget, Kunde, Projekt, Projektanteil
 
 CREDS = ClockodoCredentials(
     api_user="user@example.com",
@@ -32,6 +37,42 @@ CREDS = ClockodoCredentials(
     app_name="test",
     app_email="a@b.de",
 )
+
+_STANDARD_BUDGET = Gesamtbudget(betrag=Decimal("100000.0"))
+
+
+def projekt(
+    *,
+    identifier: int = 1,
+    name: str | None = None,
+    kunde: Kunde | None = None,
+    aktiv: bool = True,
+    abgeschlossen: bool = False,
+    budget: Budget = _STANDARD_BUDGET,
+    verbrauchtes_volumen: Decimal = Decimal("0"),
+    verbrauchte_stunden: float = 0.0,
+    anteile: tuple[Projektanteil, ...] = (),
+    stundensatz_uebersteuerung: Decimal | None = None,
+    verbrauchsplan_zielmonat: Monat | None = None,
+    automatischer_abschluss: date | None = None,
+) -> Projekt:
+    """Gemeinsamer Projekt-Baustein von ``test_abrufquote.py``/``test_projekt.py``/
+    ``test_verbrauchsverlauf.py`` - wie ``client_mit``/``client_mit_routen`` unten eine
+    plain Funktion statt einer Fixture, weil sie keine eigenen Fixtures braucht."""
+    return Projekt(
+        id=identifier,
+        name=name,
+        kunde=kunde,
+        aktiv=aktiv,
+        abgeschlossen=abgeschlossen,
+        budget=budget,
+        verbrauchtes_volumen=verbrauchtes_volumen,
+        verbrauchte_stunden=verbrauchte_stunden,
+        anteile=anteile,
+        stundensatz_uebersteuerung=stundensatz_uebersteuerung,
+        verbrauchsplan_zielmonat=verbrauchsplan_zielmonat,
+        automatischer_abschluss=automatischer_abschluss,
+    )
 
 
 def client_mit(handler: Handler):

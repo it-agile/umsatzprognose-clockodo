@@ -2,58 +2,13 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from umsatzprognose.util import Monat
-
 from datetime import date
 from decimal import Decimal
 
-from umsatzprognose.domaene import (
-    Budget,
-    Gesamtbudget,
-    Kunde,
-    Monatsumsatz,
-    Projekt,
-    Projektanteil,
-    StundenBudget,
-    Verbrauchsverlauf,
-)
+from conftest import projekt
+from umsatzprognose.domaene import Monatsumsatz, StundenBudget, Verbrauchsverlauf
 
 STICHTAG = date(2026, 8, 24)
-_STANDARD_BUDGET = Gesamtbudget(betrag=Decimal("100000.0"))
-
-
-def projekt(
-    *,
-    identifier: int = 1,
-    name: str | None = None,
-    kunde: Kunde | None = None,
-    aktiv: bool = True,
-    abgeschlossen: bool = False,
-    budget: Budget = _STANDARD_BUDGET,
-    verbrauchtes_volumen: Decimal = Decimal("0"),
-    verbrauchte_stunden: float = 0.0,
-    anteile: tuple[Projektanteil, ...] = (),
-    stundensatz_uebersteuerung: Decimal | None = None,
-    verbrauchsplan_zielmonat: Monat | None = None,
-    automatischer_abschluss: date | None = None,
-) -> Projekt:
-    return Projekt(
-        id=identifier,
-        name=name,
-        kunde=kunde,
-        aktiv=aktiv,
-        abgeschlossen=abgeschlossen,
-        budget=budget,
-        verbrauchtes_volumen=verbrauchtes_volumen,
-        verbrauchte_stunden=verbrauchte_stunden,
-        anteile=anteile,
-        stundensatz_uebersteuerung=stundensatz_uebersteuerung,
-        verbrauchsplan_zielmonat=verbrauchsplan_zielmonat,
-        automatischer_abschluss=automatischer_abschluss,
-    )
 
 
 def verlauf(*monate: tuple[int, int, float], **projektfelder) -> Verbrauchsverlauf:

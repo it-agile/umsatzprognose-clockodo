@@ -63,14 +63,14 @@ if TYPE_CHECKING:
 
 import humanize
 import plotly.io as pio
+from slack_sdk import WebClient
+
 from _fortschritt import (
     Mehrzeilenanzeige,
     dashboard_melden_bauen,
     fortschrittsbalken,
     relativer_pfad,
 )
-from slack_sdk import WebClient
-
 from umsatzprognose import Dashboard, SchulungenRepository
 from umsatzprognose.clockodo import (
     KurzarbeitRepository,

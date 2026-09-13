@@ -703,16 +703,14 @@ class Dashboard:
         juengsten Jahr, wie :meth:`gewinn_verlust_monatlich`. ``mit_beschriftung``
         siehe :meth:`umsatzverlauf`.
         """
-        historie = self._historie(anzahl=None)
-        letzte_monate = _mit_kostenabdeckung(historie.abgeschlossene(), self.kostenplan)
-        kosten = self.kostenplan.kosten_je_monat([m.schluessel for m in letzte_monate])
+        letzte_monate, kosten, verbrauch_laufender_monat = self._jahreshistorie_mit_kosten()
         return diagramme.gewinn_verlust_je_jahr(
             letzte_monate,
             kosten,
             prognose=self.prognose,
             horizont_kosten=self._horizont_kosten(),
             schulungsplan=self.schulungsplan,
-            verbrauch_laufender_monat=historie.laufender,
+            verbrauch_laufender_monat=verbrauch_laufender_monat,
             mit_beschriftung=mit_beschriftung,
         )
 
@@ -726,18 +724,28 @@ class Dashboard:
         :func:`~umsatzprognose.darstellung.diagramme.umsatzrendite_kumuliert` fuer die
         genaue Berechnung. ``mit_beschriftung`` siehe :meth:`umsatzverlauf`.
         """
-        historie = self._historie(anzahl=None)
-        letzte_monate = _mit_kostenabdeckung(historie.abgeschlossene(), self.kostenplan)
-        kosten = self.kostenplan.kosten_je_monat([m.schluessel for m in letzte_monate])
+        letzte_monate, kosten, verbrauch_laufender_monat = self._jahreshistorie_mit_kosten()
         return diagramme.umsatzrendite_kumuliert(
             letzte_monate,
             kosten,
             prognose=self.prognose,
             horizont_kosten=self._horizont_kosten(),
             schulungsplan=self.schulungsplan,
-            verbrauch_laufender_monat=historie.laufender,
+            verbrauch_laufender_monat=verbrauch_laufender_monat,
             mit_beschriftung=mit_beschriftung,
         )
+
+    def _jahreshistorie_mit_kosten(
+        self,
+    ) -> tuple[tuple[Monatsumsatz, ...], list[Decimal], Monatsumsatz | None]:
+        """Gemeinsamer Kern von :meth:`gewinn_verlust_je_jahr` und
+        :meth:`umsatzrendite_kumuliert`: die gesamte geladene Historie, um ein Jahr
+        ganz ohne Kostenerfassung bereinigt (siehe :func:`_mit_kostenabdeckung`), samt
+        der dazugehoerigen Kosten und des Verbrauchs im laufenden Monat."""
+        historie = self._historie(anzahl=None)
+        letzte_monate = _mit_kostenabdeckung(historie.abgeschlossene(), self.kostenplan)
+        kosten = self.kostenplan.kosten_je_monat([m.schluessel for m in letzte_monate])
+        return letzte_monate, kosten, historie.laufender
 
     def _horizont_kosten(self) -> list[Decimal]:
         """Kosten je Horizontmonat der laufenden Prognose, leer ohne Simulation."""
