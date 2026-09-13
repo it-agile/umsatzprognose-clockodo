@@ -54,12 +54,13 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
+    from datetime import date
 
     from umsatzprognose.domaene.anmeldung import Kategorisierung
     from umsatzprognose.util import Fortschritt
 
+import datetime
 import json
-from datetime import date
 from functools import partial
 
 from dotenv import load_dotenv
@@ -131,7 +132,7 @@ def _kategorien_aus_json(roh: str) -> Kategorisierung:
         wert = json.loads(roh)
     except json.JSONDecodeError as fehler:
         raise MissingCredentialsError(
-            f"{KATEGORIEN_VAR} enthaelt kein gueltiges JSON: {fehler}"
+            f"{KATEGORIEN_VAR} enthaelt kein gueltiges JSON: {fehler}",
         ) from fehler
     ungueltig = not isinstance(wert, dict) or not all(
         isinstance(kategorie, str)
@@ -141,7 +142,7 @@ def _kategorien_aus_json(roh: str) -> Kategorisierung:
     )
     if ungueltig:
         raise MissingCredentialsError(
-            f"{KATEGORIEN_VAR} muss ein JSON-Objekt Kategorie -> Liste von Schulungstypen sein."
+            f"{KATEGORIEN_VAR} muss ein JSON-Objekt Kategorie -> Liste von Schulungstypen sein.",
         )
     return wert
 
@@ -174,7 +175,7 @@ def _zeilen_zu_terminen(zeilen: list[list[str]]) -> list[Schulungstermin]:
                 jahr=int(jahr_text),
                 monat=int(monat_text),
                 umsatz=euro_parsen(zelle(zeile, index, SPALTE_UMSATZ)),
-            )
+            ),
         )
     return termine
 
@@ -184,7 +185,8 @@ def _zeilen_zu_anmeldungen(zeilen: list[list[str]]) -> list[Anmeldung]:
     if not zeilen:
         return []
     kopf_zeile, index = kopfzeile_finden(
-        zeilen, {SPALTE_MONAT, SPALTE_SCHULUNGSTYP, SPALTE_TEILNEHMERZAHL}
+        zeilen,
+        {SPALTE_MONAT, SPALTE_SCHULUNGSTYP, SPALTE_TEILNEHMERZAHL},
     )
     jahr_spalte = _jahr_spalte_ermitteln(index)
     # Anders als Monat/Schulungstyp/TN-Zahl keine Pflichtspalte fuer die Kopfzeilen-
@@ -213,7 +215,7 @@ def _zeilen_zu_anmeldungen(zeilen: list[list[str]]) -> list[Anmeldung]:
                 if teilnehmerzahl_text
                 else 0,
                 format=zelle(zeile, index, SPALTE_FORMAT).strip() if hat_format else "",
-            )
+            ),
         )
     return anmeldungen
 
@@ -245,7 +247,7 @@ class SchulungenRepository:
         Ein fehlendes oder nicht lesbares Jahr wird nicht zum Fehler, siehe
         Moduldocstring.
         """
-        stichtag = stichtag or date.today()
+        stichtag = stichtag or datetime.datetime.now(tz=datetime.UTC).date()
 
         termine, meldungen = jahre_laden(
             self._client,
@@ -263,7 +265,10 @@ class SchulungenRepository:
         )
 
     def anmeldungsverlauf_laden(
-        self, jahre: Sequence[int], *, fortschritt: Fortschritt | None = None
+        self,
+        jahre: Sequence[int],
+        *,
+        fortschritt: Fortschritt | None = None,
     ) -> Anmeldungsverlauf:
         """Teilnehmerzahl je Schulungstyp und Monat, ueber die angegebenen Jahre hinweg.
 

@@ -92,14 +92,14 @@ def _oauth_client_json(roh: str) -> dict:
         wert = json.loads(roh)
     except json.JSONDecodeError as fehler:
         raise MissingCredentialsError(
-            f"{OAUTH_CLIENT_VAR} enthaelt kein gueltiges JSON: {fehler}"
+            f"{OAUTH_CLIENT_VAR} enthaelt kein gueltiges JSON: {fehler}",
         ) from fehler
     if not isinstance(wert, dict) or not ({"installed", "web"} & wert.keys()):
         raise MissingCredentialsError(
             f"{OAUTH_CLIENT_VAR} sieht nicht nach einer OAuth-Client-ID aus - erwartet wird "
             "das JSON aus der Google-Cloud-Konsole mit einem aeusseren Schluessel "
             "'installed' oder 'web' (Anwendungstyp \"Desktopanwendung\"), kein "
-            "Service-Account-Key."
+            "Service-Account-Key.",
         )
     return wert
 
@@ -109,7 +109,7 @@ def _jahre_zu_dateien(roh: str) -> dict[int, str]:
         wert = json.loads(roh)
     except json.JSONDecodeError as fehler:
         raise MissingCredentialsError(
-            f"{SHEET_ID_VAR} enthaelt kein gueltiges JSON: {fehler}"
+            f"{SHEET_ID_VAR} enthaelt kein gueltiges JSON: {fehler}",
         ) from fehler
     if not isinstance(wert, dict):
         raise MissingCredentialsError(f"{SHEET_ID_VAR} muss ein JSON-Objekt Jahr -> ID sein.")
@@ -117,5 +117,5 @@ def _jahre_zu_dateien(roh: str) -> dict[int, str]:
         return {int(jahr): str(spreadsheet_id) for jahr, spreadsheet_id in wert.items()}
     except (TypeError, ValueError) as fehler:
         raise MissingCredentialsError(
-            f"{SHEET_ID_VAR} hat keine Jahreszahlen als Schluessel."
+            f"{SHEET_ID_VAR} hat keine Jahreszahlen als Schluessel.",
         ) from fehler

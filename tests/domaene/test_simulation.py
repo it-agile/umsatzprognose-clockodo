@@ -49,18 +49,21 @@ KNAPP = Wochenarbeitszeit(
 )
 
 
-def mitarbeiter(id: int, name: str, arbeitszeit: Wochenarbeitszeit = AMPLE) -> Mitarbeiter:
-    return Mitarbeiter(id=id, name=name, aktiv=True, arbeitszeiten=(arbeitszeit,))
+def mitarbeiter(identifier: int, name: str, arbeitszeit: Wochenarbeitszeit = AMPLE) -> Mitarbeiter:
+    return Mitarbeiter(id=identifier, name=name, aktiv=True, arbeitszeiten=(arbeitszeit,))
 
 
-def historie(quote: float, id: int = 900) -> Verbrauchsverlauf:
+def historie(quote: float, identifier: int = 900) -> Verbrauchsverlauf:
     """Ein einzelner Beobachtungsmonat, der die Verteilung auf genau ``quote`` setzt.
 
     Das Projekt liegt ausserhalb des Prognose-Scope (``aktiv=False``) und traegt selbst
     keinen Umsatz zur Simulation bei - es liefert nur die eine Beobachtung.
     """
     projekt = Projekt(
-        id=id, name=f"Historie {id}", aktiv=False, budget=Gesamtbudget(betrag=Decimal("1000.0"))
+        id=identifier,
+        name=f"Historie {identifier}",
+        aktiv=False,
+        budget=Gesamtbudget(betrag=Decimal("1000.0")),
     )
     return Verbrauchsverlauf.fuer(
         projekt,
@@ -110,7 +113,10 @@ def test_interne_arbeit_abschlag_kann_kapazitaet_zum_limitierenden_faktor_machen
     abschlag = 0.999
 
     prognose = b.simulieren(
-        monate=1, laeufe=5, zufall=np.random.default_rng(1), interne_arbeit_abschlag=abschlag
+        monate=1,
+        laeufe=5,
+        zufall=np.random.default_rng(1),
+        interne_arbeit_abschlag=abschlag,
     )
 
     kapazitaet = anna.verfuegbare_kapazitaet(2026, 9, interne_arbeit_abschlag=abschlag)
@@ -127,7 +133,9 @@ def test_interne_arbeit_abschlag_und_fakturierbare_arbeit_verteilung_schliessen_
 
     with pytest.raises(ValueError, match="fakturierbare_arbeit_verteilung"):
         b.simulieren(
-            monate=1, interne_arbeit_abschlag=0.5, fakturierbare_arbeit_verteilung=verteilung
+            monate=1,
+            interne_arbeit_abschlag=0.5,
+            fakturierbare_arbeit_verteilung=verteilung,
         )
 
 
@@ -461,7 +469,8 @@ def test_bereits_gebuchter_betrag_ist_die_untergrenze_in_kuenftigen_monaten():
     # Die Buchung liegt im zweiten Horizontmonat (Oktober), nicht im Stichtagsmonat -
     # nur dort gilt sie als Untergrenze, siehe der naechste Test.
     verlauf_projekt = Verbrauchsverlauf.fuer(
-        projekt, [Monatsumsatz(jahr=2026, monat=10, umsatz=Decimal("20000.0"), stunden=400.0)]
+        projekt,
+        [Monatsumsatz(jahr=2026, monat=10, umsatz=Decimal("20000.0"), stunden=400.0)],
     )
     b = Bestand(
         stichtag=STICHTAG,  # 2026-09-01
@@ -530,7 +539,8 @@ def test_stichtagsmonat_zaehlt_keine_gebuchten_betraege_als_untergrenze():
     # Eine grosse Buchung im Stichtagsmonat selbst - realistisch, weil die Antwort
     # keine Tagesgrenze kennt und Buchungen vor dem Stichtag mitzaehlt.
     verlauf_projekt = Verbrauchsverlauf.fuer(
-        projekt, [Monatsumsatz(jahr=2026, monat=9, umsatz=Decimal("90000.0"), stunden=1800.0)]
+        projekt,
+        [Monatsumsatz(jahr=2026, monat=9, umsatz=Decimal("90000.0"), stunden=1800.0)],
     )
     b = Bestand(
         stichtag=STICHTAG,

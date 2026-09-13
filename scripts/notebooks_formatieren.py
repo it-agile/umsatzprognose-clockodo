@@ -30,7 +30,7 @@ from notebook_ausgaben import alle_notebooks, code_zellen_einklappen, zellausgab
 
 def _argumente(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Zellausgaben aus Notebooks entfernen und/oder ihre Code-Zellen einklappen."
+        description="Zellausgaben aus Notebooks entfernen und/oder ihre Code-Zellen einklappen.",
     )
     parser.add_argument(
         "notebooks",

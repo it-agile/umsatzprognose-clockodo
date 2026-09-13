@@ -86,8 +86,9 @@ def test_monatsgruppierung_heisst_month_im_singular():
     client, requests = client_mit(lambda _: httpx2.Response(200, json={"groups": []}))
     synchron(
         client.entrygroups_je_monat(
-            time_since="2025-09-01T00:00:00Z", time_until="2026-08-31T23:59:59Z"
-        )
+            time_since="2025-09-01T00:00:00Z",
+            time_until="2026-08-31T23:59:59Z",
+        ),
     )
 
     assert requests[0].url.params.get_list("grouping[]") == ["month"]
@@ -116,8 +117,10 @@ def test_entrygroups_je_person_und_monat_filtert_und_gruppiert_doppelt():
     client, requests = client_mit(lambda _: httpx2.Response(200, json={"groups": []}))
     synchron(
         client.entrygroups_je_person_und_monat(
-            billable=2, time_since="2026-01-01T00:00:00Z", time_until="2026-09-30T23:59:59Z"
-        )
+            billable=2,
+            time_since="2026-01-01T00:00:00Z",
+            time_until="2026-09-30T23:59:59Z",
+        ),
     )
 
     params = requests[0].url.params
@@ -176,7 +179,7 @@ def test_feiertage_filtern_ueber_einfaches_jahr_und_sind_paginiert():
                 "paging": {"current_page": 1, "count_pages": 1, "count_items": 0},
                 "data": [],
             },
-        )
+        ),
     )
     synchron(client.users_nonbusiness_days(2026))
 
@@ -251,7 +254,7 @@ def test_get_wiederholt_bei_gateway_timeout_und_liefert_dann_die_antwort(monkeyp
 def test_get_wirft_nach_ausgeschoepften_versuchen_weiterhin_den_gateway_timeout(monkeypatch):
     monkeypatch.setattr("umsatzprognose.clockodo.client.asyncio.sleep", _ohne_wartezeit)
     client, requests = client_mit(
-        lambda _: httpx2.Response(504, text="<html>Gateway Timeout</html>")
+        lambda _: httpx2.Response(504, text="<html>Gateway Timeout</html>"),
     )
 
     with pytest.raises(ClockodoError, match="504"):
@@ -356,9 +359,9 @@ def test_entrygroups_zusammenfuehren_summiert_je_schluessel_auch_in_untergruppen
                     "duration": 3600,
                     "revenue": 100.0,
                     "grouped_by": "month",
-                }
+                },
             ],
-        }
+        },
     ]
     zweite: list[EntryGroupV2] = [
         {
@@ -415,7 +418,8 @@ def test_ohne_cache_umgebungsvariable_bleibt_es_bei_einem_abruf(monkeypatch):
 
 
 def test_mit_aktiviertem_cache_wird_am_cutoff_gespalten_und_wieder_zusammengefuehrt(
-    monkeypatch, tmp_path
+    monkeypatch,
+    tmp_path,
 ):
     monkeypatch.setenv(cache.TTL_ENV, "1200")
     monkeypatch.setattr(cache, "VERZEICHNIS", tmp_path)
@@ -436,10 +440,10 @@ def test_mit_aktiviertem_cache_wird_am_cutoff_gespalten_und_wieder_zusammengefue
                             "duration": 3600,
                             "revenue": 100.0,
                             "grouped_by": "month",
-                        }
+                        },
                     ],
-                }
-            ]
+                },
+            ],
         },
         "2026-07-01T00:00:00Z": {
             "groups": [
@@ -456,10 +460,10 @@ def test_mit_aktiviertem_cache_wird_am_cutoff_gespalten_und_wieder_zusammengefue
                             "duration": 1800,
                             "revenue": 50.0,
                             "grouped_by": "month",
-                        }
+                        },
                     ],
-                }
-            ]
+                },
+            ],
         },
     }
 
@@ -470,8 +474,9 @@ def test_mit_aktiviertem_cache_wird_am_cutoff_gespalten_und_wieder_zusammengefue
 
     gruppen = synchron(
         client.entrygroups_je_projekt_und_monat(
-            time_until="2026-09-05T23:59:59Z", cache_cutoff_monate=2
-        )
+            time_until="2026-09-05T23:59:59Z",
+            cache_cutoff_monate=2,
+        ),
     )
 
     # Zwei Abrufe statt eines - der stabile historische Teil und der aktuelle,
@@ -495,8 +500,9 @@ def test_zweiter_lauf_ruft_den_historischen_teil_nicht_erneut_ab(monkeypatch, tm
     for _ in range(2):
         synchron(
             client.entrygroups_je_projekt_und_monat(
-                time_until="2026-09-05T23:59:59Z", cache_cutoff_monate=2
-            )
+                time_until="2026-09-05T23:59:59Z",
+                cache_cutoff_monate=2,
+            ),
         )
 
     zeitfenster = [r.url.params["time_since"] for r in requests]
@@ -518,7 +524,7 @@ def test_cache_fortschritt_meldet_label_je_teilabruf(monkeypatch, tmp_path):
                 time_until="2026-09-05T23:59:59Z",
                 cache_cutoff_monate=2,
                 cache_fortschritt=zeilen.append,
-            )
+            ),
         )
 
     # Erster Lauf: kein Treffer (frisch geladen und abgelegt). Zweiter Lauf: Treffer.
@@ -538,7 +544,7 @@ def test_cutoff_vor_time_since_bleibt_bei_einem_abruf(monkeypatch, tmp_path):
             time_since="2026-08-01T00:00:00Z",
             time_until="2026-09-05T23:59:59Z",
             cache_cutoff_monate=6,
-        )
+        ),
     )
 
     assert len(requests) == 1

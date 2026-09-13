@@ -20,12 +20,12 @@ def alle_notebooks() -> list[Path]:
 
 
 def _notebook_lesen(pfad: Path) -> dict:
-    with open(pfad, encoding="utf-8") as datei:
+    with Path.open(pfad, encoding="utf-8") as datei:
         return json.load(datei)
 
 
 def _notebook_schreiben(pfad: Path, notebook: dict) -> None:
-    with open(pfad, "w", encoding="utf-8") as datei:
+    with Path.open(pfad, "w", encoding="utf-8") as datei:
         json.dump(notebook, datei, indent=1, ensure_ascii=False)
         datei.write("\n")
 

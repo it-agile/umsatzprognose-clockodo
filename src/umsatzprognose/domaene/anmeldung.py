@@ -89,7 +89,8 @@ def _basisname_und_dauer(schulungstyp: str) -> tuple[str, str | None]:
 
 
 def _teilnehmerzahl_je[K](
-    anmeldungen: Iterable[Anmeldung], schluessel: Callable[[Anmeldung], K]
+    anmeldungen: Iterable[Anmeldung],
+    schluessel: Callable[[Anmeldung], K],
 ) -> dict[K, int]:
     """Teilnehmerzahl aufsummiert je ``schluessel(a)`` - der gemeinsame Kern hinter
     :meth:`Anmeldungsverlauf.summe_je_typ`, :meth:`~.je_monat` und
@@ -135,7 +136,8 @@ class Anmeldungsknoten:
 
 
 def _gruppieren(
-    zeilen: Sequence[Anmeldung], schluessel: Callable[[Anmeldung], str]
+    zeilen: Sequence[Anmeldung],
+    schluessel: Callable[[Anmeldung], str],
 ) -> dict[str, list[Anmeldung]]:
     gruppen: dict[str, list[Anmeldung]] = {}
     for a in zeilen:
@@ -171,7 +173,8 @@ def _mit_dauer_kindern(name: str, zeilen: Sequence[Anmeldung]) -> Anmeldungsknot
     Zwischenebene. Ein Schulungstyp ohne erkannten Dauer-Suffix behaelt seinen vollen
     Namen als Label, statt mit einem erfundenen Platzhalter aufzutauchen."""
     dauer_gruppen = _gruppieren(
-        zeilen, lambda a: _basisname_und_dauer(a.schulungstyp)[1] or a.schulungstyp
+        zeilen,
+        lambda a: _basisname_und_dauer(a.schulungstyp)[1] or a.schulungstyp,
     )
     dauern = _alphabetisch_mit_anmeldungen(dauer_gruppen)
     kinder = (
@@ -249,7 +252,8 @@ class Anmeldungsverlauf:
         return ergebnis
 
     def gliederung_je_kategorie(
-        self, kategorien: Kategorisierung
+        self,
+        kategorien: Kategorisierung,
     ) -> dict[str, tuple[Anmeldungsknoten, ...]]:
         """Fuer jede Kategorie die Basisname-Knoten (z. B. "CSPO" fuer "CSPO 2-tägig"/
         "CSPO 3-tägig", siehe :func:`_basisname_und_dauer`), je nach tatsaechlich
@@ -297,7 +301,8 @@ class Anmeldungsverlauf:
     def je_monat_und_typ(self, schulungstyp: str) -> dict[Monat, int]:
         """Teilnehmerzahl je Monat fuer einen einzelnen Schulungstyp."""
         return _teilnehmerzahl_je(
-            (a for a in self.anmeldungen if a.schulungstyp == schulungstyp), lambda a: a.schluessel
+            (a for a in self.anmeldungen if a.schulungstyp == schulungstyp),
+            lambda a: a.schluessel,
         )
 
     def summe_je_basisname(self) -> dict[str, int]:
@@ -306,7 +311,8 @@ class Anmeldungsverlauf:
         3-tägig" zaehlen hier zusammen auf "CSPO", derselbe Zusammenfassungsschritt
         wie in der Basisname-Ebene von :meth:`gliederung_je_kategorie`."""
         return _teilnehmerzahl_je(
-            self.anmeldungen, lambda a: _basisname_und_dauer(a.schulungstyp)[0]
+            self.anmeldungen,
+            lambda a: _basisname_und_dauer(a.schulungstyp)[0],
         )
 
     @property
@@ -364,7 +370,8 @@ class Anmeldungsverlauf:
         """Teilnehmerzahl je Monat fuer ein einzelnes Format (Praesenz/Online), ueber
         alle Kategorien und Schulungstypen hinweg."""
         return _teilnehmerzahl_je(
-            (a for a in self.anmeldungen if a.format == format_wert), lambda a: a.schluessel
+            (a for a in self.anmeldungen if a.format == format_wert),
+            lambda a: a.schluessel,
         )
 
     @property
@@ -391,7 +398,8 @@ class Anmeldungsverlauf:
         )
 
     def schulungstypen_je_kategorie(
-        self, kategorien: Kategorisierung
+        self,
+        kategorien: Kategorisierung,
     ) -> dict[str, tuple[str, ...]]:
         """Die vorkommenden Schulungstypen je Kategorie, jeweils nach absteigender
         Gesamtteilnehmerzahl (wie :attr:`schulungstypen`) - fuer die Webapp, um die

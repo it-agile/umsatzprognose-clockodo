@@ -48,8 +48,8 @@ def test_entfernt_ausgaben_und_ausfuehrungszaehler(tmp_path):
             _code_zelle(
                 execution_count=3,
                 outputs=[{"output_type": "stream", "name": "stdout", "text": ["12345\n"]}],
-            )
-        ]
+            ),
+        ],
     )
     pfad.write_text(json.dumps(notebook), encoding="utf-8")
 
@@ -65,7 +65,7 @@ def test_entfernt_ausgaben_und_ausfuehrungszaehler(tmp_path):
 def test_entfernt_ausfuehrungszeit_aus_der_zellmetadata(tmp_path):
     pfad = tmp_path / "notebook.ipynb"
     notebook = _notebook(
-        [_code_zelle(metadata={"execution": {"iopub.execute_input": "2026-08-27T10:00:00Z"}})]
+        [_code_zelle(metadata={"execution": {"iopub.execute_input": "2026-08-27T10:00:00Z"}})],
     )
     pfad.write_text(json.dumps(notebook), encoding="utf-8")
 
@@ -103,7 +103,7 @@ def test_klappt_code_zelle_ohne_metadata_ein(tmp_path):
 def test_klappt_code_zelle_mit_source_hidden_false_ein(tmp_path):
     pfad = tmp_path / "notebook.ipynb"
     notebook = _notebook(
-        [_code_zelle(metadata={"cellView": "form", "jupyter": {"source_hidden": False}})]
+        [_code_zelle(metadata={"cellView": "form", "jupyter": {"source_hidden": False}})],
     )
     pfad.write_text(json.dumps(notebook), encoding="utf-8")
 
@@ -119,7 +119,7 @@ def test_klappt_code_zelle_mit_source_hidden_false_ein(tmp_path):
 def test_bereits_eingeklappte_zelle_bleibt_unveraendert(tmp_path):
     pfad = tmp_path / "notebook.ipynb"
     notebook = _notebook(
-        [_code_zelle(metadata={"cellView": "form", "jupyter": {"source_hidden": True}})]
+        [_code_zelle(metadata={"cellView": "form", "jupyter": {"source_hidden": True}})],
     )
     inhalt = json.dumps(notebook)
     pfad.write_text(inhalt, encoding="utf-8")
@@ -174,7 +174,7 @@ def test_markdown_zellen_bleiben_unangetastet(tmp_path):
                 execution_count=1,
                 outputs=[{"output_type": "stream", "name": "stdout", "text": ["x\n"]}],
             ),
-        ]
+        ],
     )
     pfad.write_text(json.dumps(notebook), encoding="utf-8")
 

@@ -76,7 +76,9 @@ def _fake_colab_userdata(monkeypatch, get):
     fake_colab.__dict__["userdata"] = fake_userdata
     monkeypatch.setitem(sys.modules, "google.colab", fake_colab)
     monkeypatch.setitem(
-        sys.modules, "google", sys.modules.get("google", types.ModuleType("google"))
+        sys.modules,
+        "google",
+        sys.modules.get("google", types.ModuleType("google")),
     )
 
 

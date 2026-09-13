@@ -168,6 +168,6 @@ class Verbrauchsverlauf:
                     monat=monat,
                     verbrauch=verbrauch,
                     restvolumen_zu_monatsbeginn=restvolumen,
-                )
+                ),
             )
         return tuple(quoten)

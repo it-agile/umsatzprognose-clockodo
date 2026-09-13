@@ -55,7 +55,9 @@ def test_aus_colab_secrets_liest_alle_vier_felder(monkeypatch):
     fake_colab.__dict__["userdata"] = fake_userdata
     monkeypatch.setitem(sys.modules, "google.colab", fake_colab)
     monkeypatch.setitem(
-        sys.modules, "google", sys.modules.get("google", types.ModuleType("google"))
+        sys.modules,
+        "google",
+        sys.modules.get("google", types.ModuleType("google")),
     )
 
     creds = ClockodoCredentials.aus_colab_secrets()
@@ -77,7 +79,9 @@ def test_automatisch_waehlt_colab_secrets_in_colab(monkeypatch):
     aufgerufen = []
     monkeypatch.setattr(clockodo_config, "in_colab", lambda: True)
     monkeypatch.setattr(
-        ClockodoCredentials, "aus_colab_secrets", classmethod(lambda cls: aufgerufen.append(True))
+        ClockodoCredentials,
+        "aus_colab_secrets",
+        classmethod(lambda cls: aufgerufen.append(True)),
     )
     ClockodoCredentials.automatisch()
     assert aufgerufen == [True]

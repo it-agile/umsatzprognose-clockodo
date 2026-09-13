@@ -87,13 +87,14 @@ beobachtet ``--reload`` sonst das gesamte Arbeitsverzeichnis, einschliesslich z.
 
 from __future__ import annotations
 
-from datetime import date
+import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Annotated, Literal, get_args
 from urllib.parse import urlencode
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Callable
+    from datetime import date
 
     import pandas as pd
     import plotly.graph_objects as go
@@ -303,10 +304,10 @@ _STANDARDWERTE_DASHBOARD: dict[str, str] = {
 # gleich, deshalb hier gemeinsam definiert statt an jeder Route wiederholt.
 _INTERNE_ARBEIT_PAUSCHAL_PARAMETER = frozenset({"anteil_fakturierbar_prozent"})
 _INTERNE_ARBEIT_WEIBULL_PARAMETER = frozenset(
-    {"interne_arbeit_weibull_formparameter", "interne_arbeit_weibull_skalenparameter_prozent"}
+    {"interne_arbeit_weibull_formparameter", "interne_arbeit_weibull_skalenparameter_prozent"},
 )
 _INTERNE_ARBEIT_GAUSS_PARAMETER = frozenset(
-    {"interne_arbeit_gauss_mittelwert_prozent", "interne_arbeit_gauss_standardabweichung"}
+    {"interne_arbeit_gauss_mittelwert_prozent", "interne_arbeit_gauss_standardabweichung"},
 )
 _INTERNE_ARBEIT_PARAMETER = (
     frozenset({"interne_arbeit_modus"})
@@ -325,7 +326,7 @@ def _standard_anzeige_ab_jahr(*, heute: date | None = None) -> int:
     einen sinnvollen Blick auf den Anmeldungsverlauf. Nie vor :data:`STANDARD_AB_JAHR`,
     weiter zurueck ist ohnehin nichts geladen.
     """
-    heute = heute or date.today()
+    heute = heute or datetime.datetime.now(tz=datetime.UTC).date()
     jahr = heute.year if heute.month >= STANDARD_ANZEIGE_MINDESTMONAT else heute.year - 1
     return max(jahr, STANDARD_AB_JAHR)
 
@@ -364,7 +365,7 @@ _KURZARBEIT_AKTIV = kurzarbeit_aktiv()
 
 
 @asynccontextmanager
-async def _vorladen(app: FastAPI) -> AsyncIterator[None]:
+async def _vorladen(_app: FastAPI) -> AsyncIterator[None]:
     """Stoesst das Laden der Standardkombination schon beim Start an, ohne zu warten.
 
     Nicht blockierend (siehe Moduldocstring) - der Server nimmt sofort Anfragen an;
@@ -373,7 +374,8 @@ async def _vorladen(app: FastAPI) -> AsyncIterator[None]:
     gecachten Kombination auch.
     """
     _dashboard_cache.anstossen(
-        horizont_monate=int(STANDARD_HORIZONT_MONATE), auslastung_monate=STANDARD_AUSLASTUNG_MONATE
+        horizont_monate=int(STANDARD_HORIZONT_MONATE),
+        auslastung_monate=STANDARD_AUSLASTUNG_MONATE,
     )
     _anmeldungsverlauf_cache.anstossen()
     if _KURZARBEIT_AKTIV:
@@ -400,7 +402,8 @@ app.mount("/static", StaticFiles(directory=str(Path(__file__).parent / "static")
 
 def _figur_html(figur: go.Figure, *, mit_plotlyjs: bool) -> str:
     return figur.to_html(
-        full_html=False, include_plotlyjs="/static/plotly/plotly.min.js" if mit_plotlyjs else False
+        full_html=False,
+        include_plotlyjs="/static/plotly/plotly.min.js" if mit_plotlyjs else False,
     )
 
 
@@ -703,7 +706,8 @@ def _interne_arbeit_regler_werte(
         WeibullFakturierbareArbeit.aus_stichprobe(werte)
         if len(werte) >= 2
         else WeibullFakturierbareArbeit(
-            formparameter=1.0, skalenparameter=werte[0] if werte else 0.0
+            formparameter=1.0,
+            skalenparameter=werte[0] if werte else 0.0,
         )
     )
     start_gauss = (
@@ -816,7 +820,10 @@ async def _simuliertes_dashboard(
         dashboard.bestand.mit_verbrauchsplan_uebersteuerungen(werte) if werte else dashboard.bestand
     )
     uebersteuert = Dashboard(
-        bestand, dashboard.schulungsplan, dashboard.kostenplan, dashboard.auslastung
+        bestand,
+        dashboard.schulungsplan,
+        dashboard.kostenplan,
+        dashboard.auslastung,
     )
     await uebersteuert.simuliere_async(
         monate=horizont_monate,
@@ -892,14 +899,18 @@ async def uebersicht(
         horizont_optionen=PROGNOSE_MONATE_OPTIONEN,
         laeufe=laeufe,
         laeufe_zuruecksetzen_query=_anfrage_query(
-            request, _STANDARDWERTE_START, ohne=frozenset({"laeufe"})
+            request,
+            _STANDARDWERTE_START,
+            ohne=frozenset({"laeufe"}),
         ),
         gewinn_verlust_monate=gewinn_verlust_monate,
         gewinn_verlust_optionen=HISTORISCHE_MONATE_OPTIONEN,
         verbrauchsplan=verbrauchsplan,
         verbrauchsplan_abweichend=bool(verbrauchsplan.strip()),
         verbrauchsplan_zuruecksetzen_query=_anfrage_query(
-            request, _STANDARDWERTE_START, ohne=frozenset({"verbrauchsplan"})
+            request,
+            _STANDARDWERTE_START,
+            ohne=frozenset({"verbrauchsplan"}),
         ),
         interne_arbeit_modus=interne_arbeit_modus,
         interne_arbeit_modus_optionen=INTERNE_ARBEIT_MODUS_OPTIONEN,
@@ -913,23 +924,33 @@ async def uebersicht(
             or laeufe != STANDARD_LAEUFE
         ),
         interne_arbeit_abschlag_zuruecksetzen_query=_anfrage_query(
-            request, _STANDARDWERTE_START, ohne=_INTERNE_ARBEIT_PARAMETER
+            request,
+            _STANDARDWERTE_START,
+            ohne=_INTERNE_ARBEIT_PARAMETER,
         ),
         interne_arbeit_pauschal_zuruecksetzen_query=_anfrage_query(
-            request, _STANDARDWERTE_START, ohne=_INTERNE_ARBEIT_PAUSCHAL_PARAMETER
+            request,
+            _STANDARDWERTE_START,
+            ohne=_INTERNE_ARBEIT_PAUSCHAL_PARAMETER,
         ),
         interne_arbeit_weibull_zuruecksetzen_query=_anfrage_query(
-            request, _STANDARDWERTE_START, ohne=_INTERNE_ARBEIT_WEIBULL_PARAMETER
+            request,
+            _STANDARDWERTE_START,
+            ohne=_INTERNE_ARBEIT_WEIBULL_PARAMETER,
         ),
         interne_arbeit_gauss_zuruecksetzen_query=_anfrage_query(
-            request, _STANDARDWERTE_START, ohne=_INTERNE_ARBEIT_GAUSS_PARAMETER
+            request,
+            _STANDARDWERTE_START,
+            ohne=_INTERNE_ARBEIT_GAUSS_PARAMETER,
         ),
         gewinn_verlust_monatlich=_figur_html(
-            dashboard.gewinn_verlust_monatlich(monate=gewinn_verlust_zahl), mit_plotlyjs=True
+            dashboard.gewinn_verlust_monatlich(monate=gewinn_verlust_zahl),
+            mit_plotlyjs=True,
         ),
         gewinn_verlust_je_jahr=_figur_html(dashboard.gewinn_verlust_je_jahr(), mit_plotlyjs=False),
         umsatzrendite_kumuliert=_figur_html(
-            dashboard.umsatzrendite_kumuliert(), mit_plotlyjs=False
+            dashboard.umsatzrendite_kumuliert(),
+            mit_plotlyjs=False,
         ),
     )
 
@@ -1007,7 +1028,8 @@ async def dashboard_seite(
     # braucht mindestens einen Prozentpunkt Breite (siehe
     # diagramme.anteil_fakturierbarer_arbeit_verteilung()s eigene Validierung).
     interne_arbeit_verteilung_max_prozent = max(
-        interne_arbeit_verteilung_max_prozent, interne_arbeit_verteilung_min_prozent + 1
+        interne_arbeit_verteilung_max_prozent,
+        interne_arbeit_verteilung_min_prozent + 1,
     )
 
     return _antwort(
@@ -1020,29 +1042,38 @@ async def dashboard_seite(
         horizont_optionen=PROGNOSE_MONATE_OPTIONEN,
         laeufe=laeufe,
         laeufe_zuruecksetzen_query=_anfrage_query(
-            request, _STANDARDWERTE_DASHBOARD, ohne=frozenset({"laeufe"})
+            request,
+            _STANDARDWERTE_DASHBOARD,
+            ohne=frozenset({"laeufe"}),
         ),
         umsatzverlauf=_figur_html(dashboard.umsatzverlauf(), mit_plotlyjs=True),
         umsatztabelle=_tabelle_html(
-            dashboard.umsatztabelle(), zusatzklasse="spaltenraster", element_id="tabelle-monat"
+            dashboard.umsatztabelle(),
+            zusatzklasse="spaltenraster",
+            element_id="tabelle-monat",
         ),
         restvolumen_top=restvolumen_top,
         restvolumen_top_max=restvolumen_top_max,
         restvolumen_je_projekt=_figur_html(
-            dashboard.restvolumen_je_projekt(top=restvolumen_top), mit_plotlyjs=False
+            dashboard.restvolumen_je_projekt(top=restvolumen_top),
+            mit_plotlyjs=False,
         ),
         verbrauchsplan=verbrauchsplan,
         verbrauchsplan_abweichend=bool(verbrauchsplan.strip()),
         verbrauchsplan_zuruecksetzen_query=_anfrage_query(
-            request, _STANDARDWERTE_DASHBOARD, ohne=frozenset({"verbrauchsplan"})
+            request,
+            _STANDARDWERTE_DASHBOARD,
+            ohne=frozenset({"verbrauchsplan"}),
         ),
         ohne_budget_filter=ohne_budget_filter,
         ohne_budget_filter_abweichend=bool(ohne_budget_filter.strip()),
         ohne_budget_filter_zuruecksetzen_query=_anfrage_query(
-            request, _STANDARDWERTE_DASHBOARD, ohne=frozenset({"ohne_budget_filter"})
+            request,
+            _STANDARDWERTE_DASHBOARD,
+            ohne=frozenset({"ohne_budget_filter"}),
         ),
         projekte_ohne_budget=_tabelle_html(
-            dashboard.projekte_ohne_budget(_ohne_budget_filter_aus_text(ohne_budget_filter))
+            dashboard.projekte_ohne_budget(_ohne_budget_filter_aus_text(ohne_budget_filter)),
         ),
         interne_arbeit_modus=interne_arbeit_modus,
         interne_arbeit_modus_optionen=INTERNE_ARBEIT_MODUS_OPTIONEN,
@@ -1056,16 +1087,24 @@ async def dashboard_seite(
             or laeufe != STANDARD_LAEUFE
         ),
         interne_arbeit_abschlag_zuruecksetzen_query=_anfrage_query(
-            request, _STANDARDWERTE_DASHBOARD, ohne=_INTERNE_ARBEIT_PARAMETER
+            request,
+            _STANDARDWERTE_DASHBOARD,
+            ohne=_INTERNE_ARBEIT_PARAMETER,
         ),
         interne_arbeit_pauschal_zuruecksetzen_query=_anfrage_query(
-            request, _STANDARDWERTE_DASHBOARD, ohne=_INTERNE_ARBEIT_PAUSCHAL_PARAMETER
+            request,
+            _STANDARDWERTE_DASHBOARD,
+            ohne=_INTERNE_ARBEIT_PAUSCHAL_PARAMETER,
         ),
         interne_arbeit_weibull_zuruecksetzen_query=_anfrage_query(
-            request, _STANDARDWERTE_DASHBOARD, ohne=_INTERNE_ARBEIT_WEIBULL_PARAMETER
+            request,
+            _STANDARDWERTE_DASHBOARD,
+            ohne=_INTERNE_ARBEIT_WEIBULL_PARAMETER,
         ),
         interne_arbeit_gauss_zuruecksetzen_query=_anfrage_query(
-            request, _STANDARDWERTE_DASHBOARD, ohne=_INTERNE_ARBEIT_GAUSS_PARAMETER
+            request,
+            _STANDARDWERTE_DASHBOARD,
+            ohne=_INTERNE_ARBEIT_GAUSS_PARAMETER,
         ),
         interne_arbeit_trend=interne_arbeit_trend,
         anteil_fakturierbarer_arbeit=_figur_html(
@@ -1073,7 +1112,7 @@ async def dashboard_seite(
             mit_plotlyjs=False,
         ),
         anteil_fakturierbarer_arbeit_tabelle=_tabelle_html(
-            dashboard.anteil_fakturierbarer_arbeit_tabelle()
+            dashboard.anteil_fakturierbarer_arbeit_tabelle(),
         ),
         interne_arbeit_verteilung_min_prozent=interne_arbeit_verteilung_min_prozent,
         interne_arbeit_verteilung_max_prozent=interne_arbeit_verteilung_max_prozent,
@@ -1106,7 +1145,11 @@ def _kategorie_knoten(name: str, kinder: tuple[Anmeldungsknoten, ...]) -> Anmeld
 
 
 def _knoten_flach(
-    knoten: Anmeldungsknoten, monate: Sequence[Monat], *, tiefe: int = 0, pfad: str = "0"
+    knoten: Anmeldungsknoten,
+    monate: Sequence[Monat],
+    *,
+    tiefe: int = 0,
+    pfad: str = "0",
 ) -> list[dict[str, object]]:
     """Wandelt einen :class:`~umsatzprognose.domaene.Anmeldungsknoten`-Baum in eine
     flache, in Vorordnung sortierte Liste von Jinja-tauglichen Zeilen um - Grundlage
@@ -1194,7 +1237,10 @@ def _anmeldungsreihen(
 
 
 def _schulung_optionen(
-    verlauf: Anmeldungsverlauf, kategorien: Kategorisierung, *, kategorie_filter: Sequence[str]
+    verlauf: Anmeldungsverlauf,
+    kategorien: Kategorisierung,
+    *,
+    kategorie_filter: Sequence[str],
 ) -> list[str]:
     """Die Basisnamen (Dauer-Varianten wie "CSPO 2-tägig"/"CSPO 3-tägig"
     zusammengefasst zu "CSPO", wie im Tabellen-Drilldown - siehe
@@ -1295,10 +1341,12 @@ async def schulungen(
         request,
         seite="schulungen",
         name="schulungen.html",
-        stichtag=date.today(),
+        stichtag=datetime.datetime.now(tz=datetime.UTC).date(),
         standardwerte=standardwerte,
         ab_jahr=jahr,
-        ab_jahr_optionen=tuple(range(STANDARD_AB_JAHR, date.today().year + 1)),
+        ab_jahr_optionen=tuple(
+            range(STANDARD_AB_JAHR, datetime.datetime.now(tz=datetime.UTC).date().year + 1)
+        ),
         anmeldungsverlauf=_figur_html(
             diagramme.anmeldungsverlauf_reihen(reihen, monate, mit_trend=trendlinien),
             mit_plotlyjs=True,
@@ -1310,7 +1358,9 @@ async def schulungen(
         ],
         schulung_filter=schulung_filter,
         schulung_optionen=_schulung_optionen(
-            verlauf_ab_jahr, kategorien, kategorie_filter=kategorie_filter
+            verlauf_ab_jahr,
+            kategorien,
+            kategorie_filter=kategorie_filter,
         ),
         format_filter=format_filter,
         format_optionen=[ALLE, *sorted(verlauf_ab_jahr.formate, key=str.lower)],
@@ -1328,7 +1378,7 @@ async def schulungen(
                     "format_filter",
                     "dauer_filter",
                     "trendlinien_werte",
-                }
+                },
             ),
         ),
         monatsbeschriftungen=monatsbeschriftungen,
@@ -1405,7 +1455,9 @@ async def kurzarbeit(
         request,
         seite="kurzarbeit",
         bereit=partial(
-            _kurzarbeit_cache.bereit, anzahl_monate=monate_zahl, schwellenwerte=schwellenwerte
+            _kurzarbeit_cache.bereit,
+            anzahl_monate=monate_zahl,
+            schwellenwerte=schwellenwerte,
         ),
         anstossen=_kurzarbeit_cache.anstossen,
         fortschritt=_kurzarbeit_cache.fortschritt,
@@ -1439,7 +1491,7 @@ async def kurzarbeit(
         request,
         seite="kurzarbeit",
         name="kurzarbeit.html",
-        stichtag=date.today(),
+        stichtag=datetime.datetime.now(tz=datetime.UTC).date(),
         standardwerte=_STANDARDWERTE_KURZARBEIT,
         anzahl_monate=anzahl_monate,
         anzahl_monate_optionen=KURZARBEIT_MONATE_OPTIONEN,
@@ -1456,7 +1508,7 @@ async def kurzarbeit(
                     "anteil_interne_arbeit_prozent",
                     "ueberstunden_stunden",
                     "quote_organisation_prozent",
-                }
+                },
             ),
         ),
         zeilen=zeilen,

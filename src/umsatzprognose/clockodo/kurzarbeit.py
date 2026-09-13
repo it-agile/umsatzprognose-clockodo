@@ -85,17 +85,27 @@ class KurzarbeitRepository:
         return cls(ClockodoClient(ClockodoCredentials.automatisch()))
 
     def laden(
-        self, *, stichtag: date, anzahl_monate: int = 1, fortschritt: Fortschritt | None = None
+        self,
+        *,
+        stichtag: date,
+        anzahl_monate: int = 1,
+        fortschritt: Fortschritt | None = None,
     ) -> dict[Monat, tuple[Personenmonat, ...]]:
         """Der Abruf, synchron - fuer den Aufruf ausserhalb eines Event-Loops."""
         return synchron(
             self.laden_async(
-                stichtag=stichtag, anzahl_monate=anzahl_monate, fortschritt=fortschritt
-            )
+                stichtag=stichtag,
+                anzahl_monate=anzahl_monate,
+                fortschritt=fortschritt,
+            ),
         )
 
     async def laden_async(
-        self, *, stichtag: date, anzahl_monate: int = 1, fortschritt: Fortschritt | None = None
+        self,
+        *,
+        stichtag: date,
+        anzahl_monate: int = 1,
+        fortschritt: Fortschritt | None = None,
     ) -> dict[Monat, tuple[Personenmonat, ...]]:
         """Die letzten ``anzahl_monate`` **abgeschlossenen** Monate - der laufende
         Monat wird nie bewertet.
@@ -122,28 +132,36 @@ class KurzarbeitRepository:
             mit_meldung(self._client.users(), "Personen geladen", fortschritt),
             mit_meldung(
                 self._client.entrygroups_je_person_und_monat(
-                    billable=BILLABLE_INTERN, time_since=von, time_until=bis
+                    billable=BILLABLE_INTERN,
+                    time_since=von,
+                    time_until=bis,
                 ),
                 "Interne Stunden geladen",
                 fortschritt,
             ),
             mit_meldung(
                 self._client.entrygroups_je_person_und_monat(
-                    billable=BILLABLE_ABRECHENBAR, time_since=von, time_until=bis
+                    billable=BILLABLE_ABRECHENBAR,
+                    time_since=von,
+                    time_until=bis,
                 ),
                 "Abrechenbare Stunden geladen",
                 fortschritt,
             ),
             mit_meldung(
                 self._client.entrygroups_je_person_und_monat(
-                    billable=BILLABLE_FAKTURIERT, time_since=von, time_until=bis
+                    billable=BILLABLE_FAKTURIERT,
+                    time_since=von,
+                    time_until=bis,
                 ),
                 "Fakturierte Stunden geladen",
                 fortschritt,
             ),
             mit_meldung(
                 self._client.entrygroups(
-                    [GRUPPIERUNG_PERSON, GRUPPIERUNG_MONAT], time_since=von, time_until=bis
+                    [GRUPPIERUNG_PERSON, GRUPPIERUNG_MONAT],
+                    time_since=von,
+                    time_until=bis,
                 ),
                 "Gesamtstunden geladen",
                 fortschritt,
@@ -201,7 +219,7 @@ class KurzarbeitRepository:
                         externe_stunden=extern.get(schluessel, 0.0),
                         gesamt_stunden=gesamt.get(schluessel, 0.0),
                         ueberstundenstand=ueberstunden.get(schluessel),
-                    )
+                    ),
                 )
         return {monat: tuple(personen) for monat, personen in ergebnis.items()}
 
@@ -239,7 +257,9 @@ def _monatsende_des_letzten_monats(monate: list[Monat]) -> str:
 
 
 def _ueberstundenstaende(
-    userreports_nach_jahr: dict[int, list[UserReportV1]], *, monate: list[Monat]
+    userreports_nach_jahr: dict[int, list[UserReportV1]],
+    *,
+    monate: list[Monat],
 ) -> dict[tuple[int, Monat], float]:
     """Kumulierter Ueberstundenstand je (Personen-ID, Monat) - siehe Moduldocstring
     fuer die Herleitung aus ``overtime_carryover`` + Summe der Monats-``diff``."""
@@ -312,10 +332,10 @@ def _namen_aus_json(roh: str) -> frozenset[str]:
         wert = json.loads(roh)
     except json.JSONDecodeError as fehler:
         raise MissingRollenzuordnungError(
-            f"{ROLLENZUORDNUNG_VAR} enthaelt kein gueltiges JSON: {fehler}"
+            f"{ROLLENZUORDNUNG_VAR} enthaelt kein gueltiges JSON: {fehler}",
         ) from fehler
     if not isinstance(wert, list) or not all(isinstance(name, str) for name in wert):
         raise MissingRollenzuordnungError(
-            f"{ROLLENZUORDNUNG_VAR} muss ein JSON-Array von Namen sein."
+            f"{ROLLENZUORDNUNG_VAR} muss ein JSON-Array von Namen sein.",
         )
     return frozenset(wert)

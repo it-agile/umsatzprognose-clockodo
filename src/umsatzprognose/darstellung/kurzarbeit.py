@@ -67,7 +67,9 @@ def _reset(*, mit_farbe: bool) -> str:
 
 
 def kurzarbeit_bericht(
-    ergebnisse: Mapping[Monat, Kurzarbeitsbewertung], *, mit_farbe: bool = True
+    ergebnisse: Mapping[Monat, Kurzarbeitsbewertung],
+    *,
+    mit_farbe: bool = True,
 ) -> str:
     """Kurzarbeitsbereitschaft als Text: Detail zum jüngsten Monat, danach eine
     Tabelle über alle übergebenen Monate.
@@ -86,20 +88,27 @@ def kurzarbeit_bericht(
     reset = _reset(mit_farbe=mit_farbe)
 
     zeilen = [
-        f"{_MONATSNAMEN[monat_nr - 1]} {jahr}: "
-        f"{_status_farbe(letzte_bewertung, mit_farbe=mit_farbe)}"
-        f"{_status_text(letzte_bewertung)}{reset}",
-        f"  Quote kurzarbeitsfähiger Personen: {_quote_text(letzte_bewertung)}"
-        f" (Schwelle {schwellenwerte.quote_organisation:.0%}),"
-        f" {letzte_bewertung.anzahl_kurzarbeitsfaehig} von {letzte_bewertung.anzahl_einbezogen}",
+        (
+            f"{_MONATSNAMEN[monat_nr - 1]} {jahr}: "
+            f"{_status_farbe(letzte_bewertung, mit_farbe=mit_farbe)}"
+            f"{_status_text(letzte_bewertung)}{reset}"
+        ),
+        (
+            f"  Quote kurzarbeitsfähiger Personen: {_quote_text(letzte_bewertung)}"
+            f" (Schwelle {schwellenwerte.quote_organisation:.0%}),"
+            f" {letzte_bewertung.anzahl_kurzarbeitsfaehig} von {letzte_bewertung.anzahl_einbezogen}"
+        ),
         f"  Scheitert an interner Arbeit: {letzte_bewertung.anzahl_scheitert_interne_arbeit}",
         f"  Scheitert an Überstunden:    {letzte_bewertung.anzahl_scheitert_ueberstunden}",
         f"  Scheitert an beidem:         {letzte_bewertung.anzahl_scheitert_beide}",
         f"  Ausgeschlossen (Rollenzuordnung): {letzte_bewertung.anzahl_ausgeschlossen}",
         f"  Nicht bestimmbar:                 {letzte_bewertung.anzahl_nicht_bestimmbar}",
-        f"  Schwellenwerte: Anteil interne Arbeit >= {schwellenwerte.anteil_interne_arbeit:.0%},"
-        f" Überstundenstand < {schwellenwerte.ueberstunden_stunden:.0f}h,"
-        f" Quote >= {schwellenwerte.quote_organisation:.0%}",
+        (
+            f"  Schwellenwerte: Anteil interne Arbeit"
+            f" >= {schwellenwerte.anteil_interne_arbeit:.0%},"
+            f" Überstundenstand < {schwellenwerte.ueberstunden_stunden:.0f}h,"
+            f" Quote >= {schwellenwerte.quote_organisation:.0%}"
+        ),
         "",
         f"{'Monat':<16} {'Status':<26} {'Quote':>7} {'KA':>4} {'Ausgeschl.':>11} {'N.best.':>8}",
     ]
@@ -116,7 +125,7 @@ def kurzarbeit_bericht(
             f"{status_gepolstert}{reset} "
             f"{_quote_text(bewertung):>7}"
             f" {bewertung.anzahl_kurzarbeitsfaehig:>4} {bewertung.anzahl_ausgeschlossen:>11}"
-            f" {bewertung.anzahl_nicht_bestimmbar:>8}"
+            f" {bewertung.anzahl_nicht_bestimmbar:>8}",
         )
     return "\n".join(zeilen)
 

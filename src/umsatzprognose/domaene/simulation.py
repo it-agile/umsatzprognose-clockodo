@@ -138,7 +138,7 @@ class WeibullFakturierbareArbeit:
         if len(werte) < 2:
             raise ValueError(
                 "Fuer eine Momentenschaetzung werden mindestens zwei Werte gebraucht, "
-                f"nicht {len(werte)}"
+                f"nicht {len(werte)}",
             )
         mittelwert = statistics.fmean(werte)
         ziel_variationskoeffizient = statistics.pstdev(werte) / mittelwert if mittelwert else 0.0
@@ -268,7 +268,8 @@ class MonteCarloPrognose:
 
 
 def _verbrauchsplan(
-    scope: tuple[Projekt, ...], horizont: tuple[Monat, ...]
+    scope: tuple[Projekt, ...],
+    horizont: tuple[Monat, ...],
 ) -> tuple[np.ndarray, np.ndarray]:
     """Deterministischer Verbrauch je Projekt mit gesetztem
     ``verbrauchsplan_zielmonat`` (siehe dessen Docstring in
@@ -318,7 +319,11 @@ class _Aufbau:
 
 
 def _aufbauen(
-    bestand: Bestand, scope: tuple[Projekt, ...], monate: int, *, interne_arbeit_abschlag: float
+    bestand: Bestand,
+    scope: tuple[Projekt, ...],
+    monate: int,
+    *,
+    interne_arbeit_abschlag: float,
 ) -> _Aufbau:
     """Baut die laufunabhaengigen Arrays vor der Monte-Carlo-Schleife in
     :func:`simulieren` (siehe Moduldocstring, Abschnitt Kapazitaeten)."""
@@ -355,14 +360,15 @@ def _aufbauen(
         [
             [
                 kapazitaet_je_id[mid].verfuegbare_kapazitaet(
-                    *monat, interne_arbeit_abschlag=interne_arbeit_abschlag
+                    *monat,
+                    interne_arbeit_abschlag=interne_arbeit_abschlag,
                 )
                 if mid in kapazitaet_je_id
                 else 0.0
                 for mid in mitarbeiter_ids
             ]
             for monat in horizont
-        ]
+        ],
     )
 
     traegt_bei = np.array([[_traegt_noch_bei(p, monat) for p in scope] for monat in horizont])
@@ -487,12 +493,12 @@ def simulieren(
     if not 0.0 <= interne_arbeit_abschlag <= 1.0:
         raise ValueError(
             "interne_arbeit_abschlag muss zwischen 0.0 und 1.0 liegen, nicht "
-            f"{interne_arbeit_abschlag}"
+            f"{interne_arbeit_abschlag}",
         )
     if fakturierbare_arbeit_verteilung is not None and interne_arbeit_abschlag != 0.0:
         raise ValueError(
             "interne_arbeit_abschlag und fakturierbare_arbeit_verteilung schliessen "
-            "sich gegenseitig aus - nur eines von beiden angeben"
+            "sich gegenseitig aus - nur eines von beiden angeben",
         )
 
     verteilung = bestand.abrufquotenverteilung()
@@ -524,7 +530,9 @@ def simulieren(
         stochastisch = np.minimum(restvolumen, quote * restvolumen)
         deterministisch = np.minimum(restvolumen, aufbau.plan_betrag[index])
         gewuenscht_euro = np.where(
-            gilt, np.where(aufbau.hat_plan, deterministisch, stochastisch), 0.0
+            gilt,
+            np.where(aufbau.hat_plan, deterministisch, stochastisch),
+            0.0,
         )
         gewuenscht_stunden = np.where(aufbau.hat_satz, gewuenscht_euro / aufbau.saetze_sicher, 0.0)
 
@@ -541,7 +549,8 @@ def simulieren(
             # ``verfuegbar`` wird dadurch von (Personen,) auf (Laeufe, Personen)
             # gebroadcastet, was mit ``bedarf_je_person`` unten bereits uebereinstimmt.
             gezogener_anteil_fakturierbar = fakturierbare_arbeit_verteilung.ziehen_array(
-                (laeufe, aufbau.kapazitaet.shape[1]), zufall
+                (laeufe, aufbau.kapazitaet.shape[1]),
+                zufall,
             )
             verfuegbar = verfuegbar * gezogener_anteil_fakturierbar
         ueberschritten = bedarf_je_person > verfuegbar

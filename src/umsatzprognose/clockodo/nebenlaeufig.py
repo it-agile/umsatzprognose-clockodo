@@ -56,7 +56,9 @@ def synchron[T](coro: Coroutine[Any, Any, T]) -> T:
 
 
 async def mit_meldung[T](
-    coro: Coroutine[Any, Any, T], text: str, fortschritt: Fortschritt | None
+    coro: Coroutine[Any, Any, T],
+    text: str,
+    fortschritt: Fortschritt | None,
 ) -> T:
     """Meldet ``text``, sobald ``coro`` individuell fertig ist - unabhaengig davon, ob
     andere gleichzeitig gestartete Abrufe (siehe :func:`gleichzeitig`) noch laufen.

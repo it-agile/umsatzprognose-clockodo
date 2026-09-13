@@ -49,7 +49,7 @@ class ClockodoCredentials:
             raise ValueError(
                 f"X-Clockodo-External-Application ist {length} Zeichen lang, "
                 f"erlaubt sind {EXTERNAL_APPLICATION_MAX_LENGTH}: "
-                f"{self.external_application!r}"
+                f"{self.external_application!r}",
             )
 
     @classmethod

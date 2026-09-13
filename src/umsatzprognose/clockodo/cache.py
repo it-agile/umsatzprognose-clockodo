@@ -43,6 +43,8 @@ from contextlib import suppress
 from datetime import date
 from pathlib import Path
 
+from anyio import Path as aioPath
+
 from umsatzprognose.util import aus_ordnung, ordnung
 
 TTL_ENV = "CLOCKODO_CACHE_TTL_SEKUNDEN"
@@ -139,22 +141,22 @@ async def gecacht_oder_neu[T](
     gemeint ist (Projektanteile oder Verbrauchsverlauf, siehe deren Aufrufer in
     :mod:`.client`).
     """
-    datei = VERZEICHNIS / f"{schluessel}.json"
+    datei = aioPath(VERZEICHNIS) / f"{schluessel}.json"
     start = time.perf_counter()
-    if datei.exists() and (time.time() - datei.stat().st_mtime) < ttl:
-        ergebnis = json.loads(datei.read_text(encoding="utf-8"))
+    if await datei.exists() and (time.time() - (await datei.stat()).st_mtime) < ttl:
+        ergebnis = json.loads(await datei.read_text(encoding="utf-8"))
         if fortschritt is not None:
             fortschritt(
-                f"{label}: aus dem Cache geladen ({_dauer_text(time.perf_counter() - start)})"
+                f"{label}: aus dem Cache geladen ({_dauer_text(time.perf_counter() - start)})",
             )
         return ergebnis
 
     ergebnis = await lader()
-    VERZEICHNIS.mkdir(parents=True, exist_ok=True)
-    datei.write_text(json.dumps(ergebnis), encoding="utf-8")
+    await datei.parent.mkdir(parents=True, exist_ok=True)
+    await datei.write_text(json.dumps(ergebnis), encoding="utf-8")
     if fortschritt is not None:
         fortschritt(
             f"{label}: frisch geladen und zwischengespeichert"
-            f" ({_dauer_text(time.perf_counter() - start)})"
+            f" ({_dauer_text(time.perf_counter() - start)})",
         )
     return ergebnis

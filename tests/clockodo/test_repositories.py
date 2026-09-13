@@ -66,12 +66,13 @@ def test_sollarbeitszeit_kommt_nicht_aus_default_target_hours(benutzer_antwort, 
 
 
 def test_ohne_jahre_bleiben_abwesenheiten_und_feiertage_ungeladen(
-    benutzer_antwort, sollzeit_antwort
+    benutzer_antwort,
+    sollzeit_antwort,
 ):
     # Kein Abruf auf /v4/absences oder /v2/usersNonbusinessDays ohne jahre - beide
     # Routen fehlen hier absichtlich.
     client, requests = client_mit_routen(
-        {"/v3/users": benutzer_antwort, "/targethours": sollzeit_antwort}
+        {"/v3/users": benutzer_antwort, "/targethours": sollzeit_antwort},
     )
     personen, _ = MitarbeiterRepository(client).laden()
 
@@ -83,7 +84,10 @@ def test_ohne_jahre_bleiben_abwesenheiten_und_feiertage_ungeladen(
 
 
 def test_abwesenheiten_werden_der_person_zugeordnet(
-    benutzer_antwort, sollzeit_antwort, abwesenheiten_antwort, feiertage_antwort
+    benutzer_antwort,
+    sollzeit_antwort,
+    abwesenheiten_antwort,
+    feiertage_antwort,
 ):
     client, requests = client_mit_routen(
         {
@@ -91,7 +95,7 @@ def test_abwesenheiten_werden_der_person_zugeordnet(
             "/targethours": sollzeit_antwort,
             "/v4/absences": abwesenheiten_antwort,
             "/v2/usersNonbusinessDays": feiertage_antwort,
-        }
+        },
     )
     personen, _ = MitarbeiterRepository(client).laden(jahre=[2026])
 
@@ -108,7 +112,10 @@ def test_abwesenheiten_werden_der_person_zugeordnet(
 
 
 def test_feiertage_werden_der_person_zugeordnet(
-    benutzer_antwort, sollzeit_antwort, abwesenheiten_antwort, feiertage_antwort
+    benutzer_antwort,
+    sollzeit_antwort,
+    abwesenheiten_antwort,
+    feiertage_antwort,
 ):
     client, requests = client_mit_routen(
         {
@@ -116,7 +123,7 @@ def test_feiertage_werden_der_person_zugeordnet(
             "/targethours": sollzeit_antwort,
             "/v4/absences": abwesenheiten_antwort,
             "/v2/usersNonbusinessDays": feiertage_antwort,
-        }
+        },
     )
     personen, _ = MitarbeiterRepository(client).laden(jahre=[2026])
 
@@ -148,7 +155,11 @@ def test_projekt_id_und_budgetformen(projekt_antwort):
 
 
 def test_projekte_bekommen_kunde_verbrauch_und_anteile(
-    projekt_antwort, kunden_antwort, benutzer_antwort, sollzeit_antwort, entrygroup_antwort
+    projekt_antwort,
+    kunden_antwort,
+    benutzer_antwort,
+    sollzeit_antwort,
+    entrygroup_antwort,
 ):
     client, _ = client_mit_routen(
         {
@@ -157,7 +168,7 @@ def test_projekte_bekommen_kunde_verbrauch_und_anteile(
             "/v3/users": benutzer_antwort,
             "/targethours": sollzeit_antwort,
             "/v2/entrygroups": entrygroup_antwort,
-        }
+        },
     )
     kunden = KundenRepository(client).laden()
     personen, _ = MitarbeiterRepository(client).laden()
@@ -176,7 +187,11 @@ def test_projekte_bekommen_kunde_verbrauch_und_anteile(
 
 
 def test_person_ohne_stammdatensatz_verliert_ihre_stunden_nicht(
-    projekt_antwort, kunden_antwort, benutzer_antwort, sollzeit_antwort, entrygroup_antwort
+    projekt_antwort,
+    kunden_antwort,
+    benutzer_antwort,
+    sollzeit_antwort,
+    entrygroup_antwort,
 ):
     client, _ = client_mit_routen(
         {
@@ -185,7 +200,7 @@ def test_person_ohne_stammdatensatz_verliert_ihre_stunden_nicht(
             "/v3/users": benutzer_antwort,
             "/targethours": sollzeit_antwort,
             "/v2/entrygroups": entrygroup_antwort,
-        }
+        },
     )
     personen, _ = MitarbeiterRepository(client).laden()
     projekte, _ = ProjektRepository(client, {}, personen).laden()
@@ -201,7 +216,7 @@ def test_buchungen_ohne_projekt_werden_nicht_zu_projekt_null(projekt_antwort, en
     # group == 0 steht fuer Buchungen auf einen Kunden ohne Projekt. Ohne Filter
     # entstuende daraus ein Phantom-Projekt mit der ID 0.
     client, _ = client_mit_routen(
-        {"/v4/projects": projekt_antwort, "/v2/entrygroups": entrygroup_antwort}
+        {"/v4/projects": projekt_antwort, "/v2/entrygroups": entrygroup_antwort},
     )
     repository = ProjektRepository(client)
     projekte, hinweise = repository.laden()
@@ -213,7 +228,7 @@ def test_buchungen_ohne_projekt_werden_nicht_zu_projekt_null(projekt_antwort, en
 
 def test_verbrauch_auf_unbekanntes_projekt_wird_gemeldet(entrygroup_antwort):
     client, _ = client_mit_routen(
-        {"/v4/projects": {"data": []}, "/v2/entrygroups": entrygroup_antwort}
+        {"/v4/projects": {"data": []}, "/v2/entrygroups": entrygroup_antwort},
     )
     repository = ProjektRepository(client)
     _, hinweise = repository.laden()
@@ -223,7 +238,7 @@ def test_verbrauch_auf_unbekanntes_projekt_wird_gemeldet(entrygroup_antwort):
 
 def test_ohne_anteile_wird_der_verbrauch_trotzdem_gelesen(projekt_antwort, entrygroup_antwort):
     client, _ = client_mit_routen(
-        {"/v4/projects": projekt_antwort, "/v2/entrygroups": entrygroup_antwort}
+        {"/v4/projects": projekt_antwort, "/v2/entrygroups": entrygroup_antwort},
     )
     projekte, _ = ProjektRepository(client).laden(mit_anteilen=False)
 
@@ -247,12 +262,15 @@ def test_monatsumsaetze_werden_gelesen_und_luecken_gefuellt(monats_antwort):
 
 
 def test_monatsverbrauch_wird_je_projekt_und_chronologisch_abgebildet(
-    projekt_antwort, projekt_monats_antwort
+    projekt_antwort,
+    projekt_monats_antwort,
 ):
     client, requests = client_mit_routen({"/v2/entrygroups": projekt_monats_antwort})
     projekte, _ = ProjektRepository(client).abbilden(projekt_antwort["data"], [])
     verlaeufe = VerbrauchsverlaufRepository(client).laden(
-        projekte, stichtag=STICHTAG, horizont_monate=3
+        projekte,
+        stichtag=STICHTAG,
+        horizont_monate=3,
     )
 
     # Die beiden Gruppen mit group == 0 fallen heraus, uebrig bleibt das eine Projekt,
@@ -301,7 +319,9 @@ def test_stunden_je_person_und_monat_addiert_mehrere_gruppierungen_und_ueberspri
 
 
 def test_auslastung_summiert_intern_abrechenbar_und_fakturiert_und_ueberspringt_unbekannte(
-    person_monat_intern_antwort, person_monat_abrechenbar_antwort, person_monat_fakturiert_antwort
+    person_monat_intern_antwort,
+    person_monat_abrechenbar_antwort,
+    person_monat_fakturiert_antwort,
 ):
     def entrygroups(request):
         billable = request.url.params["filter[billable]"]
@@ -314,7 +334,9 @@ def test_auslastung_summiert_intern_abrechenbar_und_fakturiert_und_ueberspringt_
     client, requests = client_mit_routen({"/v2/entrygroups": entrygroups})
     anna = Mitarbeiter(id=301, name="Anna", aktiv=True)
     auslastungen = AuslastungRepository(client).laden(
-        {301: anna}, stichtag=date(2026, 9, 24), monate=2
+        {301: anna},
+        stichtag=date(2026, 9, 24),
+        monate=2,
     )
 
     # Drei Abrufe (intern, abrechenbar, fakturiert), zwei angefragte Monate, eine bekannte Person.
@@ -358,7 +380,7 @@ def test_bestand_setzt_alles_zusammen(
             "/v2/entrygroups": entrygroups,
             "/v4/absences": abwesenheiten_antwort,
             "/v2/usersNonbusinessDays": feiertage_antwort,
-        }
+        },
     )
     bestand = BestandRepository(client).laden(stichtag=STICHTAG)
 
@@ -414,7 +436,7 @@ def test_bestand_meldet_fortschritt_je_zweig_statt_nur_am_ende(
             "/v2/entrygroups": entrygroups,
             "/v4/absences": abwesenheiten_antwort,
             "/v2/usersNonbusinessDays": feiertage_antwort,
-        }
+        },
     )
     gemeldet: list[str] = []
 
@@ -455,12 +477,14 @@ def test_bestand_meldet_keinen_fortschritt_fuer_abgeschalteten_verbrauchsverlauf
             "/v2/entrygroups": entrygroups,
             "/v4/absences": abwesenheiten_antwort,
             "/v2/usersNonbusinessDays": feiertage_antwort,
-        }
+        },
     )
     gemeldet: list[str] = []
 
     BestandRepository(client).laden(
-        stichtag=STICHTAG, mit_verbrauchsverlauf=False, fortschritt=gemeldet.append
+        stichtag=STICHTAG,
+        mit_verbrauchsverlauf=False,
+        fortschritt=gemeldet.append,
     )
 
     assert "Verbrauchsverlauf geladen" not in gemeldet

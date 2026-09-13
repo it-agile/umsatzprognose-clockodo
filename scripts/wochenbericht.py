@@ -41,6 +41,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import datetime
 import os
 import re
 import tempfile
@@ -152,7 +153,10 @@ class _Dashboardauszug(Protocol):
     def umsatzverlauf(self, *, mit_beschriftung: bool = False) -> go.Figure: ...
     def restvolumen_je_projekt(self) -> go.Figure: ...
     def gewinn_verlust_monatlich(
-        self, *, monate: int | None = None, mit_beschriftung: bool = False
+        self,
+        *,
+        monate: int | None = None,
+        mit_beschriftung: bool = False,
     ) -> go.Figure: ...
     def gewinn_verlust_je_jahr(self, *, mit_beschriftung: bool = False) -> go.Figure: ...
     def umsatzrendite_kumuliert(self, *, mit_beschriftung: bool = False) -> go.Figure: ...
@@ -223,7 +227,9 @@ async def _daten_laden_async(
     async def _dashboard_laden() -> Dashboard:
         melden = dashboard_melden_bauen(anzeige)
         dashboard = await Dashboard.laden_async(
-            stichtag=stichtag, horizont_monate=horizont_monate, fortschritt=melden
+            stichtag=stichtag,
+            horizont_monate=horizont_monate,
+            fortschritt=melden,
         )
         await dashboard.simuliere_async(monate=horizont_monate, fortschritt=melden)
         return dashboard
@@ -235,7 +241,7 @@ async def _daten_laden_async(
         erledigt = 0
         total = anzahl_ladeschritte(stichtag, KURZARBEIT_ANZAHL_MONATE)
 
-        def _melden(text: str) -> None:
+        def _melden(_text: str) -> None:
             nonlocal erledigt
             erledigt += 1
             anzeige.aktualisieren(
@@ -246,7 +252,9 @@ async def _daten_laden_async(
 
         start = time.perf_counter()
         rohdaten = await KurzarbeitRepository.mit_automatischen_zugangsdaten().laden_async(
-            stichtag=stichtag, anzahl_monate=KURZARBEIT_ANZAHL_MONATE, fortschritt=_melden
+            stichtag=stichtag,
+            anzahl_monate=KURZARBEIT_ANZAHL_MONATE,
+            fortschritt=_melden,
         )
         dauer = timedelta(seconds=time.perf_counter() - start)
         anzahl_personen = len({p.mitarbeiter_id for pm in rohdaten.values() for p in pm})
@@ -265,7 +273,7 @@ async def _daten_laden_async(
 
         gesamt = len(anmeldungsverlauf_jahre)
 
-        def _melden(text: str) -> None:
+        def _melden(_text: str) -> None:
             nonlocal erledigt
             erledigt += 1
             anzeige.aktualisieren(
@@ -296,7 +304,9 @@ async def _daten_laden_async(
         return fenster
 
     dashboard, kurzarbeit_ergebnisse, anmeldungsverlauf_fenster = await gleichzeitig(
-        _dashboard_laden(), _kurzarbeit_laden(), _anmeldungsverlauf_laden()
+        _dashboard_laden(),
+        _kurzarbeit_laden(),
+        _anmeldungsverlauf_laden(),
     )
     return dashboard, kurzarbeit_ergebnisse, anmeldungsverlauf_fenster
 
@@ -462,7 +472,7 @@ def diagrammtitel_und_figuren(
             (
                 "Kurzarbeitsbereitschaft je Monat",
                 diagramme.kurzarbeit_grafik(kurzarbeit_ergebnisse, mit_beschriftung=True),
-            )
+            ),
         )
     eintraege += [
         ("Anmeldungen je Monat", diagramme.anmeldungsverlauf(anmeldungsverlauf_fenster)),
@@ -512,7 +522,8 @@ def post_text(
 
 
 async def _bilder_exportieren_async(
-    titel_figuren: list[tuple[str, go.Figure]], verzeichnis: Path
+    titel_figuren: list[tuple[str, go.Figure]],
+    verzeichnis: Path,
 ) -> list[Path]:
     """Schreibt je Diagramm ein PNG, mit einem eigenen Export-Balken pro Datei (siehe
     :class:`Mehrzeilenanzeige`) - beschriftet mit dem Dateinamen relativ zum
@@ -532,7 +543,8 @@ async def _bilder_exportieren_async(
     bilder = [verzeichnis / f"{titel.replace('/', '-')}.png" for titel, _figur in titel_figuren]
     anzeigenamen = [str(relativer_pfad(bild)) for bild in bilder]
     anzeige = Mehrzeilenanzeige(
-        anzeigenamen, vorlage="{name} exportieren " + fortschrittsbalken(0, 1)
+        anzeigenamen,
+        vorlage="{name} exportieren " + fortschrittsbalken(0, 1),
     )
 
     start = time.perf_counter()
@@ -547,7 +559,8 @@ async def _bilder_exportieren_async(
     dauer = timedelta(seconds=time.perf_counter() - start)
     for anzeigename in anzeigenamen:
         anzeige.aktualisieren(
-            anzeigename, f"{anzeigename} exportiert (in {humanize.naturaldelta(dauer)})"
+            anzeigename,
+            f"{anzeigename} exportiert (in {humanize.naturaldelta(dauer)})",
         )
     return bilder
 
@@ -581,7 +594,7 @@ async def posten_async(
             f"{SLACK_CHANNEL_VAR}={kanal!r} sieht nicht nach einer Channel-/Conversation-ID "
             "aus (erwartet z. B. 'C0123456789' oder 'D0123456789'). Für einen DM-Test an "
             "sich selbst die ID der DM-Konversation verwenden (Slack: Konversation öffnen, "
-            "„Copy link“ - der Teil nach der letzten '/'), nicht die eigene Mitglieds-ID."
+            "„Copy link“ - der Teil nach der letzten '/'), nicht die eigene Mitglieds-ID.",
         )
 
     titel_figuren = diagrammtitel_und_figuren(
@@ -624,9 +637,10 @@ def main() -> None:
 
     horizont_monate = _optionale_ganzzahl(HORIZONT_MONATE_VAR, STANDARD_HORIZONT_MONATE)
     gewinn_verlust_monate = _optionale_ganzzahl(
-        GEWINN_VERLUST_MONATE_VAR, STANDARD_GEWINN_VERLUST_MONATE
+        GEWINN_VERLUST_MONATE_VAR,
+        STANDARD_GEWINN_VERLUST_MONATE,
     )
-    stichtag = date.today()
+    stichtag = datetime.datetime.now(tz=datetime.UTC).date()
 
     dashboard, kurzarbeit_ergebnisse, anmeldungsverlauf_fenster = synchron(
         _daten_laden_async(
@@ -634,7 +648,7 @@ def main() -> None:
             horizont_monate=horizont_monate,
             mit_kurzarbeit=kurzarbeit_aktiv(),
             mit_anmeldungsverlauf=not argumente.nur_text,
-        )
+        ),
     )
 
     # Die Leerzeile trennt die (auf stderr geschriebene) Ladeanzeige sichtbar vom
@@ -659,7 +673,7 @@ def main() -> None:
                 anmeldungsverlauf_fenster,
                 Path(verzeichnis),
                 gewinn_verlust_monate=gewinn_verlust_monate,
-            )
+            ),
         )
     print(f"{_export_zusammenfassung(titel)} exportiert und an Slack gepostet")
 

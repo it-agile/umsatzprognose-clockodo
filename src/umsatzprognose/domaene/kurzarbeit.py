@@ -181,7 +181,10 @@ class Kurzarbeitsbewertung:
 
 
 def _kategorie(
-    person: Personenmonat, *, rollenzuordnung: Rollenzuordnung, schwellenwerte: Schwellenwerte
+    person: Personenmonat,
+    *,
+    rollenzuordnung: Rollenzuordnung,
+    schwellenwerte: Schwellenwerte,
 ) -> str:
     """Die Kategorie einer Person in einem Monat - eine reine
     Klassifikationsfunktion ohne Zaehlerzustand, siehe :func:`bewerten`."""
@@ -223,7 +226,9 @@ def bewerten(
     unklassifizierte_ids: list[str] = []
     for person in personenmonate:
         kategorie = _kategorie(
-            person, rollenzuordnung=rollenzuordnung, schwellenwerte=schwellenwerte
+            person,
+            rollenzuordnung=rollenzuordnung,
+            schwellenwerte=schwellenwerte,
         )
         ids_je_kategorie[kategorie].append(str(person.mitarbeiter_id))
         if kategorie != _NICHT_BESTIMMBAR and person.unklassifizierte_stunden > 0:
@@ -236,18 +241,24 @@ def bewerten(
         Hinweis(text, tuple(betroffene))
         for text, betroffene in (
             (
-                "Diese Personen sind laut Rollenzuordnung ausgeschlossen (Geschäftsführung/"
-                "Vertrieb) und zählen nie in den Zähler kurzarbeitsfähiger Personen",
+                (
+                    "Diese Personen sind laut Rollenzuordnung ausgeschlossen (Geschäftsführung/"
+                    "Vertrieb) und zählen nie in den Zähler kurzarbeitsfähiger Personen"
+                ),
                 ausgeschlossene_ids,
             ),
             (
-                "Bei diesen Personen weicht die Summe aus interner und externer Zeit von der "
-                "ungefilterten Gesamtzeit ab - die Differenz zählt als unklassifizierte Stunden",
+                (
+                    "Bei diesen Personen weicht die Summe aus interner und externer Zeit von der "
+                    "ungefilterten Gesamtzeit ab - die Differenz zählt als unklassifizierte Stunden"
+                ),
                 unklassifizierte_ids,
             ),
             (
-                "Für diese Personen ist kein Überstundenstand bestimmbar oder es liegt keine "
-                "gebuchte Stunde vor - sie wurden vollständig aus der Auswertung genommen",
+                (
+                    "Für diese Personen ist kein Überstundenstand bestimmbar oder es liegt keine "
+                    "gebuchte Stunde vor - sie wurden vollständig aus der Auswertung genommen"
+                ),
                 nicht_bestimmbare_ids,
             ),
         )

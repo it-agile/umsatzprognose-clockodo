@@ -160,7 +160,7 @@ def umsatzverlauf(
             "color": [
                 SERIE_HELL if laufender and m.schluessel == laufender.schluessel else SERIE
                 for m in monate
-            ]
+            ],
         },
         customdata=[[euro(m.umsatz), f"{m.stunden:,.0f}".replace(",", ".")] for m in monate],
         hovertemplate="<b>%{x}</b><br>%{customdata[0]}<br>%{customdata[1]} Stunden<extra></extra>",
@@ -188,7 +188,11 @@ def umsatzverlauf(
     kosten_balken = KostenBalkenErgebnis()
     if kostenplan is not None:
         kosten_balken = _kosten_und_ergebnis(
-            fig, monate, prognose, kostenplan, horizont_gesamtumsatz
+            fig,
+            monate,
+            prognose,
+            kostenplan,
+            horizont_gesamtumsatz,
         )
     if mit_beschriftung:
         # Erst hier, an der oeffentlichen Funktion, statt in den Bauhelfern oben - die
@@ -201,7 +205,11 @@ def umsatzverlauf(
             _monatsbeschriftung(jahr, monat) for jahr, monat in horizont_gesamtumsatz
         }
         _balken_beschriften(
-            fig, "Historie", "Kosten", "Ergebnis", uebersprungen={"Historie": horizont_monate}
+            fig,
+            "Historie",
+            "Kosten",
+            "Ergebnis",
+            uebersprungen={"Historie": horizont_monate},
         )
         # Eine Beschriftung fuer die Summe aus Schulungsanmeldungen, bereits gebuchtem
         # und simuliertem Umsatz reicht, statt jedes der drei Segmente einzeln zu
@@ -327,7 +335,8 @@ def _monatsbeschriftung(jahr: int, monat: int) -> str:
 
 
 def _alle_monatsschluessel(
-    monate: Sequence[Monatsumsatz], prognose: Prognose
+    monate: Sequence[Monatsumsatz],
+    prognose: Prognose,
 ) -> list[tuple[int, int]]:
     """Die Monate der Historie, ergaenzt um den Prognosehorizont (ohne Dopplung)."""
     schluessel = [m.schluessel for m in monate]
@@ -342,7 +351,9 @@ BALKENTEXT_SCHWELLE = 100_000.0
 
 
 def _balken_beschriften(
-    fig: go.Figure, *namen: str, uebersprungen: Mapping[str, set[str]] | None = None
+    fig: go.Figure,
+    *namen: str,
+    uebersprungen: Mapping[str, set[str]] | None = None,
 ) -> None:
     """Haengt an die genannten, bereits gezeichneten Balkenspuren ihren Wert als Text.
 
@@ -476,12 +487,15 @@ def _kosten_und_ergebnis(
         showlegend=False,
     )
     return KostenBalkenErgebnis(
-        gezeichnet=True, hat_pauschale=not all(hat_erfassung), hat_erfassung=any(hat_erfassung)
+        gezeichnet=True,
+        hat_pauschale=not all(hat_erfassung),
+        hat_erfassung=any(hat_erfassung),
     )
 
 
 def _schulung_je_monat(
-    schulungsplan: Schulungsplan | None, horizont: Sequence[tuple[int, int]]
+    schulungsplan: Schulungsplan | None,
+    horizont: Sequence[tuple[int, int]],
 ) -> list[Decimal]:
     """Schulungsumsatz je Horizontmonat, 0 je Monat ohne ``schulungsplan``."""
     if schulungsplan is None:
@@ -620,7 +634,9 @@ def _prognosehorizont(
     )
 
     return _horizont_gesamtumsatz(
-        prognose, verbrauch_laufender_monat=verbrauch_laufender_monat, schulungsplan=schulungsplan
+        prognose,
+        verbrauch_laufender_monat=verbrauch_laufender_monat,
+        schulungsplan=schulungsplan,
     )
 
 
@@ -879,7 +895,12 @@ def gewinn_verlust_monatlich(
     ``mit_beschriftung`` siehe :func:`umsatzverlauf`.
     """
     beschriftungen, _umsatz, ergebnis, deckkraft = _historie_und_horizont_werte(
-        monate, kosten, prognose, horizont_kosten, schulungsplan, verbrauch_laufender_monat
+        monate,
+        kosten,
+        prognose,
+        horizont_kosten,
+        schulungsplan,
+        verbrauch_laufender_monat,
     )
     gesamt = sum(ergebnis, Decimal("0"))
     horizont = prognose.horizontmonate() if prognose.vorhanden else ()
@@ -941,7 +962,12 @@ def gewinn_verlust_je_jahr(
     :func:`umsatzverlauf`.
     """
     _beschriftungen, umsatz, ergebnis, deckkraft = _historie_und_horizont_werte(
-        monate, kosten, prognose, horizont_kosten, schulungsplan, verbrauch_laufender_monat
+        monate,
+        kosten,
+        prognose,
+        horizont_kosten,
+        schulungsplan,
+        verbrauch_laufender_monat,
     )
     jahre = _je_jahr(monate, prognose, umsatz, ergebnis, deckkraft)
 
@@ -991,7 +1017,12 @@ def umsatzrendite_kumuliert(
     ``mit_beschriftung`` siehe :func:`umsatzverlauf`.
     """
     _beschriftungen, umsatz, ergebnis, deckkraft = _historie_und_horizont_werte(
-        monate, kosten, prognose, horizont_kosten, schulungsplan, verbrauch_laufender_monat
+        monate,
+        kosten,
+        prognose,
+        horizont_kosten,
+        schulungsplan,
+        verbrauch_laufender_monat,
     )
     jahre = _je_jahr(monate, prognose, umsatz, ergebnis, deckkraft)
 
@@ -1085,7 +1116,10 @@ def _liegende_rangliste(
 
 
 def restvolumen_je_projekt(
-    projekte: Sequence[Projekt], *, top: int = 15, hoehe: int | None = None
+    projekte: Sequence[Projekt],
+    *,
+    top: int = 15,
+    hoehe: int | None = None,
 ) -> go.Figure:
     """Die groessten offenen Volumina als liegende Balken, beschriftet mit dem Betrag.
 
@@ -1096,7 +1130,9 @@ def restvolumen_je_projekt(
     gezeigt = list(projekte[:top])
     gesamt = sum((p.restvolumen_prognosewirksam or Decimal("0") for p in projekte), Decimal("0"))
     untertitel = _rangliste_untertitel(
-        len(projekte), len(gezeigt), f"Projekte mit zusammen {euro(gesamt, nachkommastellen=0)}"
+        len(projekte),
+        len(gezeigt),
+        f"Projekte mit zusammen {euro(gesamt, nachkommastellen=0)}",
     )
     fig = figur(
         "Offenes Auftragsvolumen je Projekt",
@@ -1125,7 +1161,10 @@ def restvolumen_je_projekt(
 
 
 def kapazitaet_je_mitarbeiter(
-    kapazitaeten: Sequence[tuple[Mitarbeiter, float]], *, top: int = 15, hoehe: int | None = None
+    kapazitaeten: Sequence[tuple[Mitarbeiter, float]],
+    *,
+    top: int = 15,
+    hoehe: int | None = None,
 ) -> go.Figure:
     """Verfuegbare Kapazitaet je Person, aufsummiert ueber mehrere Monate, in Tagen.
 
@@ -1138,7 +1177,9 @@ def kapazitaet_je_mitarbeiter(
     gezeigt = list(kapazitaeten[:top])
     gesamt = sum(stunden for _, stunden in kapazitaeten)
     untertitel = _rangliste_untertitel(
-        len(kapazitaeten), len(gezeigt), f"Personen mit zusammen {tage(gesamt)}"
+        len(kapazitaeten),
+        len(gezeigt),
+        f"Personen mit zusammen {tage(gesamt)}",
     )
     fig = figur(
         "Verfügbare Kapazität je Person",
@@ -1173,10 +1214,14 @@ def auslastung_je_mitarbeiter(
     mit_quote.sort(key=lambda paar: paar[1], reverse=True)
     gezeigt = mit_quote[:top]
     untertitel = _rangliste_untertitel(
-        len(mit_quote), len(gezeigt), "Personen mit hinterlegter Kapazität"
+        len(mit_quote),
+        len(gezeigt),
+        "Personen mit hinterlegter Kapazität",
     )
     fig = figur(
-        "Auslastung je Person", untertitel=untertitel, hoehe=hoehe or _rangliste_hoehe(len(gezeigt))
+        "Auslastung je Person",
+        untertitel=untertitel,
+        hoehe=hoehe or _rangliste_hoehe(len(gezeigt)),
     )
     umgekehrt = list(reversed(gezeigt))
     _liegende_rangliste(
@@ -1303,7 +1348,7 @@ def anteil_fakturierbarer_arbeit_verteilung(
     if not 0.0 <= minimum < maximum <= 1.0:
         raise ValueError(
             f"minimum ({minimum}) muss kleiner als maximum ({maximum}) sein, beide "
-            "zwischen 0.0 und 1.0"
+            "zwischen 0.0 und 1.0",
         )
     haeufigkeiten, kanten = np.histogram(werte, bins=bins, range=(minimum, maximum))
     untertitel = (
@@ -1331,7 +1376,10 @@ def anteil_fakturierbarer_arbeit_verteilung(
 
 
 def kapazitaet_je_projekt(
-    kapazitaeten: Sequence[tuple[Projekt, float]], *, top: int = 15, hoehe: int | None = None
+    kapazitaeten: Sequence[tuple[Projekt, float]],
+    *,
+    top: int = 15,
+    hoehe: int | None = None,
 ) -> go.Figure:
     """Simulierte Kapazitaet je Projekt, als liegende Balken in Tagen.
 
@@ -1345,7 +1393,9 @@ def kapazitaet_je_projekt(
     gezeigt = list(kapazitaeten[:top])
     gesamt = sum(stunden for _, stunden in kapazitaeten)
     untertitel = _rangliste_untertitel(
-        len(kapazitaeten), len(gezeigt), f"Projekte mit zusammen {tage(gesamt)}"
+        len(kapazitaeten),
+        len(gezeigt),
+        f"Projekte mit zusammen {tage(gesamt)}",
     )
     fig = figur(
         "Simulierte Kapazität je Projekt",
@@ -1380,7 +1430,10 @@ def _umgebrochen(text: str, breite: int = 80) -> str:
     ``break_on_hyphens=False``, weil hier nur an Leerraum umgebrochen werden soll, nie
     innerhalb eines (auch zusammengesetzten) Wortes."""
     zeilen = textwrap.wrap(
-        " ".join(text.split()), width=breite, break_long_words=False, break_on_hyphens=False
+        " ".join(text.split()),
+        width=breite,
+        break_long_words=False,
+        break_on_hyphens=False,
     )
     return "<br>".join(zeilen)
 
@@ -1661,7 +1714,7 @@ def kennzahlen(eintraege: Sequence[tuple[str, float, str]], *, hoehe: int = 150)
                     "font": {"size": 30, "color": TINTE},
                 },
                 domain={"row": 0, "column": spalte},
-            )
+            ),
         )
     return fig
 
@@ -1740,7 +1793,7 @@ def tabelle_als_grafik(titel: str, tabelle: pd.DataFrame, *, hoehe: int | None =
                 "align": ausrichtung,
                 "height": zeilenhoehe,
             },
-        )
+        ),
     )
     fig.update_layout(margin={"l": 12, "r": 12, "t": 40, "b": 12})
     return fig

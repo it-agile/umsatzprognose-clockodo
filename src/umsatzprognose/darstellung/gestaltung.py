@@ -95,7 +95,11 @@ class _FigurLayoutKwargs(TypedDict):
 
 
 def figur(
-    titel: str, *, untertitel: str = "", hoehe: int = 420, **layout: Unpack[_FigurLayoutKwargs]
+    titel: str,
+    *,
+    untertitel: str = "",
+    hoehe: int = 420,
+    **layout: Unpack[_FigurLayoutKwargs],
 ) -> go.Figure:
     """Eine leere Figur im gemeinsamen Erscheinungsbild."""
     fig = go.Figure()

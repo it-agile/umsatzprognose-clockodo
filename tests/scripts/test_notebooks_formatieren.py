@@ -35,7 +35,7 @@ def _notebook_mit_ausgabe(pfad: Path) -> None:
                 "outputs": [{"output_type": "stream", "name": "stdout", "text": ["x\n"]}],
                 "metadata": {},
                 "source": ["1 + 1"],
-            }
+            },
         ],
         "metadata": {},
         "nbformat": 4,

@@ -67,13 +67,21 @@ class AuslastungRepository:
         return cls(ClockodoClient(ClockodoCredentials.automatisch()))
 
     def laden(
-        self, mitarbeiter: Mapping[int, Mitarbeiter], *, stichtag: date, monate: int = 12
+        self,
+        mitarbeiter: Mapping[int, Mitarbeiter],
+        *,
+        stichtag: date,
+        monate: int = 12,
     ) -> tuple[Auslastungsmonat, ...]:
         """Der Abruf, synchron - fuer den Aufruf ausserhalb eines Event-Loops."""
         return synchron(self.laden_async(mitarbeiter, stichtag=stichtag, monate=monate))
 
     async def laden_async(
-        self, mitarbeiter: Mapping[int, Mitarbeiter], *, stichtag: date, monate: int = 12
+        self,
+        mitarbeiter: Mapping[int, Mitarbeiter],
+        *,
+        stichtag: date,
+        monate: int = 12,
     ) -> tuple[Auslastungsmonat, ...]:
         """Die letzten ``monate`` Monate bis einschliesslich des Stichtagsmonats.
 
@@ -84,13 +92,19 @@ class AuslastungRepository:
         von = f"{zeitraum[0][0]:04d}-{zeitraum[0][1]:02d}-01T00:00:00Z"
         intern, abrechenbar, fakturiert = await gleichzeitig(
             self._client.entrygroups_je_person_und_monat(
-                billable=BILLABLE_INTERN, time_since=von, time_until=verbrauch_bis(stichtag)
+                billable=BILLABLE_INTERN,
+                time_since=von,
+                time_until=verbrauch_bis(stichtag),
             ),
             self._client.entrygroups_je_person_und_monat(
-                billable=BILLABLE_ABRECHENBAR, time_since=von, time_until=verbrauch_bis(stichtag)
+                billable=BILLABLE_ABRECHENBAR,
+                time_since=von,
+                time_until=verbrauch_bis(stichtag),
             ),
             self._client.entrygroups_je_person_und_monat(
-                billable=BILLABLE_FAKTURIERT, time_since=von, time_until=verbrauch_bis(stichtag)
+                billable=BILLABLE_FAKTURIERT,
+                time_since=von,
+                time_until=verbrauch_bis(stichtag),
             ),
         )
         return self.abbilden(intern, abrechenbar, fakturiert, mitarbeiter, monate=zeitraum)

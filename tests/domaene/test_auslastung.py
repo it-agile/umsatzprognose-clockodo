@@ -37,7 +37,10 @@ def test_quote_ist_anteil_abrechenbarer_stunden_an_verfuegbarer_kapazitaet() -> 
 def test_quote_ist_none_ohne_verfuegbare_kapazitaet() -> None:
     ohne_arbeitszeit = Mitarbeiter(id=2, name="Bert", aktiv=True)
     monat = Auslastungsmonat(
-        mitarbeiter=ohne_arbeitszeit, jahr=2026, monat=9, abrechenbare_stunden=10.0
+        mitarbeiter=ohne_arbeitszeit,
+        jahr=2026,
+        monat=9,
+        abrechenbare_stunden=10.0,
     )
 
     assert monat.verfuegbare_stunden == 0.0
@@ -78,7 +81,11 @@ def test_anteil_fakturierbarer_arbeit_bezieht_sich_auf_gebuchte_zeit_nicht_kapaz
     # die verfuegbare Kapazitaet (anders als bei quote) spielt hier keine Rolle.
     anna = _mitarbeiter_mit_wochenstunden(8.0)
     monat = Auslastungsmonat(
-        mitarbeiter=anna, jahr=2026, monat=9, abrechenbare_stunden=80.0, interne_stunden=20.0
+        mitarbeiter=anna,
+        jahr=2026,
+        monat=9,
+        abrechenbare_stunden=80.0,
+        interne_stunden=20.0,
     )
 
     assert monat.anteil_fakturierbarer_arbeit == 0.8
@@ -95,10 +102,18 @@ def test_auslastungssumme_summiert_interne_stunden() -> None:
     anna = _mitarbeiter_mit_wochenstunden(8.0)
     monate = (
         Auslastungsmonat(
-            mitarbeiter=anna, jahr=2026, monat=8, abrechenbare_stunden=80.0, interne_stunden=10.0
+            mitarbeiter=anna,
+            jahr=2026,
+            monat=8,
+            abrechenbare_stunden=80.0,
+            interne_stunden=10.0,
         ),
         Auslastungsmonat(
-            mitarbeiter=anna, jahr=2026, monat=9, abrechenbare_stunden=80.0, interne_stunden=30.0
+            mitarbeiter=anna,
+            jahr=2026,
+            monat=9,
+            abrechenbare_stunden=80.0,
+            interne_stunden=30.0,
         ),
     )
 
@@ -113,10 +128,18 @@ def test_fakturierbare_arbeit_bandbreite_je_monat_ueber_mehrere_personen() -> No
     bert = _mitarbeiter_mit_wochenstunden(8.0)
     monate = (
         Auslastungsmonat(
-            mitarbeiter=anna, jahr=2026, monat=9, abrechenbare_stunden=90.0, interne_stunden=10.0
+            mitarbeiter=anna,
+            jahr=2026,
+            monat=9,
+            abrechenbare_stunden=90.0,
+            interne_stunden=10.0,
         ),  # 90 % fakturierbar
         Auslastungsmonat(
-            mitarbeiter=bert, jahr=2026, monat=9, abrechenbare_stunden=70.0, interne_stunden=30.0
+            mitarbeiter=bert,
+            jahr=2026,
+            monat=9,
+            abrechenbare_stunden=70.0,
+            interne_stunden=30.0,
         ),  # 70 % fakturierbar
     )
 
@@ -134,7 +157,11 @@ def test_fakturierbare_arbeit_bandbreite_ueberspringt_personen_ohne_gebuchte_zei
     bert = _mitarbeiter_mit_wochenstunden(8.0)
     monate = (
         Auslastungsmonat(
-            mitarbeiter=anna, jahr=2026, monat=9, abrechenbare_stunden=90.0, interne_stunden=10.0
+            mitarbeiter=anna,
+            jahr=2026,
+            monat=9,
+            abrechenbare_stunden=90.0,
+            interne_stunden=10.0,
         ),
         Auslastungsmonat(mitarbeiter=bert, jahr=2026, monat=9),  # keine gebuchte Zeit
     )
@@ -149,7 +176,11 @@ def test_fakturierbare_arbeit_bandbreite_ueberspringt_ausschliesslich_interne_pe
     bert = _mitarbeiter_mit_wochenstunden(8.0)
     monate = (
         Auslastungsmonat(
-            mitarbeiter=anna, jahr=2026, monat=9, abrechenbare_stunden=90.0, interne_stunden=10.0
+            mitarbeiter=anna,
+            jahr=2026,
+            monat=9,
+            abrechenbare_stunden=90.0,
+            interne_stunden=10.0,
         ),
         # Bert hat keine abrechenbare Stunde in diesem Monat (0 % fakturierbar) - ein
         # Ausreisser, der Minimum/Maximum sonst auf 0 % ziehen wuerde.
@@ -175,7 +206,11 @@ def test_durchschnittlicher_anteil_fakturierbarer_arbeit_gewichtet_nach_gebuchte
     monate = (
         # Anna: 90h fakturierbar von 100h (90 %) - viel gebuchte Zeit, soll staerker wiegen.
         Auslastungsmonat(
-            mitarbeiter=anna, jahr=2026, monat=9, abrechenbare_stunden=90.0, interne_stunden=10.0
+            mitarbeiter=anna,
+            jahr=2026,
+            monat=9,
+            abrechenbare_stunden=90.0,
+            interne_stunden=10.0,
         ),
         # Bert: 2h fakturierbar von 10h (20 %) - wenig gebuchte Zeit, ein reiner
         # Durchschnitt der beiden Anteile (90 % und 20 %) waere durch diesen
@@ -183,7 +218,11 @@ def test_durchschnittlicher_anteil_fakturierbarer_arbeit_gewichtet_nach_gebuchte
         # abrechenbar), zaehlt also mit - siehe den Test unten fuer den Fall ganz ohne
         # abrechenbare Stunde.
         Auslastungsmonat(
-            mitarbeiter=bert, jahr=2026, monat=9, abrechenbare_stunden=2.0, interne_stunden=8.0
+            mitarbeiter=bert,
+            jahr=2026,
+            monat=9,
+            abrechenbare_stunden=2.0,
+            interne_stunden=8.0,
         ),
     )
 
@@ -201,10 +240,18 @@ def test_anteile_fakturierbarer_arbeit_liefert_rohwert_je_person_und_monat() -> 
     bert = _mitarbeiter_mit_wochenstunden(8.0)
     monate = (
         Auslastungsmonat(
-            mitarbeiter=anna, jahr=2026, monat=8, abrechenbare_stunden=90.0, interne_stunden=10.0
+            mitarbeiter=anna,
+            jahr=2026,
+            monat=8,
+            abrechenbare_stunden=90.0,
+            interne_stunden=10.0,
         ),  # 90 %
         Auslastungsmonat(
-            mitarbeiter=bert, jahr=2026, monat=9, abrechenbare_stunden=70.0, interne_stunden=30.0
+            mitarbeiter=bert,
+            jahr=2026,
+            monat=9,
+            abrechenbare_stunden=70.0,
+            interne_stunden=30.0,
         ),  # 70 %
     )
 
@@ -217,7 +264,11 @@ def test_anteile_fakturierbarer_arbeit_ueberspringt_nur_ohne_gebuchte_zeit() -> 
     carla = _mitarbeiter_mit_wochenstunden(8.0)
     monate = (
         Auslastungsmonat(
-            mitarbeiter=anna, jahr=2026, monat=9, abrechenbare_stunden=90.0, interne_stunden=10.0
+            mitarbeiter=anna,
+            jahr=2026,
+            monat=9,
+            abrechenbare_stunden=90.0,
+            interne_stunden=10.0,
         ),
         Auslastungsmonat(mitarbeiter=bert, jahr=2026, monat=9),  # keine gebuchte Zeit - fehlt
         # Carla hat keine abrechenbare Stunde in diesem Monat (0 % fakturierbar) -
@@ -237,7 +288,11 @@ def test_durchschnittlicher_anteil_fakturierbarer_arbeit_ignoriert_ausschliessli
     bert = _mitarbeiter_mit_wochenstunden(8.0)
     monate = (
         Auslastungsmonat(
-            mitarbeiter=anna, jahr=2026, monat=9, abrechenbare_stunden=90.0, interne_stunden=10.0
+            mitarbeiter=anna,
+            jahr=2026,
+            monat=9,
+            abrechenbare_stunden=90.0,
+            interne_stunden=10.0,
         ),
         # Bert hat in diesem Monat gar keine abrechenbare Stunde - ein Ausreisser, der
         # den Durchschnitt trotz Gewichtung auf 0 % ziehen wuerde, bliebe er drin.
@@ -255,7 +310,11 @@ def test_fakturierbare_arbeit_verteilung_aus_auslastungen_nutzt_anteile_fakturie
     anna = _mitarbeiter_mit_wochenstunden(8.0)
     monate = (
         Auslastungsmonat(
-            mitarbeiter=anna, jahr=2026, monat=9, abrechenbare_stunden=90.0, interne_stunden=10.0
+            mitarbeiter=anna,
+            jahr=2026,
+            monat=9,
+            abrechenbare_stunden=90.0,
+            interne_stunden=10.0,
         ),
     )
 

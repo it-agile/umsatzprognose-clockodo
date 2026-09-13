@@ -12,16 +12,19 @@ Selbstverstaendlichkeit ist.
 from __future__ import annotations
 
 import asyncio
+import datetime
 import time
 from dataclasses import dataclass
-from datetime import date, timedelta
+from datetime import timedelta
 from typing import TYPE_CHECKING
 
 import humanize
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
+    from datetime import date
     from decimal import Decimal
+    from typing import Self
 
     import pandas as pd
     import plotly.graph_objects as go
@@ -74,12 +77,15 @@ def _abgeschlossene_monate(stichtag: date, fruehestes_jahr: int | None) -> int:
     if fruehestes_jahr is None:
         return STANDARD_HISTORIE_MONATE
     return max(
-        STANDARD_HISTORIE_MONATE, (stichtag.year - fruehestes_jahr) * 12 + stichtag.month - 1
+        STANDARD_HISTORIE_MONATE,
+        (stichtag.year - fruehestes_jahr) * 12 + stichtag.month - 1,
     )
 
 
 def _historie_monate(
-    bestand: Bestand, *, anzahl: int | None = STANDARD_HISTORIE_MONATE
+    bestand: Bestand,
+    *,
+    anzahl: int | None = STANDARD_HISTORIE_MONATE,
 ) -> tuple[tuple[int, int], ...]:
     """Die Monate des Historie-Fensters, als Schluessel - leer ohne geladene Historie.
 
@@ -93,7 +99,8 @@ def _historie_monate(
 
 
 def _mit_kostenabdeckung(
-    monate: Sequence[Monatsumsatz], kostenplan: Kostenplan
+    monate: Sequence[Monatsumsatz],
+    kostenplan: Kostenplan,
 ) -> tuple[Monatsumsatz, ...]:
     """Filtert Kalenderjahre heraus, fuer die ueberhaupt kein Kostenposten vorliegt.
 
@@ -150,7 +157,7 @@ def _auslastung_bericht(auslastung: Sequence[Auslastungsmonat], dauer: timedelta
 class _Stoppuhr:
     """Misst die Dauer eines ``with``-Blocks, danach als :attr:`dauer` verfuegbar."""
 
-    def __enter__(self) -> _Stoppuhr:
+    def __enter__(self) -> Self:
         self._start = time.perf_counter()
         return self
 
@@ -184,7 +191,11 @@ async def _bestand_laden(
 
 
 async def _kostenplan_laden(
-    kosten_repo: KostenRepository, bestand: Bestand, *, horizont_monate: int, melden: Fortschritt
+    kosten_repo: KostenRepository,
+    bestand: Bestand,
+    *,
+    horizont_monate: int,
+    melden: Fortschritt,
 ) -> tuple[Kostenplan, timedelta]:
     with _Stoppuhr() as t:
         kostenplan = await asyncio.to_thread(
@@ -199,11 +210,16 @@ async def _kostenplan_laden(
 
 
 async def _auslastung_laden(
-    bestand: Bestand, *, auslastung_monate: int, melden: Fortschritt
+    bestand: Bestand,
+    *,
+    auslastung_monate: int,
+    melden: Fortschritt,
 ) -> tuple[tuple[Auslastungsmonat, ...], timedelta]:
     with _Stoppuhr() as t:
         auslastung = await AuslastungRepository.mit_automatischen_zugangsdaten().laden_async(
-            _aktive_mitarbeiter(bestand), stichtag=bestand.stichtag, monate=auslastung_monate
+            _aktive_mitarbeiter(bestand),
+            stichtag=bestand.stichtag,
+            monate=auslastung_monate,
         )
     melden(_auslastung_bericht(auslastung, t.dauer))
     return auslastung, t.dauer
@@ -244,7 +260,11 @@ async def _bestand_und_abhaengige_laden(
 
 
 async def _schulungsplan_laden(
-    *, stichtag: date, horizont_monate: int, melden: Fortschritt, beginnt: Fortschritt
+    *,
+    stichtag: date,
+    horizont_monate: int,
+    melden: Fortschritt,
+    beginnt: Fortschritt,
 ) -> tuple[Schulungsplan, timedelta]:
     beginnt("Schulungsplan")
     with _Stoppuhr() as t:
@@ -287,7 +307,7 @@ class Dashboard:
     ) -> None:
         self.bestand = bestand
         self.prognose: Prognose = NochKeinePrognose(
-            fehlt="Die Prognose wurde noch nicht simuliert."
+            fehlt="Die Prognose wurde noch nicht simuliert.",
         )
         self.schulungsplan: Schulungsplan = schulungsplan
         self.kostenplan: Kostenplan = kostenplan
@@ -371,7 +391,7 @@ class Dashboard:
                 auslastung_monate=auslastung_monate,
                 fortschritt=fortschritt,
                 schritt_beginnt=schritt_beginnt,
-            )
+            ),
         )
 
     @classmethod
@@ -394,10 +414,11 @@ class Dashboard:
         # gemeldeten Dauern englisch, nur die spaeter im Aufrufer-Thread gebauten
         # Berichte (ladebericht(), bestandsbericht()) deutsch.
         humanize.i18n.activate("de_DE")
-        stichtag = stichtag or date.today()
+        stichtag = stichtag or datetime.datetime.now(tz=datetime.UTC).date()
         kosten_repo = KostenRepository.mit_automatischen_zugangsdaten()
         abgeschlossene_monate = _abgeschlossene_monate(
-            stichtag, kosten_repo.fruehestes_konfiguriertes_jahr
+            stichtag,
+            kosten_repo.fruehestes_konfiguriertes_jahr,
         )
 
         def melden(text: str) -> None:
@@ -424,7 +445,10 @@ class Dashboard:
                 beginnt=beginnt,
             ),
             _schulungsplan_laden(
-                stichtag=stichtag, horizont_monate=horizont_monate, melden=melden, beginnt=beginnt
+                stichtag=stichtag,
+                horizont_monate=horizont_monate,
+                melden=melden,
+                beginnt=beginnt,
             ),
         )
 
@@ -526,7 +550,7 @@ class Dashboard:
                     "EUR",
                 ),
                 ("Projekte in der Prognose", len(self.bestand.im_prognose_scope), ""),
-            ]
+            ],
         )
 
     def simuliere(
@@ -587,7 +611,7 @@ class Dashboard:
         if fortschritt is not None:
             fortschritt(
                 f"Simulation abgeschlossen: {humanize.intcomma(laeufe)} Laeufe ueber "
-                f"{monate} Monat(e) (in {_dauer_text(t.dauer)})"
+                f"{monate} Monat(e) (in {_dauer_text(t.dauer)})",
             )
 
     async def simuliere_async(
@@ -641,7 +665,10 @@ class Dashboard:
         )
 
     def gewinn_verlust_monatlich(
-        self, *, monate: int | None = STANDARD_GEWINN_VERLUST_MONATE, mit_beschriftung: bool = False
+        self,
+        *,
+        monate: int | None = STANDARD_GEWINN_VERLUST_MONATE,
+        mit_beschriftung: bool = False,
     ) -> go.Figure:
         """Gewinn/Verlust der letzten ``monate`` abgeschlossenen Monate, je Monat ein Balken.
 
@@ -772,11 +799,15 @@ class Dashboard:
         wer das Dashboard direkt konstruiert (etwa in Tests), traegt es selbst nach.
         """
         return diagramme.auslastung_je_mitarbeiter(
-            Auslastungssumme.je_mitarbeiter(self._auslastung_abgeschlossen()), top=top
+            Auslastungssumme.je_mitarbeiter(self._auslastung_abgeschlossen()),
+            top=top,
         )
 
     def anteil_fakturierbarer_arbeit(
-        self, *, mit_trend: bool = False, mit_beschriftung: bool = False
+        self,
+        *,
+        mit_trend: bool = False,
+        mit_beschriftung: bool = False,
     ) -> go.Figure:
         """Anteil fakturierbarer Arbeit je Monat (Minimum/Durchschnitt/Maximum ueber alle
         Personen mit gebuchter Zeit), ueber dieselben abgeschlossenen Monate des beim
@@ -803,7 +834,7 @@ class Dashboard:
     def anteil_fakturierbarer_arbeit_tabelle(self) -> pd.DataFrame:
         """Dieselben Zahlen wie :meth:`anteil_fakturierbarer_arbeit`, zum Nachlesen."""
         return tabellen.anteil_fakturierbarer_arbeit_tabelle(
-            FakturierbareArbeitBandbreite.je_monat(self._auslastung_abgeschlossen())
+            FakturierbareArbeitBandbreite.je_monat(self._auslastung_abgeschlossen()),
         )
 
     def fakturierbare_arbeit_verteilung(self) -> FakturierbareArbeitVerteilung:
@@ -815,7 +846,11 @@ class Dashboard:
         return FakturierbareArbeitVerteilung.aus_auslastungen(self._auslastung_abgeschlossen())
 
     def anteil_fakturierbarer_arbeit_verteilung(
-        self, *, minimum: float = 0.0, maximum: float = 1.0, mit_beschriftung: bool = False
+        self,
+        *,
+        minimum: float = 0.0,
+        maximum: float = 1.0,
+        mit_beschriftung: bool = False,
     ) -> go.Figure:
         """Verteilung des Anteils fakturierbarer Arbeit ueber einzelne Personen-Monate -
         anders als :meth:`anteil_fakturierbarer_arbeit` ungeglaettet je Personen-Monat
@@ -846,7 +881,10 @@ class Dashboard:
     def umsatztabelle(self) -> pd.DataFrame:
         """Dieselben Monate wie im Verlaufsdiagramm, zum Nachlesen - inklusive Prognose."""
         return tabellen.umsatztabelle(
-            self._historie(), self.prognose, self.schulungsplan, self.kostenplan
+            self._historie(),
+            self.prognose,
+            self.schulungsplan,
+            self.kostenplan,
         )
 
     def projekttabelle(self, top: int | None = None) -> pd.DataFrame:
@@ -900,8 +938,8 @@ class Dashboard:
             raise ValueError("Der Bestand enthält keine Umsatzhistorie.")
         return historie.letzte(anzahl)
 
-    def projekte_ohne_budget(self, /, filter: Sequence[str] | None = None) -> pd.DataFrame:
-        ohne_budget = self.bestand.ohne_budget(filter=filter)
+    def projekte_ohne_budget(self, /, projekt_filter: Sequence[str] | None = None) -> pd.DataFrame:
+        ohne_budget = self.bestand.ohne_budget(projekt_filter=projekt_filter)
 
         return tabellen.projekte_ohne_budget(
             (projekt.bezeichnung, grund)

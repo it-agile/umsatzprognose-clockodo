@@ -10,8 +10,8 @@ warten darauf ueber ein ``asyncio.Event``, statt eine feste Zeit zu schlafen.
 from __future__ import annotations
 
 import asyncio
+import datetime
 import time
-from datetime import date
 
 import pytest
 
@@ -27,7 +27,7 @@ from umsatzprognose.webapp.cache import (
     standard_ttl_sekunden,
 )
 
-STICHTAG = date(2026, 8, 24)
+STICHTAG = datetime.date(2026, 8, 24)
 
 
 class _FakeDashboard:
@@ -49,7 +49,11 @@ def ladezaehler(monkeypatch):
     fertig = asyncio.Event()
 
     async def _fake_laden_async(
-        *, stichtag=None, horizont_monate=3, auslastung_monate=12, fortschritt=None
+        *,
+        stichtag=None,
+        horizont_monate=3,
+        auslastung_monate=12,
+        fortschritt=None,
     ):
         aufrufe.append((horizont_monate, auslastung_monate))
         if fortschritt is not None:
@@ -108,7 +112,11 @@ def test_fortschritt_zeigt_gemeldete_zeilen_waehrend_des_ladens_und_ist_danach_l
     weiter = asyncio.Event()
 
     async def _fake_laden_async(
-        *, stichtag=None, horizont_monate=3, auslastung_monate=12, fortschritt
+        *,
+        stichtag=None,
+        horizont_monate=3,
+        auslastung_monate=12,
+        fortschritt,
     ):
         fortschritt(f"Bestand geladen: {horizont_monate}/{auslastung_monate}")
         gemeldet.set()
@@ -182,10 +190,15 @@ def test_bereit_ist_nach_ablauf_der_ttl_wieder_none(ladezaehler, monkeypatch):
 
 
 def test_anstossen_meldet_einen_fehlgeschlagenen_ladevorgang_statt_ihn_zu_verlieren(
-    monkeypatch, capsys
+    monkeypatch,
+    capsys,
 ):
     async def _schlaegt_fehl(
-        *, stichtag=None, horizont_monate=3, auslastung_monate=12, fortschritt=None
+        *,
+        stichtag=None,
+        horizont_monate=3,
+        auslastung_monate=12,
+        fortschritt=None,
     ):
         raise ValueError("kaputt")
 
@@ -212,7 +225,11 @@ def test_ein_erfolgreicher_ladevorgang_loescht_einen_vorherigen_fehler(monkeypat
     fertig = asyncio.Event()
 
     async def _schlaegt_fehl(
-        *, stichtag=None, horizont_monate=3, auslastung_monate=12, fortschritt=None
+        *,
+        stichtag=None,
+        horizont_monate=3,
+        auslastung_monate=12,
+        fortschritt=None,
     ):
         raise ValueError("kaputt")
 
@@ -251,7 +268,9 @@ def anmeldungsverlauf_ladezaehler(monkeypatch):
         return Anmeldungsverlauf()
 
     monkeypatch.setattr(
-        SchulungenRepository, "anmeldungsverlauf_laden", _fake_anmeldungsverlauf_laden
+        SchulungenRepository,
+        "anmeldungsverlauf_laden",
+        _fake_anmeldungsverlauf_laden,
     )
     monkeypatch.setattr(
         SchulungenRepository,
@@ -280,7 +299,9 @@ def test_anmeldungsverlauf_cache_laedt_ab_dem_konstruktor_jahr(anmeldungsverlauf
         return cache.bereit()
 
     verlauf = asyncio.run(ablauf())
-    assert list(aufrufe[0]) == list(range(2022, date.today().year + 1))
+    assert list(aufrufe[0]) == list(
+        range(2022, datetime.datetime.now(tz=datetime.UTC).date().year + 1)
+    )
     assert verlauf is not None
 
 
@@ -339,7 +360,7 @@ def kurzarbeit_ladezaehler(monkeypatch):
                     gesamt_stunden=160.0,
                     ueberstundenstand=0.0,
                 ),
-            )
+            ),
         }
 
     monkeypatch.setattr(KurzarbeitRepository, "laden_async", _fake_laden_async)
@@ -501,10 +522,12 @@ def test_kurzarbeit_cache_wechsel_der_schwellenwerte_loest_keinen_neuen_ladevorg
         cache.anstossen()
         await _bis_geladen(fertig)
         milde = cache.bereit(
-            anzahl_monate=6, schwellenwerte=Schwellenwerte(anteil_interne_arbeit=0.1)
+            anzahl_monate=6,
+            schwellenwerte=Schwellenwerte(anteil_interne_arbeit=0.1),
         )
         streng = cache.bereit(
-            anzahl_monate=6, schwellenwerte=Schwellenwerte(anteil_interne_arbeit=0.9)
+            anzahl_monate=6,
+            schwellenwerte=Schwellenwerte(anteil_interne_arbeit=0.9),
         )
         return milde, streng
 

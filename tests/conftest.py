@@ -164,7 +164,7 @@ def sollzeit_antwort() -> dict:
                 "monday": 7, "tuesday": 7, "wednesday": 7, "thursday": 7, "friday": 7,
                 "saturday": 0, "sunday": 0,
             },
-        ]
+        ],
     }  # fmt: skip
 
 
@@ -197,7 +197,7 @@ def abwesenheiten_antwort() -> dict:
                 "public_note": None,
                 "count_days": 1.0,
             },
-        ]
+        ],
     }  # fmt: skip
 
 
@@ -231,7 +231,7 @@ def feiertage_antwort() -> dict:
                         "evaluated_date": "2026-12-24",
                     },
                 ],
-            }
+            },
         ],
     }  # fmt: skip
 
@@ -262,7 +262,7 @@ def entrygroup_antwort() -> dict:
                 "grouped_by": "projects_id",
                 "sub_groups": [],
             },
-        ]
+        ],
     }  # fmt: skip
 
 
@@ -327,7 +327,7 @@ def projekt_monats_antwort() -> dict:
                      "revenue": 0, "grouped_by": "month"},
                 ],
             },
-        ]
+        ],
     }  # fmt: skip
 
 
@@ -347,7 +347,7 @@ def person_monat_intern_antwort() -> dict:
                      "revenue": 0.0, "grouped_by": "month"},
                 ],
             },
-        ]
+        ],
     }  # fmt: skip
 
 
@@ -367,7 +367,7 @@ def person_monat_abrechenbar_antwort() -> dict:
                      "revenue": 4000.0, "grouped_by": "month"},
                 ],
             },
-        ]
+        ],
     }  # fmt: skip
 
 
@@ -403,7 +403,7 @@ def person_monat_fakturiert_antwort() -> dict:
                      "revenue": 1000.0, "grouped_by": "month"},
                 ],
             },
-        ]
+        ],
     }  # fmt: skip
 
 
@@ -416,5 +416,5 @@ def monats_antwort() -> dict:
              "grouped_by": "month"},
             {"group": "202608", "name": "202608", "duration": 1800000, "revenue": 150000.0,
              "grouped_by": "month"},
-        ]
+        ],
     }  # fmt: skip

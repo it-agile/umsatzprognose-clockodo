@@ -260,7 +260,8 @@ class FakturierbareArbeitVerteilung:
 
     @classmethod
     def aus_auslastungen(
-        cls, auslastungen: Iterable[Auslastungsmonat]
+        cls,
+        auslastungen: Iterable[Auslastungsmonat],
     ) -> FakturierbareArbeitVerteilung:
         """Die Verteilung aus den geladenen Auslastungsmonaten, siehe
         :func:`anteile_fakturierbarer_arbeit`."""

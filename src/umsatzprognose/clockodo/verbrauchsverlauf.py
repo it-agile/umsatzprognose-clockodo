@@ -40,13 +40,14 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping
+    from datetime import date
 
     from umsatzprognose.domaene import Projekt
 
     from .client import ClockodoClient, EntryGroupV2
     from .fortschritt import Fortschritt
 
-from datetime import date
+import datetime
 
 from umsatzprognose.domaene import Verbrauchsverlauf
 
@@ -78,7 +79,7 @@ class VerbrauchsverlaufRepository:
                 horizont_monate=horizont_monate,
                 time_since=time_since,
                 cache_cutoff_monate=cache_cutoff_monate,
-            )
+            ),
         )
 
     async def laden_async(
@@ -113,7 +114,8 @@ class VerbrauchsverlaufRepository:
 
     @staticmethod
     def abbilden(
-        gruppen: list[EntryGroupV2], projekte: Iterable[Projekt]
+        gruppen: list[EntryGroupV2],
+        projekte: Iterable[Projekt],
     ) -> tuple[Verbrauchsverlauf, ...]:
         """Die Antwort auf die Projekte verteilen - groesster Verbrauch zuerst.
 
@@ -165,7 +167,9 @@ async def rohdaten(
     """
     return await client.entrygroups_je_projekt_und_monat(
         time_since=time_since,
-        time_until=horizontende(stichtag or date.today(), horizont_monate),
+        time_until=horizontende(
+            stichtag or datetime.datetime.now(tz=datetime.UTC).date(), horizont_monate
+        ),
         cache_cutoff_monate=cache_cutoff_monate,
         cache_fortschritt=cache_fortschritt,
     )

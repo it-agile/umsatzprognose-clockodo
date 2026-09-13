@@ -27,7 +27,7 @@ def test_monate_liefert_chronologische_duplikatfreie_liste() -> None:
             Anmeldung(2026, 10, "Scrum Master", 5),
             Anmeldung(2026, 9, "Scrum Master", 3),
             Anmeldung(2026, 10, "Requirements Engineering", 2),
-        )
+        ),
     )
     assert verlauf.monate == ((2026, 9), (2026, 10))
 
@@ -38,7 +38,7 @@ def test_schulungstypen_sortiert_nach_absteigender_gesamtteilnehmerzahl() -> Non
             Anmeldung(2026, 9, "Requirements Engineering", 2),
             Anmeldung(2026, 10, "Scrum Master", 5),
             Anmeldung(2026, 11, "Scrum Master", 4),
-        )
+        ),
     )
     assert verlauf.schulungstypen == ("Scrum Master", "Requirements Engineering")
 
@@ -49,7 +49,7 @@ def test_je_monat_summiert_ueber_alle_schulungstypen() -> None:
             Anmeldung(2026, 9, "Scrum Master", 5),
             Anmeldung(2026, 9, "Requirements Engineering", 2),
             Anmeldung(2026, 10, "Scrum Master", 3),
-        )
+        ),
     )
     assert verlauf.je_monat() == {(2026, 9): 7, (2026, 10): 3}
 
@@ -60,7 +60,7 @@ def test_je_monat_und_typ_beschraenkt_auf_einen_schulungstyp() -> None:
             Anmeldung(2026, 9, "Scrum Master", 5),
             Anmeldung(2026, 9, "Requirements Engineering", 2),
             Anmeldung(2026, 10, "Scrum Master", 3),
-        )
+        ),
     )
     assert verlauf.je_monat_und_typ("Scrum Master") == {(2026, 9): 5, (2026, 10): 3}
 
@@ -84,7 +84,7 @@ def test_summe_je_typ_summiert_ueber_alle_monate() -> None:
             Anmeldung(2026, 9, "Scrum Master", 5),
             Anmeldung(2026, 10, "Scrum Master", 3),
             Anmeldung(2026, 9, "Requirements Engineering", 2),
-        )
+        ),
     )
     assert verlauf.summe_je_typ() == {"Scrum Master": 8, "Requirements Engineering": 2}
 
@@ -105,7 +105,7 @@ def test_je_monat_und_kategorie_summiert_alle_typen_dieser_kategorie() -> None:
             Anmeldung(2026, 9, "CSPO 3-tägig", 2),
             Anmeldung(2026, 9, "KSD", 4),
             Anmeldung(2026, 10, "CSM 2-tägig", 3),
-        )
+        ),
     )
     ergebnis = verlauf.je_monat_und_kategorie(KATEGORIEN)
     assert ergebnis["Scrum"] == {(2026, 9): 7, (2026, 10): 3}
@@ -117,7 +117,7 @@ def test_je_monat_und_kategorie_sammelt_unbekannte_typen_unter_sonstige() -> Non
         anmeldungen=(
             Anmeldung(2026, 9, "CSM 2-tägig", 5),
             Anmeldung(2026, 9, "Ein ganz neuer Kurs", 2),
-        )
+        ),
     )
     ergebnis = verlauf.je_monat_und_kategorie(KATEGORIEN)
     assert ergebnis[KATEGORIE_SONSTIGE] == {(2026, 9): 2}
@@ -153,7 +153,7 @@ def test_gliederung_je_kategorie_ohne_variante_ist_einfaches_blatt() -> None:
         anmeldungen=(
             Anmeldung(2026, 9, "KSD", 4),
             Anmeldung(2026, 10, "KSD", 2),
-        )
+        ),
     )
     [knoten] = verlauf.gliederung_je_kategorie(KATEGORIEN)["Kanban"]
     assert knoten.name == "KSD"
@@ -169,7 +169,7 @@ def test_gliederung_je_kategorie_dauer_variante_ohne_format_vielfalt() -> None:
         anmeldungen=(
             Anmeldung(2026, 9, "CSPO 2-tägig", 5),
             Anmeldung(2026, 9, "CSPO 3-tägig", 2),
-        )
+        ),
     )
     [knoten] = verlauf.gliederung_je_kategorie(kategorien)["Scrum"]
     assert knoten.name == "CSPO"
@@ -185,7 +185,7 @@ def test_gliederung_je_kategorie_format_variante_ohne_dauer_vielfalt() -> None:
         anmeldungen=(
             Anmeldung(2026, 9, "CSPO 2-tägig", 5, format="Präsenz"),
             Anmeldung(2026, 9, "CSPO 2-tägig", 3, format="Online"),
-        )
+        ),
     )
     [knoten] = verlauf.gliederung_je_kategorie(kategorien)["Scrum"]
     assert knoten.name == "CSPO"
@@ -204,7 +204,7 @@ def test_gliederung_je_kategorie_format_und_dauer_gemeinsam() -> None:
             Anmeldung(2026, 9, "CSPO 3-tägig", 2, format="Präsenz"),
             Anmeldung(2026, 9, "CSPO 2-tägig", 1, format="Online"),
             Anmeldung(2026, 9, "CSPO 3-tägig", 4, format="Online"),
-        )
+        ),
     )
     [knoten] = verlauf.gliederung_je_kategorie(kategorien)["Scrum"]
     assert knoten.name == "CSPO"
@@ -225,7 +225,7 @@ def test_gliederung_je_kategorie_sortiert_basisnamen_alphabetisch_nicht_nach_anm
         anmeldungen=(
             Anmeldung(2026, 9, "Zertifizierung 2-tägig", 9),
             Anmeldung(2026, 9, "Auffrischung 2-tägig", 1),
-        )
+        ),
     )
     knoten = verlauf.gliederung_je_kategorie(kategorien)["Scrum"]
     assert [k.name for k in knoten] == ["Auffrischung", "Zertifizierung"]
@@ -237,7 +237,7 @@ def test_gliederung_je_kategorie_sortiert_format_alphabetisch_nicht_nach_anmelde
         anmeldungen=(
             Anmeldung(2026, 9, "CSPO 2-tägig", 5, format="Präsenz"),
             Anmeldung(2026, 9, "CSPO 2-tägig", 1, format="Online"),
-        )
+        ),
     )
     [knoten] = verlauf.gliederung_je_kategorie(kategorien)["Scrum"]
     assert [kind.name for kind in knoten.kinder] == ["Online", "Präsenz"]
@@ -249,7 +249,7 @@ def test_gliederung_je_kategorie_sortiert_dauer_alphabetisch_nicht_nach_anmeldez
         anmeldungen=(
             Anmeldung(2026, 9, "CSPO 5-tägig", 9),
             Anmeldung(2026, 9, "CSPO 2-tägig", 1),
-        )
+        ),
     )
     [knoten] = verlauf.gliederung_je_kategorie(kategorien)["Scrum"]
     assert [kind.name for kind in knoten.kinder] == ["2-tägig", "5-tägig"]
@@ -263,7 +263,7 @@ def test_gliederung_je_kategorie_unsuffigierte_variante_behaelt_vollen_namen() -
         anmeldungen=(
             Anmeldung(2026, 9, "KSI", 3),
             Anmeldung(2026, 9, "KSI 2-tägig", 5),
-        )
+        ),
     )
     [knoten] = verlauf.gliederung_je_kategorie(kategorien)["Kanban"]
     assert knoten.name == "KSI"
@@ -279,7 +279,7 @@ def test_gliederung_je_kategorie_basisname_ohne_teilnehmende_wird_ausgeblendet()
         anmeldungen=(
             Anmeldung(2026, 9, "CSPO 2-tägig", 5),
             Anmeldung(2026, 9, "CSM 2-tägig", 0),
-        )
+        ),
     )
     knoten = verlauf.gliederung_je_kategorie(kategorien)["Scrum"]
     assert [k.name for k in knoten] == ["CSPO"]
@@ -293,7 +293,7 @@ def test_gliederung_je_kategorie_format_ohne_teilnehmende_wird_ausgeblendet() ->
         anmeldungen=(
             Anmeldung(2026, 9, "CSPO 2-tägig", 5, format="Präsenz"),
             Anmeldung(2026, 9, "CSPO 2-tägig", 0, format="Online"),
-        )
+        ),
     )
     [knoten] = verlauf.gliederung_je_kategorie(kategorien)["Scrum"]
     assert knoten.name == "CSPO"
@@ -306,7 +306,7 @@ def test_gliederung_je_kategorie_dauer_ohne_teilnehmende_wird_ausgeblendet() -> 
         anmeldungen=(
             Anmeldung(2026, 9, "CSPO 2-tägig", 5),
             Anmeldung(2026, 9, "CSPO 3-tägig", 0),
-        )
+        ),
     )
     [knoten] = verlauf.gliederung_je_kategorie(kategorien)["Scrum"]
     assert knoten.name == "CSPO"
@@ -334,7 +334,7 @@ def test_letzte_beschraenkt_auf_die_angegebene_monatsanzahl_bis_zum_stichtag() -
             Anmeldung(2025, 9, "KSD", 2),
             Anmeldung(2026, 8, "KSD", 3),
             Anmeldung(2026, 9, "KSD", 4),
-        )
+        ),
     )
     fenster = verlauf.letzte(monate=2, stichtag=date(2026, 9, 15))
     assert fenster.monate == ((2026, 8), (2026, 9))
@@ -345,13 +345,17 @@ def test_letzte_verlangt_monate_als_keyword() -> None:
     """``monate`` ist keyword-only, damit an der Aufrufstelle lesbar bleibt, was die
     Zahl bedeutet - eine nackte ``13`` waere sonst leicht mit einem Jahr zu verwechseln."""
     with pytest.raises(TypeError):
-        Anmeldungsverlauf().letzte(13, stichtag=date(2026, 9, 15))  # type: ignore
+        Anmeldungsverlauf().letzte(  # type: ignore[call-arg]  # ty: ignore[missing-argument]
+            13,  # ty: ignore[too-many-positional-arguments]
+            stichtag=date(2026, 9, 15),
+        )
 
 
 def test_letzte_behaelt_abbildungshinweise() -> None:
     hinweis = Hinweis("Die Schulungs-Datei für 2022 konnte nicht gelesen werden (HttpError)")
     verlauf = Anmeldungsverlauf(
-        anmeldungen=(Anmeldung(2026, 9, "KSD", 1),), abbildungshinweise=(hinweis,)
+        anmeldungen=(Anmeldung(2026, 9, "KSD", 1),),
+        abbildungshinweise=(hinweis,),
     )
     fenster = verlauf.letzte(monate=12, stichtag=date(2026, 9, 15))
     assert fenster.abbildungshinweise == (hinweis,)
@@ -363,7 +367,7 @@ def test_ab_jahr_behaelt_nur_anmeldungen_ab_dem_angegebenen_jahr() -> None:
             Anmeldung(2022, 12, "KSD", 1),
             Anmeldung(2023, 1, "KSD", 2),
             Anmeldung(2024, 6, "KSD", 3),
-        )
+        ),
     )
     gefiltert = verlauf.ab_jahr(2023)
     assert gefiltert.monate == ((2023, 1), (2024, 6))
@@ -373,7 +377,8 @@ def test_ab_jahr_behaelt_nur_anmeldungen_ab_dem_angegebenen_jahr() -> None:
 def test_ab_jahr_behaelt_abbildungshinweise() -> None:
     hinweis = Hinweis("Die Schulungs-Datei für 2022 konnte nicht gelesen werden (HttpError)")
     verlauf = Anmeldungsverlauf(
-        anmeldungen=(Anmeldung(2024, 9, "KSD", 1),), abbildungshinweise=(hinweis,)
+        anmeldungen=(Anmeldung(2024, 9, "KSD", 1),),
+        abbildungshinweise=(hinweis,),
     )
     gefiltert = verlauf.ab_jahr(2023)
     assert gefiltert.abbildungshinweise == (hinweis,)
@@ -385,7 +390,7 @@ def test_formate_sortiert_nach_absteigender_gesamtteilnehmerzahl_und_ohne_leere(
             Anmeldung(2026, 9, "CSPO 2-tägig", 2, format="Online"),
             Anmeldung(2026, 9, "CSM 2-tägig", 5, format="Präsenz"),
             Anmeldung(2026, 9, "Unbekannt", 9),
-        )
+        ),
     )
     assert verlauf.formate == ("Präsenz", "Online")
 
@@ -396,7 +401,7 @@ def test_je_monat_und_format_beschraenkt_auf_ein_format() -> None:
             Anmeldung(2026, 9, "CSPO 2-tägig", 5, format="Präsenz"),
             Anmeldung(2026, 9, "CSM 2-tägig", 2, format="Online"),
             Anmeldung(2026, 10, "CSPO 2-tägig", 3, format="Präsenz"),
-        )
+        ),
     )
     assert verlauf.je_monat_und_format("Präsenz") == {(2026, 9): 5, (2026, 10): 3}
 
@@ -407,7 +412,7 @@ def test_dauern_sortiert_nach_absteigender_gesamtteilnehmerzahl_und_ohne_unsuffi
             Anmeldung(2026, 9, "CSPO 2-tägig", 2),
             Anmeldung(2026, 9, "CSM 3-tägig", 5),
             Anmeldung(2026, 9, "KSD", 9),
-        )
+        ),
     )
     assert verlauf.dauern == ("3-tägig", "2-tägig")
 
@@ -418,7 +423,7 @@ def test_je_monat_und_dauer_beschraenkt_auf_eine_dauer() -> None:
             Anmeldung(2026, 9, "CSPO 2-tägig", 5),
             Anmeldung(2026, 9, "CSM 3-tägig", 2),
             Anmeldung(2026, 10, "KSI 2-tägig", 3),
-        )
+        ),
     )
     assert verlauf.je_monat_und_dauer("2-tägig") == {(2026, 9): 5, (2026, 10): 3}
 
@@ -429,7 +434,7 @@ def test_schulungstypen_je_kategorie_gruppiert_nach_absteigender_gesamtteilnehme
             Anmeldung(2026, 9, "CSM 2-tägig", 2),
             Anmeldung(2026, 9, "CSPO 3-tägig", 5),
             Anmeldung(2026, 9, "KSD", 4),
-        )
+        ),
     )
     ergebnis = verlauf.schulungstypen_je_kategorie(KATEGORIEN)
     assert ergebnis["Scrum"] == ("CSPO 3-tägig", "CSM 2-tägig")
@@ -449,7 +454,7 @@ def test_basisnamen_fasst_dauer_varianten_zu_einem_namen_zusammen() -> None:
             Anmeldung(2026, 9, "CSPO 2-tägig", 5),
             Anmeldung(2026, 9, "CSPO 3-tägig", 2),
             Anmeldung(2026, 9, "KSD", 4),
-        )
+        ),
     )
     assert verlauf.basisnamen == ("CSPO", "KSD")
 
@@ -460,7 +465,7 @@ def test_je_monat_und_basisname_summiert_ueber_dauer_varianten_hinweg() -> None:
             Anmeldung(2026, 9, "CSPO 2-tägig", 5),
             Anmeldung(2026, 9, "CSPO 3-tägig", 2),
             Anmeldung(2026, 10, "CSPO 2-tägig", 3),
-        )
+        ),
     )
     assert verlauf.je_monat_und_basisname("CSPO") == {(2026, 9): 7, (2026, 10): 3}
 
@@ -471,7 +476,7 @@ def test_basisnamen_je_kategorie_gruppiert_und_fasst_dauer_varianten_zusammen() 
             Anmeldung(2026, 9, "CSM 2-tägig", 2),
             Anmeldung(2026, 9, "CSPO 3-tägig", 5),
             Anmeldung(2026, 9, "KSD", 4),
-        )
+        ),
     )
     ergebnis = verlauf.basisnamen_je_kategorie(KATEGORIEN)
     assert ergebnis["Scrum"] == ("CSPO", "CSM")

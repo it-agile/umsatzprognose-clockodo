@@ -37,10 +37,11 @@ reine Verschwendung.
 from __future__ import annotations
 
 import asyncio
+import datetime
 import os
 import time
 from contextlib import suppress
-from datetime import date, timedelta
+from datetime import timedelta
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -219,7 +220,7 @@ class DashboardCache:
         async def laden(fortschritt: Fortschritt) -> Dashboard:
             melden = _nur_abschluesse(fortschritt)
             dashboard = await Dashboard.laden_async(
-                stichtag=date.today(),
+                stichtag=datetime.datetime.now(tz=datetime.UTC).date(),
                 horizont_monate=horizont_monate,
                 auslastung_monate=auslastung_monate,
                 fortschritt=melden,
@@ -266,7 +267,7 @@ class AnmeldungsverlaufCache:
 
     def anstossen(self) -> None:
         async def laden(fortschritt: Fortschritt) -> Anmeldungsverlauf:
-            jahre = range(self._ab_jahr, date.today().year + 1)
+            jahre = range(self._ab_jahr, datetime.datetime.now(tz=datetime.UTC).date().year + 1)
             # anmeldungsverlauf_laden() ist ein einzelner synchroner Aufruf (siehe
             # Moduldocstring von umsatzprognose.schulungen.schulungen) - kein eigener
             # fortschritt-Parameter noetig, ein Vorher/Nachher-Bericht wie bei der
@@ -283,7 +284,7 @@ class AnmeldungsverlaufCache:
             dauer = timedelta(seconds=time.perf_counter() - start)
             fortschritt(
                 f"{len(verlauf.anmeldungen)} Anmeldungen aus {len(verlauf.monate)} Monaten "
-                f"geladen (in {humanize.naturaldelta(dauer)})"
+                f"geladen (in {humanize.naturaldelta(dauer)})",
             )
             return verlauf
 
@@ -317,11 +318,15 @@ class KurzarbeitCache:
     def __init__(self, *, maximale_monate: int, ttl_sekunden: int | None = None) -> None:
         self._maximale_monate = maximale_monate
         self._cache = _TTLCache[
-            None, tuple[dict[Monat, tuple[Personenmonat, ...]], Rollenzuordnung]
+            None,
+            tuple[dict[Monat, tuple[Personenmonat, ...]], Rollenzuordnung],
         ](ttl_sekunden=ttl_sekunden)
 
     def bereit(
-        self, *, anzahl_monate: int, schwellenwerte: Schwellenwerte
+        self,
+        *,
+        anzahl_monate: int,
+        schwellenwerte: Schwellenwerte,
     ) -> dict[Monat, Kurzarbeitsbewertung] | None:
         eintrag = self._cache.bereit(None)
         if eintrag is None:
@@ -329,7 +334,9 @@ class KurzarbeitCache:
         rohdaten, rollenzuordnung = eintrag
         eingeschraenkt = _juengste_monate(rohdaten, anzahl_monate)
         return bewertungen(
-            eingeschraenkt, rollenzuordnung=rollenzuordnung, schwellenwerte=schwellenwerte
+            eingeschraenkt,
+            rollenzuordnung=rollenzuordnung,
+            schwellenwerte=schwellenwerte,
         )
 
     def fortschritt(self) -> list[str]:
@@ -349,14 +356,15 @@ class KurzarbeitCache:
             # die eine synthetisierte Statuszeile danach, wortgleich zu dort.
             start = time.perf_counter()
             rohdaten = await KurzarbeitRepository.mit_automatischen_zugangsdaten().laden_async(
-                stichtag=date.today(), anzahl_monate=self._maximale_monate
+                stichtag=datetime.datetime.now(tz=datetime.UTC).date(),
+                anzahl_monate=self._maximale_monate,
             )
             rollenzuordnung = rollenzuordnung_automatisch()
             dauer = timedelta(seconds=time.perf_counter() - start)
             anzahl_personen = len({p.mitarbeiter_id for pm in rohdaten.values() for p in pm})
             fortschritt(
                 f"Kurzarbeits-Rohdaten aus {len(rohdaten)} Monate(n) von {anzahl_personen} "
-                f"Person(en) geladen (in {humanize.naturaldelta(dauer)})"
+                f"Person(en) geladen (in {humanize.naturaldelta(dauer)})",
             )
             return rohdaten, rollenzuordnung
 

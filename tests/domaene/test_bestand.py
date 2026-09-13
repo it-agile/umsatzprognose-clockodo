@@ -94,7 +94,10 @@ def test_hinweise_nennen_die_offenen_faelle():
 
 def test_abgeschlossene_aber_aktive_projekte_werden_gemeldet():
     beendet = Projekt(
-        id=9, aktiv=True, abgeschlossen=True, budget=Gesamtbudget(betrag=Decimal("1000.0"))
+        id=9,
+        aktiv=True,
+        abgeschlossen=True,
+        budget=Gesamtbudget(betrag=Decimal("1000.0")),
     )
     assert any("abgeschlossen" in h.text for h in bestand(beendet).hinweise())
 
@@ -135,7 +138,7 @@ def test_stundensatz_uebersteuerung_nimmt_den_hinweis_zurueck():
         verbrauchte_stunden=40.0,
     )
     korrigiert = bestand(ohne_umsatz).mit_stundensatz_uebersteuerungen(
-        {"Interne Zeit": Decimal("95.0")}
+        {"Interne Zeit": Decimal("95.0")},
     )
     assert not any("Stundensatz 0" in h.text for h in korrigiert.hinweise())
     projekt = next(p for p in korrigiert.projekte if p.id == 6)

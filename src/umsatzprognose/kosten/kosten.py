@@ -137,7 +137,7 @@ def _zeilen_zu_posten(zeilen: list[list[str]], jahr: int) -> list[Kostenposten]:
                 pauschale=euro_parsen(zelle(zeile, index, SPALTE_GESAMTKOSTEN)),
                 allgemeinkosten=euro_parsen(zelle(zeile, index, SPALTE_ALLGEMEINKOSTEN)),
                 erfassung=Erfasst(euro_parsen(erfassung_text)) if erfassung_text else Geschaetzt(),
-            )
+            ),
         )
     return posten
 
@@ -208,5 +208,6 @@ class KostenRepository:
             fortschritt_text=lambda jahr, bisher: f"{len(bisher)} Kostenposten bis {jahr} geladen",
         )
         return Kostenplan(
-            posten=tuple(posten), abbildungshinweise=tuple(Hinweis(m) for m in meldungen)
+            posten=tuple(posten),
+            abbildungshinweise=tuple(Hinweis(m) for m in meldungen),
         )

@@ -82,14 +82,15 @@ class Bestand:
                 scope,
                 key=lambda p: p.restvolumen_prognosewirksam or Decimal("0"),
                 reverse=True,
-            )
+            ),
         )
 
     @property
     def auftragsvolumen(self) -> Decimal:
         """Summe der Auftragsvolumina im Prognose-Scope."""
         return sum(
-            (p.auftragsvolumen or Decimal("0") for p in self.im_prognose_scope), Decimal("0")
+            (p.auftragsvolumen or Decimal("0") for p in self.im_prognose_scope),
+            Decimal("0"),
         )
 
     @property
@@ -121,7 +122,9 @@ class Bestand:
         ``werte`` nicht genannt ist, bleibt unverändert.
         """
         aktualisiert = _mit_uebersteuerung(
-            self.projekte, werte, lambda p, wert: replace(p, stundensatz_uebersteuerung=wert)
+            self.projekte,
+            werte,
+            lambda p, wert: replace(p, stundensatz_uebersteuerung=wert),
         )
         return replace(self, projekte=aktualisiert)
 
@@ -139,7 +142,9 @@ class Bestand:
         ist, bleibt unverändert.
         """
         aktualisiert = _mit_uebersteuerung(
-            self.projekte, werte, lambda p, wert: replace(p, verbrauchsplan_zielmonat=wert)
+            self.projekte,
+            werte,
+            lambda p, wert: replace(p, verbrauchsplan_zielmonat=wert),
         )
         return replace(self, projekte=aktualisiert)
 
@@ -259,14 +264,14 @@ class Bestand:
             fakturierbare_arbeit_verteilung=fakturierbare_arbeit_verteilung,
         )
 
-    def ohne_budget(self, *, filter: Iterable[str] | None = None) -> list[Projekt]:
-        if filter is None:
-            filter = []
+    def ohne_budget(self, *, projekt_filter: Iterable[str] | None = None) -> list[Projekt]:
+        if projekt_filter is None:
+            projekt_filter = []
 
         return [
             p
             for p in self.aktive_projekte
-            if not verwertbar(p.budget) and not any(f in p.bezeichnung for f in filter)
+            if not verwertbar(p.budget) and not any(f in p.bezeichnung for f in projekt_filter)
         ]
 
 
@@ -306,19 +311,20 @@ def _abrufquote_hinweis(verteilung: Abrufquotenverteilung) -> Hinweis:
     if not verteilung.vorhanden:
         return Hinweis(
             "Die Abrufquote-Verteilung konnte nicht geschätzt werden - kein "
-            "Projekt-Monat mit offenem Restvolumen zu Monatsbeginn"
+            "Projekt-Monat mit offenem Restvolumen zu Monatsbeginn",
         )
     return Hinweis(
         f"Die Abrufquote-Verteilung ist aus {verteilung.anzahl} Projekt-Monaten "
         f"geschätzt (Median {verteilung.median:.2f}, "
         f"{verteilung.anteil_ohne_abruf:.0%} davon ohne Abruf). Das Budget ist "
         "nur in seinem heutigen Stand bekannt - nachträglich erhöhte Budgets "
-        "lassen ältere Quoten zu niedrig ausfallen"
+        "lassen ältere Quoten zu niedrig ausfallen",
     )
 
 
 def _kuenftige_buchungen_hinweis(
-    verbrauchsverlaeufe: Iterable[Verbrauchsverlauf], stichtag: date
+    verbrauchsverlaeufe: Iterable[Verbrauchsverlauf],
+    stichtag: date,
 ) -> Hinweis | None:
     """Buchungen in Monaten nach dem Stichtagsmonat sind die Untergrenze der Bandbreite
     und kein Verbrauch - sie sind vom Restvolumen nicht abgezogen."""

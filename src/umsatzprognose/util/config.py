@@ -23,7 +23,7 @@ def umgebungsvariable(name: str, *, fehlerklasse: type[Exception]) -> str:
         raise fehlerklasse(
             f"Umgebungsvariable {name} ist nicht gesetzt. "
             "Siehe .env.sample; lokal in eine .env eintragen, in Colab ueber "
-            "die Secrets-Verwaltung bereitstellen."
+            "die Secrets-Verwaltung bereitstellen.",
         )
     return value
 
@@ -52,7 +52,7 @@ def colab_secret(name: str, *, fehlerklasse: type[Exception]) -> str:
             f"Colab-Secret '{name}' nicht nutzbar ({type(fehler).__name__}).\n"
             "Anlegen: linke Seitenleiste, Schluessel-Symbol -> 'Neues Secret'.\n"
             "Danach den Schalter 'Notebook-Zugriff' fuer dieses Notebook aktivieren - "
-            "ohne ihn existiert das Secret, ist aber gesperrt."
+            "ohne ihn existiert das Secret, ist aber gesperrt.",
         ) from fehler
     if not (value or "").strip():
         raise fehlerklasse(f"Colab-Secret '{name}' ist leer.")

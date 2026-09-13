@@ -7,14 +7,19 @@ from umsatzprognose.darstellung.kurzarbeit import kurzarbeit_bericht, kurzarbeit
 from umsatzprognose.domaene import Hinweis, Kurzarbeitsbewertung, Schwellenwerte
 
 _SCHWELLENWERTE = Schwellenwerte(
-    anteil_interne_arbeit=0.24, ueberstunden_stunden=14.0, quote_organisation=0.30
+    anteil_interne_arbeit=0.24,
+    ueberstunden_stunden=14.0,
+    quote_organisation=0.30,
 )
 
 
 def test_kurzarbeit_bericht_nennt_juengsten_monat_und_status():
     ergebnisse = {
         (2026, 7): Kurzarbeitsbewertung(
-            jahr=2026, monat=7, schwellenwerte=_SCHWELLENWERTE, anzahl_kurzarbeitsfaehig=1
+            jahr=2026,
+            monat=7,
+            schwellenwerte=_SCHWELLENWERTE,
+            anzahl_kurzarbeitsfaehig=1,
         ),
         (2026, 8): Kurzarbeitsbewertung(
             jahr=2026,
@@ -36,8 +41,11 @@ def test_kurzarbeit_bericht_nennt_juengsten_monat_und_status():
 def test_kurzarbeit_bericht_mit_farbe_traegt_ansi_codes():
     ergebnisse = {
         (2026, 8): Kurzarbeitsbewertung(
-            jahr=2026, monat=8, schwellenwerte=_SCHWELLENWERTE, anzahl_kurzarbeitsfaehig=1
-        )
+            jahr=2026,
+            monat=8,
+            schwellenwerte=_SCHWELLENWERTE,
+            anzahl_kurzarbeitsfaehig=1,
+        ),
     }
 
     mit_farbe = kurzarbeit_bericht(ergebnisse, mit_farbe=True)
@@ -51,7 +59,7 @@ def test_kurzarbeit_bericht_mit_farbe_traegt_ansi_codes():
 
 def test_kurzarbeit_bericht_ohne_quote_zeigt_keine_auswertung_moeglich():
     ergebnisse = {
-        (2026, 8): Kurzarbeitsbewertung(jahr=2026, monat=8, schwellenwerte=_SCHWELLENWERTE)
+        (2026, 8): Kurzarbeitsbewertung(jahr=2026, monat=8, schwellenwerte=_SCHWELLENWERTE),
     }
 
     text = kurzarbeit_bericht(ergebnisse)
@@ -63,8 +71,11 @@ def test_kurzarbeit_hinweise_bericht_zeigt_hinweistext_nicht_das_objekt():
     hinweis = Hinweis("Diese Personen sind laut Rollenzuordnung ausgeschlossen", ("301", "302"))
     ergebnisse = {
         (2026, 8): Kurzarbeitsbewertung(
-            jahr=2026, monat=8, schwellenwerte=_SCHWELLENWERTE, hinweise=(hinweis,)
-        )
+            jahr=2026,
+            monat=8,
+            schwellenwerte=_SCHWELLENWERTE,
+            hinweise=(hinweis,),
+        ),
     }
 
     text = kurzarbeit_hinweise_bericht(ergebnisse)
@@ -76,7 +87,7 @@ def test_kurzarbeit_hinweise_bericht_zeigt_hinweistext_nicht_das_objekt():
 
 def test_kurzarbeit_hinweise_bericht_ohne_hinweise():
     ergebnisse = {
-        (2026, 8): Kurzarbeitsbewertung(jahr=2026, monat=8, schwellenwerte=_SCHWELLENWERTE)
+        (2026, 8): Kurzarbeitsbewertung(jahr=2026, monat=8, schwellenwerte=_SCHWELLENWERTE),
     }
 
     assert kurzarbeit_hinweise_bericht(ergebnisse) == "Keine Hinweise."

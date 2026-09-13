@@ -135,11 +135,15 @@ def dashboard_repository_stubs(monkeypatch):
 
     monkeypatch.setattr(BestandRepository, "mit_automatischen_zugangsdaten", _StubBestandRepository)
     monkeypatch.setattr(
-        SchulungenRepository, "mit_automatischen_zugangsdaten", _StubSchulungenRepository
+        SchulungenRepository,
+        "mit_automatischen_zugangsdaten",
+        _StubSchulungenRepository,
     )
     monkeypatch.setattr(KostenRepository, "mit_automatischen_zugangsdaten", _StubKostenRepository)
     monkeypatch.setattr(
-        AuslastungRepository, "mit_automatischen_zugangsdaten", _StubAuslastungRepository
+        AuslastungRepository,
+        "mit_automatischen_zugangsdaten",
+        _StubAuslastungRepository,
     )
     return bestand_aufrufe
 
@@ -151,7 +155,10 @@ def _historie_fuer_abrufquote(quote: float) -> Verbrauchsverlauf:
     des Prognose-Scope und traegt selbst keinen Umsatz bei, nur die eine Beobachtung.
     """
     projekt = Projekt(
-        id=900, name="Historie", aktiv=False, budget=Gesamtbudget(betrag=Decimal("1000.0"))
+        id=900,
+        name="Historie",
+        aktiv=False,
+        budget=Gesamtbudget(betrag=Decimal("1000.0")),
     )
     return Verbrauchsverlauf.fuer(
         projekt,
@@ -167,7 +174,7 @@ def test_anmeldungsverlauf_zeigt_gesamtzahl_und_trend():
             Anmeldung(2026, 9, "Produktmanagement", 1),
             Anmeldung(2026, 10, "CSM 2-tägig", 3),
             Anmeldung(2026, 11, "CSM 2-tägig", 4),
-        )
+        ),
     )
     fig = diagramme.anmeldungsverlauf(verlauf)
 
@@ -326,7 +333,7 @@ def test_kurzarbeit_grafik_mit_beschriftung_zeigt_werte_als_text():
 
 def test_kurzarbeit_grafik_ohne_quote_zeigt_n_a_als_text():
     ergebnisse = {
-        (2026, 8): Kurzarbeitsbewertung(jahr=2026, monat=8, schwellenwerte=Schwellenwerte())
+        (2026, 8): Kurzarbeitsbewertung(jahr=2026, monat=8, schwellenwerte=Schwellenwerte()),
     }
     fig = diagramme.kurzarbeit_grafik(ergebnisse, mit_beschriftung=True)
 
@@ -375,10 +382,16 @@ def test_kapazitaet_je_mitarbeiter_zeigt_werte_in_tagen():
 
 def test_kapazitaet_je_projekt_zeigt_null_bei_pauschalprojekt():
     zeitbasiert = Projekt(
-        id=1, name="Zeitbasiert", aktiv=True, budget=Gesamtbudget(betrag=Decimal("1000.0"))
+        id=1,
+        name="Zeitbasiert",
+        aktiv=True,
+        budget=Gesamtbudget(betrag=Decimal("1000.0")),
     )
     pauschal = Projekt(
-        id=2, name="Pauschale", aktiv=True, budget=Gesamtbudget(betrag=Decimal("1000.0"))
+        id=2,
+        name="Pauschale",
+        aktiv=True,
+        budget=Gesamtbudget(betrag=Decimal("1000.0")),
     )
     fig = diagramme.kapazitaet_je_projekt([(zeitbasiert, 70.0), (pauschal, 0.0)])
     balken = fig.data[0]
@@ -512,7 +525,8 @@ def test_gewinn_verlust_je_jahr_teilt_die_monate_nach_kalenderjahr():
         Monatsumsatz(2026, 2, Decimal("10000.0")),
     ]
     fig = diagramme.gewinn_verlust_je_jahr(
-        monate, [Decimal("0"), Decimal("0"), Decimal("0"), Decimal("0")]
+        monate,
+        [Decimal("0"), Decimal("0"), Decimal("0"), Decimal("0")],
     )
     spur_2025, spur_2026 = fig.data[0], fig.data[1]
 
@@ -620,7 +634,8 @@ def test_gewinn_verlust_je_jahr_ohne_prognose_zeigt_keine_datensicherheits_legen
 
 def test_auslastung_je_mitarbeiter_zeigt_prozent_und_laesst_none_weg():
     vollzeit = Wochenarbeitszeit(
-        stunden_je_wochentag=(8.0, 8.0, 8.0, 8.0, 8.0, 0.0, 0.0), gueltig_ab=date(2020, 1, 1)
+        stunden_je_wochentag=(8.0, 8.0, 8.0, 8.0, 8.0, 0.0, 0.0),
+        gueltig_ab=date(2020, 1, 1),
     )
     anna = Mitarbeiter(id=1, name="Anna", aktiv=True, arbeitszeiten=(vollzeit,))
     bert = Mitarbeiter(id=2, name="Bert", aktiv=True, arbeitszeiten=(vollzeit,))
@@ -643,10 +658,20 @@ def test_auslastung_je_mitarbeiter_zeigt_prozent_und_laesst_none_weg():
 def test_anteil_fakturierbarer_arbeit_zeigt_durchschnitt_und_fehlerbalken_bis_min_max():
     bandbreiten = [
         FakturierbareArbeitBandbreite(
-            jahr=2026, monat=8, minimum=0.7, durchschnitt=0.8, maximum=0.9, anzahl_personen=2
+            jahr=2026,
+            monat=8,
+            minimum=0.7,
+            durchschnitt=0.8,
+            maximum=0.9,
+            anzahl_personen=2,
         ),
         FakturierbareArbeitBandbreite(
-            jahr=2026, monat=9, minimum=0.6, durchschnitt=0.75, maximum=0.85, anzahl_personen=3
+            jahr=2026,
+            monat=9,
+            minimum=0.6,
+            durchschnitt=0.75,
+            maximum=0.85,
+            anzahl_personen=3,
         ),
     ]
 
@@ -663,8 +688,13 @@ def test_anteil_fakturierbarer_arbeit_zeigt_durchschnitt_und_fehlerbalken_bis_mi
 def test_anteil_fakturierbarer_arbeit_ohne_beschriftung_zeigt_keine_annotation():
     bandbreiten = [
         FakturierbareArbeitBandbreite(
-            jahr=2026, monat=8, minimum=0.7, durchschnitt=0.8, maximum=0.9, anzahl_personen=2
-        )
+            jahr=2026,
+            monat=8,
+            minimum=0.7,
+            durchschnitt=0.8,
+            maximum=0.9,
+            anzahl_personen=2,
+        ),
     ]
 
     fig = diagramme.anteil_fakturierbarer_arbeit(bandbreiten, mit_beschriftung=False)
@@ -677,10 +707,20 @@ def test_anteil_fakturierbarer_arbeit_mit_beschriftung_zeigt_wert_ueber_fehlerba
     # sonst wuerde sie den Fehlerbalken durchkreuzen statt frei darueber zu stehen.
     bandbreiten = [
         FakturierbareArbeitBandbreite(
-            jahr=2026, monat=8, minimum=0.7, durchschnitt=0.8, maximum=0.9, anzahl_personen=2
+            jahr=2026,
+            monat=8,
+            minimum=0.7,
+            durchschnitt=0.8,
+            maximum=0.9,
+            anzahl_personen=2,
         ),
         FakturierbareArbeitBandbreite(
-            jahr=2026, monat=9, minimum=0.6, durchschnitt=0.75, maximum=0.85, anzahl_personen=3
+            jahr=2026,
+            monat=9,
+            minimum=0.6,
+            durchschnitt=0.75,
+            maximum=0.85,
+            anzahl_personen=3,
         ),
     ]
 
@@ -696,8 +736,13 @@ def test_anteil_fakturierbarer_arbeit_mit_beschriftung_zeigt_wert_ueber_fehlerba
 def test_anteil_fakturierbarer_arbeit_ohne_trend_zeigt_keine_trendspur():
     bandbreiten = [
         FakturierbareArbeitBandbreite(
-            jahr=2026, monat=8, minimum=0.7, durchschnitt=0.8, maximum=0.9, anzahl_personen=2
-        )
+            jahr=2026,
+            monat=8,
+            minimum=0.7,
+            durchschnitt=0.8,
+            maximum=0.9,
+            anzahl_personen=2,
+        ),
     ]
 
     fig = diagramme.anteil_fakturierbarer_arbeit(bandbreiten, mit_trend=False)
@@ -709,10 +754,20 @@ def test_anteil_fakturierbarer_arbeit_ohne_trend_zeigt_keine_trendspur():
 def test_anteil_fakturierbarer_arbeit_mit_trend_ergaenzt_gestrichelte_trendspur():
     bandbreiten = [
         FakturierbareArbeitBandbreite(
-            jahr=2026, monat=8, minimum=0.7, durchschnitt=0.8, maximum=0.9, anzahl_personen=2
+            jahr=2026,
+            monat=8,
+            minimum=0.7,
+            durchschnitt=0.8,
+            maximum=0.9,
+            anzahl_personen=2,
         ),
         FakturierbareArbeitBandbreite(
-            jahr=2026, monat=9, minimum=0.5, durchschnitt=0.6, maximum=0.85, anzahl_personen=3
+            jahr=2026,
+            monat=9,
+            minimum=0.5,
+            durchschnitt=0.6,
+            maximum=0.85,
+            anzahl_personen=3,
         ),
     ]
 
@@ -754,7 +809,9 @@ def test_anteil_fakturierbarer_arbeit_verteilung_ohne_werte_bleibt_leer():
 
 def test_anteil_fakturierbarer_arbeit_verteilung_minimum_maximum_blenden_ausreisser_aus():
     fig = diagramme.anteil_fakturierbarer_arbeit_verteilung(
-        [0.05, 0.3, 0.95], minimum=0.2, maximum=0.5
+        [0.05, 0.3, 0.95],
+        minimum=0.2,
+        maximum=0.5,
     )
     breite = (0.5 - 0.2) / 20  # Standard-Balkenzahl 20, ueber den eingeschraenkten Bereich
 
@@ -766,7 +823,9 @@ def test_anteil_fakturierbarer_arbeit_verteilung_minimum_maximum_blenden_ausreis
 def test_anteil_fakturierbarer_arbeit_verteilung_zeigt_bereich_im_untertitel():
     voller_bereich = diagramme.anteil_fakturierbarer_arbeit_verteilung([0.1])
     eingeschraenkt = diagramme.anteil_fakturierbarer_arbeit_verteilung(
-        [0.1], minimum=0.1, maximum=0.9
+        [0.1],
+        minimum=0.1,
+        maximum=0.9,
     )
 
     assert voller_bereich.layout.title.text.count("<sup>") == 0
@@ -787,7 +846,8 @@ def test_anteil_fakturierbarer_arbeit_verteilung_ohne_beschriftung_zeigt_keinen_
 
 def test_anteil_fakturierbarer_arbeit_verteilung_mit_beschriftung_zeigt_haeufigkeit_je_balken():
     fig = diagramme.anteil_fakturierbarer_arbeit_verteilung(
-        [0.1, 0.12, 0.32], mit_beschriftung=True
+        [0.1, 0.12, 0.32],
+        mit_beschriftung=True,
     )
     balken = fig.data[0]
 
@@ -807,8 +867,13 @@ def test_anteil_fakturierbarer_arbeit_verteilung_mit_beschriftung_zeigt_haeufigk
 def test_anteil_fakturierbarer_arbeit_tabelle_formatiert_prozent_und_personenzahl():
     bandbreiten = [
         FakturierbareArbeitBandbreite(
-            jahr=2026, monat=9, minimum=0.7, durchschnitt=0.8, maximum=0.9, anzahl_personen=2
-        )
+            jahr=2026,
+            monat=9,
+            minimum=0.7,
+            durchschnitt=0.8,
+            maximum=0.9,
+            anzahl_personen=2,
+        ),
     ]
 
     tabelle = tabellen.anteil_fakturierbarer_arbeit_tabelle(bandbreiten)
@@ -876,7 +941,8 @@ def test_umsatzverlauf_haengt_horizont_mit_zwei_farbtoenen_an():
     # Eine Buchung im zweiten Horizontmonat, damit auch die "Bereits gebucht"-Spur
     # etwas zu zeichnen hat.
     verlauf_projekt = Verbrauchsverlauf.fuer(
-        projekt, [Monatsumsatz(jahr=2026, monat=10, umsatz=Decimal("5000.0"), stunden=50.0)]
+        projekt,
+        [Monatsumsatz(jahr=2026, monat=10, umsatz=Decimal("5000.0"), stunden=50.0)],
     )
     bestand = Bestand(
         stichtag=stichtag,
@@ -972,7 +1038,7 @@ def test_umsatzverlauf_mit_kostenplan_zeigt_balken_fuer_historie_und_horizont():
             Kostenposten(2026, 8, Decimal("40000.0")),
             Kostenposten(2026, 9, Decimal("15000.0")),
             Kostenposten(2026, 10, Decimal("12000.0")),
-        )
+        ),
     )
 
     fig = diagramme.umsatzverlauf(historie, prognose, None, kostenplan)
@@ -1020,7 +1086,7 @@ def test_umsatzverlauf_mit_kostenerfassung_zeigt_satteres_rot_und_eigene_legende
             ),
             Kostenposten(2026, 9, Decimal("15000.0")),
             Kostenposten(2026, 10, Decimal("12000.0")),
-        )
+        ),
     )
 
     fig = diagramme.umsatzverlauf(historie, prognose, None, kostenplan)
@@ -1081,7 +1147,7 @@ def test_umsatztabelle_mit_kostenplan_ergaenzt_kosten_und_gewinn_fuer_historie_u
             Kostenposten(2026, 8, Decimal("40000.0")),
             Kostenposten(2026, 9, Decimal("15000.0")),
             Kostenposten(2026, 10, Decimal("12000.0")),
-        )
+        ),
     )
 
     tabelle = tabellen.umsatztabelle(historie, prognose, None, kostenplan)
@@ -1203,7 +1269,9 @@ def test_dashboard_projekte_ohne_budget_filtert_projekte():
     dashboard = Dashboard(bestand, schulungsplan, KOSTENPLAN)
     dashboard.prognose = bestand.simulieren(monate=2, laeufe=5, zufall=np.random.default_rng(1))
 
-    projekte_ohne_budget = dashboard.projekte_ohne_budget(filter=["kein Match", "gefiltert"])
+    projekte_ohne_budget = dashboard.projekte_ohne_budget(
+        projekt_filter=["kein Match", "gefiltert"],
+    )
     assert not any("Projekt ohne Budget" in text for text in projekte_ohne_budget["Projekt"]), (
         projekte_ohne_budget
     )
@@ -1224,7 +1292,9 @@ def test_dashboard_simuliere_meldet_fortschritt_einmal_nach_abschluss():
 def test_dashboard_zeigt_horizont_im_umsatzverlauf():
     stichtag = date(2026, 9, 1)
     historie = Umsatzhistorie.zum_stichtag(
-        [Monatsumsatz(2026, 9, Decimal("20000.0"), 150.0)], stichtag, abgeschlossene=0
+        [Monatsumsatz(2026, 9, Decimal("20000.0"), 150.0)],
+        stichtag,
+        abgeschlossene=0,
     )
     bestand = Bestand(
         stichtag=stichtag,
@@ -1331,7 +1401,7 @@ def test_anmeldungstabelle_zeigt_teilnehmerzahl_je_kategorie_und_monat_mit_summe
             Anmeldung(2026, 9, "KSD", 2),
             Anmeldung(2026, 9, "Ein ganz neuer Kurs", 1),
             Anmeldung(2026, 10, "CSM 2-tägig", 3),
-        )
+        ),
     )
     kategorien = {"Scrum": ["CSM 2-tägig"], "Kanban": ["KSD"]}
 
@@ -1359,8 +1429,8 @@ def test_tabelle_als_grafik_hebt_zusammenfassungsspalten_hervor_unabhaengig_von_
                 "Summe": euro(Decimal("32000")),
                 "Kosten": euro(Decimal("28000")),
                 "Gewinn": euro(Decimal("4000")),
-            }
-        ]
+            },
+        ],
     )
 
     figur = diagramme.tabelle_als_grafik("Titel", tabelle)
@@ -1378,7 +1448,7 @@ def test_tabelle_als_grafik_faerbt_gewinn_nach_vorzeichen():
     """Eine 0 (kein Kostenplan geladen, oder ein Monat tatsaechlich exakt
     ausgeglichen) bleibt neutral, weder Gewinn noch Verlust."""
     tabelle = pd.DataFrame(
-        {"Gewinn": [euro(Decimal("4000")), euro(Decimal("-1000")), euro(Decimal("0"))]}
+        {"Gewinn": [euro(Decimal("4000")), euro(Decimal("-1000")), euro(Decimal("0"))]},
     )
 
     figur = diagramme.tabelle_als_grafik("Titel", tabelle)
@@ -1407,7 +1477,8 @@ def test_dashboard_liefert_alle_ansichten_zum_selben_stand():
 
 def test_dashboard_kapazitaet_je_mitarbeiter_schliesst_laufenden_monat_aus():
     vollzeit = Wochenarbeitszeit(
-        stunden_je_wochentag=(8.0, 8.0, 8.0, 8.0, 8.0, 0.0, 0.0), gueltig_ab=date(2020, 1, 1)
+        stunden_je_wochentag=(8.0, 8.0, 8.0, 8.0, 8.0, 0.0, 0.0),
+        gueltig_ab=date(2020, 1, 1),
     )
     anna = Mitarbeiter(id=1, name="Anna", aktiv=True, arbeitszeiten=(vollzeit,))
     bestand = Bestand(stichtag=STICHTAG, mitarbeiter=(anna,))  # STICHTAG: 24.08.2026
@@ -1434,7 +1505,9 @@ def test_dashboard_kapazitaet_je_mitarbeiter_schliesst_laufenden_monat_aus():
     ],
 )
 def test_abgeschlossene_monate_reicht_bis_januar_des_fruehesten_kosten_jahres(
-    stichtag, fruehestes_jahr, erwartet
+    stichtag,
+    fruehestes_jahr,
+    erwartet,
 ):
     assert _abgeschlossene_monate(stichtag, fruehestes_jahr) == erwartet
 
@@ -1485,7 +1558,7 @@ def test_dashboard_gewinn_verlust_je_jahr_nutzt_kostenplan():
         posten=(
             Kostenposten(2026, 6, Decimal("40000.0")),
             Kostenposten(2026, 7, Decimal("40000.0")),
-        )
+        ),
     )
     dashboard = Dashboard(bestand, SCHULUNGSPLAN, kostenplan)
 
@@ -1508,7 +1581,7 @@ def test_dashboard_umsatzrendite_kumuliert_nutzt_kostenplan():
         posten=(
             Kostenposten(2026, 6, Decimal("40000.0")),
             Kostenposten(2026, 7, Decimal("30000.0")),
-        )
+        ),
     )
     dashboard = Dashboard(bestand, SCHULUNGSPLAN, kostenplan)
 
@@ -1574,7 +1647,7 @@ def test_dashboard_gewinn_verlust_monatlich_haengt_vorausschau_an_wenn_simuliert
             Kostenposten(2026, 8, Decimal("40000.0")),
             Kostenposten(2026, 9, Decimal("15000.0")),
             Kostenposten(2026, 10, Decimal("12000.0")),
-        )
+        ),
     )
     dashboard = Dashboard(bestand, SCHULUNGSPLAN, kostenplan)
     dashboard.prognose = prognose
@@ -1598,7 +1671,8 @@ def test_dashboard_gewinn_verlust_je_jahr_ohne_simulation_bleibt_bei_der_histori
 
 def test_dashboard_auslastung_je_mitarbeiter_schliesst_laufenden_monat_aus():
     vollzeit = Wochenarbeitszeit(
-        stunden_je_wochentag=(8.0, 8.0, 8.0, 8.0, 8.0, 0.0, 0.0), gueltig_ab=date(2020, 1, 1)
+        stunden_je_wochentag=(8.0, 8.0, 8.0, 8.0, 8.0, 0.0, 0.0),
+        gueltig_ab=date(2020, 1, 1),
     )
     anna = Mitarbeiter(id=1, name="Anna", aktiv=True, arbeitszeiten=(vollzeit,))
     bestand = Bestand(stichtag=STICHTAG, mitarbeiter=(anna,))  # STICHTAG: 24.08.2026
@@ -1617,7 +1691,8 @@ def test_dashboard_auslastung_je_mitarbeiter_schliesst_laufenden_monat_aus():
 
 def test_dashboard_auslastung_je_mitarbeiter_summiert_abgeschlossene_monate():
     vollzeit = Wochenarbeitszeit(
-        stunden_je_wochentag=(8.0, 8.0, 8.0, 8.0, 8.0, 0.0, 0.0), gueltig_ab=date(2020, 1, 1)
+        stunden_je_wochentag=(8.0, 8.0, 8.0, 8.0, 8.0, 0.0, 0.0),
+        gueltig_ab=date(2020, 1, 1),
     )
     anna = Mitarbeiter(id=1, name="Anna", aktiv=True, arbeitszeiten=(vollzeit,))
     bestand = Bestand(stichtag=STICHTAG, mitarbeiter=(anna,))
@@ -1636,13 +1711,18 @@ def test_dashboard_auslastung_je_mitarbeiter_summiert_abgeschlossene_monate():
 
 def test_dashboard_anteil_fakturierbarer_arbeit_schliesst_laufenden_monat_aus():
     vollzeit = Wochenarbeitszeit(
-        stunden_je_wochentag=(8.0, 8.0, 8.0, 8.0, 8.0, 0.0, 0.0), gueltig_ab=date(2020, 1, 1)
+        stunden_je_wochentag=(8.0, 8.0, 8.0, 8.0, 8.0, 0.0, 0.0),
+        gueltig_ab=date(2020, 1, 1),
     )
     anna = Mitarbeiter(id=1, name="Anna", aktiv=True, arbeitszeiten=(vollzeit,))
     bestand = Bestand(stichtag=STICHTAG, mitarbeiter=(anna,))  # STICHTAG: 24.08.2026
     auslastung = (
         Auslastungsmonat(
-            mitarbeiter=anna, jahr=2026, monat=7, abrechenbare_stunden=80.0, interne_stunden=20.0
+            mitarbeiter=anna,
+            jahr=2026,
+            monat=7,
+            abrechenbare_stunden=80.0,
+            interne_stunden=20.0,
         ),
         # August ist der laufende (Stichtags-)Monat und faellt heraus.
         Auslastungsmonat(mitarbeiter=anna, jahr=2026, monat=8, interne_stunden=999.0),
@@ -1661,7 +1741,11 @@ def test_dashboard_anteil_fakturierbarer_arbeit_reicht_mit_trend_durch():
     bestand = Bestand(stichtag=STICHTAG, mitarbeiter=(anna,))
     auslastung = (
         Auslastungsmonat(
-            mitarbeiter=anna, jahr=2026, monat=7, abrechenbare_stunden=80.0, interne_stunden=20.0
+            mitarbeiter=anna,
+            jahr=2026,
+            monat=7,
+            abrechenbare_stunden=80.0,
+            interne_stunden=20.0,
         ),
     )
     dashboard = Dashboard(bestand, SCHULUNGSPLAN, KOSTENPLAN, auslastung)
@@ -1677,7 +1761,11 @@ def test_dashboard_anteil_fakturierbarer_arbeit_reicht_mit_beschriftung_durch():
     bestand = Bestand(stichtag=STICHTAG, mitarbeiter=(anna,))
     auslastung = (
         Auslastungsmonat(
-            mitarbeiter=anna, jahr=2026, monat=7, abrechenbare_stunden=80.0, interne_stunden=20.0
+            mitarbeiter=anna,
+            jahr=2026,
+            monat=7,
+            abrechenbare_stunden=80.0,
+            interne_stunden=20.0,
         ),
     )
     dashboard = Dashboard(bestand, SCHULUNGSPLAN, KOSTENPLAN, auslastung)
@@ -1692,7 +1780,11 @@ def test_dashboard_anteil_fakturierbarer_arbeit_tabelle_deckt_sich_mit_der_grafi
     bestand = Bestand(stichtag=STICHTAG, mitarbeiter=(anna,))
     auslastung = (
         Auslastungsmonat(
-            mitarbeiter=anna, jahr=2026, monat=7, abrechenbare_stunden=80.0, interne_stunden=20.0
+            mitarbeiter=anna,
+            jahr=2026,
+            monat=7,
+            abrechenbare_stunden=80.0,
+            interne_stunden=20.0,
         ),
     )
     dashboard = Dashboard(bestand, SCHULUNGSPLAN, KOSTENPLAN, auslastung)
@@ -1708,7 +1800,11 @@ def test_dashboard_anteil_fakturierbarer_arbeit_verteilung_schliesst_laufenden_m
     bestand = Bestand(stichtag=STICHTAG, mitarbeiter=(anna,))  # STICHTAG: 24.08.2026
     auslastung = (
         Auslastungsmonat(
-            mitarbeiter=anna, jahr=2026, monat=7, abrechenbare_stunden=80.0, interne_stunden=20.0
+            mitarbeiter=anna,
+            jahr=2026,
+            monat=7,
+            abrechenbare_stunden=80.0,
+            interne_stunden=20.0,
         ),
         # August ist der laufende (Stichtags-)Monat und faellt heraus.
         Auslastungsmonat(mitarbeiter=anna, jahr=2026, monat=8, interne_stunden=999.0),
@@ -1726,10 +1822,18 @@ def test_dashboard_anteil_fakturierbarer_arbeit_verteilung_reicht_minimum_maximu
     bestand = Bestand(stichtag=STICHTAG, mitarbeiter=(anna, bert))
     auslastung = (
         Auslastungsmonat(
-            mitarbeiter=anna, jahr=2026, monat=7, abrechenbare_stunden=95.0, interne_stunden=5.0
+            mitarbeiter=anna,
+            jahr=2026,
+            monat=7,
+            abrechenbare_stunden=95.0,
+            interne_stunden=5.0,
         ),  # 95 % fakturierbar, bleibt
         Auslastungsmonat(
-            mitarbeiter=bert, jahr=2026, monat=7, abrechenbare_stunden=70.0, interne_stunden=30.0
+            mitarbeiter=bert,
+            jahr=2026,
+            monat=7,
+            abrechenbare_stunden=70.0,
+            interne_stunden=30.0,
         ),  # 70 % fakturierbar, faellt bei minimum=0.75 weg
     )
     dashboard = Dashboard(bestand, SCHULUNGSPLAN, KOSTENPLAN, auslastung)
@@ -1744,7 +1848,11 @@ def test_dashboard_anteil_fakturierbarer_arbeit_verteilung_reicht_mit_beschriftu
     bestand = Bestand(stichtag=STICHTAG, mitarbeiter=(anna,))
     auslastung = (
         Auslastungsmonat(
-            mitarbeiter=anna, jahr=2026, monat=7, abrechenbare_stunden=80.0, interne_stunden=20.0
+            mitarbeiter=anna,
+            jahr=2026,
+            monat=7,
+            abrechenbare_stunden=80.0,
+            interne_stunden=20.0,
         ),
     )
     dashboard = Dashboard(bestand, SCHULUNGSPLAN, KOSTENPLAN, auslastung)
@@ -1759,7 +1867,11 @@ def test_dashboard_fakturierbare_arbeit_verteilung_liefert_dieselben_rohwerte():
     bestand = Bestand(stichtag=STICHTAG, mitarbeiter=(anna,))
     auslastung = (
         Auslastungsmonat(
-            mitarbeiter=anna, jahr=2026, monat=7, abrechenbare_stunden=80.0, interne_stunden=20.0
+            mitarbeiter=anna,
+            jahr=2026,
+            monat=7,
+            abrechenbare_stunden=80.0,
+            interne_stunden=20.0,
         ),
     )
     dashboard = Dashboard(bestand, SCHULUNGSPLAN, KOSTENPLAN, auslastung)
@@ -1792,7 +1904,11 @@ def test_dashboard_simuliere_verwendet_standardmaessig_historischen_durchschnitt
     )
     auslastung = (
         Auslastungsmonat(
-            mitarbeiter=anna, jahr=2026, monat=7, abrechenbare_stunden=1.0, interne_stunden=999.0
+            mitarbeiter=anna,
+            jahr=2026,
+            monat=7,
+            abrechenbare_stunden=1.0,
+            interne_stunden=999.0,
         ),
     )
     bestand = Bestand(
@@ -1836,7 +1952,11 @@ def test_dashboard_simuliere_mit_eigener_ziehung_ignoriert_den_historischen_durc
     )
     auslastung = (
         Auslastungsmonat(
-            mitarbeiter=anna, jahr=2026, monat=7, abrechenbare_stunden=1.0, interne_stunden=999.0
+            mitarbeiter=anna,
+            jahr=2026,
+            monat=7,
+            abrechenbare_stunden=1.0,
+            interne_stunden=999.0,
         ),
     )
     bestand = Bestand(
@@ -1848,7 +1968,9 @@ def test_dashboard_simuliere_mit_eigener_ziehung_ignoriert_den_historischen_durc
     dashboard = Dashboard(bestand, SCHULUNGSPLAN, KOSTENPLAN, auslastung)
 
     dashboard.simuliere(
-        monate=1, laeufe=5, fakturierbare_arbeit_ziehung=GaussFakturierbareArbeit(1.0, 0.0)
+        monate=1,
+        laeufe=5,
+        fakturierbare_arbeit_ziehung=GaussFakturierbareArbeit(1.0, 0.0),
     )
 
     for werte in dashboard.prognose.monatswerte().values():
@@ -1861,7 +1983,11 @@ def test_dashboard_durchschnittlicher_anteil_fakturierbarer_arbeit_schliesst_lau
     bestand = Bestand(stichtag=STICHTAG, mitarbeiter=(anna,))  # STICHTAG: 24.08.2026
     auslastung = (
         Auslastungsmonat(
-            mitarbeiter=anna, jahr=2026, monat=7, abrechenbare_stunden=80.0, interne_stunden=20.0
+            mitarbeiter=anna,
+            jahr=2026,
+            monat=7,
+            abrechenbare_stunden=80.0,
+            interne_stunden=20.0,
         ),
         # August ist der laufende (Stichtags-)Monat und faellt heraus.
         Auslastungsmonat(mitarbeiter=anna, jahr=2026, monat=8, interne_stunden=999.0),
@@ -1949,7 +2075,10 @@ def test_dashboard_kapazitaet_je_projekt_zeigt_werte_nach_simulation():
         stichtag=historie.stichtag,
         projekte=(
             Projekt(
-                id=projekt, name="Projekt", aktiv=True, budget=Gesamtbudget(betrag=Decimal("1.0"))
+                id=projekt,
+                name="Projekt",
+                aktiv=True,
+                budget=Gesamtbudget(betrag=Decimal("1.0")),
             ),
         ),
         umsatzhistorie=historie,
@@ -2058,11 +2187,15 @@ def test_dashboard_laden_verdrahtet_alle_vier_repositories(monkeypatch):
 
     monkeypatch.setattr(BestandRepository, "mit_automatischen_zugangsdaten", _StubBestandRepository)
     monkeypatch.setattr(
-        SchulungenRepository, "mit_automatischen_zugangsdaten", _StubSchulungenRepository
+        SchulungenRepository,
+        "mit_automatischen_zugangsdaten",
+        _StubSchulungenRepository,
     )
     monkeypatch.setattr(KostenRepository, "mit_automatischen_zugangsdaten", _StubKostenRepository)
     monkeypatch.setattr(
-        AuslastungRepository, "mit_automatischen_zugangsdaten", _StubAuslastungRepository
+        AuslastungRepository,
+        "mit_automatischen_zugangsdaten",
+        _StubAuslastungRepository,
     )
 
     dashboard = Dashboard.laden(stichtag=STICHTAG)
@@ -2122,19 +2255,19 @@ def test_dashboard_laden_meldet_beginn_jedes_schritts_vor_dessen_fortschritt(
 
     idx_bestand_beginnt = index(lambda e: e == "beginnt:Bestand")
     idx_bestand_fortschritt = index(
-        lambda e: e.startswith("fortschritt:") and "Bestand geladen" in e
+        lambda e: e.startswith("fortschritt:") and "Bestand geladen" in e,
     )
     idx_schulungsplan_beginnt = index(lambda e: e == "beginnt:Schulungsplan")
     idx_schulungsplan_fortschritt = index(
-        lambda e: e.startswith("fortschritt:") and "Schulung(en)" in e
+        lambda e: e.startswith("fortschritt:") and "Schulung(en)" in e,
     )
     idx_kostenplan_beginnt = index(lambda e: e == "beginnt:Kostenplan")
     idx_kostenplan_fortschritt = index(
-        lambda e: e.startswith("fortschritt:") and "Kostenprognose" in e
+        lambda e: e.startswith("fortschritt:") and "Kostenprognose" in e,
     )
     idx_auslastung_beginnt = index(lambda e: e == "beginnt:Auslastung")
     idx_auslastung_fortschritt = index(
-        lambda e: e.startswith("fortschritt:") and "Auslastungsmonat" in e
+        lambda e: e.startswith("fortschritt:") and "Auslastungsmonat" in e,
     )
 
     # Je Abruf: sein beginnt kommt vor seinem eigenen fortschritt.

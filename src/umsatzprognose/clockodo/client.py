@@ -76,6 +76,7 @@ if TYPE_CHECKING:
     from .fortschritt import Fortschritt
 
 import asyncio
+import datetime
 import random
 from calendar import monthrange
 from datetime import date
@@ -328,7 +329,8 @@ def entrygroups_zusammenfuehren(*gruppenlisten: list[EntryGroupV2]) -> list[Entr
             vorhanden["duration"] = vorhanden.get("duration", 0) + gruppe.get("duration", 0)
             vorhanden["revenue"] = vorhanden.get("revenue", 0.0) + gruppe.get("revenue", 0.0)
             neue_untergruppen = entrygroups_zusammenfuehren(
-                vorhanden.get("sub_groups") or [], gruppe.get("sub_groups") or []
+                vorhanden.get("sub_groups") or [],
+                gruppe.get("sub_groups") or [],
             )
             if neue_untergruppen:
                 vorhanden["sub_groups"] = neue_untergruppen
@@ -345,7 +347,7 @@ def verbrauch_bis(stichtag: date | None = None) -> str:
     Nicht zu verwechseln mit :func:`monatsende`, das die Umsatzhistorie zieht: dort ist
     der laufende Kalendermonat der Balken, hier der Schnitt zwischen Ist und Prognose.
     """
-    return f"{(stichtag or date.today()).isoformat()}T23:59:59Z"
+    return f"{(stichtag or datetime.datetime.now(tz=datetime.UTC).date()).isoformat()}T23:59:59Z"
 
 
 def monatsende(tag: date | None = None) -> str:
@@ -355,7 +357,7 @@ def monatsende(tag: date | None = None) -> str:
     Buchung in den laufenden Balken gehoert; dass der Monat unvollstaendig ist, fuehrt
     die Historie getrennt.
     """
-    tag = tag or date.today()
+    tag = tag or datetime.datetime.now(tz=datetime.UTC).date()
     letzter = monthrange(tag.year, tag.month)[1]
     return f"{tag.year:04d}-{tag.month:02d}-{letzter:02d}T23:59:59Z"
 
@@ -453,12 +455,14 @@ class ClockodoClient:
             await asyncio.sleep(wartezeit)
         if response.is_error:
             raise ClockodoError(
-                f"{response.status_code} fuer {response.request.url}\n{response.text[:1000]}"
+                f"{response.status_code} fuer {response.request.url}\n{response.text[:1000]}",
             )
         return response.json()
 
     async def get_paged(
-        self, path: str, params: Mapping[str, Any] | None = None
+        self,
+        path: str,
+        params: Mapping[str, Any] | None = None,
     ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
         """Alle Seiten eines paginierten Endpunkts einsammeln.
 
@@ -479,7 +483,7 @@ class ClockodoClient:
             return alle, paging
 
         weitere = await gleichzeitig(
-            *(self.get(path, {**(params or {}), "page": seite}) for seite in range(2, seiten + 1))
+            *(self.get(path, {**(params or {}), "page": seite}) for seite in range(2, seiten + 1)),
         )
         for payload in weitere:
             alle.extend(payload["data"])
@@ -649,11 +653,17 @@ class ClockodoClient:
     async def entrygroups_je_monat(self, *, time_since: str, time_until: str) -> list[EntryGroupV2]:
         """Umsatz je Kalendermonat - alle Buchungen, auch die ohne Projektbezug."""
         return await self.entrygroups(
-            [GRUPPIERUNG_MONAT], time_since=time_since, time_until=time_until
+            [GRUPPIERUNG_MONAT],
+            time_since=time_since,
+            time_until=time_until,
         )
 
     async def entrygroups_je_person_und_monat(
-        self, *, billable: int, time_since: str, time_until: str
+        self,
+        *,
+        billable: int,
+        time_since: str,
+        time_until: str,
     ) -> list[EntryGroupV2]:
         """Zeit je Person, darunter die Monate, gefiltert auf einen Billable-Status.
 
@@ -683,7 +693,8 @@ class ClockodoClient:
         return cast("list[AbsenceV4]", payload["data"])
 
     async def users_nonbusiness_days(
-        self, year: int
+        self,
+        year: int,
     ) -> tuple[list[UsersNonbusinessDayV2], dict[str, Any]]:
         """Feiertage eines Jahres, fertig je Person zugeordnet.
 

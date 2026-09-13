@@ -8,7 +8,7 @@ vergeblich - der Test schlaegt mit einem Timeout fehl statt haengenzubleiben.
 from __future__ import annotations
 
 import asyncio
-from datetime import date
+import datetime
 
 import httpx2
 import pytest
@@ -21,10 +21,10 @@ from umsatzprognose.clockodo.nebenlaeufig import gleichzeitig, synchron
 # Abrufe wieder nacheinander laufen.
 TIMEOUT = 5.0
 
-# Fester Stichtag statt date.today(): der Dreimonatshorizont ab ihm bleibt im selben
-# Jahr, damit die Anzahl der Abwesenheits-Abrufe (einer je Jahr im Horizont) nicht vom
-# Tag der Testausfuehrung abhaengt.
-STICHTAG = date(2026, 8, 24)
+# Fester Stichtag statt datetime.datetime.now(tz=datetime.UTC).date(): der Dreimonatshorizont ab ihm
+# bleibt im selben Jahr, damit die Anzahl der Abwesenheits-Abrufe (einer je Jahr im Horizont) nicht
+# vom Tag der Testausfuehrung abhaengt.
+STICHTAG = datetime.date(2026, 8, 24)
 
 ERWARTETE_ABRUFE = 9
 """Kunden, Personen, Sollzeiten, Abwesenheiten, Feiertage, Projekte, Verbrauch,
@@ -150,7 +150,7 @@ def test_laden_funktioniert_in_einem_laufenden_event_loop(
         "/v2/usersNonbusinessDays": feiertage_antwort,
     }
     client, _ = client_mit(
-        lambda request: httpx2.Response(200, json=antworten[request.url.path.removeprefix("/api")])
+        lambda request: httpx2.Response(200, json=antworten[request.url.path.removeprefix("/api")]),
     )
 
     async def wie_in_einer_notebook_zelle():
@@ -203,7 +203,8 @@ def test_zweiter_ladevorgang_laeuft_im_neuen_loop():
     ``asyncio.Semaphore`` wuerde genau hier mit einem ``RuntimeError`` brechen.
     """
     client = ClockodoClient(
-        CREDS, transport=httpx2.MockTransport(lambda _: httpx2.Response(200, json={"data": []}))
+        CREDS,
+        transport=httpx2.MockTransport(lambda _: httpx2.Response(200, json={"data": []})),
     )
     assert synchron(client.customers()) == ([], {})
     assert synchron(client.customers()) == ([], {})

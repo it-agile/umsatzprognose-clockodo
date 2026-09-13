@@ -20,6 +20,7 @@ if TYPE_CHECKING:
     from .client import EntryGroupV2
     from .fortschritt import Fortschritt
 
+import datetime
 from datetime import date
 
 from umsatzprognose.domaene import Bestand
@@ -74,7 +75,7 @@ class BestandRepository:
                 cache_cutoff_monate=cache_cutoff_monate,
                 cache_fortschritt=cache_fortschritt,
                 fortschritt=fortschritt,
-            )
+            ),
         )
 
     async def laden_async(
@@ -117,7 +118,7 @@ class BestandRepository:
                 Zweig fertig ist - nicht erst, wenn alle fuenf fertig sind (siehe
                 :func:`~.nebenlaeufig.mit_meldung`).
         """
-        stichtag = stichtag or date.today()
+        stichtag = stichtag or datetime.datetime.now(tz=datetime.UTC).date()
         personen = MitarbeiterRepository(self._client)
         # Der Horizont beginnt im Stichtagsjahr und kann bis ins naechste reichen;
         # /v4/absences und /v2/usersNonbusinessDays filtern beide nur nach
@@ -137,7 +138,9 @@ class BestandRepository:
             monatsgruppen,
         ) = await gleichzeitig(
             mit_meldung(
-                KundenRepository(self._client).laden_async(), "Kunden geladen", fortschritt
+                KundenRepository(self._client).laden_async(),
+                "Kunden geladen",
+                fortschritt,
             ),
             mit_meldung(personen.laden_async(jahre=jahre), "Personen geladen", fortschritt),
             mit_meldung(
@@ -152,7 +155,8 @@ class BestandRepository:
             ),
             mit_meldung(
                 UmsatzRepository(self._client).laden_async(
-                    stichtag, abgeschlossene=abgeschlossene_monate
+                    stichtag,
+                    abgeschlossene=abgeschlossene_monate,
                 ),
                 "Umsatzhistorie geladen",
                 fortschritt,
@@ -170,7 +174,8 @@ class BestandRepository:
         # Erst hier treffen sie sich: die Projekte tragen Kunde und Person als Objekt.
         projekte = ProjektRepository(self._client, kunden, mitarbeiter)
         geladene_projekte, projekte_hinweise = projekte.abbilden(
-            *rohe_projekte, mit_anteilen=mit_anteilen
+            *rohe_projekte,
+            mit_anteilen=mit_anteilen,
         )
 
         return Bestand(
@@ -179,7 +184,8 @@ class BestandRepository:
             mitarbeiter=tuple(mitarbeiter.values()),
             umsatzhistorie=umsatzhistorie,
             verbrauchsverlaeufe=VerbrauchsverlaufRepository.abbilden(
-                monatsgruppen, geladene_projekte
+                monatsgruppen,
+                geladene_projekte,
             ),
             abbildungshinweise=personen_hinweise + projekte_hinweise,
         )

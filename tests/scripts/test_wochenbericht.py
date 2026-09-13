@@ -47,8 +47,11 @@ import wochenbericht
 # die Funktion ruft echten Code auf (diagramme.kurzarbeit_grafik()), kein Mock noetig.
 _KURZARBEIT_ERGEBNISSE = {
     (2026, 8): Kurzarbeitsbewertung(
-        jahr=2026, monat=8, schwellenwerte=Schwellenwerte(), anzahl_kurzarbeitsfaehig=1
-    )
+        jahr=2026,
+        monat=8,
+        schwellenwerte=Schwellenwerte(),
+        anzahl_kurzarbeitsfaehig=1,
+    ),
 }
 
 
@@ -83,7 +86,10 @@ class _FakeDashboard:
         return go.Figure()
 
     def gewinn_verlust_monatlich(
-        self, *, monate: int | None = None, mit_beschriftung: bool = False
+        self,
+        *,
+        monate: int | None = None,
+        mit_beschriftung: bool = False,
     ) -> go.Figure:
         return go.Figure()
 
@@ -121,7 +127,10 @@ class _FakeSchulungenRepository:
         return cls()
 
     def anmeldungsverlauf_laden(
-        self, jahre: Sequence[int], *, fortschritt: Fortschritt | None = None
+        self,
+        jahre: Sequence[int],
+        *,
+        fortschritt: Fortschritt | None = None,
     ) -> _FakeAnmeldungsverlauf:
         return _FakeAnmeldungsverlauf()
 
@@ -189,7 +198,7 @@ def test_posten_lehnt_ungueltige_channel_id_ab_vor_jedem_api_zugriff():
                 anmeldungsverlauf_fenster=cast("Anmeldungsverlauf", object()),
                 verzeichnis=Path("/tmp"),
                 gewinn_verlust_monate=None,
-            )
+            ),
         )
 
 
@@ -222,7 +231,7 @@ def test_posten_laesst_kurzarbeit_weg_wenn_ausgeschaltet(monkeypatch, tmp_path):
             _als_anmeldungsverlauf(_FakeAnmeldungsverlauf()),
             tmp_path,
             gewinn_verlust_monate=None,
-        )
+        ),
     )
 
     assert len(client.aufrufe) == 1
@@ -235,7 +244,7 @@ def test_posten_laesst_kurzarbeit_weg_wenn_ausgeschaltet(monkeypatch, tmp_path):
 
 def test_export_zusammenfassung_zaehlt_nur_diagramme_ohne_tabellen():
     zusammenfassung = wochenbericht._export_zusammenfassung(
-        ["Umsatz je Monat", "Auslastung je Person"]
+        ["Umsatz je Monat", "Auslastung je Person"],
     )
 
     assert zusammenfassung == "2 Diagramm(e)"
@@ -410,7 +419,9 @@ def test_diagramm_erlaeuterungen_deckt_alle_diagrammtitel_ab(monkeypatch):
 def test_kurzarbeit_erlaeuterung_nennt_status_und_quote_des_juengsten_monats():
     ergebnisse = {
         (2026, 7): Kurzarbeitsbewertung(
-            jahr=2026, monat=7, schwellenwerte=Schwellenwerte(quote_organisation=0.30)
+            jahr=2026,
+            monat=7,
+            schwellenwerte=Schwellenwerte(quote_organisation=0.30),
         ),
         (2026, 8): Kurzarbeitsbewertung(
             jahr=2026,
@@ -431,7 +442,7 @@ def test_kurzarbeit_erlaeuterung_nennt_status_und_quote_des_juengsten_monats():
 
 def test_kurzarbeit_erlaeuterung_ohne_quote_meldet_keine_auswertung_moeglich():
     ergebnisse = {
-        (2026, 8): Kurzarbeitsbewertung(jahr=2026, monat=8, schwellenwerte=Schwellenwerte())
+        (2026, 8): Kurzarbeitsbewertung(jahr=2026, monat=8, schwellenwerte=Schwellenwerte()),
     }
 
     text = wochenbericht.kurzarbeit_erlaeuterung(ergebnisse)
@@ -442,7 +453,7 @@ def test_kurzarbeit_erlaeuterung_ohne_quote_meldet_keine_auswertung_moeglich():
 def test_aktive_diagrammtitel_laesst_kurzarbeit_weg_wenn_ausgeschaltet():
     assert "Kurzarbeitsbereitschaft je Monat" not in wochenbericht._aktive_diagrammtitel(None)
     assert "Kurzarbeitsbereitschaft je Monat" in wochenbericht._aktive_diagrammtitel(
-        _KURZARBEIT_ERGEBNISSE
+        _KURZARBEIT_ERGEBNISSE,
     )
 
 
@@ -498,7 +509,10 @@ def test_daten_laden_async_laedt_alle_drei_quellen_gleichzeitig(monkeypatch):
     class _FakeDashboardKlasse:
         @staticmethod
         async def laden_async(
-            *, stichtag: date, horizont_monate: int, fortschritt: Fortschritt | None = None
+            *,
+            stichtag: date,
+            horizont_monate: int,
+            fortschritt: Fortschritt | None = None,
         ) -> _FakeGeladenesDashboard:
             await asyncio.sleep(sleep)
             if fortschritt is not None:
@@ -514,7 +528,11 @@ def test_daten_laden_async_laedt_alle_drei_quellen_gleichzeitig(monkeypatch):
             return cls()
 
         async def laden_async(
-            self, *, stichtag: date, anzahl_monate: int, fortschritt: Fortschritt | None = None
+            self,
+            *,
+            stichtag: date,
+            anzahl_monate: int,
+            fortschritt: Fortschritt | None = None,
         ) -> dict:
             await asyncio.sleep(sleep)
             return {}
@@ -525,7 +543,10 @@ def test_daten_laden_async_laedt_alle_drei_quellen_gleichzeitig(monkeypatch):
             return cls()
 
         def anmeldungsverlauf_laden(
-            self, jahre: Sequence[int], *, fortschritt: Fortschritt | None = None
+            self,
+            jahre: Sequence[int],
+            *,
+            fortschritt: Fortschritt | None = None,
         ) -> _FakeAnmeldungsverlauf:
             time.sleep(sleep)
             return _FakeAnmeldungsverlauf()
@@ -542,7 +563,7 @@ def test_daten_laden_async_laedt_alle_drei_quellen_gleichzeitig(monkeypatch):
             horizont_monate=3,
             mit_kurzarbeit=True,
             mit_anmeldungsverlauf=True,
-        )
+        ),
     )
     dauer = time.perf_counter() - start
 
@@ -563,7 +584,10 @@ def test_daten_laden_async_ueberspringt_kurzarbeit_und_anmeldungsverlauf_wenn_ni
     class _FakeDashboardKlasse:
         @staticmethod
         async def laden_async(
-            *, stichtag: date, horizont_monate: int, fortschritt: Fortschritt | None = None
+            *,
+            stichtag: date,
+            horizont_monate: int,
+            fortschritt: Fortschritt | None = None,
         ) -> _FakeGeladenesDashboard:
             return _FakeGeladenesDashboard()
 
@@ -580,7 +604,7 @@ def test_daten_laden_async_ueberspringt_kurzarbeit_und_anmeldungsverlauf_wenn_ni
             horizont_monate=3,
             mit_kurzarbeit=False,
             mit_anmeldungsverlauf=False,
-        )
+        ),
     )
 
     assert kurzarbeit_ergebnisse is None

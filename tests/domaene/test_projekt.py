@@ -29,7 +29,7 @@ _STANDARD_BUDGET = Gesamtbudget(betrag=Decimal("100000.0"))
 
 def projekt(
     *,
-    id: int = 1,
+    identifier: int = 1,
     name: str | None = None,
     kunde: Kunde | None = None,
     aktiv: bool = True,
@@ -43,7 +43,7 @@ def projekt(
     automatischer_abschluss: date | None = None,
 ) -> Projekt:
     return Projekt(
-        id=id,
+        id=identifier,
         name=name,
         kunde=kunde,
         aktiv=aktiv,
@@ -192,4 +192,4 @@ def test_ohne_erfasste_stunden_gibt_es_keinen_aufteilungsschluessel():
 def test_bezeichnung_nennt_kunde_und_projekt():
     p = projekt(name="Beispielprojekt", kunde=Kunde(id=7, name="Musterkunde GmbH"))
     assert p.bezeichnung == "Musterkunde GmbH / Beispielprojekt"
-    assert projekt(id=42).bezeichnung == "Projekt 42"
+    assert projekt(identifier=42).bezeichnung == "Projekt 42"

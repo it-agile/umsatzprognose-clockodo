@@ -10,6 +10,7 @@ from datetime import date
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
+import anyio
 import pandas as pd
 import plotly.graph_objects as go
 import pytest
@@ -61,7 +62,8 @@ def test_mit_beschriftung_faehig_ist_teilmenge_von_diagramme_dashboard():
 def test_tabellen_dashboard_werte_sind_methode_und_titel():
     for methode, titel in script.TABELLEN_DASHBOARD.values():
         assert callable(methode)
-        assert isinstance(titel, str) and titel
+        assert isinstance(titel, str)
+        assert titel
 
 
 def test_figuren_exportiert_tabellen_ueber_tabelle_als_grafik(monkeypatch):
@@ -148,7 +150,7 @@ def test_daten_laden_async_laedt_dashboard_und_anmeldungsverlauf_gleichzeitig(mo
             horizont_monate=3,
             monate_fenster=6,
             args=script._argumente([]),
-        )
+        ),
     )
     dauer = time.perf_counter() - start
 
@@ -177,7 +179,7 @@ def test_daten_laden_async_ueberspringt_anmeldungsverlauf_wenn_nicht_angefordert
             horizont_monate=3,
             monate_fenster=6,
             args=script._argumente([]),
-        )
+        ),
     )
 
     assert dashboard is None
@@ -188,7 +190,7 @@ def test_exportieren_schreibt_html_dateien_in_angegebener_reihenfolge(tmp_path):
     namen = ["umsatzverlauf", "kennzahlen"]
     figuren = {name: go.Figure() for name in namen}
 
-    pfade = asyncio.run(script.exportieren_async(figuren, namen, tmp_path, "html"))
+    pfade = asyncio.run(script.exportieren_async(figuren, namen, anyio.Path(tmp_path), "html"))
 
     assert pfade == [tmp_path / "umsatzverlauf.html", tmp_path / "kennzahlen.html"]
     assert all(pfad.exists() for pfad in pfade)

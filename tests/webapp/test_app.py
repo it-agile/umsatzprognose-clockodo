@@ -43,7 +43,7 @@ import umsatzprognose.webapp.app as app_modul  # noqa: E402
 # Dieselbe Zuordnung, die vor der Umstellung auf SCHULUNGEN_KATEGORIEN (siehe
 # schulungen.kategorien_automatisch) als Konstante in webapp/app.py stand - hier per
 # Fake statt echter Umgebungsvariable, damit die Tests ohne .env laufen (siehe
-# _fake_caches unten).
+# fake_caches unten).
 KATEGORIEN = {
     "Scrum": [
         "A-CSD",
@@ -169,7 +169,7 @@ class _FakeKurzarbeitCache:
 
 
 @pytest.fixture(autouse=True)
-def _fake_caches(monkeypatch):
+def fake_caches(monkeypatch):
     dashboard_cache = _FakeDashboardCache()
     anmeldungsverlauf_cache = _FakeAnmeldungsverlaufCache()
     kurzarbeit_cache = _FakeKurzarbeitCache()
@@ -309,8 +309,8 @@ def test_simulations_parameter_und_verteilungs_parameter_sind_optisch_getrennt(p
 
 
 @pytest.mark.parametrize("pfad", ["/", "/dashboard"])
-def test_zusammenfassung_zeigt_weibull_parameter_im_zugeklappten_zustand(pfad, _fake_caches):
-    dashboard_cache, _, _ = _fake_caches
+def test_zusammenfassung_zeigt_weibull_parameter_im_zugeklappten_zustand(pfad, fake_caches):
+    dashboard_cache, _, _ = fake_caches
     anna = Mitarbeiter(id=1, name="Anna", aktiv=True)
     bestand = Bestand(
         stichtag=STICHTAG, projekte=PROJEKTE, mitarbeiter=(anna,), umsatzhistorie=HISTORIE
@@ -335,8 +335,8 @@ def test_zusammenfassung_zeigt_weibull_parameter_im_zugeklappten_zustand(pfad, _
 
 
 @pytest.mark.parametrize("pfad", ["/", "/dashboard"])
-def test_zusammenfassung_zeigt_gauss_parameter_im_zugeklappten_zustand(pfad, _fake_caches):
-    dashboard_cache, _, _ = _fake_caches
+def test_zusammenfassung_zeigt_gauss_parameter_im_zugeklappten_zustand(pfad, fake_caches):
+    dashboard_cache, _, _ = fake_caches
     anna = Mitarbeiter(id=1, name="Anna", aktiv=True)
     bestand = Bestand(
         stichtag=STICHTAG, projekte=PROJEKTE, mitarbeiter=(anna,), umsatzhistorie=HISTORIE
@@ -357,8 +357,8 @@ def test_zusammenfassung_zeigt_gauss_parameter_im_zugeklappten_zustand(pfad, _fa
     assert "σ=" in antwort.text
 
 
-def test_uebersicht_gibt_url_parameter_an_den_cache_weiter(_fake_caches):
-    dashboard_cache, _, _ = _fake_caches
+def test_uebersicht_gibt_url_parameter_an_den_cache_weiter(fake_caches):
+    dashboard_cache, _, _ = fake_caches
     dashboard_cache.ergebnis = None
     client = TestClient(app_modul.app)
 
@@ -367,8 +367,8 @@ def test_uebersicht_gibt_url_parameter_an_den_cache_weiter(_fake_caches):
     assert dashboard_cache.anstossen_aufrufe == [(6, app_modul.STANDARD_AUSLASTUNG_MONATE)]
 
 
-def test_uebersicht_ohne_gecachte_daten_zeigt_die_ladeseite(_fake_caches):
-    dashboard_cache, _, _ = _fake_caches
+def test_uebersicht_ohne_gecachte_daten_zeigt_die_ladeseite(fake_caches):
+    dashboard_cache, _, _ = fake_caches
     dashboard_cache.ergebnis = None
     client = TestClient(app_modul.app)
 
@@ -380,8 +380,8 @@ def test_uebersicht_ohne_gecachte_daten_zeigt_die_ladeseite(_fake_caches):
     assert dashboard_cache.anstossen_aufrufe == [(3, app_modul.STANDARD_AUSLASTUNG_MONATE)]
 
 
-def test_uebersicht_zeigt_fortschritt_der_ladeseite(_fake_caches):
-    dashboard_cache, _, _ = _fake_caches
+def test_uebersicht_zeigt_fortschritt_der_ladeseite(fake_caches):
+    dashboard_cache, _, _ = fake_caches
     dashboard_cache.ergebnis = None
     dashboard_cache.fortschritt_zeilen = ["Bestand geladen: 900 Projekt(e) (in 16 Sekunden)"]
     client = TestClient(app_modul.app)
@@ -392,10 +392,10 @@ def test_uebersicht_zeigt_fortschritt_der_ladeseite(_fake_caches):
     assert "Bestand geladen: 900 Projekt(e) (in 16 Sekunden)" in antwort.text
 
 
-def test_uebersicht_zeigt_einen_gescheiterten_ladeversuch(_fake_caches):
+def test_uebersicht_zeigt_einen_gescheiterten_ladeversuch(fake_caches):
     """Ohne diese Anzeige war ein wiederholt scheiternder Ladevorgang von einem noch
     laufenden nicht zu unterscheiden - beides zeigte nur "Daten werden geladen"."""
-    dashboard_cache, _, _ = _fake_caches
+    dashboard_cache, _, _ = fake_caches
     dashboard_cache.ergebnis = None
     dashboard_cache.fehler_text = "504 für https://my.clockodo.com/api/v2/entrygroups"
     client = TestClient(app_modul.app)
@@ -406,8 +406,8 @@ def test_uebersicht_zeigt_einen_gescheiterten_ladeversuch(_fake_caches):
     assert "504 für https://my.clockodo.com/api/v2/entrygroups" in antwort.text
 
 
-def test_uebersicht_ohne_fehler_zeigt_keine_fehlermeldung(_fake_caches):
-    dashboard_cache, _, _ = _fake_caches
+def test_uebersicht_ohne_fehler_zeigt_keine_fehlermeldung(fake_caches):
+    dashboard_cache, _, _ = fake_caches
     dashboard_cache.ergebnis = None
     client = TestClient(app_modul.app)
 
@@ -434,11 +434,11 @@ def test_uebersicht_zeigt_die_dropdown_optionen_und_aktuelle_auswahl():
     assert 'value="24"' in antwort.text  # eine der weiteren Optionen
 
 
-def test_uebersicht_wechsel_der_historischen_monate_laedt_nicht_neu(_fake_caches):
+def test_uebersicht_wechsel_der_historischen_monate_laedt_nicht_neu(fake_caches):
     """``gewinn_verlust_monate`` schneidet nur das schon geladene Dashboard anders
     zurecht (siehe Dashboard.gewinn_verlust_monatlich) - anders als ``horizont_monate``
     ist es kein Teil des Cache-Schluessels und darf deshalb nie neu laden."""
-    dashboard_cache, _, _ = _fake_caches
+    dashboard_cache, _, _ = fake_caches
     client = TestClient(app_modul.app)
 
     client.get("/?gewinn_verlust_monate=12")
@@ -469,10 +469,10 @@ def test_dashboard_seite_restvolumen_top_slider_steuert_die_grafik():
     assert "Anzahl Projekte mit offenem Budget" in antwort.text
 
 
-def test_dashboard_seite_restvolumen_top_max_ist_anzahl_projekte_ohne_budget(_fake_caches):
+def test_dashboard_seite_restvolumen_top_max_ist_anzahl_projekte_ohne_budget(fake_caches):
     """Bewusst die Anzahl der Projekte OHNE Budget, nicht die Anzahl der Projekte in
     der Grafik selbst (siehe Klärung im Plan) - zwei verschiedene Zahlen."""
-    dashboard_cache, _, _ = _fake_caches
+    dashboard_cache, _, _ = fake_caches
     ohne_budget_projekt = Projekt(id=99, name="Ohne Budget", kunde=KUNDE, aktiv=True)
     bestand = Bestand(
         stichtag=STICHTAG, projekte=(*PROJEKTE, ohne_budget_projekt), umsatzhistorie=HISTORIE
@@ -487,8 +487,8 @@ def test_dashboard_seite_restvolumen_top_max_ist_anzahl_projekte_ohne_budget(_fa
     assert 'max="1"' in antwort.text  # genau ein Projekt ohne Budget
 
 
-def test_dashboard_seite_zeigt_projekte_ohne_budget_und_respektiert_filter(_fake_caches):
-    dashboard_cache, _, _ = _fake_caches
+def test_dashboard_seite_zeigt_projekte_ohne_budget_und_respektiert_filter(fake_caches):
+    dashboard_cache, _, _ = fake_caches
     ohne_budget_projekt = Projekt(id=99, name="Schulungsprodukt", kunde=KUNDE, aktiv=True)
     bestand = Bestand(
         stichtag=STICHTAG, projekte=(*PROJEKTE, ohne_budget_projekt), umsatzhistorie=HISTORIE
@@ -516,10 +516,10 @@ def test_dashboard_seite_zeigt_ueberschrift_fuer_projekte_ohne_budget():
     assert "<h2>Projekte ohne Budget</h2>" in antwort.text
 
 
-def test_dashboard_seite_zeigt_immer_alle_projekte_ohne_budget(_fake_caches):
+def test_dashboard_seite_zeigt_immer_alle_projekte_ohne_budget(fake_caches):
     """Kein Top-N-Slider fuer diese Tabelle - alle (gefilterten) Zeilen sind immer
     sichtbar, unabhaengig von ihrer Anzahl."""
-    dashboard_cache, _, _ = _fake_caches
+    dashboard_cache, _, _ = fake_caches
     ohne_budget_projekte = tuple(
         Projekt(id=100 + i, name=f"Ohne Budget {i}", kunde=KUNDE, aktiv=True) for i in range(3)
     )
@@ -538,7 +538,7 @@ def test_dashboard_seite_zeigt_immer_alle_projekte_ohne_budget(_fake_caches):
     assert "Testkunde / Ohne Budget 2" in antwort.text
 
 
-def test_dashboard_seite_ohne_verbrauchsplan_simuliert_nicht_neu(_fake_caches, monkeypatch):
+def test_dashboard_seite_ohne_verbrauchsplan_simuliert_nicht_neu(monkeypatch):
     """Ohne gesetzten Parameter bleibt es beim gecachten Dashboard - keine zusaetzliche
     Simulation je Anfrage."""
     aufrufe: list[object] = []
@@ -557,13 +557,13 @@ def test_dashboard_seite_ohne_verbrauchsplan_simuliert_nicht_neu(_fake_caches, m
 
 
 def test_dashboard_seite_verbrauchsplan_veraendert_nicht_das_gecachte_dashboard(
-    _fake_caches, monkeypatch
+    fake_caches, monkeypatch
 ):
     """Wichtigster Test: ein gesetzter ``verbrauchsplan``-Parameter darf das im
     ``DashboardCache`` gehaltene, von allen Besuchenden geteilte Dashboard nicht
     veraendern - sonst saehen andere Besuchende bis zum naechsten TTL-Reload dieselbe,
     von dieser einen Anfrage uebersteuerte Prognose."""
-    _, _, _ = _fake_caches
+    _, _, _ = fake_caches
     aufrufe: list[object] = []
     original_simuliere = Dashboard.simuliere
 
@@ -697,8 +697,8 @@ def test_dashboard_seite_zeigt_anteil_fakturierbarer_arbeit_abschnitt():
     assert 'name="interne_arbeit_verteilung_max_prozent"' in antwort.text
 
 
-def test_dashboard_seite_interne_arbeit_verteilung_regler_blenden_ausreisser_aus(_fake_caches):
-    dashboard_cache, _, _ = _fake_caches
+def test_dashboard_seite_interne_arbeit_verteilung_regler_blenden_ausreisser_aus(fake_caches):
+    dashboard_cache, _, _ = fake_caches
     anna = Mitarbeiter(id=1, name="Anna", aktiv=True)
     bert = Mitarbeiter(id=2, name="Bert", aktiv=True)
     bestand = Bestand(
@@ -771,8 +771,8 @@ def test_dashboard_seite_trendlinie_ausgeschaltet_zeigt_keine_trendspur():
     assert '"Trend"' not in antwort.text
 
 
-def test_dashboard_seite_gauss_modus_uebernimmt_historischen_mittelwert(_fake_caches):
-    dashboard_cache, _, _ = _fake_caches
+def test_dashboard_seite_gauss_modus_uebernimmt_historischen_mittelwert(fake_caches):
+    dashboard_cache, _, _ = fake_caches
     anna = Mitarbeiter(id=1, name="Anna", aktiv=True)
     bestand = Bestand(
         stichtag=STICHTAG, projekte=PROJEKTE, mitarbeiter=(anna,), umsatzhistorie=HISTORIE
@@ -792,8 +792,8 @@ def test_dashboard_seite_gauss_modus_uebernimmt_historischen_mittelwert(_fake_ca
     assert 'value="80.0"' in antwort.text  # 80/(20+80) als Prozent, aus der einen Beobachtung
 
 
-def test_dashboard_seite_weibull_skalenparameter_uebersteuerung_wirkt_als_prozent(_fake_caches):
-    dashboard_cache, _, _ = _fake_caches
+def test_dashboard_seite_weibull_skalenparameter_uebersteuerung_wirkt_als_prozent(fake_caches):
+    dashboard_cache, _, _ = fake_caches
     anna = Mitarbeiter(id=1, name="Anna", aktiv=True)
     bestand = Bestand(
         stichtag=STICHTAG, projekte=PROJEKTE, mitarbeiter=(anna,), umsatzhistorie=HISTORIE
@@ -815,10 +815,10 @@ def test_dashboard_seite_weibull_skalenparameter_uebersteuerung_wirkt_als_prozen
     assert 'value="75.0"' in antwort.text
 
 
-def test_dashboard_seite_gauss_standardabweichung_bleibt_fliesskommazahl(_fake_caches):
+def test_dashboard_seite_gauss_standardabweichung_bleibt_fliesskommazahl(fake_caches):
     """Anders als Mittelwert/Skalenparameter ist die Standardabweichung kein Anteilswert
     und bleibt deshalb eine reine Fliesskommazahl, kein ``_prozent``-Parameter."""
-    dashboard_cache, _, _ = _fake_caches
+    dashboard_cache, _, _ = fake_caches
     anna = Mitarbeiter(id=1, name="Anna", aktiv=True)
     bestand = Bestand(
         stichtag=STICHTAG, projekte=PROJEKTE, mitarbeiter=(anna,), umsatzhistorie=HISTORIE
@@ -838,10 +838,10 @@ def test_dashboard_seite_gauss_standardabweichung_bleibt_fliesskommazahl(_fake_c
     assert 'value="0.120"' in antwort.text
 
 
-def test_dashboard_seite_zeigt_historischen_vorschlag_je_modus(_fake_caches):
+def test_dashboard_seite_zeigt_historischen_vorschlag_je_modus(fake_caches):
     """Der historische Vorschlagswert steht direkt in der Regler-Beschriftung, egal ob
     der aktuelle Wert davon abweicht - Orientierung beim manuellen Einstellen."""
-    dashboard_cache, _, _ = _fake_caches
+    dashboard_cache, _, _ = fake_caches
     anna = Mitarbeiter(id=1, name="Anna", aktiv=True)
     bestand = Bestand(
         stichtag=STICHTAG, projekte=PROJEKTE, mitarbeiter=(anna,), umsatzhistorie=HISTORIE
@@ -884,12 +884,12 @@ def test_dashboard_seite_zeigt_historischen_vorschlag_je_modus(_fake_caches):
 
 
 def test_dashboard_seite_interne_arbeit_abschlag_veraendert_nicht_das_gecachte_dashboard(
-    _fake_caches, monkeypatch
+    fake_caches, monkeypatch
 ):
     """Wie test_dashboard_seite_verbrauchsplan_veraendert_nicht_das_gecachte_dashboard,
     hier fuer den Abschlag-Regler: ein gesetzter Wert loest eine Neusimulation aus,
     darf aber das im DashboardCache gehaltene, geteilte Dashboard nicht veraendern."""
-    dashboard_cache, _, _ = _fake_caches
+    dashboard_cache, _, _ = fake_caches
     original_prognose = DASHBOARD.prognose
     aufrufe: list[object] = []
     original_simuliere = Dashboard.simuliere
@@ -911,12 +911,12 @@ def test_dashboard_seite_interne_arbeit_abschlag_veraendert_nicht_das_gecachte_d
     assert dashboard_cache.ergebnis.bestand.projekte[0].verbrauchsplan_zielmonat is None
 
 
-def test_dashboard_seite_laeufe_veraendert_nicht_das_gecachte_dashboard(_fake_caches, monkeypatch):
+def test_dashboard_seite_laeufe_veraendert_nicht_das_gecachte_dashboard(fake_caches, monkeypatch):
     """Wie test_dashboard_seite_interne_arbeit_abschlag_veraendert_nicht_das_gecachte_dashboard,
     hier fuer den Laeufe-Regler: ein von STANDARD_LAEUFE abweichender Wert loest eine
     Neusimulation mit genau dieser Laeufe-Anzahl aus, darf aber das im DashboardCache
     gehaltene, geteilte Dashboard nicht veraendern."""
-    dashboard_cache, _, _ = _fake_caches
+    dashboard_cache, _, _ = fake_caches
     original_prognose = DASHBOARD.prognose
     aufrufe: list[tuple[object, int]] = []
     original_simuliere = Dashboard.simuliere
@@ -937,8 +937,8 @@ def test_dashboard_seite_laeufe_veraendert_nicht_das_gecachte_dashboard(_fake_ca
     assert dashboard_cache.ergebnis.prognose is original_prognose
 
 
-def test_dashboard_seite_ohne_gecachte_daten_zeigt_die_ladeseite(_fake_caches):
-    dashboard_cache, _, _ = _fake_caches
+def test_dashboard_seite_ohne_gecachte_daten_zeigt_die_ladeseite(fake_caches):
+    dashboard_cache, _, _ = fake_caches
     dashboard_cache.ergebnis = None
     client = TestClient(app_modul.app)
 
@@ -949,7 +949,7 @@ def test_dashboard_seite_ohne_gecachte_daten_zeigt_die_ladeseite(_fake_caches):
     assert dashboard_cache.anstossen_aufrufe == [(5, app_modul.STANDARD_AUSLASTUNG_MONATE)]
 
 
-def test_schulungen_zeigt_den_anmeldungsverlauf(_fake_caches):
+def test_schulungen_zeigt_den_anmeldungsverlauf():
     client = TestClient(app_modul.app)
 
     antwort = client.get("/schulungen?ab_jahr=2023")
@@ -959,7 +959,7 @@ def test_schulungen_zeigt_den_anmeldungsverlauf(_fake_caches):
     assert 'value="2023" selected' in antwort.text
 
 
-def test_schulungen_ohne_ab_jahr_zeigt_den_dynamischen_standard(_fake_caches):
+def test_schulungen_ohne_ab_jahr_zeigt_den_dynamischen_standard():
     client = TestClient(app_modul.app)
 
     antwort = client.get("/schulungen")
@@ -969,7 +969,7 @@ def test_schulungen_ohne_ab_jahr_zeigt_den_dynamischen_standard(_fake_caches):
     assert f'value="{erwartet}" selected' in antwort.text
 
 
-def test_schulungen_details_abschnitt_heisst_schulungsdetails(_fake_caches):
+def test_schulungen_details_abschnitt_heisst_schulungsdetails():
     client = TestClient(app_modul.app)
 
     antwort = client.get("/schulungen")
@@ -979,11 +979,11 @@ def test_schulungen_details_abschnitt_heisst_schulungsdetails(_fake_caches):
 
 
 def test_schulungen_zeigt_monatssummen_in_der_aufklappbaren_kategoriezeile(
-    _fake_caches,
+    fake_caches,
 ):
     """Die Kategorie-Zeile bleibt beim Zuklappen mit ihren Monatswerten sichtbar - sie
     stehen in derselben echten Tabellenzeile, nicht in einer separaten Tabelle."""
-    _, anmeldungsverlauf_cache, _ = _fake_caches
+    _, anmeldungsverlauf_cache, _ = fake_caches
     anmeldungsverlauf_cache.ergebnis = Anmeldungsverlauf(
         anmeldungen=(
             Anmeldung(2026, 9, "CSM 2-tägig", 5),
@@ -1002,8 +1002,8 @@ def test_schulungen_zeigt_monatssummen_in_der_aufklappbaren_kategoriezeile(
     assert "<td>7</td>" in zeile  # 5 + 2
 
 
-def test_schulungen_zeigt_gesamtzeile_ueber_alle_kategorien(_fake_caches):
-    _, anmeldungsverlauf_cache, _ = _fake_caches
+def test_schulungen_zeigt_gesamtzeile_ueber_alle_kategorien(fake_caches):
+    _, anmeldungsverlauf_cache, _ = fake_caches
     anmeldungsverlauf_cache.ergebnis = Anmeldungsverlauf(
         anmeldungen=(
             Anmeldung(2026, 9, "CSM 2-tägig", 5),
@@ -1021,10 +1021,10 @@ def test_schulungen_zeigt_gesamtzeile_ueber_alle_kategorien(_fake_caches):
     assert "<td>10</td>" in zeile
 
 
-def test_schulungen_basisname_ohne_variante_bleibt_einfaches_blatt(_fake_caches):
+def test_schulungen_basisname_ohne_variante_bleibt_einfaches_blatt(fake_caches):
     """Ein Schulungstyp ohne Dauer-Suffix und mit nur einem Format bleibt ein
     einfaches Blatt, ohne eigenen Aufklapp-Knopf."""
-    _, anmeldungsverlauf_cache, _ = _fake_caches
+    _, anmeldungsverlauf_cache, _ = fake_caches
     anmeldungsverlauf_cache.ergebnis = Anmeldungsverlauf(
         anmeldungen=(Anmeldung(2026, 9, "KSD", 4),)
     )
@@ -1036,8 +1036,8 @@ def test_schulungen_basisname_ohne_variante_bleibt_einfaches_blatt(_fake_caches)
     assert "kategorie-knopf" not in antwort.text[max(0, ksd_index - 300) : ksd_index]
 
 
-def test_schulungen_dauer_ebene_erscheint_nur_bei_mehreren_dauer_varianten(_fake_caches):
-    _, anmeldungsverlauf_cache, _ = _fake_caches
+def test_schulungen_dauer_ebene_erscheint_nur_bei_mehreren_dauer_varianten(fake_caches):
+    _, anmeldungsverlauf_cache, _ = fake_caches
     anmeldungsverlauf_cache.ergebnis = Anmeldungsverlauf(
         anmeldungen=(
             Anmeldung(2026, 9, "CSPO 2-tägig", 5),
@@ -1053,8 +1053,8 @@ def test_schulungen_dauer_ebene_erscheint_nur_bei_mehreren_dauer_varianten(_fake
     assert ">3-tägig<" in antwort.text
 
 
-def test_schulungen_format_ebene_erscheint_nur_bei_mehreren_formaten(_fake_caches):
-    _, anmeldungsverlauf_cache, _ = _fake_caches
+def test_schulungen_format_ebene_erscheint_nur_bei_mehreren_formaten(fake_caches):
+    _, anmeldungsverlauf_cache, _ = fake_caches
     anmeldungsverlauf_cache.ergebnis = Anmeldungsverlauf(
         anmeldungen=(
             Anmeldung(2026, 9, "CSPO 2-tägig", 5, format="Präsenz"),
@@ -1069,8 +1069,8 @@ def test_schulungen_format_ebene_erscheint_nur_bei_mehreren_formaten(_fake_cache
     assert ">Online<" in antwort.text
 
 
-def test_schulungen_format_ebene_fehlt_bei_nur_einem_format(_fake_caches):
-    _, anmeldungsverlauf_cache, _ = _fake_caches
+def test_schulungen_format_ebene_fehlt_bei_nur_einem_format(fake_caches):
+    _, anmeldungsverlauf_cache, _ = fake_caches
     anmeldungsverlauf_cache.ergebnis = Anmeldungsverlauf(
         anmeldungen=(
             Anmeldung(2026, 9, "CSPO 2-tägig", 5, format="Präsenz"),
@@ -1085,10 +1085,10 @@ def test_schulungen_format_ebene_fehlt_bei_nur_einem_format(_fake_caches):
     assert ">Präsenz<" not in tabelle
 
 
-def test_schulungen_vier_ebenen_format_und_dauer_zusammen(_fake_caches):
+def test_schulungen_vier_ebenen_format_und_dauer_zusammen(fake_caches):
     """Deckt den Fall aus der Aufgabenstellung ab: Format- und Dauer-Ebene gemeinsam
     unter einem Basisname, wenn beide tatsaechlich variieren."""
-    _, anmeldungsverlauf_cache, _ = _fake_caches
+    _, anmeldungsverlauf_cache, _ = fake_caches
     anmeldungsverlauf_cache.ergebnis = Anmeldungsverlauf(
         anmeldungen=(
             Anmeldung(2026, 9, "CSPO 2-tägig", 5, format="Präsenz"),
@@ -1110,7 +1110,7 @@ def test_schulungen_vier_ebenen_format_und_dauer_zusammen(_fake_caches):
     assert online_index > cspo_index
 
 
-def test_schulungen_filterabschnitt_bleibt_ohne_filter_zugeklappt(_fake_caches):
+def test_schulungen_filterabschnitt_bleibt_ohne_filter_zugeklappt():
     client = TestClient(app_modul.app)
 
     antwort = client.get("/schulungen")
@@ -1118,7 +1118,7 @@ def test_schulungen_filterabschnitt_bleibt_ohne_filter_zugeklappt(_fake_caches):
     assert '<details class="regler-abschnitt" open>' not in antwort.text
 
 
-def test_schulungen_filterabschnitt_klappt_bei_kategorie_auswahl_auf(_fake_caches):
+def test_schulungen_filterabschnitt_klappt_bei_kategorie_auswahl_auf():
     client = TestClient(app_modul.app)
 
     antwort = client.get("/schulungen?kategorie_filter=Scrum")
@@ -1127,11 +1127,11 @@ def test_schulungen_filterabschnitt_klappt_bei_kategorie_auswahl_auf(_fake_cache
 
 
 def test_schulungen_kategorie_und_alle_schulungen_ergeben_je_eine_farbige_reihe(
-    _fake_caches,
+    fake_caches,
 ):
     """Jede Auswahl (auch "Alle Schulungen" zusaetzlich zu einer Kategorie) erzeugt
     ihre eigene Reihe im Diagramm, keine gegenseitig exklusive Auswahl."""
-    _, anmeldungsverlauf_cache, _ = _fake_caches
+    _, anmeldungsverlauf_cache, _ = fake_caches
     anmeldungsverlauf_cache.ergebnis = Anmeldungsverlauf(
         anmeldungen=(
             Anmeldung(2026, 9, "CSM 2-tägig", 5),
@@ -1147,9 +1147,9 @@ def test_schulungen_kategorie_und_alle_schulungen_ergeben_je_eine_farbige_reihe(
 
 
 def test_schulungen_schulungen_dropdown_wird_durch_kategorie_auswahl_eingeschraenkt(
-    _fake_caches,
+    fake_caches,
 ):
-    _, anmeldungsverlauf_cache, _ = _fake_caches
+    _, anmeldungsverlauf_cache, _ = fake_caches
     anmeldungsverlauf_cache.ergebnis = Anmeldungsverlauf(
         anmeldungen=(
             Anmeldung(2026, 9, "CSM 2-tägig", 5),
@@ -1165,11 +1165,11 @@ def test_schulungen_schulungen_dropdown_wird_durch_kategorie_auswahl_eingeschrae
 
 
 def test_schulungen_schulungen_dropdown_fasst_dauer_varianten_zu_basisname_zusammen(
-    _fake_caches,
+    fake_caches,
 ):
     """ "CSPO 2-tägig"/"CSPO 3-tägig" erscheinen im Dropdown zusammengefasst als
     "CSPO" - wie im Tabellen-Drilldown darunter, keine eigenen Dauer-Optionen."""
-    _, anmeldungsverlauf_cache, _ = _fake_caches
+    _, anmeldungsverlauf_cache, _ = fake_caches
     anmeldungsverlauf_cache.ergebnis = Anmeldungsverlauf(
         anmeldungen=(
             Anmeldung(2026, 9, "CSPO 2-tägig", 5),
@@ -1210,9 +1210,7 @@ def test_schulungen_schulung_filter_summiert_ueber_dauer_varianten_hinweg():
     assert reihen["CSPO"] == {(2026, 9): 7}
 
 
-def test_schulungen_filter_dropdowns_sind_ohne_filter_alle_vier_auf_alle_gesetzt(
-    _fake_caches,
-):
+def test_schulungen_filter_dropdowns_sind_ohne_filter_alle_vier_auf_alle_gesetzt():
     """Ohne explizite Auswahl sind alle vier 'alle'-Eintraege vorausgewaehlt, aber das
     Diagramm zeigt trotzdem nur die eine Gesamtlinie und der Filterabschnitt bleibt
     zugeklappt (siehe test_schulungen_filterabschnitt_bleibt_ohne_filter_zugeklappt)."""
@@ -1233,9 +1231,7 @@ def test_schulungen_filter_dropdowns_sind_ohne_filter_alle_vier_auf_alle_gesetzt
         assert "checked" in ausschnitt
 
 
-def test_schulungen_kategorie_optionen_alphabetisch_mit_alle_kategorien_zuerst(
-    _fake_caches,
-):
+def test_schulungen_kategorie_optionen_alphabetisch_mit_alle_kategorien_zuerst():
     client = TestClient(app_modul.app)
 
     antwort = client.get("/schulungen")
@@ -1252,9 +1248,9 @@ def test_schulungen_kategorie_optionen_alphabetisch_mit_alle_kategorien_zuerst(
 
 
 def test_schulungen_schulung_optionen_alphabetisch_mit_alle_schulungen_zuerst(
-    _fake_caches,
+    fake_caches,
 ):
-    _, anmeldungsverlauf_cache, _ = _fake_caches
+    _, anmeldungsverlauf_cache, _ = fake_caches
     anmeldungsverlauf_cache.ergebnis = Anmeldungsverlauf(
         anmeldungen=(
             Anmeldung(2026, 9, "KSD", 4),
@@ -1274,10 +1270,10 @@ def test_schulungen_schulung_optionen_alphabetisch_mit_alle_schulungen_zuerst(
     assert positionen == sorted(positionen)
 
 
-def test_schulungen_trendlinien_standardmaessig_an(_fake_caches):
+def test_schulungen_trendlinien_standardmaessig_an(fake_caches):
     """Ohne Interaktion mit dem Filter-Formular soll die Trendlinie wie bisher immer
     angezeigt werden - das Kontrollkaestchen startet deshalb angehakt."""
-    _, anmeldungsverlauf_cache, _ = _fake_caches
+    _, anmeldungsverlauf_cache, _ = fake_caches
     anmeldungsverlauf_cache.ergebnis = Anmeldungsverlauf(
         anmeldungen=(
             Anmeldung(2026, 9, "KSD", 4),
@@ -1292,9 +1288,9 @@ def test_schulungen_trendlinien_standardmaessig_an(_fake_caches):
 
 
 def test_schulungen_trendlinien_checkbox_ausgeschaltet_zeigt_keine_trendreihe(
-    _fake_caches,
+    fake_caches,
 ):
-    _, anmeldungsverlauf_cache, _ = _fake_caches
+    _, anmeldungsverlauf_cache, _ = fake_caches
     anmeldungsverlauf_cache.ergebnis = Anmeldungsverlauf(
         anmeldungen=(
             Anmeldung(2026, 9, "KSD", 4),
@@ -1308,7 +1304,7 @@ def test_schulungen_trendlinien_checkbox_ausgeschaltet_zeigt_keine_trendreihe(
     assert "(Trend)" not in antwort.text
 
 
-def test_schulungen_filter_zuruecksetzen_behaelt_ab_jahr(_fake_caches):
+def test_schulungen_filter_zuruecksetzen_behaelt_ab_jahr():
     client = TestClient(app_modul.app)
 
     antwort = client.get("/schulungen?ab_jahr=2023&kategorie_filter=Scrum")
@@ -1396,11 +1392,11 @@ def test_tabelle_html_ohne_gewinnspalte_escaped_weiterhin_sonderzeichen():
     assert "Musterkunde & Co. KG" not in html
 
 
-def test_schulungen_wechsel_des_jahres_laedt_nicht_neu(_fake_caches):
+def test_schulungen_wechsel_des_jahres_laedt_nicht_neu(fake_caches):
     """``ab_jahr`` filtert nur den schon geladenen Anmeldungsverlauf anders zurecht
     (siehe Anmeldungsverlauf.ab_jahr) - ein engerer Beginn ist immer eine Teilmenge
     des einen geladenen Bereichs und darf deshalb nie neu laden."""
-    _, anmeldungsverlauf_cache, _ = _fake_caches
+    _, anmeldungsverlauf_cache, _ = fake_caches
     client = TestClient(app_modul.app)
 
     client.get(f"/schulungen?ab_jahr={app_modul.STANDARD_AB_JAHR}")
@@ -1409,8 +1405,8 @@ def test_schulungen_wechsel_des_jahres_laedt_nicht_neu(_fake_caches):
     assert anmeldungsverlauf_cache.anstossen_aufrufe == 0
 
 
-def test_schulungen_ohne_gecachte_daten_zeigt_die_ladeseite(_fake_caches):
-    _, anmeldungsverlauf_cache, _ = _fake_caches
+def test_schulungen_ohne_gecachte_daten_zeigt_die_ladeseite(fake_caches):
+    _, anmeldungsverlauf_cache, _ = fake_caches
     anmeldungsverlauf_cache.ergebnis = None
     client = TestClient(app_modul.app)
 
@@ -1421,8 +1417,8 @@ def test_schulungen_ohne_gecachte_daten_zeigt_die_ladeseite(_fake_caches):
     assert anmeldungsverlauf_cache.anstossen_aufrufe == 1
 
 
-def test_schulungen_zeigt_fortschritt_der_ladeseite(_fake_caches):
-    _, anmeldungsverlauf_cache, _ = _fake_caches
+def test_schulungen_zeigt_fortschritt_der_ladeseite(fake_caches):
+    _, anmeldungsverlauf_cache, _ = fake_caches
     anmeldungsverlauf_cache.ergebnis = None
     anmeldungsverlauf_cache.fortschritt_zeilen = ["646 Anmeldungen aus 60 Monaten geladen."]
     client = TestClient(app_modul.app)
@@ -1461,8 +1457,8 @@ def test_favicon_wird_eingebunden_und_ausgeliefert():
     assert favicon.headers["content-type"] == "image/png"
 
 
-def test_start_stoesst_die_standardkombination_bereits_beim_start_an(_fake_caches):
-    dashboard_cache, anmeldungsverlauf_cache, kurzarbeit_cache = _fake_caches
+def test_start_stoesst_die_standardkombination_bereits_beim_start_an(fake_caches):
+    dashboard_cache, anmeldungsverlauf_cache, kurzarbeit_cache = fake_caches
 
     with TestClient(app_modul.app):
         pass
@@ -1474,7 +1470,7 @@ def test_start_stoesst_die_standardkombination_bereits_beim_start_an(_fake_cache
     assert kurzarbeit_cache.anstossen_aufrufe == 1
 
 
-def test_kurzarbeit_zeigt_status_und_zaehler(_fake_caches):
+def test_kurzarbeit_zeigt_status_und_zaehler():
     client = TestClient(app_modul.app)
 
     antwort = client.get("/kurzarbeit")
@@ -1485,11 +1481,11 @@ def test_kurzarbeit_zeigt_status_und_zaehler(_fake_caches):
     assert "plotly" in antwort.text.lower()
 
 
-def test_kurzarbeit_faerbt_status_wie_die_grafik(_fake_caches):
+def test_kurzarbeit_faerbt_status_wie_die_grafik(fake_caches):
     """Dieselbe (nicht wertende) Farbfamilie wie KURZARBEIT_SCHWELLE_ERREICHT/
     KURZARBEIT_SCHWELLE_NICHT_ERREICHT in der Grafik - siehe
     .status-erfuellt/.status-nicht-erfuellt in basis.html."""
-    _, _, kurzarbeit_cache = _fake_caches
+    _, _, kurzarbeit_cache = fake_caches
     kurzarbeit_cache.ergebnis = {
         (2026, 6): Kurzarbeitsbewertung(  # 75 % Quote >= 50 %-Schwelle -> erfuellt
             jahr=2026,
@@ -1518,7 +1514,7 @@ def test_kurzarbeit_faerbt_status_wie_die_grafik(_fake_caches):
     assert '<td class="">keine Auswertung möglich</td>' in antwort.text
 
 
-def test_kurzarbeit_zeigt_beschriftete_zeitraum_optionen(_fake_caches):
+def test_kurzarbeit_zeigt_beschriftete_zeitraum_optionen():
     client = TestClient(app_modul.app)
 
     antwort = client.get("/kurzarbeit")
@@ -1530,7 +1526,7 @@ def test_kurzarbeit_zeigt_beschriftete_zeitraum_optionen(_fake_caches):
     assert "1 Jahr</option>" in antwort.text
 
 
-def test_kurzarbeit_zeigt_schwellenwert_regler_mit_standardwerten(_fake_caches):
+def test_kurzarbeit_zeigt_schwellenwert_regler_mit_standardwerten():
     client = TestClient(app_modul.app)
 
     antwort = client.get("/kurzarbeit")
@@ -1545,9 +1541,7 @@ def test_kurzarbeit_zeigt_schwellenwert_regler_mit_standardwerten(_fake_caches):
     assert '<details class="regler-abschnitt" open>' not in antwort.text
 
 
-def test_kurzarbeit_zuruecksetzen_link_verweist_auf_standardwerte_und_behaelt_zeitraum(
-    _fake_caches,
-):
+def test_kurzarbeit_zuruecksetzen_link_verweist_auf_standardwerte_und_behaelt_zeitraum():
     client = TestClient(app_modul.app)
 
     antwort = client.get(
@@ -1557,8 +1551,8 @@ def test_kurzarbeit_zuruecksetzen_link_verweist_auf_standardwerte_und_behaelt_ze
     assert 'href="/kurzarbeit?anzahl_monate=12"' in antwort.text
 
 
-def test_kurzarbeit_gibt_regler_werte_als_schwellenwerte_an_den_cache_weiter(_fake_caches):
-    _, _, kurzarbeit_cache = _fake_caches
+def test_kurzarbeit_gibt_regler_werte_als_schwellenwerte_an_den_cache_weiter(fake_caches):
+    _, _, kurzarbeit_cache = fake_caches
     client = TestClient(app_modul.app)
 
     antwort = client.get(
@@ -1581,9 +1575,7 @@ def test_kurzarbeit_gibt_regler_werte_als_schwellenwerte_an_den_cache_weiter(_fa
     assert '<details class="regler-abschnitt" open>' in antwort.text
 
 
-def test_kurzarbeit_haelt_regler_bereich_bereits_bei_einem_einzelnen_abweichenden_wert_offen(
-    _fake_caches,
-):
+def test_kurzarbeit_haelt_regler_bereich_bereits_bei_einem_einzelnen_abweichenden_wert_offen():
     client = TestClient(app_modul.app)
 
     antwort = client.get("/kurzarbeit?ueberstunden_stunden=20")
@@ -1599,8 +1591,8 @@ def test_kurzarbeit_weist_regler_ausserhalb_des_wertebereichs_zurueck():
     assert antwort.status_code == 422
 
 
-def test_kurzarbeit_ohne_gecachte_daten_zeigt_die_ladeseite(_fake_caches):
-    _, _, kurzarbeit_cache = _fake_caches
+def test_kurzarbeit_ohne_gecachte_daten_zeigt_die_ladeseite(fake_caches):
+    _, _, kurzarbeit_cache = fake_caches
     kurzarbeit_cache.ergebnis = None
     client = TestClient(app_modul.app)
 
@@ -1628,10 +1620,10 @@ def test_kurzarbeit_zeigt_keine_einzelwerte_je_person():
     assert "Anna" not in antwort.text
 
 
-def test_kurzarbeit_zeigt_keine_hinweise(_fake_caches):
+def test_kurzarbeit_zeigt_keine_hinweise(fake_caches):
     """Auf der Webapp lenken die Hinweise eher ab als im Notebook - dort bleiben sie
     (Kollegen-Feedback), auf der Webapp faellt die Anzeige komplett weg."""
-    _, _, kurzarbeit_cache = _fake_caches
+    _, _, kurzarbeit_cache = fake_caches
     hinweis = Hinweis(
         "Diese Personen sind laut Rollenzuordnung ausgeschlossen", ("301", "302", "303")
     )
@@ -1699,8 +1691,8 @@ def test_kurzarbeit_route_liefert_404_wenn_ausgeschaltet(monkeypatch):
     assert antwort.status_code == 404
 
 
-def test_vorladen_stoesst_kurzarbeit_cache_nicht_an_wenn_ausgeschaltet(_fake_caches, monkeypatch):
-    _, _, kurzarbeit_cache = _fake_caches
+def test_vorladen_stoesst_kurzarbeit_cache_nicht_an_wenn_ausgeschaltet(fake_caches, monkeypatch):
+    _, _, kurzarbeit_cache = fake_caches
     monkeypatch.setattr(app_modul, "_KURZARBEIT_AKTIV", False)
 
     with TestClient(app_modul.app):
@@ -1709,7 +1701,7 @@ def test_vorladen_stoesst_kurzarbeit_cache_nicht_an_wenn_ausgeschaltet(_fake_cac
     assert kurzarbeit_cache.anstossen_aufrufe == 0
 
 
-def test_navigationslinks_ohne_query_wenn_alle_parameter_auf_standard(_fake_caches):
+def test_navigationslinks_ohne_query_wenn_alle_parameter_auf_standard():
     """Standardwerte sollen beim Wechseln der Ansicht nicht in der URL landen - eine
     schlanke URL statt unveraendert mitgeschleppter Standardwerte."""
     client = TestClient(app_modul.app)
@@ -1722,7 +1714,7 @@ def test_navigationslinks_ohne_query_wenn_alle_parameter_auf_standard(_fake_cach
     assert 'href="/kurzarbeit"' in antwort.text
 
 
-def test_navigationslinks_lassen_standardwert_weg_auch_wenn_explizit_in_url(_fake_caches):
+def test_navigationslinks_lassen_standardwert_weg_auch_wenn_explizit_in_url():
     client = TestClient(app_modul.app)
 
     antwort = client.get(f"/?horizont_monate={app_modul.STANDARD_HORIZONT_MONATE}")
@@ -1731,7 +1723,7 @@ def test_navigationslinks_lassen_standardwert_weg_auch_wenn_explizit_in_url(_fak
     assert 'href="/dashboard"' in antwort.text
 
 
-def test_navigationslinks_behalten_abweichenden_parameter(_fake_caches):
+def test_navigationslinks_behalten_abweichenden_parameter():
     client = TestClient(app_modul.app)
 
     antwort = client.get("/?horizont_monate=6")
@@ -1740,9 +1732,7 @@ def test_navigationslinks_behalten_abweichenden_parameter(_fake_caches):
     assert 'href="/dashboard?horizont_monate=6"' in antwort.text
 
 
-def test_verbrauchsplan_zuruecksetzen_link_ohne_abweichende_parameter_zeigt_auf_schlanke_url(
-    _fake_caches,
-):
+def test_verbrauchsplan_zuruecksetzen_link_ohne_abweichende_parameter_zeigt_auf_schlanke_url():
     client = TestClient(app_modul.app)
 
     antwort = client.get("/dashboard?verbrauchsplan=Testprojekt:2026-12")
@@ -1750,7 +1740,7 @@ def test_verbrauchsplan_zuruecksetzen_link_ohne_abweichende_parameter_zeigt_auf_
     assert 'href="/dashboard">Verbrauchsplan zurücksetzen' in antwort.text
 
 
-def test_verbrauchsplan_zuruecksetzen_link_behaelt_abweichenden_parameter(_fake_caches):
+def test_verbrauchsplan_zuruecksetzen_link_behaelt_abweichenden_parameter():
     client = TestClient(app_modul.app)
 
     antwort = client.get("/dashboard?horizont_monate=6&verbrauchsplan=Testprojekt:2026-12")
@@ -1758,9 +1748,7 @@ def test_verbrauchsplan_zuruecksetzen_link_behaelt_abweichenden_parameter(_fake_
     assert 'href="/dashboard?horizont_monate=6">Verbrauchsplan zurücksetzen' in antwort.text
 
 
-def test_ohne_budget_filter_zuruecksetzen_link_ohne_abweichende_parameter_zeigt_auf_schlanke_url(
-    _fake_caches,
-):
+def test_ohne_budget_filter_zuruecksetzen_link_ohne_abweichende_parameter_zeigt_auf_schlanke_url():
     client = TestClient(app_modul.app)
 
     antwort = client.get("/dashboard?ohne_budget_filter=Testkunde")
@@ -1768,7 +1756,7 @@ def test_ohne_budget_filter_zuruecksetzen_link_ohne_abweichende_parameter_zeigt_
     assert 'href="/dashboard">Filter zurücksetzen' in antwort.text
 
 
-def test_kurzarbeit_zuruecksetzen_link_laesst_standard_zeitraum_weg(_fake_caches):
+def test_kurzarbeit_zuruecksetzen_link_laesst_standard_zeitraum_weg():
     client = TestClient(app_modul.app)
 
     antwort = client.get(

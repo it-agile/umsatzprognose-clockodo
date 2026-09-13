@@ -55,10 +55,18 @@ def test_genehmigt_ist_nur_status_approved():
     # AbsenceStatus laut clocodo-api.yaml: 0 Enquired, 1 Approved, 2 Declined,
     # 3 ApprovalCancelled, 4 Cancelled.
     genehmigt = Abwesenheit(
-        mitarbeiter_id=1, beginnt=date(2026, 9, 1), endet=date(2026, 9, 1), typ=1, status=1
+        mitarbeiter_id=1,
+        beginnt=date(2026, 9, 1),
+        endet=date(2026, 9, 1),
+        typ=1,
+        status=1,
     )
     unbestaetigt = Abwesenheit(
-        mitarbeiter_id=1, beginnt=date(2026, 9, 1), endet=date(2026, 9, 1), typ=1, status=0
+        mitarbeiter_id=1,
+        beginnt=date(2026, 9, 1),
+        endet=date(2026, 9, 1),
+        typ=1,
+        status=0,
     )
 
     assert genehmigt.genehmigt
@@ -67,7 +75,11 @@ def test_genehmigt_ist_nur_status_approved():
 
 def _abwesenheit(typ: int) -> Abwesenheit:
     return Abwesenheit(
-        mitarbeiter_id=1, beginnt=date(2026, 9, 1), endet=date(2026, 9, 1), typ=typ, status=1
+        mitarbeiter_id=1,
+        beginnt=date(2026, 9, 1),
+        endet=date(2026, 9, 1),
+        typ=typ,
+        status=1,
     )
 
 
@@ -89,7 +101,8 @@ def test_feiertage_bleiben_ohne_hinterlegung_leer():
     assert person.feiertage == ()
 
     person_mit_feiertag = Mitarbeiter(
-        id=1, feiertage=(Feiertag(datum=date(2026, 12, 24), halber_tag=True, name="Heiligabend"),)
+        id=1,
+        feiertage=(Feiertag(datum=date(2026, 12, 24), halber_tag=True, name="Heiligabend"),),
     )
     assert person_mit_feiertag.feiertage[0].halber_tag
 
@@ -136,7 +149,11 @@ def test_feiertage_ausserhalb_des_monats_zaehlen_nicht():
 
 def _urlaub_mit_status(status: int) -> Abwesenheit:
     return Abwesenheit(
-        mitarbeiter_id=1, beginnt=date(2026, 9, 1), endet=date(2026, 9, 1), typ=1, status=status
+        mitarbeiter_id=1,
+        beginnt=date(2026, 9, 1),
+        endet=date(2026, 9, 1),
+        typ=1,
+        status=status,
     )
 
 
@@ -151,7 +168,11 @@ def test_zaehlt_als_kapazitaetsabzug_beachtet_typ_und_status():
 
     # Passender Status, aber ein Typ, der nicht als Abwesenheit zaehlt (Home office).
     home_office = Abwesenheit(
-        mitarbeiter_id=1, beginnt=date(2026, 9, 1), endet=date(2026, 9, 1), typ=8, status=1
+        mitarbeiter_id=1,
+        beginnt=date(2026, 9, 1),
+        endet=date(2026, 9, 1),
+        typ=8,
+        status=1,
     )
     assert not home_office.zaehlt_als_kapazitaetsabzug
 
@@ -170,7 +191,9 @@ def test_verfuegbare_kapazitaet_interne_arbeit_abschlag_senkt_ergebnis_gleichmae
 def test_verfuegbare_kapazitaet_ohne_abschlag_bleibt_unveraendert():
     person = Mitarbeiter(id=1, arbeitszeiten=(Wochenarbeitszeit(SIEBEN_STUNDEN, date(2020, 1, 1)),))
     assert person.verfuegbare_kapazitaet(
-        2026, 10, interne_arbeit_abschlag=0.0
+        2026,
+        10,
+        interne_arbeit_abschlag=0.0,
     ) == person.verfuegbare_kapazitaet(2026, 10)
 
 

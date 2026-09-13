@@ -29,7 +29,7 @@ _STANDARD_BUDGET = Gesamtbudget(betrag=Decimal("100000.0"))
 
 def projekt(
     *,
-    id: int = 1,
+    identifier: int = 1,
     name: str | None = None,
     kunde: Kunde | None = None,
     aktiv: bool = True,
@@ -43,7 +43,7 @@ def projekt(
     automatischer_abschluss: date | None = None,
 ) -> Projekt:
     return Projekt(
-        id=id,
+        id=identifier,
         name=name,
         kunde=kunde,
         aktiv=aktiv,

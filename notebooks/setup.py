@@ -4,6 +4,7 @@ Kein Teil des installierten Pakets: das Colab-`pip install` in den Notebooks mus
 zuerst laufen, sonst waere `umsatzprognose` beim Import dieses Moduls noch nicht da.
 """
 
+import datetime
 import html
 import threading
 import time
@@ -192,14 +193,17 @@ def dashboard(
             if _KOSTENPLAN_ZWISCHENSCHRITT_MUSTER in text:
                 kostenplan_jahre += 1
                 anzeige.spinner(
-                    "Kostenplan", beschriftung=f"Kostenplan laden ({kostenplan_jahre} Jahr(e))"
+                    "Kostenplan",
+                    beschriftung=f"Kostenplan laden ({kostenplan_jahre} Jahr(e))",
                 )
                 return
             # Verlaufscache-Meldungen o.Ae. passen auf keines der bekannten Muster -
             # ohne eigene Zeile bewusst verworfen, siehe scripts/wochenbericht.py.
 
         _dashboard = Dashboard.laden(
-            stichtag=date.today() if stichtag is None else stichtag,
+            stichtag=datetime.datetime.now(tz=datetime.UTC).date()
+            if stichtag is None
+            else stichtag,
             horizont_monate=horizont_monate,
             auslastung_monate=auslastung_monate,
             fortschritt=_melden,
@@ -269,7 +273,7 @@ def anmeldungsverlauf(*, ab_jahr: int = 2022) -> Anmeldungsverlauf:
     """
     global _anmeldungsverlauf, _anmeldungsverlauf_dauer
     start = time.perf_counter()
-    jahre = list(range(ab_jahr, date.today().year + 1))
+    jahre = list(range(ab_jahr, datetime.datetime.now(tz=datetime.UTC).date().year + 1))
     anzeige = _Mehrzeilenanzeige(["Anmeldungsverlauf"])
     neu_geladen = _anmeldungsverlauf is None
 
@@ -277,7 +281,7 @@ def anmeldungsverlauf(*, ab_jahr: int = 2022) -> Anmeldungsverlauf:
         erledigt = 0
         gesamt = len(jahre)
 
-        def _melden(text: str) -> None:
+        def _melden(_text: str) -> None:
             nonlocal erledigt
             erledigt += 1
             anzeige.balken(
@@ -289,7 +293,8 @@ def anmeldungsverlauf(*, ab_jahr: int = 2022) -> Anmeldungsverlauf:
 
         _anmeldungsverlauf = (
             SchulungenRepository.mit_automatischen_zugangsdaten().anmeldungsverlauf_laden(
-                jahre, fortschritt=_melden
+                jahre,
+                fortschritt=_melden,
             )
         )
     zugriffsdauer = timedelta(seconds=time.perf_counter() - start)
@@ -302,7 +307,9 @@ def anmeldungsverlauf(*, ab_jahr: int = 2022) -> Anmeldungsverlauf:
 
 
 def kurzarbeit_rohdaten(
-    *, stichtag: date | None = None, anzahl_monate: int = 6
+    *,
+    stichtag: date | None = None,
+    anzahl_monate: int = 6,
 ) -> dict[Monat, tuple[Personenmonat, ...]]:
     """Laedt die Personenmonat-Rohdaten fuer den Baustein Kurzarbeitsbereitschaft beim
     ersten Aufruf je Kernel, danach nur noch zurueckgegeben.
@@ -324,7 +331,9 @@ def kurzarbeit_rohdaten(
     Zweige/Jahres-Abrufe.
     """
     global _kurzarbeit_rohdaten, _kurzarbeit_rohdaten_dauer
-    stichtag_aufgeloest = date.today() if stichtag is None else stichtag
+    stichtag_aufgeloest = (
+        datetime.datetime.now(tz=datetime.UTC).date() if stichtag is None else stichtag
+    )
     start = time.perf_counter()
     gesamt = anzahl_ladeschritte(stichtag_aufgeloest, anzahl_monate)
     anzeige = _Mehrzeilenanzeige(["Kurzarbeit-Rohdaten"])
@@ -333,7 +342,7 @@ def kurzarbeit_rohdaten(
     if neu_geladen:
         erledigt = 0
 
-        def _melden(text: str) -> None:
+        def _melden(_text: str) -> None:
             nonlocal erledigt
             erledigt += 1
             anzeige.balken(
@@ -354,7 +363,8 @@ def kurzarbeit_rohdaten(
         anzeige.aktualisieren("Kurzarbeit-Rohdaten", kurzarbeit_rohdaten_bericht())
     else:
         anzeige.aktualisieren(
-            "Kurzarbeit-Rohdaten", kurzarbeit_rohdaten_bericht(dauer=zugriffsdauer)
+            "Kurzarbeit-Rohdaten",
+            kurzarbeit_rohdaten_bericht(dauer=zugriffsdauer),
         )
     return _kurzarbeit_rohdaten
 

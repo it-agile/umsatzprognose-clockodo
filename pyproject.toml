@@ -5,6 +5,7 @@ description = "Rollierende Umsatzprognose aus Clockodo-Projekten mit Schulungsan
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "anyio>=4.15",
     "google-api-python-client>=2.100",
     "google-auth-oauthlib>=1.2",
     "google-auth>=2.30",
@@ -132,11 +133,16 @@ src = ["src", "tests", "notebooks"]
 
 [tool.ruff.lint]
 select = [
-    "C40", "C90", "E", "F", "I", "N", "UP", "B", "SIM", "TCH", "RUF",
-    "PERF", "RET", "PIE", "FBT", "SLF", "PLW0108",
+    "A", "ARG", "ASYNC", "B", "C4", "C90", "COM", "DTZ", "E", "F", "FA", "FAST", "FBT", "FIX",
+    "FLY", "I", "ICN", "INP", "ISC", "N", "NPY", "PD", "PERF", "PGH", "PIE", "PLC", "PLE", "PLR",
+    "PLW", "PT", "PTH", "PYI", "Q", "RET", "RSE", "RUF", "SIM", "SLF", "SLOT", "TC", "TID", "UP",
+    "W", "YTT",
 ]  # fmt: skip
-ignore = []
-fixable = ["B", "C", "E", "F", "I"]
+ignore = ["COM812", "PLC0415", "PLR0913", "PLR0917", "PLR2004"]
+fixable = [
+    "B", "C", "COM", "E", "F", "FA", "FAST", "FLY", "I", "ICN", "ISC", "NPY",
+    "PD", "PERF", "PIE", "PT", "Q", "RET", "RSE", "SIM", "TC", "TID", "UP",
+]  # fmt: skip
 unfixable = []
 dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
 mccabe.max-complexity = 10
@@ -147,7 +153,9 @@ allowed-confusables = ["σ", "μ", "λ"]
 
 [tool.ruff.lint.per-file-ignores]
 "*.ipynb" = ["E402"]
-"tests/*" = ["SLF001"]
+"notebooks/setup.py" = ["PLW0603"]
+"scripts/*" = ["INP"]
+"tests/*" = ["ARG", "SLF001"]
 
 [tool.ruff.format]
 docstring-code-format = true

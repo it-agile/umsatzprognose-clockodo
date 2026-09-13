@@ -48,7 +48,7 @@ class Abrufquote:
         if self.restvolumen_zu_monatsbeginn <= 0:
             raise ValueError(
                 "Eine Abrufquote braucht ein Restvolumen > 0 zu Monatsbeginn; "
-                f"hier: {self.restvolumen_zu_monatsbeginn}"
+                f"hier: {self.restvolumen_zu_monatsbeginn}",
             )
 
     def __str__(self) -> str:

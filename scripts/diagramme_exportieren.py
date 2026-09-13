@@ -42,11 +42,16 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import datetime
 import sys
 import time
 from datetime import date, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
+
+import humanize
+import plotly.io as pio
+from anyio import Path as aioPath
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -57,8 +62,6 @@ if TYPE_CHECKING:
     from umsatzprognose.domaene import FakturierbareArbeitZiehung
     from umsatzprognose.domaene.anmeldung import Anmeldungsverlauf
 
-import humanize
-import plotly.io as pio
 from _fortschritt import (
     Mehrzeilenanzeige,
     dashboard_melden_bauen,
@@ -130,7 +133,7 @@ ALLE_DIAGRAMME = sorted(
         *TABELLEN_DASHBOARD,
         DIAGRAMM_ANMELDUNGSVERLAUF,
         DIAGRAMM_ANMELDUNGSTABELLE,
-    }
+    },
 )
 
 
@@ -244,7 +247,8 @@ def _argumente(argv: list[str]) -> argparse.Namespace:
 
 
 def _interne_arbeit_ziehung(
-    dashboard: Dashboard, args: argparse.Namespace
+    dashboard: Dashboard,
+    args: argparse.Namespace,
 ) -> tuple[float | None, FakturierbareArbeitZiehung | None]:
     """Loest ``--interne-arbeit-modus`` (plus die zugehoerigen Parameter-Optionen) in
     die beiden Eingaben fuer :meth:`Dashboard.simuliere_async` auf - dieselbe Idee wie
@@ -268,7 +272,8 @@ def _interne_arbeit_ziehung(
             WeibullFakturierbareArbeit.aus_stichprobe(werte)
             if len(werte) >= 2
             else WeibullFakturierbareArbeit(
-                formparameter=1.0, skalenparameter=werte[0] if werte else 0.0
+                formparameter=1.0,
+                skalenparameter=werte[0] if werte else 0.0,
             )
         )
         return None, WeibullFakturierbareArbeit(
@@ -320,7 +325,7 @@ async def _daten_laden_async(
     Statuszeile - unabhaengig davon, in welcher Reihenfolge sie tatsaechlich fertig
     werden.
     """
-    aufgeloester_stichtag = stichtag or date.today()
+    aufgeloester_stichtag = stichtag or datetime.datetime.now(tz=datetime.UTC).date()
     anmeldungsverlauf_jahre: list[int] = []
     if mit_anmeldungsverlauf:
         ende = ordnung(aufgeloester_stichtag.year, aufgeloester_stichtag.month)
@@ -340,7 +345,9 @@ async def _daten_laden_async(
 
         melden = dashboard_melden_bauen(anzeige)
         dashboard = await Dashboard.laden_async(
-            stichtag=stichtag, horizont_monate=horizont_monate, fortschritt=melden
+            stichtag=stichtag,
+            horizont_monate=horizont_monate,
+            fortschritt=melden,
         )
         anteil_fakturierbar, ziehung = _interne_arbeit_ziehung(dashboard, args)
         await dashboard.simuliere_async(
@@ -358,7 +365,7 @@ async def _daten_laden_async(
         erledigt = 0
         gesamt = len(anmeldungsverlauf_jahre)
 
-        def _melden(text: str) -> None:
+        def _melden(_text: str) -> None:
             nonlocal erledigt
             erledigt += 1
             anzeige.aktualisieren(
@@ -388,7 +395,8 @@ async def _daten_laden_async(
         return fenster
 
     dashboard, anmeldungsverlauf_fenster = await gleichzeitig(
-        _dashboard_laden(), _anmeldungsverlauf_laden()
+        _dashboard_laden(),
+        _anmeldungsverlauf_laden(),
     )
     return dashboard, anmeldungsverlauf_fenster
 
@@ -440,7 +448,7 @@ def _figuren(
     if anmeldungsverlauf_fenster is not None:
         if DIAGRAMM_ANMELDUNGSVERLAUF in namen:
             figuren[DIAGRAMM_ANMELDUNGSVERLAUF] = diagramme.anmeldungsverlauf(
-                anmeldungsverlauf_fenster
+                anmeldungsverlauf_fenster,
             )
         if DIAGRAMM_ANMELDUNGSTABELLE in namen:
             figuren[DIAGRAMM_ANMELDUNGSTABELLE] = diagramme.tabelle_als_grafik(
@@ -452,7 +460,10 @@ def _figuren(
 
 
 async def exportieren_async(
-    figuren: dict[str, go.Figure], namen: list[str], ausgabeverzeichnis: Path, ausgabeformat: str
+    figuren: dict[str, go.Figure],
+    namen: list[str],
+    ausgabeverzeichnis: aioPath,
+    ausgabeformat: str,
 ) -> list[Path]:
     """Je Name aus ``namen`` eine Datei schreiben, gibt die geschriebenen Pfade zurück.
 
@@ -468,12 +479,14 @@ async def exportieren_async(
     unveraendert (kein Zwischenfortschritt ableitbar), alle Zeilen werden deshalb
     gemeinsam ersetzt, sobald der Batch fertig ist.
     """
-    ausgabeverzeichnis.mkdir(parents=True, exist_ok=True)
+    await ausgabeverzeichnis.mkdir(parents=True, exist_ok=True)
     geordnete_figuren = [figuren[name] for name in namen]
-    pfade = [ausgabeverzeichnis / f"{name}.{ausgabeformat}" for name in namen]
+    verzeichnis = Path(ausgabeverzeichnis)
+    pfade = [verzeichnis / f"{name}.{ausgabeformat}" for name in namen]
     anzeigenamen = [str(relativer_pfad(pfad)) for pfad in pfade]
     anzeige = Mehrzeilenanzeige(
-        anzeigenamen, vorlage="{name} exportieren " + fortschrittsbalken(0, 1)
+        anzeigenamen,
+        vorlage="{name} exportieren " + fortschrittsbalken(0, 1),
     )
 
     if ausgabeformat == "html":
@@ -483,16 +496,20 @@ async def exportieren_async(
             await asyncio.to_thread(figur.write_html, pfad)
             dauer = timedelta(seconds=time.perf_counter() - start)
             anzeige.aktualisieren(
-                anzeigename, f"{anzeigename} exportiert (in {humanize.naturaldelta(dauer)})"
+                anzeigename,
+                f"{anzeigename} exportiert (in {humanize.naturaldelta(dauer)})",
             )
 
         await gleichzeitig(
             *(
                 _schreiben(figur, pfad, anzeigename)
                 for figur, pfad, anzeigename in zip(
-                    geordnete_figuren, pfade, anzeigenamen, strict=True
+                    geordnete_figuren,
+                    pfade,
+                    anzeigenamen,
+                    strict=True,
                 )
-            )
+            ),
         )
     else:
         # Ein Batch-Aufruf statt figur.write_image() je Diagramm: kaleido (>=1.0) startet
@@ -512,7 +529,8 @@ async def exportieren_async(
         dauer = timedelta(seconds=time.perf_counter() - start)
         for anzeigename in anzeigenamen:
             anzeige.aktualisieren(
-                anzeigename, f"{anzeigename} exportiert (in {humanize.naturaldelta(dauer)})"
+                anzeigename,
+                f"{anzeigename} exportiert (in {humanize.naturaldelta(dauer)})",
             )
     return pfade
 
@@ -545,7 +563,7 @@ def main(argv: list[str]) -> int:
             horizont_monate=args.horizont_monate,
             monate_fenster=args.monate_fenster,
             args=args,
-        )
+        ),
     )
     figuren = _figuren(
         namen,
@@ -559,7 +577,9 @@ def main(argv: list[str]) -> int:
     # nachfolgenden Export-Balken.
     print("Daten geladen.\n")
 
-    synchron(exportieren_async(figuren, namen, args.ausgabeverzeichnis, args.format))
+    synchron(
+        exportieren_async(figuren, namen, aioPath(args.ausgabeverzeichnis), args.format),
+    )
 
     print(f"{_export_zusammenfassung(namen)} nach {args.ausgabeverzeichnis}")
     return 0

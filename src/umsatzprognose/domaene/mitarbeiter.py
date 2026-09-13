@@ -207,7 +207,11 @@ class Mitarbeiter:
         )
 
     def verfuegbare_kapazitaet(
-        self, jahr: int, monat: int, *, interne_arbeit_abschlag: float = 0.0
+        self,
+        jahr: int,
+        monat: int,
+        *,
+        interne_arbeit_abschlag: float = 0.0,
     ) -> float:
         """Verfuegbare Kapazitaet in diesem Monat.
 

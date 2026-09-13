@@ -148,7 +148,12 @@ def umsatztabelle(
         )
 
         for (jahr, monat), wert, gebuchter_betrag, schulungsbetrag, kosten in zip(
-            horizont, median, gebucht, schulung, kosten_horizont, strict=True
+            horizont,
+            median,
+            gebucht,
+            schulung,
+            kosten_horizont,
+            strict=True,
         ):
             beschriftung = f"{MONATSNAMEN[monat - 1]} {jahr}"
             if zeilen and zeilen[-1]["Monat"] == beschriftung:
@@ -173,7 +178,7 @@ def umsatztabelle(
                         "Summe": euro(summe_wert),
                         "Kosten": euro(kosten) if kosten is not None else "",
                         "Gewinn": euro(summe_wert - kosten) if kosten is not None else "",
-                    }
+                    },
                 )
 
     return _ohne_index(pd.DataFrame(zeilen, columns=UMSATZSPALTEN))
@@ -193,7 +198,7 @@ def hinweistabelle(hinweise: Sequence[Hinweis], *, max_anzahl_betroffen: int = 1
                 for hinweis in hinweise
             ],
             columns=HINWEISSPALTEN,
-        )
+        ),
     )
 
 
@@ -216,7 +221,7 @@ def anteil_fakturierbarer_arbeit_tabelle(
             "Min": [prozent(b.minimum, nachkommastellen=1) for b in bandbreiten],
             "Ø": [prozent(b.durchschnitt, nachkommastellen=1) for b in bandbreiten],
             "Max": [prozent(b.maximum, nachkommastellen=1) for b in bandbreiten],
-        }
+        },
     )
 
 
@@ -254,7 +259,7 @@ def anmeldungstabelle(verlauf: Anmeldungsverlauf, kategorien: Kategorisierung) -
                 "Kategorie": kategorie,
                 **{beschriftung: wert or "" for beschriftung, wert in werte.items()},
                 "Summe": sum(werte.values()) or "",
-            }
+            },
         )
     gesamt = {
         beschriftung: sum(werte[beschriftung] for werte in werte_je_kategorie.values())
@@ -265,7 +270,7 @@ def anmeldungstabelle(verlauf: Anmeldungsverlauf, kategorien: Kategorisierung) -
             "Kategorie": "Gesamt",
             **{beschriftung: wert or "" for beschriftung, wert in gesamt.items()},
             "Summe": sum(gesamt.values()) or "",
-        }
+        },
     )
     spalten = ["Kategorie", *beschriftungen, "Summe"]
     return _ohne_index(pd.DataFrame(zeilen, columns=spalten))
@@ -282,5 +287,5 @@ def projekte_ohne_budget(projekte: Iterable[tuple[str, str]]) -> pd.DataFrame:
                 for projekt in projekte
             ],
             columns=PROJEKT_OHNE_BUDGET_SPALTEN,
-        )
+        ),
     )

@@ -39,7 +39,9 @@ MONATSNAMEN = (
 
 
 def _fehlende_monate_hinweis(
-    text: str, monate: Sequence[Monat], vorhanden: Iterable[Monat]
+    text: str,
+    monate: Sequence[Monat],
+    vorhanden: Iterable[Monat],
 ) -> tuple[Hinweis, ...]:
     """Ein :class:`Hinweis` fuer die Monate aus ``monate``, die nicht in ``vorhanden`` stehen.
 

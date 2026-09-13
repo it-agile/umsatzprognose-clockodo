@@ -122,8 +122,10 @@ class ProjektRepository:
         """Der Abruf, synchron - fuer den Aufruf ausserhalb eines Event-Loops."""
         return synchron(
             self.laden_async(
-                mit_anteilen=mit_anteilen, time_since=time_since, time_until=time_until
-            )
+                mit_anteilen=mit_anteilen,
+                time_since=time_since,
+                time_until=time_until,
+            ),
         )
 
     async def laden_async(
@@ -146,7 +148,9 @@ class ProjektRepository:
             time_until: obere Grenze; ohne Angabe das Ende des laufenden Monats.
         """
         projekte, gruppen = await rohdaten(
-            self._client, time_since=time_since, time_until=time_until
+            self._client,
+            time_since=time_since,
+            time_until=time_until,
         )
         return self.abbilden(projekte, gruppen, mit_anteilen=mit_anteilen)
 
@@ -171,7 +175,7 @@ class ProjektRepository:
             for rohprojekt in projekte
         )
         hinweise = self._verbrauch_ohne_projekt_hinweis(
-            gruppen
+            gruppen,
         ) + self._verbrauch_ohne_stammdaten_hinweis(verbrauch, gebaut)
         return gebaut, hinweise
 
@@ -210,7 +214,7 @@ class ProjektRepository:
                     mitarbeiter=self._mitarbeiter.get(users_id, Mitarbeiter(id=users_id)),
                     stunden=float(untergruppe.get("duration") or 0.0) / SEKUNDEN_JE_STUNDE,
                     umsatz=Decimal(str(untergruppe.get("revenue") or 0.0)),
-                )
+                ),
             )
         return tuple(anteile)
 
@@ -241,13 +245,14 @@ class ProjektRepository:
             Hinweis(
                 f"Auf einen Kunden ohne Projekt gebucht: {stunden(zeit)} und "
                 f"{euro(umsatz)} - beides gehört keinem Projekt und damit keiner "
-                "Prognose an"
+                "Prognose an",
             ),
         )
 
     @staticmethod
     def _verbrauch_ohne_stammdaten_hinweis(
-        verbrauch: Mapping[int, _Verbrauchseintrag], projekte: tuple[Projekt, ...]
+        verbrauch: Mapping[int, _Verbrauchseintrag],
+        projekte: tuple[Projekt, ...],
     ) -> tuple[Hinweis, ...]:
         bekannt = {p.id for p in projekte}
         verwaist = sorted(set(verbrauch) - bekannt)

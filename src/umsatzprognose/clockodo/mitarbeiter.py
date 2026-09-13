@@ -75,13 +75,17 @@ class MitarbeiterRepository:
         self._client = client
 
     def laden(
-        self, *, jahre: Sequence[int] = ()
+        self,
+        *,
+        jahre: Sequence[int] = (),
     ) -> tuple[dict[int, Mitarbeiter], tuple[Hinweis, ...]]:
         """Der Abruf, synchron - fuer den Aufruf ausserhalb eines Event-Loops."""
         return synchron(self.laden_async(jahre=jahre))
 
     async def laden_async(
-        self, *, jahre: Sequence[int] = ()
+        self,
+        *,
+        jahre: Sequence[int] = (),
     ) -> tuple[dict[int, Mitarbeiter], tuple[Hinweis, ...]]:
         """Personen, Sollzeiten, Abwesenheiten und Feiertage gleichzeitig holen.
 
@@ -160,7 +164,7 @@ class MitarbeiterRepository:
                     ),
                     gueltig_ab=date.fromisoformat(eintrag["date_since"]),
                     gueltig_bis=_datum(eintrag.get("date_until")),
-                )
+                ),
             )
 
         hinweise = (
@@ -189,7 +193,7 @@ class MitarbeiterRepository:
                     endet=date.fromisoformat(eintrag["date_until"]),
                     typ=int(eintrag["type"]),
                     status=int(eintrag["status"]),
-                )
+                ),
             )
         return je_person
 
@@ -210,7 +214,7 @@ class MitarbeiterRepository:
                         datum=date.fromisoformat(tag["evaluated_date"]),
                         halber_tag=bool(tag.get("half_day")),
                         name=str(tag["name"]) if tag.get("name") else None,
-                    )
+                    ),
                 )
         return je_person
 

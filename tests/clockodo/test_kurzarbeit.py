@@ -47,7 +47,8 @@ def test_kurzarbeit_aktiv_laedt_env_datei(monkeypatch, tmp_path):
     env_datei = tmp_path / ".env"
     env_datei.write_text(f"{KURZARBEIT_AKTIV_VAR}=true\n")
     monkeypatch.setattr(
-        "umsatzprognose.clockodo.kurzarbeit.load_dotenv", lambda: load_dotenv(env_datei)
+        "umsatzprognose.clockodo.kurzarbeit.load_dotenv",
+        lambda: load_dotenv(env_datei),
     )
 
     assert kurzarbeit_aktiv() is True
@@ -79,10 +80,10 @@ def _entrygroups_person_monat(person_id: str, monat: str, *, duration: int, reve
                         "duration": duration,
                         "revenue": revenue,
                         "grouped_by": "month",
-                    }
+                    },
                 ],
-            }
-        ]
+            },
+        ],
     }
 
 
@@ -93,8 +94,8 @@ def _userreports_antwort(*, overtime_carryover: float, month_details: list[dict]
                 "users_id": 301,
                 "overtime_carryover": overtime_carryover,
                 "month_details": month_details,
-            }
-        ]
+            },
+        ],
     }
 
 
@@ -168,7 +169,7 @@ def test_ueberstundenstand_wird_aus_carryover_und_kumulierter_monatssumme_gebild
         2026: _userreports_antwort(
             overtime_carryover=5.0,
             month_details=[{"nr": 1, "diff": 2.0}, {"nr": 2, "diff": -3.0}],
-        )["userreports"]
+        )["userreports"],
     }
     ergebnis = KurzarbeitRepository.abbilden(
         [{"id": 301, "name": "Anna Beispiel", "active": True}],
@@ -217,9 +218,10 @@ def test_laden_ruft_die_erwarteten_endpunkte_gleichzeitig_ab():
             "/v3/users": _benutzer_antwort(),
             "/v2/entrygroups": entrygroups,
             "/userreports": _userreports_antwort(
-                overtime_carryover=0.0, month_details=[{"nr": 8, "diff": 3.0}]
+                overtime_carryover=0.0,
+                month_details=[{"nr": 8, "diff": 3.0}],
             ),
-        }
+        },
     )
 
     ergebnis = KurzarbeitRepository(client).laden(stichtag=STICHTAG, anzahl_monate=1)
@@ -256,14 +258,17 @@ def test_laden_meldet_fortschritt_je_zweig_statt_nur_am_ende():
             "/v3/users": _benutzer_antwort(),
             "/v2/entrygroups": entrygroups,
             "/userreports": _userreports_antwort(
-                overtime_carryover=0.0, month_details=[{"nr": 8, "diff": 3.0}]
+                overtime_carryover=0.0,
+                month_details=[{"nr": 8, "diff": 3.0}],
             ),
-        }
+        },
     )
     gemeldet: list[str] = []
 
     KurzarbeitRepository(client).laden(
-        stichtag=STICHTAG, anzahl_monate=1, fortschritt=gemeldet.append
+        stichtag=STICHTAG,
+        anzahl_monate=1,
+        fortschritt=gemeldet.append,
     )
 
     assert set(gemeldet) == {

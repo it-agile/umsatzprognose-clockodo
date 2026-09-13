@@ -2947,6 +2947,7 @@ name = "umsatzprognose-clockodo"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
+    { name = "anyio" },
     { name = "google-api-python-client" },
     { name = "google-auth" },
     { name = "google-auth-oauthlib" },
@@ -3006,6 +3007,7 @@ web = [
 
 [package.metadata]
 requires-dist = [
+    { name = "anyio", specifier = ">=4.15" },
     { name = "coverage", marker = "extra == 'coverage'", specifier = ">=7.0" },
     { name = "fastapi", marker = "extra == 'web'", specifier = ">=0.115" },
     { name = "google-api-python-client", specifier = ">=2.100" },

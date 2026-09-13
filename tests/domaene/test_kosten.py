@@ -42,7 +42,7 @@ def test_kosten_je_monat_summiert_je_monat() -> None:
         posten=(
             Kostenposten(2026, 1, Decimal("1000.0")),
             Kostenposten(2026, 2, Decimal("1500.0")),
-        )
+        ),
     )
     assert plan.kosten_je_monat([(2026, 1), (2026, 2), (2026, 3)]) == [
         Decimal("1000.0"),
@@ -73,14 +73,14 @@ def test_hat_erfassung_je_monat_unterscheidet_erfasst_von_pauschale() -> None:
                 erfassung=Erfasst(Decimal("150.0")),
             ),
             Kostenposten(2026, 2, pauschale=Decimal("1500.0")),
-        )
+        ),
     )
     assert plan.hat_erfassung_je_monat([(2026, 1), (2026, 2), (2026, 3)]) == [True, False, False]
 
 
 def test_summe_addiert_die_uebergebenen_monate() -> None:
     plan = Kostenplan(
-        posten=(Kostenposten(2026, 1, Decimal("1000.0")), Kostenposten(2026, 2, Decimal("1500.0")))
+        posten=(Kostenposten(2026, 1, Decimal("1000.0")), Kostenposten(2026, 2, Decimal("1500.0"))),
     )
     assert plan.summe([(2026, 1), (2026, 2)]) == Decimal("2500.0")
 
@@ -97,6 +97,7 @@ def test_hinweise_meldet_fehlende_monate() -> None:
 def test_hinweise_ohne_luecke_bleibt_bei_den_abbildungshinweisen() -> None:
     abbildungshinweis = Hinweis("Die Kosten-Datei für 2026 konnte nicht gelesen werden")
     plan = Kostenplan(
-        posten=(Kostenposten(2026, 1, Decimal("1000.0")),), abbildungshinweise=(abbildungshinweis,)
+        posten=(Kostenposten(2026, 1, Decimal("1000.0")),),
+        abbildungshinweise=(abbildungshinweis,),
     )
     assert plan.hinweise([(2026, 1)]) == (abbildungshinweis,)

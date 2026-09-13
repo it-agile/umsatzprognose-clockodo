@@ -274,7 +274,7 @@ def test_anmeldungsverlauf_laden_fuehrt_mehrere_jahre_zusammen() -> None:
                     "Präsenz",
                 ],
             ],
-        }
+        },
     )
     repository = SchulungenRepository(client, {2022: "sheet-2022", 2023: "sheet-2023"})
     verlauf = repository.anmeldungsverlauf_laden([2022, 2023])
@@ -320,7 +320,7 @@ def test_anmeldungsverlauf_laden_meldet_fortschritt_je_jahr_mit_kumulierter_anza
                     "Präsenz",
                 ],
             ],
-        }
+        },
     )
     repository = SchulungenRepository(client, {2022: "sheet-2022", 2023: "sheet-2023"})
     gemeldet: list[str] = []
@@ -368,7 +368,7 @@ def test_laden_fuehrt_mehrere_jahre_zusammen() -> None:
         {
             "sheet-2026": [KOPFZEILE, ["Kurs A", "2026", "12", "", "1.000,00 €", ""]],
             "sheet-2027": [KOPFZEILE, ["Kurs B", "2027", "1", "", "2.000,00 €", ""]],
-        }
+        },
     )
     repository = SchulungenRepository(client, {2026: "sheet-2026", 2027: "sheet-2027"})
     plan = repository.laden(stichtag=date(2026, 11, 1), horizont_monate=3)

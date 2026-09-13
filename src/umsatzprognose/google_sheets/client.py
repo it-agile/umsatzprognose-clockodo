@@ -71,7 +71,8 @@ class TabellenClient(Protocol):
 
 
 def kopfzeile_finden(
-    zeilen: list[list[str]], pflichtspalten: set[str]
+    zeilen: list[list[str]],
+    pflichtspalten: set[str],
 ) -> tuple[int, dict[str, int]]:
     """Findet die erste Zeile, die alle ``pflichtspalten`` traegt, samt Spaltenposition.
 
@@ -218,7 +219,7 @@ def _lokale_credentials(oauth_client_config: dict | None) -> CredentialsBase:
 
     if oauth_client_config is None:
         raise MissingCredentialsError(
-            f"Fuer den lokalen Login fehlt das OAuth-Client-JSON aus {OAUTH_CLIENT_VAR}."
+            f"Fuer den lokalen Login fehlt das OAuth-Client-JSON aus {OAUTH_CLIENT_VAR}.",
         )
 
     pfad = token_pfad()
