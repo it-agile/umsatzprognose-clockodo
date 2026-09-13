@@ -1,127 +1,76 @@
 # CLAUDE.md
 
-Diese Datei gibt Claude Code Orientierung in diesem Repository.
+Kompakte Orientierung für Claude Code in diesem Repository. Details stehen in
+`spec/*.md`, den Docstrings der jeweiligen Module und im Code selbst – bei Unsicherheit
+dort nachsehen statt zu raten.
 
 ## Kommandos
 
-Abhängigkeits- und Python-Verwaltung läuft ausschließlich über **uv**; die Version ist
-in `.python-version` auf 3.13 gepinnt. Kein `pip install` im Projekt-venv, kein manuell
-angelegtes venv. Colab läuft auf Python 3.13.
+Abhängigkeits-/Python-Verwaltung ausschließlich über **uv** (Python 3.13, siehe
+`.python-version`). Kein `pip install`, kein manuelles venv. Colab läuft auf 3.13.
 
 ```bash
-uv sync --extra notebook       # Umgebung herstellen
-git config core.hooksPath .githooks  # einmalig: Pre-Commit-Hook aktivieren (siehe unten)
-uv run pytest                  # alle Tests
-uv run pytest tests/domaene/test_projekt.py::test_restvolumen_ist_budget_minus_verbrauch  # ein Test
-uv run ruff check .            # Lint
-uv run ruff format .           # Formatierung
-uv run jupyter lab             # Notebooks lokal
-uvx tox                        # Tests unter Python 3.12-3.14 + Coverage + Lint, ein Kommando
-uvx tox -e jupyter             # Notebooks starten (wie uv run jupyter lab, mit --autoreload)
-uv sync --extra bericht && uv run python scripts/diagramme_exportieren.py     # Diagramme als PNG exportieren, inkl. Anmeldungsverlauf (--help für Optionen)
-uvx tox -e web                 # Web-Frontend lokal starten (siehe Abschnitt "Web-Frontend")
+uv sync --extra notebook              # Umgebung herstellen
+git config core.hooksPath .githooks   # einmalig: Pre-Commit-Hook aktivieren (siehe unten)
+uv run pytest                         # alle Tests
+uv run pytest <pfad>::<test>          # ein Test
+uv run ruff check .                   # Lint
+uv run ruff format .                  # Formatierung
+uv run jupyter lab                    # Notebooks lokal
+uvx tox                               # Tests Py 3.12-3.14 + Coverage + Lint in einem Kommando
+uvx tox -e jupyter                    # Notebooks mit --autoreload
+uvx tox -e web                        # Web-Frontend lokal (siehe „Web-Frontend")
+uv sync --extra bericht && uv run python scripts/diagramme_exportieren.py   # Diagramme als PNG
 ```
 
-`tox` ist nicht Projektabhängigkeit, sondern läuft über `uvx` (`[tool.tox]` in
-`pyproject.toml`). `env_list` (`py312`, `py313`, `py314`, `coverage`, `ruff`, `mypy`,
-`mypy-notebooks`) läuft bei `uvx tox` ohne weitere Angabe; `jupyter`, `web` und `ty`
-sind zusätzliche Umgebungen und laufen nur mit `-e jupyter`, `-e web` bzw. `-e ty`.
+`tox` läuft über `uvx`, ist keine Projektabhängigkeit (`[tool.tox]` in `pyproject.toml`).
+`env_list` (`py312`, `py313`, `py314`, `coverage`, `ruff`, `mypy`, `mypy-notebooks`) läuft
+bei `uvx tox` ohne weitere Angabe; `jupyter`, `web`, `ty` nur mit `-e <name>`.
 
-Werkzeugkonfiguration (ruff, mypy, ty, pytest, coverage, tox) sammelt sich in
-`pyproject.toml` (`[tool.*]`-Abschnitte) statt in eigenen Dateien wie `ruff.toml`,
-`mypy.ini` oder `ty.toml` – ein einziger Ort für die gesamte Projektkonfiguration statt
-verteilter Konfigurationsdateien. Nur wenn ein Werkzeug `pyproject.toml` gar nicht
-unterstützt, bekommt es eine eigene Datei.
+Werkzeugkonfiguration (ruff, mypy, ty, pytest, coverage, tox) steht zentral in
+`pyproject.toml` (`[tool.*]`), nicht in eigenen Dateien – außer ein Werkzeug unterstützt
+das gar nicht.
 
-## Code-Qualität – Prüf-Checkliste
+## Code-Qualität
 
-Bei Code-Reviews und beim Schreiben neuen Codes in `src/`, `tests/`, `scripts/` und
-`notebooks/` gilt diese Checkliste, gemessen an den eigenen Ansprüchen des Projekts
-(siehe die Architektur-Kernregeln unten), nicht an einem generischen Idealbild –
-ein Muster, das eine bereits dokumentierte, bewusste Entscheidung umsetzt (z. B.
-`frozen=True`-Dataclasses, das `Prognose`-Protocol samt `NochKeinePrognose`), ist damit
-keine Verletzung:
+Gemessen an den eigenen Ansprüchen des Projekts (Architektur unten), nicht an einem
+generischen Idealbild – ein Muster, das eine bereits dokumentierte, bewusste
+Entscheidung umsetzt (z. B. `frozen=True`-Dataclasses, das `Prognose`-Protocol), ist
+keine Verletzung.
 
-- **Funktionale Ansätze bevorzugen**: reine Funktionen statt unnötigem Klassenzustand,
-  Comprehensions/Generatorausdrücke statt imperativer Schleifen, wo das klarer ist.
-- **`typing.Protocol` für Interface-Logik statt konkreter Kopplung oder ABCs**,
-  zusammen mit der mypy-Typprüfung (`uv run mypy` bzw. `uvx tox -e mypy`/
-  `mypy-notebooks`) als Absicherung.
-- **Composition over inheritance** als generelles Prinzip – Vererbung nur, wo sie
-  echten Mehrwert gegenüber Zusammensetzen aus Attributen/Parametern bietet.
-- **SOLID**: SRP (ein Änderungsgrund je Klasse/Modul), OCP (Erweiterung ohne
-  Änderung), LSP (abgeleitete Klassen echt substituierbar), ISP (schlanke,
-  klientenspezifische Schnittstellen), DIP (Abhängigkeit auf Abstraktionen, nicht auf
-  Konkretes).
-- **Packaging-Prinzipien** für den Zuschnitt der sechs Pakete plus `util/` (siehe
-  Abschnitt „Aufbau"): REP (Wiederverwendungsgranularität = Veröffentlichungsgranularität),
-  CCP (gemeinsam geänderte Klassen im selben Paket), CRP (gemeinsam benutzte Klassen im
-  selben Paket), ADP (azyklischer Abhängigkeitsgraph zwischen den Paketen), SDP
-  (Abhängigkeiten zeigen Richtung Stabilität), SAP (Abstraktheit steigt mit
-  Stabilität).
-- **Code vereinfachen** – nur echte Vereinfachungen ohne Verhaltensänderung, keine
-  kosmetischen Vorlieben. Ausdrücklich auch im Sinne von "ein Mensch kann weitere
-  Anpassungen leicht übernehmen": bewusst akzeptierte Duplizierung zwischen mehreren
-  Dateien (z. B. zwischen `scripts/wochenbericht.py` und
-  `scripts/diagramme_exportieren.py`, weil keins von beiden Teil des installierten
-  Pakets ist) bleibt nur so lange eine legitime Ausnahme, wie sie tatsächlich
-  synchron gehalten wird. Sobald Kopien wiederholt auseinanderlaufen (beobachtet:
-  fehlende Ladedauer oder abweichender Wortlaut bei derselben Meldung in nur einer
-  der beiden Kopien), ist das ein Signal, die gemeinsame Logik in ein von beiden
-  importiertes, gemeinsames Modul zu extrahieren (siehe `scripts/_fortschritt.py`)
-  statt die Duplizierung weiter hinzunehmen.
-- **`__slots__` statt `__dict__`, wo sinnvoll**: bei den unveränderlichen
-  `@dataclass(frozen=True)`-Fachobjekten in `domaene/` per `slots=True` am
-  Dataclass-Decorator (ab Python 3.10 direkt unterstützt) – spart Speicher und
-  verhindert versehentlich neu angelegte Attribute. Ausnahme:
-  `domaene.abrufquote.Abrufquotenverteilung` bleibt ohne `slots=True`, weil ihre
-  `cached_property`-Felder (`_werte`, `_werte_array`) bewusst in ein beschreibbares
-  Instanz-`__dict__` schreiben, um `__setattr__` der frozen Dataclass zu umgehen (siehe
-  Kommentar dort) – `__slots__` und ein von `cached_property` gebrauchtes `__dict__`
-  schließen sich gegenseitig aus, sofern `__dict__` nicht explizit als eigener Slot
-  aufgeführt wird – das würde den Speichervorteil von `__slots__` dort zunichtemachen.
-- **Web-Standards für `webapp/`** – gängige, bereits im Code etablierte Praxis, an der
-  sich neue Templates/Routen messen lassen:
-  - Semantisches HTML5 (`<nav>`, `<main id="hauptinhalt">`), `lang="de"` auf `<html>`,
-    ein Skip-Link zum Hauptinhalt mit eigenem, sichtbarem Fokusstil (`basis.html`).
-  - Formularelemente immer durch Verschachtelung in `<label>` mit ihrer Beschriftung
-    verbunden, nie durch bloße Nähe im Markup.
-  - ARIA-Attribute (`aria-expanded`/`aria-controls`) nur dort, wo semantisches HTML den
-    Zustand nicht schon selbst trägt – etwa am Auf-/Zuklapp-Button des
-    Kategorie-Drilldowns (`schulungen.html`), nicht pauschal auf jedem Element.
-  - Farbkontrast nach WCAG-AA (mindestens 4,5:1), am Beispiel der aktiven
-    Navigationsfarbe direkt im CSS-Kommentar mit dem tatsächlichen Kontrastverhältnis
-    belegt (`basis.html`) statt einer bloßen Behauptung.
-  - `scope="col"` auf jedem Tabellen-Header, auch bei automatisch aus einem
-    `pandas.DataFrame` erzeugten Tabellen (`_tabelle_html()` fügt es nachträglich ein).
-  - Responsiv über relative Einheiten (`rem`/`em`) und horizontal scrollende
-    `.tabelle-wrapper`-Container statt fester Breakpoints/Media-Queries – passend zu
-    einer internen, datengetriebenen Anwendung ohne komplexes Mehrspalten-Layout.
-  - Serverseitiges Escaping bleibt die Regel: Jinja2s Autoescaping wird nicht
-    abgeschaltet; `escape=False` (bei `pandas.DataFrame.to_html()`, nicht bei Jinja2)
-    ausschließlich für selbst injiziertes, kontrolliertes Markup wie die
-    Gewinn-Einfärbung in `_tabelle_html()`, nie für Werte aus einer externen Quelle.
-  - Nur lesende `GET`-Routen, keine schreibenden/destruktiven HTTP-Methoden – passend
-    zur fehlenden Benutzerverwaltung (siehe Abschnitt „Web-Frontend").
-  - Keine Drittanbieter-CDN-Abhängigkeit für Assets: `plotly.js` wird aus dem
-    installierten Paket ausgeliefert statt von einem externen Anbieter geladen (siehe
-    Abschnitt „Web-Frontend").
-- **`try`/`except` möglichst vermeiden** – wo sich eine Bedingung vorab prüfen lässt
-  (Look-Before-You-Leap statt Easier-to-Ask-Forgiveness) oder `contextlib.suppress()`
-  bzw. ein Default-Wert genügt, das bevorzugen. Ein `try`/`except`-Block bleibt nur dort
-  gerechtfertigt, wo eine vorherige Prüfung nicht möglich oder unverhältnismäßig
-  aufwendig ist – klassisch bei E/A-Fehlern externer Systeme (z. B. der
-  Wiederholungslogik in `clockodo/client.py` bei 429/504/Verbindungsabbruch) oder beim
-  Parsen von Fremdformaten, deren Gültigkeit sich nicht anders vorab feststellen lässt.
+- Funktionale Ansätze: reine Funktionen statt unnötigem Klassenzustand, Comprehensions/
+  Generatorausdrücke statt imperativer Schleifen, wo klarer.
+- `typing.Protocol` statt ABCs/konkreter Kopplung, abgesichert durch `mypy`.
+- Composition over inheritance; Vererbung nur mit echtem Mehrwert.
+- SOLID (SRP/OCP/LSP/ISP/DIP).
+- Packaging-Prinzipien (REP/CCP/CRP/ADP/SDP/SAP) für den Zuschnitt der sechs Pakete +
+  `util/` (siehe „Aufbau").
+- Echte Vereinfachungen ohne Verhaltensänderung, keine kosmetischen Vorlieben. Bewusst
+  akzeptierte Duplizierung (z. B. zwischen `scripts/wochenbericht.py` und
+  `scripts/diagramme_exportieren.py`, weil beides nicht Teil des installierten Pakets
+  ist) bleibt nur legitim, solange sie synchron gehalten wird – läuft sie wiederholt
+  auseinander, in ein gemeinsames Modul extrahieren (Vorbild: `scripts/_fortschritt.py`).
+- `@dataclass(frozen=True, slots=True)` für die unveränderlichen Fachobjekte in
+  `domaene/`. Ausnahme: `Abrufquotenverteilung` (ihre `cached_property`-Felder brauchen
+  ein beschreibbares Instanz-`__dict__`, unvereinbar mit `slots=True`).
+- Web-Standards in `webapp/`: semantisches HTML5, `lang="de"`, Skip-Link mit sichtbarem
+  Fokusstil; `<label>` umschließt sein Formularelement, nie nur Nähe im Markup; ARIA nur
+  wo HTML den Zustand nicht selbst trägt; WCAG-AA-Kontrast (≥4,5:1); `scope="col"` auf
+  jedem Tabellen-Header, auch bei aus `pandas.DataFrame` erzeugten Tabellen; responsiv
+  über `rem`/`em` und horizontal scrollende Container statt Media-Queries; Jinja2-
+  Autoescaping bleibt an (Ausnahme nur für selbst injiziertes, kontrolliertes Markup wie
+  die Gewinn-Einfärbung); nur `GET`-Routen (keine Benutzerverwaltung); kein Drittanbieter-
+  CDN (`plotly.js` wird aus dem installierten Paket lokal ausgeliefert).
+- `try`/`except` nur wo eine Vorab-Prüfung nicht möglich oder unverhältnismäßig
+  aufwendig ist (E/A-Fehler externer Systeme, z. B. Retry-Logik in `clockodo/client.py`;
+  Parsen von Fremdformaten) – sonst Look-Before-You-Leap oder `contextlib.suppress()`.
 
 ## Aufbau
 
-Sechs Pakete mit genau einer erlaubten Abhängigkeitsrichtung. `clockodo/`,
-`schulungen/` und `kosten/` sind drei gleichrangige, voneinander unabhängige
-Quellschichten für die Domäne – `schulungen/` und `kosten/` hängen aber beide von
-`google_sheets/` ab, weil sie exakt dieselbe Google-Sheets-Infrastruktur (Zugangsdaten,
-HTTP-Client) nutzen, nur unterschiedliche Tabellenblätter derselben jährlichen Datei
-lesen:
+Sechs Pakete, eine erlaubte Abhängigkeitsrichtung. `clockodo/`, `schulungen/`, `kosten/`
+sind gleichrangige, unabhängige Quellschichten für die Domäne; `schulungen/` und
+`kosten/` hängen beide von `google_sheets/` ab (dieselbe Infrastruktur, unterschiedliche
+Tabellenblätter derselben jährlichen Datei):
 
 ```
 darstellung  ──►  domaene  ◄──  clockodo
@@ -132,982 +81,305 @@ darstellung  ──►  domaene  ◄──  clockodo
           └──────►  google_sheets  ◄──────┘
 ```
 
-Dazu `src/umsatzprognose/util/` als siebtes, aber unsichtbares Paket: keine der obigen
-Bibliotheksabhängigkeiten, keine Kenntnis von einem der sechs Bausteine, deshalb nicht
-im Diagramm – nur Umgebungserkennung (`in_colab()`), das gemeinsame Lesen von
-Umgebungsvariablen/Colab-Secrets (`umgebungsvariable()`, `colab_secret()`, siehe
-`clockodo/config.py` und `google_sheets/config.py`) und die Monat-als-Zahlenpaar-
-Arithmetik (`Monat`, `ordnung()`, `aus_ordnung()`, `monatsfolge()`), die an mehreren
-Stellen in `domaene/`, `clockodo/`, `schulungen/` und `kosten/` gebraucht wird. Jedes
-der sechs Pakete darf `util/` importieren.
+`util/` (siebtes, unsichtbares Paket, keine Abhängigkeit zu den sechs Bausteinen, jeder
+darf es importieren): Umgebungserkennung (`in_colab()`), Env-Variablen/Colab-Secrets
+(`umgebungsvariable()`, `colab_secret()`), `Monat`-Arithmetik (`ordnung()`,
+`aus_ordnung()`, `monatsfolge()`).
 
-- `src/umsatzprognose/domaene/` – die Fachobjekte, unveränderlich (`frozen=True`) und
-  ohne jede Bibliotheksabhängigkeit außer `numpy` (in `simulation.py` und, für die
-  vektorisierte Ziehung, in `abrufquote.py`) und dem abhängigkeitsfreien `util/`.
-  `projekt.py`
-  (`Projekt`, `Budget` – Restvolumen roh und prognosewirksam, effektiver Stundensatz,
-  Prognose-Scope, `anteil_je_mitarbeiter()`), `kunde.py`, `mitarbeiter.py`
-  (`Mitarbeiter.verfuegbare_kapazitaet()`, `Wochenarbeitszeit`, `Abwesenheit`,
-  `Feiertag`), `projektanteil.py` (der Aufteilungsschlüssel), `umsatzhistorie.py`
-  (`Monatsumsatz`, `Umsatzhistorie`), `verbrauchsverlauf.py` (`Verbrauchsverlauf` – der
-  Monatsverbrauch je Projekt, Rückrechnung des Restvolumens, Beobachtungsfenster),
-  `abrufquote.py` (`Abrufquote`, `Abrufquotenverteilung` – empirische Verteilung samt
-  Ziehung mit Zurücklegen), `bestand.py` (`Bestand`, das Aggregat), `simulation.py`
-  (`simulieren()`, `MonteCarloPrognose` – der Rechenkern, siehe unten; dazu
-  `FakturierbareArbeitZiehung` – ein `Protocol` für den Anteil fakturierbarer Arbeit,
-  mit dem die verfügbare Kapazität je Lauf multipliziert wird, siehe „Rechenkern" –
-  sowie dessen zwei parametrische Erfüller `WeibullFakturierbareArbeit`/
-  `GaussFakturierbareArbeit`, je mit `aus_stichprobe()`-Momentenschätzer), `prognose.py`
-  (`Prognose`-Protocol, `NochKeinePrognose`), `hinweis.py`, `zahlen.py` (deutsche
-  Zahlformate ohne `locale`), `kurzarbeit.py` (`Personenmonat`, `Rollenzuordnung`,
-  `Schwellenwerte`, `Kurzarbeitsbewertung`, `bewerten()`/`bewertungen()` – siehe
-  „Was das Modul fachlich tut" unten, eigenständiger Baustein ohne Bezug zum Rest),
-  `auslastung.py` (`Auslastungsmonat`, `Auslastungssumme` – Anteil abrechenbarer
-  Stunden an `Mitarbeiter.verfuegbare_kapazitaet()`, additiv wie `kosten.py`/
-  `schulung.py`: kein Teil von `BestandRepository`s Abrufen, keine eigene
-  Bandbreite/kein eigener Monte-Carlo-Lauf; dieselben Klassen tragen zusätzlich
-  `interne_stunden`/`anteil_fakturierbarer_arbeit` – reine Vergangenheitsbetrachtung,
-  siehe `FakturierbareArbeitBandbreite.je_monat()` (aggregiert je Kalendermonat) und
-  `durchschnittlicher_anteil_fakturierbarer_arbeit()` (ein einzelner Gesamtwert, beide
-  schließen den Ausreißer "ausschließlich nicht fakturierbar" (0 % fakturierbar) aus,
-  siehe `_ausschliesslich_nicht_fakturierbar()`). `anteile_fakturierbarer_arbeit()`
-  (dieselben Werte unaggregiert je Personen-Monat, **ohne** diesen Ausschluss) ist
-  dagegen **nicht** mehr rein additiv: sie ist sowohl Grundlage von
-  `darstellung.diagramme.anteil_fakturierbarer_arbeit_verteilung()` als auch von
-  `FakturierbareArbeitVerteilung`, die – anders als der Rest des Moduls – optional
-  direkt in die Bestand-Simulation eingeht (siehe Abschnitt „Rechenkern" unten).
-- `src/umsatzprognose/clockodo/` – **alles, was Clockodo weiß, weiß nur dieses Paket.**
-  `config.py` (Zugangsdaten, benannte Konstruktoren `automatisch`, `aus_umgebung`,
-  `aus_colab_secrets`), `client.py` (`ClockodoClient`: HTTP, Paginierung, verifizierte
-  Parameterform je Endpunkt, `ClockodoError` mit Antwortkörper), `nebenlaeufig.py`
-  (`synchron`, `gleichzeitig`, siehe unten), `cache.py` (optionaler lokaler
-  Verlaufscache für die beiden Vollhistorien-Abrufe, siehe unten), dazu je Endpunkt ein
-  Repository: `kunden.py`, `mitarbeiter.py`, `projekte.py`, `umsatz.py`,
-  `verbrauchsverlauf.py` und `bestand.py` (`BestandRepository`, der eine Einstieg),
-  dazu additiv `kurzarbeit.py` (`KurzarbeitRepository`,
-  `rollenzuordnung_automatisch()` – eigenständiger Baustein, kein Teil von
-  `BestandRepository`s sieben gleichzeitigen Abrufen) und additiv `auslastung.py`
-  (`AuslastungRepository` – drei gleichzeitige `/v2/entrygroups`-Abrufe, `billable` 0/1/2
-  getrennt, da der Filter nur einen Wert je Abruf zulässt; ebenfalls kein Teil von
-  `BestandRepository`s Abrufen, siehe `darstellung.dashboard.Dashboard.auslastung`).
-- `src/umsatzprognose/google_sheets/` – **der gemeinsame Google-Sheets-Zugriff, den
-  `schulungen/` und `kosten/` beide nutzen.** `config.py` (`GoogleSheetsConfig`,
-  dieselben benannten Konstruktoren wie bei `ClockodoCredentials`, liest u. a.
-  `KOSTEN_SHEET_IDS`), `client.py` (`GoogleSheetsClient`: Google-Sheets-API über
-  OAuth-Client-ID statt Service-Account, synchron, `werte()` nimmt Spreadsheet-ID und
-  Zellbereich entgegen – kennt selbst keinen bestimmten Reiter). Kennt weder
-  `schulungen/` noch `kosten/`.
-- `src/umsatzprognose/schulungen/` – **alles, was vom Tabellenblatt der
-  Schulungsanmeldungen weiß, weiß nur dieses Paket** (Baustein Schulungsanmeldungen,
-  siehe unten). `schulungen.py` (`SchulungenRepository` – Header-basiertes
-  Spalten-Mapping, deutsches Euro-Format parsen über `domaene.zahlen.euro_parsen()`,
-  ein nicht ladbares Jahr wird zum `Hinweis`, nicht zum Fehler). Keine Abhängigkeit zu
-  `clockodo/` oder `kosten/`.
-- `src/umsatzprognose/kosten/` – **alles, was vom Tabellenblatt der Kostenprognose
-  weiß, weiß nur dieses Paket** (Baustein Kosten, siehe unten). `kosten.py`
-  (`KostenRepository` – Zeilen 3–15 ohne festen Spaltenbereich (die Spaltenlage
-  unterscheidet sich je Jahrgang, siehe unten), Header-basiertes Spalten-Mapping wie
-  bei `schulungen/`, Monatsname ausgeschrieben statt Zahl). Keine Abhängigkeit zu
-  `clockodo/` oder `schulungen/`.
-- `src/umsatzprognose/darstellung/` – der einzige Ort mit plotly (`diagramme.py`,
-  `gestaltung.py`) und pandas (`tabellen.py`), dazu `dashboard.py` mit der Fassade
-  `Dashboard`, die die Notebooks benutzen (u. a. `Dashboard.anteil_fakturierbarer_arbeit()`/
-  `.anteil_fakturierbarer_arbeit_tabelle()`/`.anteil_fakturierbarer_arbeit_verteilung()`/
-  `.fakturierbare_arbeit_verteilung()`/`.durchschnittlicher_anteil_fakturierbarer_arbeit()` –
-  schließen wie `auslastung_je_mitarbeiter()` den laufenden Stichtagsmonat aus, siehe
-  „Rechenkern" unten). `kurzarbeit.py` steht eigenständig daneben
-  (`kurzarbeit_bericht()`, `kurzarbeit_hinweise_bericht()` – Text-Berichte für
-  `notebooks/04_kurzarbeit.ipynb`, unabhängig von `Dashboard` wie der ganze Baustein).
-- `tests/` – pytest, in Unterordnern gespiegelt nach den sechs Bausteinen plus
-  `darstellung/`, `util/` und `webapp/` (z. B. `tests/domaene/test_bestand.py` für
-  `src/umsatzprognose/domaene/bestand.py`); `conftest.py` (gemeinsame Fixtures) und
-  `test_pre_commit_hook.py` (testet `.githooks/pre-commit`, gehört zu keinem der
-  Bausteine) bleiben direkt in `tests/`. Die Antwortausschnitte in `conftest.py` sind
-  gekürzte, aber echte Antworten samt ihrer Fallen. Jeder Unterordner trägt ein
-  (leeres) `__init__.py` - ohne das würden gleichnamige Testdateien in
-  verschiedenen Unterordnern (z. B. je ein `test_config.py` unter `clockodo/` und
-  unter `util/`) mit demselben Modulnamen kollidieren.
-- `notebooks/` – fünf Notebooks mit verschiedenen Zielgruppen plus ein gemeinsames
-  Start-Modul, siehe unten.
-- `spec/spec-umsatzprognose-clockodo-modul.md` – die Spezifikation des Bausteins Bestand.
-- `spec/spec-schulungsanmeldungen.md` – die Spezifikation des Bausteins
-  Schulungsanmeldungen.
-- `spec/spec-kosten.md` – die Spezifikation des Bausteins Kosten.
-- `spec/spec-kurzarbeit.md` – die Spezifikation des Bausteins Kurzarbeitsbereitschaft.
-- `spec/clocodo-api.yaml` – OpenAPI-Beschreibung der Clockodo-API.
+- `domaene/` – Fachobjekte, unveränderlich, nur `numpy` + `util/` als Abhängigkeit.
+  `projekt.py` (`Projekt`, `Budget`), `kunde.py`, `mitarbeiter.py`
+  (`verfuegbare_kapazitaet()`), `projektanteil.py`, `umsatzhistorie.py`
+  (`Monatsumsatz`), `verbrauchsverlauf.py`, `abrufquote.py` (`Abrufquotenverteilung`),
+  `bestand.py` (`Bestand`, das Aggregat), `simulation.py` (Rechenkern, siehe unten),
+  `prognose.py` (`Prognose`-Protocol, `NochKeinePrognose`), `hinweis.py`, `zahlen.py`
+  (deutsche Zahlformate ohne `locale`), `kurzarbeit.py`, `auslastung.py` – die drei
+  letzten additiv, siehe „Was das Modul fachlich tut".
+- `clockodo/` – alles, was Clockodo weiß, weiß nur dieses Paket. `config.py`,
+  `client.py` (`ClockodoClient`, `ClockodoError`), `nebenlaeufig.py` (`synchron`,
+  `gleichzeitig`), `cache.py` (Verlaufscache, opt-in, siehe Kernregeln), je Endpunkt ein
+  Repository (`kunden.py`, `mitarbeiter.py`, `projekte.py`, `umsatz.py`,
+  `verbrauchsverlauf.py`, `bestand.py` – `BestandRepository` ist der eine Einstieg),
+  additiv `kurzarbeit.py`, `auslastung.py`.
+- `google_sheets/` – gemeinsamer Sheets-Zugriff für `schulungen/`+`kosten/`.
+  `config.py`, `client.py` (OAuth-Client-ID statt Service-Account, kennt keinen
+  bestimmten Reiter).
+- `schulungen/` – nur dieses Paket weiß vom Tabellenblatt der Schulungsanmeldungen.
+  `schulungen.py` (`SchulungenRepository`).
+- `kosten/` – nur dieses Paket weiß vom Tabellenblatt der Kostenprognose. `kosten.py`
+  (`KostenRepository`).
+- `darstellung/` – einziger Ort mit plotly (`diagramme.py`, `gestaltung.py`) und pandas
+  (`tabellen.py`); `dashboard.py` mit Fassade `Dashboard` (von Notebooks/Webapp genutzt);
+  `kurzarbeit.py` (Text-Berichte, unabhängig von `Dashboard`).
+- `tests/` – gespiegelt nach den sechs Bausteinen + `darstellung/`/`util/`/`webapp/`;
+  `conftest.py` (gemeinsame Fixtures/Helfer) und `test_pre_commit_hook.py` bleiben direkt
+  in `tests/`. Jeder Unterordner trägt ein leeres `__init__.py` (verhindert
+  Modulnamen-Kollisionen gleichnamiger Testdateien).
+- `notebooks/` – siehe unten.
+- `spec/` – `spec-umsatzprognose-clockodo-modul.md` (Bestand), `spec-schulungsanmeldungen.md`,
+  `spec-kosten.md`, `spec-kurzarbeit.md`, `clocodo-api.yaml` (OpenAPI der Clockodo-API).
 
 ### Kernregeln
 
-- **Die Domäne kennt kein JSON und keinen HTTP-Client.** Wissen über Clockodos
-  Eigenheiten steht in `clockodo/`, je Endpunkt dort, wo seine Abbildung liegt.
-- **Die Simulation gehört an den `Bestand`, nicht an das `Projekt`.** Der
-  Kapazitätsdeckel wirkt je Person über *alle* ihre Projekte; ein Lauf ist eine Ziehung
-  über das gesamte Portfolio. Projekt und Mitarbeiter liefern Regeln und Zustand, keine
-  fertigen Prognosen.
-- **Die Fachobjekte bleiben unveränderlich.** Der Lauf-Zustand der Simulation
-  (Restvolumen je Projekt und Lauf, als numpy-Array) liegt neben den Objekten, nicht in
-  ihnen – siehe Moduldocstring von `simulation.py`.
-- **Euro-Beträge laufen als `decimal.Decimal`, nicht als `float`.** Alle Geldgrößen der
-  Fachobjekte (Budget, `verbrauchtes_volumen`, `Monatsumsatz.umsatz`,
-  `Abrufquote.verbrauch`/`restvolumen_zu_monatsbeginn`, Kostenposten, Schulungstermine,
-  `Prognose.monatswerte()`/`gebucht()`/`summe()`) sowie `zahlen.euro()`/`tausend_euro()`/
-  `euro_parsen()` sind `Decimal` – ein Rundungsfehler in einer Geldgröße wäre in einem
-  öffentlichen Repository nur schwer zu rechtfertigen, und `euro_parsen()` geht direkt
-  vom deutschen Zahlentext in `Decimal`, ohne den Umweg über `float`. Reine
-  Verhältnis-, Stunden- und Prozentgrößen (Abrufquote-`wert`, Kapazität, Deckkraft)
-  bleiben `float`. Einzige Ausnahme von der Decimal-Regel: die vektorisierte
-  Monte-Carlo-Schleife in `simulation.py` rechnet intern mit `float`-numpy-Arrays (siehe
-  Rechenkern) und wandelt an ihren Rändern um.
-- **Die Abrufe laufen gleichzeitig, die Abbildung nacheinander.** Die sieben Antworten
-  einer Prognose hängen nicht voneinander ab; aufeinander angewiesen ist erst das
-  Zusammensetzen, weil Projekte Kunde und Person als Objekt tragen und
-  Verbrauchsverläufe das fertige Projekt samt Budget brauchen. Deshalb sind die
-  Methoden von `ClockodoClient` Coroutinen, `BestandRepository.laden_async()` fächert
-  sie mit `gleichzeitig()` auf, und erst danach bildet `ProjektRepository.abbilden()`
-  ab. Zwei der sieben Abrufe sind dieselbe Doppelgruppierung von `/v2/entrygroups` –
-  einmal nach Person, einmal nach Monat. Ohne `mit_verbrauchsverlauf=False` gibt es
-  keine geschätzte Abrufquote-Verteilung.
-- **Öffentliche Einstiege sind gewöhnliche Funktionen.** `Dashboard.laden()` und
-  `BestandRepository.laden()` legen `synchron()` um die Coroutine – mehr als
-  `asyncio.run`, weil in Colab/Jupyter bereits ein Event-Loop läuft.
-  `synchron()` führt die Coroutine dann in einem eigenen Thread mit eigenem Loop aus.
-  Wer selbst in einem Loop steht, ruft `laden_async()` direkt auf.
-- **Nebenläufigkeitsprimitive gehören nicht an ein langlebiges Objekt.**
-  `gleichzeitig()` erzeugt seine Sperre je Aufruf und bricht bei einem Fehler die
-  übrigen Abrufe ab. `tests/clockodo/test_nebenlaeufig.py` prüft mit einer `asyncio.Barrier`,
-  dass die Abrufe wirklich überlappen.
-- **Zeitbuchungen werden nicht einzeln geladen.** `/v2/entrygroups` mit
+- Die Domäne kennt kein JSON/HTTP; Clockodo-Eigenheiten stehen in `clockodo/`.
+- Die Simulation gehört an `Bestand`, nicht an `Projekt` – der Kapazitätsdeckel wirkt je
+  Person über alle ihre Projekte, ein Lauf ist eine Ziehung über das gesamte Portfolio.
+- Fachobjekte bleiben unveränderlich; der Lauf-Zustand der Simulation (Restvolumen je
+  Projekt/Lauf, numpy-Array) liegt daneben, nicht in den Objekten.
+- Euro-Beträge laufen als `decimal.Decimal`, nie `float` – einzige Ausnahme: die
+  vektorisierte Monte-Carlo-Schleife selbst rechnet intern mit `float`-numpy-Arrays und
+  wandelt an ihren Rändern um (siehe Rechenkern). Reine Verhältnis-/Stunden-/Prozentgrößen
+  bleiben `float`.
+- Die sieben Abrufe einer Prognose laufen gleichzeitig (`ClockodoClient`-Methoden sind
+  Coroutinen, `BestandRepository.laden_async()` nutzt `gleichzeitig()`); erst danach
+  bildet `ProjektRepository.abbilden()` ab, weil das fertige Objekte braucht. Zwei der
+  sieben Abrufe sind dieselbe Doppelgruppierung von `/v2/entrygroups` (einmal nach
+  Person, einmal nach Monat).
+- Öffentliche Einstiege sind gewöhnliche Funktionen: `Dashboard.laden()`/
+  `BestandRepository.laden()` legen `synchron()` um die Coroutine (führt sie in eigenem
+  Thread/Loop aus – mehr als `asyncio.run`, weil in Colab/Jupyter schon ein Loop läuft).
+  Wer selbst in einem Loop steht, ruft `laden_async()` direkt.
+- Nebenläufigkeitsprimitive gehören nicht an ein langlebiges Objekt: `gleichzeitig()`
+  erzeugt seine Sperre je Aufruf, bricht bei Fehler die übrigen Abrufe ab.
+- Zeitbuchungen werden nie einzeln geladen; `/v2/entrygroups` mit
   `grouping[]=projects_id&grouping[]=users_id` liefert die Aufteilung fertig
-  aggregiert; der Begriff bleibt als `Projektanteil` im Modell.
-- **Der Verlaufscache ist striktes Opt-in.** `entrygroups_je_projekt_und_person` und
-  `entrygroups_je_projekt_und_monat` fragen die komplette Historie seit `HISTORIE_VON`
-  ab (siehe unten) – bei Clockodo dauert das mehrere Sekunden, weil dort über Jahre
-  aggregiert wird. Der längst abgeschlossene Teil dieser Historie ändert sich nach
-  Beobachtung nicht mehr (Abrechnungen älterer Monate werden nicht nachträglich
-  korrigiert); nur die letzten Monate sind noch in Bewegung. `clockodo/cache.py`
-  spaltet die Abfrage deshalb an einem Cutoff (Standard: 6 Monate vor dem Abfrageende,
-  übersteuerbar über den Parameter `cache_cutoff_monate` oder die Umgebungsvariable
-  `CLOCKODO_CACHE_CUTOFF_MONATE`) in einen stabilen, cachefähigen und einen immer
-  frisch geholten Teil; `entrygroups_zusammenfuehren()` in `client.py` führt beide
-  wieder zu einer Antwort zusammen, die exakt der eines einzelnen Abrufs entspricht.
-  Ohne gesetzte `CLOCKODO_CACHE_TTL_SEKUNDEN` bleibt der Cache aus – das bisherige
-  Verhalten, unverändert. Abgelegt wird außerhalb des Repositories im
-  Nutzerverzeichnis (`~/.cache/umsatzprognose-clockodo/`), aus demselben Grund wie beim
-  gecachten Google-OAuth-Token: gelesene Werte gehören in keine Datei dieses
-  Repositories.
+  aggregiert (`Projektanteil`).
+- Der Verlaufscache (`clockodo/cache.py`) ist striktes Opt-in
+  (`CLOCKODO_CACHE_TTL_SEKUNDEN`, sonst kein Cache): spaltet die Vollhistorien-Abfrage an
+  einem Cutoff (Standard 6 Monate vor Abfrageende, übersteuerbar über
+  `cache_cutoff_monate`/`CLOCKODO_CACHE_CUTOFF_MONATE`) in einen stabilen, cachefähigen
+  und einen frisch geholten Teil; `entrygroups_zusammenfuehren()` fügt beide zusammen.
+  Abgelegt außerhalb des Repositories in `~/.cache/umsatzprognose-clockodo/`.
 
 ### Notebooks
 
-Zielwerkzeug ist ein Notebook in **Google Colab**; der Notebook-Layer bleibt dünn und
-beginnt mit einer nur in Colab greifenden Installationszelle. Rechenlogik gehört ins
-Paket, nicht ins Notebook.
+Zielwerkzeug Google Colab; Notebook-Layer dünn, Rechenlogik im Paket. Gemeinsame
+Ladelogik in `notebooks/setup.py` (`setup.dashboard(stichtag=…, horizont_monate=…,
+auslastung_monate=…)`, merkt sich das Ergebnis je Kernel) – bewusst ein importierbares
+`.py`-Modul statt einer geteilten `.ipynb` mit `%run`, damit ruff/mypy den Code sehen.
 
-Die gemeinsame Ladelogik – `Dashboard.laden()` mit Cache – steckt in `notebooks/setup.py`
-statt dreifach dupliziert zu sein. Die drei fachlichen Notebooks importieren es in
-ihrer ersten Codezelle (`import setup`) und rufen `setup.dashboard(stichtag=…,
-horizont_monate=…, auslastung_monate=…)` auf. In Colab holt
-dieselbe Zelle vorher per `curl` von GitHub, weil dort außer dem per `pip install
-git+…` installierten Paket keine Repository-Dateien liegen; das `pip install` selbst
-bleibt in jedem Notebook, weil `setup.py` erst importierbar ist, nachdem
-`umsatzprognose` installiert ist. `setup.dashboard()` merkt sich das geladene
-Dashboard in einer Modulvariable und liefert bei jedem weiteren Aufruf im selben
-Kernel dasselbe Objekt zurück, ohne neu zu laden – ein echter Neuabruf braucht einen
-Kernel-Neustart. Bewusst ein normales, importierbares `.py`-Modul und keine geteilte
-`.ipynb` mit `%run`: ruff und mypy sehen `import setup` und `dashboard =
-setup.dashboard(...)` als gewöhnlichen Code, eine IPython-Magic wie `%run -i` bliebe
-für die statische Analyse unsichtbar und ließe `dashboard` in jeder folgenden Zelle
-als undefiniert erscheinen. `setup.py` wird nicht eigenständig geöffnet.
-
-- `notebooks/00_datencheck.ipynb` – Umsatzprognose und Gewinn/Verlust im Überblick,
-  rein lesend.
-- `notebooks/01_dashboard.ipynb` – für Fachexperten. Je Zelle ein Aufruf auf
-  `Dashboard`, Fachsprache, keine Endpunkte, keine IDs, keine technischen Marker.
-- `notebooks/02_technik_pruefung.ipynb` – für die Entwicklung. Prüfsummen,
-  Aufteilungsschlüssel, Sollarbeitszeiten, Kapazität je Person und je Projekt und
-  offene fachliche Fragen (`ENTSCHEIDEN`-Abschnitte).
-- `notebooks/03_schulungsanmeldungen.ipynb` – unabhängig vom Baustein Bestand: der
-  Anmeldungsverlauf öffentlicher Schulungen (Teilnehmerzahl je Monat und Kategorie,
-  `setup.anmeldungsverlauf()`), nicht der Umsatz. Die Kategorie-Zuordnung
-  (`KATEGORIEN`) ist frei konfigurierbar, aber **keine Notebook-Konstante mehr** –
-  `schulungen.kategorien_automatisch()` liest sie zur Laufzeit aus der
-  Umgebungsvariable `SCHULUNGEN_KATEGORIEN` (Colab-Secrets in Colab, sonst `.env`),
-  dieselbe Quelle wie in der Webapp, statt zweier unabhängig gepflegter Kopien.
-- `notebooks/04_kurzarbeit.ipynb` – wie `03_schulungsanmeldungen.ipynb` vollständig
-  unabhängig, hier vom Baustein Kurzarbeitsbereitschaft
-  (`setup.kurzarbeit_rohdaten()`, Rollenzuordnung/Schwellenwerte als eigene,
-  editierbare Zelle). Kein Bezug zu `Dashboard` oder zur Umsatzprognose.
+- `00_datencheck.ipynb` – Umsatzprognose/Gewinn-Verlust im Überblick, rein lesend.
+- `01_dashboard.ipynb` – für Fachexperten, ein `Dashboard`-Aufruf je Zelle.
+- `02_technik_pruefung.ipynb` – für die Entwicklung: Prüfsummen, Aufteilungsschlüssel,
+  offene Fragen (`ENTSCHEIDEN`-Abschnitte).
+- `03_schulungsanmeldungen.ipynb` – unabhängig vom Bestand, Anmeldungsverlauf
+  (`setup.anmeldungsverlauf()`); Kategorie-Zuordnung aus `SCHULUNGEN_KATEGORIEN`.
+- `04_kurzarbeit.ipynb` – unabhängig vom Bestand, Baustein Kurzarbeitsbereitschaft
+  (`setup.kurzarbeit_rohdaten()`); ignoriert `KURZARBEIT_AKTIV` bewusst.
 
 ### Web-Frontend
 
-`src/umsatzprognose/webapp/` ist ein zweites Frontend neben den Notebooks – eine
-gehostete Webseite, die dieselben Daten zeigt, ohne dass Betrachtende Jupyter/Colab
-brauchen. Kein eigener Baustein, keine eigene Fachlogik: strukturell nur ein weiterer
-Konsument von `Dashboard`, wie `notebooks/`. **Keine eigene Benutzerverwaltung** – es
-gibt keine Accounts für Besucher der Seite; alle sehen denselben, periodisch
-aktualisierten Stand aus genau einer Clockodo-/Google-Sheets-Anbindung, wie beim
-Dashboard-Notebook auch.
+`webapp/` ist ein zweites, gehostetes Frontend neben den Notebooks, ohne eigene
+Fachlogik oder Benutzerverwaltung – alle Besuchenden sehen denselben, periodisch
+aktualisierten Stand. Serverseitig gerendert: FastAPI + Jinja2 (`app.py`,
+`templates/`), Plotly-Figuren/pandas-Tabellen unverändert per `to_html()` eingebettet.
+`plotly.js` wird lokal aus dem installierten Paket ausgeliefert (kein CDN) – einzige
+Ausnahme von „nur `darstellung/` nutzt plotly".
 
-- **Rendering**: serverseitig über FastAPI + Jinja2 (`webapp/app.py`,
-  `webapp/templates/`) statt einer eigenen JS-Anwendung – die vorhandenen
-  Plotly-Figuren aus `darstellung/diagramme.py` und die pandas-Tabellen aus
-  `darstellung/tabellen.py` lassen sich unverändert per `to_html()` einbetten, ohne
-  eine eigene JSON-API zu brauchen. `plotly.js` selbst liefert die Webapp aus dem
-  installierten `plotly`-Paket lokal aus (`app.mount("/static/plotly", ...)`, vor dem
-  allgemeinen `/static`-Mount registriert, da Starlette Mounts in
-  Registrierungsreihenfolge prüft) statt von einem Drittanbieter-CDN – eine interne
-  Anwendung soll nicht von dessen Erreichbarkeit abhängen. Das macht `webapp/app.py`
-  zur einzigen Ausnahme von „`darstellung/` ist der einzige Ort mit plotly" (siehe
-  „Aufbau" oben): ein echter, nicht nur typprüfungsbedingter `import plotly`, einzig
-  um `plotly.__file__` für den Mount-Pfad zu lesen.
-- **Vier navigierbare Seiten**, verlinkt über eine gemeinsame Navigation
-  (`webapp/templates/basis.html`), jede mit dem Inhalt genau einer Notebook-Zelle
-  statt einer eigenen Auswahl: `/` deckt sich mit `notebooks/00_datencheck.ipynb`
-  (Gewinn/Verlust je Monat, Gewinn/Verlust je Jahr, kumulierte Umsatzrendite);
-  `/dashboard` mit `notebooks/01_dashboard.ipynb` (Umsatzverlauf, die zugehörige
-  Monatstabelle `Dashboard.umsatztabelle()`, offenes Auftragsvolumen je Projekt,
-  Projekte ohne Budget, dazu zusätzlich der Anteil fakturierbarer Arbeit je Monat und
-  ein Regler für dessen Verwendung in der Simulation, siehe unten und Abschnitt
-  „Rechenkern");
-  `/schulungen` mit `notebooks/03_schulungsanmeldungen.ipynb` (der
-  Anmeldungsverlauf), zusätzlich mit zwei Ergänzungen, die nur die Webapp zeigt:
+Vier Seiten, je Inhalt einer Notebook-Zelle: `/` (≈ `00_datencheck`), `/dashboard`
+(≈ `01_dashboard`, plus Regler für den Anteil fakturierbarer Arbeit in der Simulation,
+siehe Rechenkern), `/schulungen` (≈ `03_schulungsanmeldungen`, plus Mehrfach-Filter und
+Kategorie-Drilldown „Schulungsdetails" – Details in `app.py`/`schulungen.html`),
+`/kurzarbeit` (≈ `04_kurzarbeit`, eigener `KurzarbeitCache`, hinter Feature-Flag
+`KURZARBEIT_AKTIV`).
 
-  - **Ein optionaler Mehrfach-Filter über der Grafik** (`app._anmeldungsreihen()`,
-    per Voreinstellung zugeklapptes `<details class="regler-abschnitt">`, klappt nur
-    bei aktiver Auswahl auf): vier unabhängige Dropdowns (Kategorie, Schulungen,
-    Format, Dauer, alle mit Mehrfachauswahl) plus Checkbox "Trendlinien" - jede
-    Auswahl über alle vier Dropdowns hinweg erzeugt ihre **eigene** farbige Linie
-    (`diagramme.anmeldungsverlauf_reihen()`, Palette wie
-    `gewinn_verlust_je_jahr()`s Kalenderjahre), keine Filterkette. Jedes Dropdown hat
-    einen eigenen "alle"-Eintrag - `ALLE_KATEGORIEN` ("Alle Kategorien") im
-    Kategorie-, `ALLE_SCHULUNGEN` ("Alle Schulungen") im Schulungen- und `ALLE`
-    ("Alle") im Format-/Dauer-Dropdown -, die alle dieselbe Gesamtzahl liefern,
-    unabhängig von Dropdown oder Mehrfachnennung nur eine Linie. Die
-    Dropdown-Optionen sind je Liste alphabetisch sortiert, mit dem jeweiligen
-    "alle"-Eintrag vorangestellt statt einsortiert; per Voreinstellung sind alle vier
-    "alle"-Einträge zugleich vorausgewählt, sodass ohne Auswahl weiterhin nur die eine
-    Gesamtlinie erscheint und der Filterabschnitt zugeklappt bleibt. Das
-    Schulungen-Dropdown zeigt Basisnamen statt einzelner Schulungstypen - Dauer-
-    Varianten wie "CSPO 2-tägig"/"CSPO 3-tägig" fasst es zu "CSPO" zusammen
-    (`Anmeldungsverlauf.basisnamen`, `.basisnamen_je_kategorie()`,
-    `.je_monat_und_basisname()`), wie es der Tabellen-Drilldown unten bereits tut.
-    Es bietet außerdem nur Basisnamen an, die zur aktuellen Kategorie-Auswahl passen
-    (`app._schulung_optionen()`) - reine Dropdown-Optionen-Einschränkung, keine
-    Fachlogik. Ohne Standard-Verhalten
-    identisch zu vorher (eine schwarze Linie plus Trend); die
-    Trendlinien-Checkbox ist deshalb per verstecktem Begleitfeld (`value="aus"`) plus
-    Kontrollkästchen (`value="an"`) realisiert, weil ein einzelnes HTML-Kästchen
-    seinen "aus"-Zustand sonst nicht senden könnte, und startet angehakt.
-  - **Ein aufklappbarer Kategorie-Drilldown ("Schulungsdetails")**: eine
-    Baumstruktur Kategorie → Basisname → (Format, nur bei tatsächlicher Vielfalt) →
-    (Dauer, ebenso nur bei tatsächlicher Vielfalt), siehe
-    `domaene.anmeldung.Anmeldungsverlauf.gliederung_je_kategorie()`. Format
-    (Präsenz/Online) kommt direkt aus der gleichnamigen Sheet-Spalte
-    (`Anmeldung.format`), Dauer (`"2-tägig"`/`"3-tägig"`) wird aus dem
-    Schulungstyp-Text abgeleitet (`_basisname_und_dauer()`), keins von beiden ist
-    eine gepflegte Liste. Eine echte `<table>` mit flach (in Vorordnung) gerenderten
-    `<tr>`-Zeilen statt verschachtelter `<details>`-Elemente je Ebene - eine frühere
-    Fassung nutzte `display: contents` auf `<details>`, aber der Inhaltsbereich
-    eines `<details>` (alles außer `<summary>`) bildet in aktuellen Browsern einen
-    eigenen, unabhängigen Block, der die Tabellen-Spaltenberechnung verschachtelter
-    Zeilen von der Wurzel trennt. Auf-/Zuklappen blendet Zeilen deshalb per kleinem,
-    eigenständigem Skript (`kategorieZeileUmschalten()` in `schulungen.html`) nur
-    noch über `style.display` ein/aus.
+URL-Parameter als kuratierte Dropdowns (`typing.Literal`, Optionsliste über
+`typing.get_args()`): `horizont_monate` (3-6 Monate, auf `/`+`/dashboard`),
+`gewinn_verlust_monate` (3/6/12/24/„alle", nur `/`), `ab_jahr` (zusammenhängender
+Bereich, nur `/schulungen`, filtert nur in-memory). `laeufe` (Anzahl Simulationsläufe,
+Schieberegler 1–1.000.000, Standard `STANDARD_LAEUFE=10_000`) ist die Ausnahme: freier
+Bereich statt Dropdown, kein Teil des Cache-Schlüssels. `stichtag`/`auslastung_monate`
+sind bewusst keine URL-Parameter (kein sinnvoller gemeinsamer Standard bzw. eine feste
+Standardkombination genügt).
 
-  Die Kategorie-Zuordnung (`KATEGORIEN`) kommt aus derselben
-  `SCHULUNGEN_KATEGORIEN`-Umgebungsvariable wie im Notebook (siehe oben), keine
-  Konstante mehr in `webapp/app.py`; `/kurzarbeit`
-  mit `notebooks/04_kurzarbeit.ipynb` (Baustein Kurzarbeitsbereitschaft,
-  `spec/spec-kurzarbeit.md` – rückblickend je Monat, ob die Organisation die
-  Voraussetzungen für Kurzarbeit erfüllt hätte, ausschließlich Aggregatzahlen).
-  Anders als die anderen drei Seiten **kein Bezug zu `Dashboard`/`DashboardCache`** –
-  ein eigenständiger `KurzarbeitCache`, weil der Baustein kein Umsatz- oder
-  Kostensignal ist, sondern ein Kapazitäts-/Personalsignal.
-- **Parameter der Notebook-Ladezellen sind hier URL-Parameter, wählbar über ein
-  Dropdown** statt eines freien Zahlenbereichs (via `typing.Literal` - zugleich die
-  Dropdown-Optionsliste über `typing.get_args()`, siehe `HorizontMonate`,
-  `GewinnVerlustMonate` in `webapp/app.py`): `horizont_monate` (Prognosehorizont – 3,
-  4, 5 oder 6 Monate, auf `/` und `/dashboard`, weil beide denselben geladenen
-  `Dashboard` zeigen) und `gewinn_verlust_monate` (historisches Fenster – 3, 6, 12,
-  24 Monate oder "alle", nur auf `/`). `horizont_monate` steht auf beiden Seiten,
-  zusammen mit `laeufe` (siehe unten), ganz oben im Abschnitt "Simulations-Parameter"
-  (`_regler.html`: `interne_arbeit_regler_abschnitt()`), weil beide
-  Parameter der Simulation sind, nicht nur der Anteil fakturierbarer Arbeit – ein
-  abweichender Wert hält den Abschnitt deshalb ebenso aufgeklappt wie ein
-  abweichender Modus/Pauschalwert. `ab_jahr` (nur auf `/schulungen`, filtert
-  einen unabhängig geladenen `Anmeldungsverlauf`) bleibt ein zusammenhängender
-  Zahlenbereich (`Query(ge=STANDARD_AB_JAHR, le=aktuelles Jahr)`), weil Jahre
-  lückenlos sind; seine Dropdown-Optionen sind einfach dieser Bereich. Ohne Angabe
-  gilt nicht starr `STANDARD_AB_JAHR`, sondern `_standard_anzeige_ab_jahr()`: das
-  laufende Jahr, wenn davon schon mindestens `STANDARD_ANZEIGE_MINDESTMONAT` (6)
-  Monate vorüber sind, sonst zusätzlich das Vorjahr – eine Standardansicht mit nur
-  ein oder zwei Monaten wäre zu dünn für einen sinnvollen Blick auf den
-  Anmeldungsverlauf.
-  `auslastung_monate` aus `Dashboard.laden_async()` selbst ist **kein** URL-Parameter:
-  obwohl `/dashboard` inzwischen etwas zeigt, das von den geladenen Auslastungsmonaten
-  abhängt (Anteil fakturierbarer Arbeit, siehe unten), genügt eine feste
-  Standardkombination (`STANDARD_AUSLASTUNG_MONATE`) – ein weiteres Dropdown nur für
-  die Fensterbreite dieser einen zusätzlichen Ansicht wäre unverhältnismäßig.
-  `stichtag` bleibt ebenfalls kein URL-Parameter: anders als die
-  anderen gibt es dafür keinen sinnvollen Standard für alle Besuchenden
-  gleichzeitig. `Dashboard.gewinn_verlust_monatlich()` akzeptiert seit der
-  "alle"-Option auch `monate=None` (zeigt die gesamte geladene Historie, nicht nur
-  `STANDARD_HISTORIE_MONATE`).
-- **Drei weitere, rein darstellende Parameter, ebenfalls kein Teil des Cache-Schluessels**
-  (siehe unten): `restvolumen_top` (Slider "Anzahl Projekte mit offenem Budget", direkt
-  bei der Grafik `restvolumen_je_projekt()` auf `/dashboard` platziert statt oben im
-  Parameter-Bereich; Minimum 1, Maximum die Anzahl Projekte **ohne** Budget,
-  `Bestand.ohne_budget()` – eine bewusst andere Grundgesamtheit als die Projekte in der
-  Grafik selbst) und `ohne_budget_filter` (Textarea, nur `/dashboard`, ein
-  Ausschluss-Begriff je Zeile für `Dashboard.projekte_ohne_budget()` – die Tabelle
-  selbst zeigt immer **alle** (gefilterten) Zeilen, kein eigener Top-N-Slider dafür;
-  eigene Überschrift "Projekte ohne Budget", Text wie in
-  `notebooks/01_dashboard.ipynb`, nur die Filter-Konfiguration steckt standardmäßig
-  eingeklappt in einer `<details>`-Sektion direkt über der Tabelle). Der Slider und
-  das Filter-Textarea liegen in `dashboard.html` bewusst **nicht** im
-  `<form id="dashboard-form">` oben verschachtelt, sondern direkt bei der Grafik bzw.
-  Tabelle, die sie steuern -
-  verbunden über das HTML5-Attribut `form="dashboard-form"` an jedem Eingabeelement
-  (siehe MDN zu `form`), damit trotzdem ein einzelner GET-Request alle aktuellen Werte
-  der Seite mitträgt, unabhängig davon, welches einzelne Feld den Submit auslöst. Dazu
-  `verbrauchsplan` (Textarea, auf `/` **und** `/dashboard`, eine Zeile je Projekt im
-  Format `Projektname: JJJJ-MM` – parst zu `Projekt.verbrauchsplan_zielmonat`-Übersteuerungen,
-  siehe `domaene.bestand.mit_verbrauchsplan_uebersteuerungen()`). **Wichtig bei
-  `verbrauchsplan`**: `Dashboard.verbrauchsplan_uebersteuern()` verändert `self.bestand`
-  in-place – richtig für ein Notebook mit einem eigenen `Dashboard` im eigenen Kernel,
-  falsch für die Webapp, deren `DashboardCache` ein einziges, von allen Besuchenden
-  geteiltes `Dashboard` hält (keine Benutzertrennung, siehe oben). `_simuliertes_dashboard()`
-  in `webapp/app.py` baut deshalb bei gesetztem Parameter ein **transientes** `Dashboard`
-  mit übersteuertem `Bestand` und einer eigenen, synchronen Neusimulation
-  (`schulungsplan`/`kostenplan`/`auslastung` bleiben vom Original übernommen, kein
-  erneuter Abruf) – das gecachte Original bleibt für alle anderen Besuchenden
-  unverändert. Leerer Parameter (Normalfall) überspringt das komplett. Derselbe
-  Mechanismus bedient auf **beiden** Seiten (`/` **und** `/dashboard`) einen zweiten,
-  unabhängigen Auslöser: `interne_arbeit_modus` (Dropdown im Abschnitt
-  "Simulations-Parameter", `Literal["pauschal", "weibull", "gauss"]`, Standard `"pauschal"`;
-  auf beiden Seiten bewusst **vor** der Verbrauchsplan-Übersteuerung platziert) wählt
-  zwischen drei Simulationsquellen für den Anteil fakturierbarer Arbeit, mit dem die
-  verfügbare Kapazität multipliziert wird: "Pauschal" ist ein fester, über alle Läufe
-  gleicher Anteil (Regler `anteil_fakturierbar_prozent`, 0–100 %, Vorbelegung der
-  historische Durchschnitt aus den geladenen Auslastungsmonaten,
-  `Dashboard.durchschnittlicher_anteil_fakturierbarer_arbeit()`), mit eigenem
-  Zurücksetzen-Link "Auf historischen Durchschnitt zurücksetzen"; "Weibull"/"Gauss"
-  sind parametrische Alternativen (`domaene.simulation.WeibullFakturierbareArbeit`/
-  `GaussFakturierbareArbeit`, je zwei Regler: Formparameter (k)/Skalenparameter (λ)
-  bzw. Mittelwert (μ)/Standardabweichung (σ) – die mathematischen Kürzel stehen direkt
-  in der Regler-Beschriftung). Formparameter (k) und Standardabweichung (σ) sind beide
-  reine Fließkommazahlen: Formparameter (k) ein dimensionsloser Formfaktor ohne
-  Prozent-Interpretation, Standardabweichung (σ) eine Streuung, die anders als ein
-  Anteilswert nicht intuitiv in Prozent gedacht wird. Skalenparameter (λ) und
-  Mittelwert (μ) leben dagegen in derselben Werte-Domäne wie der Anteil fakturierbarer
-  Arbeit selbst (0.0 bis 1.0) und stehen deshalb als Prozentzahl (0–100 % bzw. 0–300 %
-  bei Skalenparameter) statt als Fließkommazahl – als Regler-Wert deutlich leichter
-  einzuschätzen; die Umrechnung auf den fraktionalen Fachobjekt-Wert passiert
-  ausschließlich an der Webapp-Grenze (`_interne_arbeit_regler_werte()`), die
-  Fachobjekte selbst bleiben unverändert fraktional. Alle sieben Regler (der
-  Pauschal-Prozentwert plus die vier Verteilungsparameter) sind waagerechte
-  Schieberegler (`<input type="range">`, kein Zahlenfeld mit Pfeiltasten) mit
-  Live-Anzeige des aktuellen Werts (`oninput`-Handler aktualisiert ein
-  `<output>`-Element) und lösen wie das Modus-Dropdown selbst bei Loslassen einen
-  vollen Seitenreload aus (`onchange="this.form.submit()"`). Anders als
-  `interne_arbeit_modus` selbst (fester Standardwert, deshalb in
-  `_STANDARDWERTE_START`/`_STANDARDWERTE_DASHBOARD`) haben die Pauschal- und die vier
-  Verteilungs-Parameterfelder `None` als Standard ("noch nicht übersteuert") –
-  `_interne_arbeit_regler_werte()` in `webapp/app.py` löst **immer alle drei**
-  Regler-Parametersätze auf, unabhängig vom gerade gewählten Modus (sonst würde ein
-  nicht angezeigter Regler beim Umschalten auf 0 zurückfallen statt seinen zuletzt
-  aufgelösten bzw. historisch vorgeschlagenen Wert zu behalten): ohne eigene Auswahl
-  per Momentenmethode aus `Dashboard.fakturierbare_arbeit_verteilung()` geschätzt
-  (`WeibullFakturierbareArbeit.aus_stichprobe()`/`GaussFakturierbareArbeit.
-  aus_stichprobe()` in `domaene/simulation.py`, Pauschalwert kaufmännisch auf volle
-  Prozent gerundet), mit weniger als zwei Beobachtungen fällt der Weibull-Formparameter
-  auf eine Exponentialverteilung (1.0) zurück, der Pauschalwert ganz ohne Beobachtung
-  auf 100 % (neutral: volle Kapazität). Das Ergebnis ist ein
-  `_InterneArbeitReglerWerte`-Objekt mit zwei symmetrisch aufgebauten
-  `_InterneArbeitAnzeige`-Anzeigewerte-Sätzen (je Pauschal-Prozent, Weibull-
-  Formparameter, Weibull-Skalenparameter-Prozent, Gauss-Mittelwert-Prozent,
-  Gauss-Standardabweichung – letztere als Fließkommazahl, nicht als Prozent, siehe
-  oben): `aktuell` (der gerade wirksame, ggf. übersteuerte Wert, für die
-  Regler-Stellung) und `historisch` (immer der aus der Historie abgeleitete Vorschlag,
-  unabhängig von jeder Übersteuerung) – letzterer erscheint direkt in der
-  Regler-Beschriftung selbst ("Mittelwert (μ) (historischer Mittelwert: 45 %)"), nicht
-  in einem separaten Hilfstext darunter, damit beim manuellen Einstellen eine
-  Orientierung an der Vergangenheit sichtbar bleibt, ohne den Blick vom Regler weg auf
-  einen Absatz darunter zu lenken. Die beiden Fachobjekte selbst (schon mit
-  angewendeter Übersteuerung, fraktional) stehen daneben auf oberster Ebene des
-  `_InterneArbeitReglerWerte`-Ergebnisses (`regler.weibull`/`regler.gauss`) - die
-  Routen (`uebersicht()`/`dashboard_seite()`) lösen aus Modus plus diesen beiden direkt
-  auf, was tatsächlich simuliert wird (`anteil_fakturierbar` bei "Pauschal", sonst das
-  passende `WeibullFakturierbareArbeit`/`GaussFakturierbareArbeit`-Objekt als
-  `FakturierbareArbeitZiehung`). Die Templates zeigen nur die zum gewählten Modus
-  passenden Regler (`{% if/elif %}` statt Client-JS, da ein Moduswechsel ohnehin einen
-  vollen Seitenreload auslöst) – gemeinsamer Baustein
-  `interne_arbeit_regler_abschnitt()`-Makro in `webapp/templates/_regler.html`,
-  identisch auf beiden Seiten. Der Abschnitt heißt "Simulations-Parameter" (nicht mehr
-  nur "Interne Arbeit in der Simulation"), weil er inzwischen mehr als den Anteil
-  fakturierbarer Arbeit trägt. Ganz oben in diesem Makro, vor der Modus-Auswahl selbst,
-  stehen zwei weitere Simulationsparameter, die zur Simulation gehören, nicht nur zum
-  Anteil fakturierbarer Arbeit: das Prognosehorizont-Dropdown (`horizont_monate`, siehe
-  oben) und ein Schieberegler "Anzahl Simulationsläufe" (`laeufe`, `Query(ge=1,
-  le=1_000_000)`, Standard `STANDARD_LAEUFE = 10_000` – siehe `Dashboard.simuliere()`s
-  gleichnamigen Parameter), daneben ein editierbares Zahlenfeld
-  (`<input type="number">`) mit demselben Wertebereich für die manuelle Eingabe eines
-  genauen Werts – Regler und Zahlenfeld sind rein clientseitig über `oninput`
-  gegenseitig synchronisiert, tatsächlich übermittelt (`name="laeufe"`) wird
-  ausschließlich der Regler; das Zahlenfeld stößt bei einer Änderung
-  (`dispatchEvent(new Event("change"))` auf dem Regler) denselben Seitenreload an wie
-  ein direktes Ziehen am Regler. Anders als `horizont_monate` ist `laeufe` kein Teil
-  des `DashboardCache`-Schlüssels (das gecachte `Dashboard` wird immer mit
-  `STANDARD_LAEUFE` simuliert); ein abweichender Wert nutzt stattdessen denselben
-  transienten Neusimulations-Mechanismus wie `anteil_fakturierbar`/
-  `interne_arbeit_ziehung` (`_simuliertes_dashboard()`). `horizont_monate` hat, wie die
-  übrigen kuratierten Dropdowns, keinen eigenen Zurücksetzen-Link (wie
-  `restvolumen_top`) – eine kleine Auswahl, deren Standardwert ohnehin nur einen Klick
-  entfernt ist. `laeufe` dagegen trägt einen eigenen Link "Auf Standardwert
-  zurücksetzen", weil sein Wertebereich (1 bis 1.000.000) dafür zu groß ist. Ein von
-  seinem Standard abweichender `horizont_monate`/`laeufe` hält den Abschnitt ebenso
-  aufgeklappt wie ein abweichender Modus/Pauschalwert. Die beiden `.regler-gruppe`-
-  Blöcke des Makros (Prognosehorizont/Anzahl Läufe oben, Verteilung/Modus-Regler
-  darunter) sind durch eine zarte Trennlinie (`.regler-trenner` in `basis.html`)
-  optisch voneinander abgesetzt, weil sie inhaltlich unterschiedliche Parametergruppen
-  sind. Die Zusammenfassung im zugeklappten Zustand zeigt bei "Weibull"/"Gauss" nicht
-  nur den Modusnamen, sondern die tatsächlich wirksamen Parameterwerte – z. B.
-  "Simulations-Parameter (3 Monate, 10.000 Läufe, Weibull (k=1.27, λ=49 %))" bzw. mit
-  "Gauss (μ=45 %, σ=0.12)" –, damit auch im eingeklappten Zustand sichtbar bleibt,
-  welche konkrete Verteilung gerade simuliert wird, nicht nur welcher Modus gewählt
-  ist.
-  Jeder Modus hat außerdem einen eigenen Zurücksetzen-Link, der nur
-  dessen Parameter auf die historisch abgeleiteten Werte zurücksetzt, ohne den Modus
-  selbst zu ändern; "Weibull"/"Gauss" tragen zusätzlich einen zweiten Link "Zurück zu
-  'Pauschal'", der den Modus wechselt. Ohne jede Übersteuerung (weder Verbrauchsplan
-  noch dieser Regler, also Modus "Pauschal" ohne eigenen Prozentwert) liefert
-  `_simuliertes_dashboard()` unverändert das gecachte `Dashboard` zurück – dessen
-  eigene, im `DashboardCache` bereits gelaufene Simulation zieht schon standardmäßig
-  denselben historischen Durchschnitt heran (siehe `DashboardCache.anstossen()`), eine
-  Neusimulation wäre dafür überflüssig. Nur `/dashboard` zeigt zusätzlich, direkt unter
-  der Monatstabelle, das zugrunde liegende
-  Diagramm/Tabelle (`Dashboard.anteil_fakturierbarer_arbeit()`/
-  `.anteil_fakturierbarer_arbeit_tabelle()`, Spalten Monat/fakturierende Personen/Min/Ø/Max) –
-  rein informativ, unabhängig vom Regler; `/` zeigt nur den Regler, ohne
-  Diagramm/Tabelle. Darunter zusätzlich `Dashboard.anteil_fakturierbarer_arbeit_verteilung()`:
-  ein Histogramm (Standard 20 Balken über den vollen Bereich 0–100 %, `diagramme.
-  anteil_fakturierbarer_arbeit_verteilung()`) über dieselben rohen Anteile einzelner
-  Personen-Monate (`Dashboard.fakturierbare_arbeit_verteilung()`, siehe „Rechenkern"
-  unten), aus denen auch die Simulation im Modus "Pauschal" ihren Vorschlagswert bzw.
-  "Weibull"/"Gauss" ihre Momentenschätzung ableiten – zeigt die Streuung hinter der
-  Zeitreihe, ebenfalls nur auf `/dashboard`, nicht auf `/`. Ein Doppel-Schieberegler
-  (`interne_arbeit_verteilung_min_prozent`/`_max_prozent`, rein darstellend, kein Teil
-  des Cache-Schlüssels wie `restvolumen_top`/`ohne_budget_filter` unten) blendet
-  Ausreißer am unteren bzw. oberen Ende gezielt aus dieser einen Grafik aus (nicht aus
-  der Simulation): zwei übereinanderliegende `<input type="range">` mit demselben
-  Wertebereich (`doppel_regler()`-Makro in `_regler.html`), per CSS auf einer
-  gemeinsamen Schiene (`basis.html`: `.doppel-regler`, `.doppel-regler-schiene`,
-  `.doppel-regler-fuellung`, transparente Spur/Pointer-Events nur auf dem
-  Schieberegler-Knopf) und einem kleinen, eigenständigen Skript
-  (`doppelReglerAktualisieren()`) übereinandergelegt – der linke Knopf setzt das
-  Minimum, der rechte das Maximum, statt zweier unabhängiger Regler untereinander.
-  `max` liegt dabei immer mindestens einen Prozentpunkt über `min` (serverseitig
-  erzwungen in `dashboard_seite()`, da `Query(ge=.../le=...)` allein einen manuell
-  vertauschten URL-Parameter nicht verhindert). Dasselbe Einschränken steht im
-  Notebook als zwei Variablen vor der Zelle
-  (`anteil_fakturierbarer_arbeit_verteilung_minimum`/`_maximum`, Standard 0.0/1.0 –
-  voller Bereich). Eine Person ganz ohne abrechenbare Stunde in einem Monat (0 %
-  fakturierbar) gilt nur für die **Bandbreite**
-  (`FakturierbareArbeitBandbreite.je_monat()`) und den **Vorschlagswert für die
-  Regler-Anzeige** (`durchschnittlicher_anteil_fakturierbarer_arbeit()`) als Ausreisser
-  und zählt dort nicht mit (siehe
-  `domaene.auslastung._ausschliesslich_nicht_fakturierbar()`) – die Verteilungsgrafik
-  und die Simulationsziehung selbst schließen diesen seltenen, aber real vorgekommenen
-  Fall bewusst **nicht** aus.
-- **Zwei verschiedene Cache-Strategien, je nachdem, ob ein engerer Parameter
-  wirklich weniger laedt oder nur anders anzeigt** (siehe Klassendocstrings in
-  `webapp/cache.py`): `DashboardCache` haelt je angefragter
-  (`horizont_monate`, `auslastung_monate`)-Kombination einen **eigenen** Eintrag -
-  ein anderer `horizont_monate` fragt bei Clockodo tatsaechlich ein anderes
-  Zeitfenster ab, und ein neuer Simulationslauf ist dann auch fachlich richtig,
-  keine Abkuerzung ueber einen breiteren Lauf. `gewinn_verlust_monate` ist dagegen
-  bewusst **kein** Teil dieses Cache-Schluessels: es schneidet nur das schon
-  geladene `Dashboard` unterschiedlich zurecht (`Dashboard.gewinn_verlust_monatlich`
-  liest lediglich einen anderen Ausschnitt derselben geladenen Historie), ein
-  Wechsel zwischen 3/6/12/24/"alle" laedt deshalb nie neu. `AnmeldungsverlaufCache`
-  haelt dagegen ganz bewusst **nur einen einzigen** Eintrag, ab dem im Konstruktor
-  fest hinterlegten `STANDARD_AB_JAHR`: die Google-Sheets-Dateien sind unabhaengig
-  vom gewaehlten `ab_jahr` dieselben, ein engerer Beginn ("seit 2024" statt "seit
-  2022") ist immer eine Teilmenge dieses einen geladenen Bereichs -
-  `Anmeldungsverlauf.ab_jahr()` filtert dafuer nur noch in-memory, ganz ohne
-  erneuten Abruf. `KurzarbeitCache` folgt derselben Logik wie `AnmeldungsverlaufCache`,
-  nicht wie `DashboardCache`: anders als beim vorwaerts simulierenden Dashboard haengt
-  die Bewertung eines einzelnen Monats ausschliesslich von dessen eigenen
-  Personenmonat-Daten ab, nicht davon, wie viele Monate insgesamt angefragt wurden -
-  ein engerer Zeitraum ist deshalb immer eine Teilmenge eines breiteren. Der Cache
-  laedt deshalb **immer** mit der groessten waehlbaren `anzahl_monate`
-  (`MAXIMALE_KURZARBEIT_MONATE`, aktuell 12) und schneidet engere Dropdown-Auswahlen
-  nur noch in-memory heraus (`_juengste_monate()`) - ein Wechsel zwischen 1/3/6/12
-  Monaten loest also nie einen neuen Ladevorgang bei Clockodo aus.
-- **Caching, nicht blockierend**: `webapp/cache.py` erneuert seine Eintraege nach
-  Ablauf einer TTL (`WEBAPP_CACHE_TTL_SEKUNDEN`, Standard eine Stunde). Anders
-  als `notebooks/setup.py` – eine Modulvariable je Kernel – bedient ein Webserver
-  mehrere gleichzeitige Anfragen aus demselben Prozess; ein Neuladen je Anfrage wäre
-  wegen des Abrufs und der Monte-Carlo-Simulation zu langsam, ein Cache je Besucher
-  unnötig, da es keine Benutzertrennung gibt. `bereit()`/`anstossen()` (statt eines
-  blockierenden `holen()`) prüfen, ob etwas schon geladen ist, bzw.
-  stoßen einen fehlenden Ladevorgang im Hintergrund an, ohne auf ihn zu warten -
-  `/`, `/dashboard` und `/schulungen` liefern in diesem Fall sofort eine schlichte
-  "Daten werden geladen"-Seite (`webapp/templates/laedt.html`, Meta-Refresh alle
-  zwei Sekunden) statt die Anfrage offenzuhalten. `_vorladen()` (FastAPIs
-  `lifespan`) stößt die Standardkombination zusätzlich schon beim Start an, damit
-  sie im üblichen Fall längst fertig ist, bevor die ersten Besuchenden eintreffen.
-  Ein fehlgeschlagener Hintergrund-Ladevorgang wird auf der Konsole gemeldet (sonst
-  wäre er nicht diagnostizierbar) und beim nächsten Aufruf automatisch erneut
-  versucht; ein erfolgreicher dagegen bewusst **ohne** Statusausgabe - anders als in
-  einer früheren Fassung, die nach jedem Laden einen Ladebericht ausgab.
-- **Google-Auth**: der Webserver loggt sich nie selbst interaktiv ein. Der lokale
-  OAuth-Login (`google_sheets/client.py`, `_lokale_credentials()`) läuft einmalig auf
-  dem Rechner einer administrierenden Person; die entstandene Token-Datei wird dem
-  Server als Secret unter einem eigenen Pfad zur Verfügung gestellt
-  (`GOOGLE_OAUTH_TOKEN_PFAD`, siehe `token_pfad()` in `google_sheets/client.py`) statt
-  am Notebook-Pfad `.google_oauth_token.json`. Offener Punkt vor dem produktiven
-  Einsatz: prüfen, ob die OAuth-Client-ID in der Google-Cloud-Konsole im Status "In
-  production" statt "Testing" steht – im Testing-Status laufen Refresh-Tokens nach 7
-  Tagen ab, ungeeignet für einen dauerhaft laufenden Server.
-- **Clockodo-Auth**: unverändert – die API-Key-Authentifizierung ist bereits
-  service-artig und funktioniert unverändert aus einem Serverprozess heraus.
-- Gehört zum optionalen `web`-Extra (`fastapi`, `jinja2`, `uvicorn`) – keine
-  Basisabhängigkeit, weil nur dieses Paket sie braucht. Start lokal: `uvx tox -e web`
-  bzw. `uv run --extra web uvicorn umsatzprognose.webapp.app:app`. **Bewusst ohne
-  `--reload`** als Standard (siehe Moduldocstring von `webapp/app.py`): `--reload`
-  startet zusätzlich einen Reloader-Prozess, der den ohnehin schweren Modulimport
-  (FastAPI/Pydantic, pandas, googleapiclient) ein zweites Mal durchläuft und den Start
-  spürbar verlangsamt. Für aktive Entwicklung an `webapp/` weiterhin per Posargs
-  zuschaltbar, dann aber mit `--reload-dir src/umsatzprognose/webapp` eingeschränkt –
-  ohne diese Einschränkung beobachtet `--reload` das gesamte Arbeitsverzeichnis, auch
-  z. B. `.tox/`, was bei parallel laufendem `uvx tox` zu ständigen Neustarts führt.
+Abschnitt „Simulations-Parameter" (`_regler.html`, auf `/` und `/dashboard`):
+`horizont_monate`+`laeufe` oben, darunter Modus-Dropdown `interne_arbeit_modus`
+(Pauschal/Weibull/Gauss) für den Anteil fakturierbarer Arbeit – Regler-Werte ohne
+eigene Wahl aus der Historie per Momentenmethode vorbelegt
+(`_interne_arbeit_regler_werte()`/`_interne_arbeit_kontext()` in `app.py`; Mechanik der
+Regler/Slider selbst siehe dort und in `_regler.html`). Jeder Modus hat einen eigenen
+Zurücksetzen-Link. Weitere, rein darstellende Parameter (kein Teil des Cache-
+Schlüssels): `restvolumen_top`, `ohne_budget_filter`, `verbrauchsplan` (Projekt→
+Zielmonat-Übersteuerung), `interne_arbeit_verteilung_min/max_prozent`.
+`verbrauchsplan`/`anteil_fakturierbar`/`laeufe` lösen bei Abweichung eine transiente
+Neusimulation aus (`_simuliertes_dashboard()`) statt das geteilte, gecachte `Dashboard`
+zu verändern.
+
+Zwei Cache-Strategien (`webapp/cache.py`): `DashboardCache` hält je (`horizont_monate`,
+`auslastung_monate`)-Kombination einen eigenen Eintrag (lädt tatsächlich
+unterschiedlich); `AnmeldungsverlaufCache`/`KurzarbeitCache` laden immer die
+größte/älteste Auswahl und schneiden eine engere Anfrage nur in-memory heraus. Laden
+ist nicht blockierend (`bereit()`/`anstossen()`, `laedt.html`-Zwischenseite,
+`_vorladen()` beim Start).
+
+Google-Auth: Server loggt sich nie interaktiv ein, nutzt eine vorbereitete Token-Datei
+(`GOOGLE_OAUTH_TOKEN_PFAD`). Offener Punkt vor Produktivbetrieb: prüfen, ob die
+OAuth-Client-ID in der Google-Cloud-Konsole auf „In production" steht (in „Testing"
+laufen Refresh-Tokens nach 7 Tagen ab). Clockodo-Auth unverändert service-artig.
+
+Gehört zum optionalen `web`-Extra (`fastapi`, `jinja2`, `uvicorn`). Start: `uvx tox -e
+web`. Bewusst ohne `--reload` (verdoppelt den schweren Modulimport, verlangsamt den
+Start) – für aktive Entwicklung mit `--reload-dir src/umsatzprognose/webapp`
+zuschaltbar.
 
 ## Keine gelesenen Werte im Repository
 
-**Werte, die aus der Clockodo-API oder den Schulungs-Sheets gelesen wurden, gehören in
-keine Datei dieses Repositories** – weder in Code, Tests, Spec, diese Datei noch in
-Notizen. Gemeint sind
-Umsätze, Stundensätze, Budgets, Anzahlen von Projekten, Personen oder Gruppen, IDs sowie
-Kunden-, Projekt- und Personennamen. Das Repository ist öffentlich, die Werte sind echte
-Geschäfts- und Personendaten.
+Werte aus der Clockodo-API oder den Schulungs-Sheets (Umsätze, Stundensätze, Budgets,
+Anzahlen, IDs, Kunden-/Projekt-/Personennamen) gehören in keine Datei dieses
+öffentlichen Repositories – weder Code, Tests, Spec noch Notizen. Erlaubt: Beschreibung
+des Verhaltens (Envelope, Feldnamen, Typen, Grenzen); Testfixtures mit frei erfundenen
+IDs/Namen/Beträgen.
 
-Erlaubt bleibt die Beschreibung des **Verhaltens**: Envelope, Feldnamen, Typen,
-Sonderfälle, Statuscodes, Grenzen der API. Testfixtures bilden die **Struktur** der
-echten Antwort nach, mit frei erfundenen IDs, Namen und Beträgen. Notebooks werden
-**ohne Zellausgaben und mit eingeklappten Code-Zellen** committet – durchgesetzt durch
-den Pre-Commit-Hook `.githooks/pre-commit`: sein Notebook-Teil (reine
-Standardbibliothek, kein zusätzliches Paket, Kernlogik in
-`scripts/notebook_ausgaben.py`) entfernt Ausgaben und Ausführungszähler aus staged
-`.ipynb`-Dateien (`zellausgaben_entfernen()`) und klappt jede Code-Zelle ohne
-`metadata.jupyter.source_hidden` ein (`code_zellen_einklappen()`) – Notebooks zeigen
-Fachexpert:innen grundsätzlich keinen Code, nur Zell-Titel (`# @title …`) und Ausgabe;
-eine neu eingefügte oder überschriebene Zelle ohne diese Metadata würde ihren Code
-sonst unbemerkt offen zeigen. `scripts/notebooks_formatieren.py` führt dieselbe
-Bereinigung unabhängig von einem Commit aus, mit je einer Option
-(`--ausgaben-loeschen`/`--einklappen`, `argparse.BooleanOptionalAction`, beide
-standardmäßig an) je Aktion – ohne jeden Parameter laufen wie am Hook beide Aktionen
-über alle Notebooks im Repository. Derselbe Hook formatiert zusätzlich staged
-`.py`-Dateien mit
-`ruff format` (direkt, wenn schon auf PATH, sonst über `uv run ruff` – braucht also
-das `ruff`-Extra in der jeweils aktiven Umgebung, deshalb auch Teil von
-`[tool.tox.env.coverage]`) – beide Teile staged
-veränderte Dateien neu und brechen den ersten Commit-Versuch ab, damit die
-Bereinigung/Formatierung sichtbar bleibt statt unbemerkt unter den Ursprungsstand zu
-rutschen. Aktivierung ist pro Klon nötig (kein Git-Standard):
-`git config core.hooksPath .githooks`.
+Notebooks werden ohne Zellausgaben und mit eingeklappten Code-Zellen committet,
+durchgesetzt vom Pre-Commit-Hook `.githooks/pre-commit` (`scripts/notebook_ausgaben.py`:
+entfernt Ausgaben, klappt Code-Zellen ohne `metadata.jupyter.source_hidden` ein).
+`scripts/notebooks_formatieren.py` macht dieselbe Bereinigung unabhängig vom Commit.
+Derselbe Hook formatiert staged `.py`-Dateien mit `ruff format` und bricht den ersten
+Commit-Versuch ab, damit Bereinigung/Formatierung sichtbar bleibt. Aktivierung pro
+Klon: `git config core.hooksPath .githooks`.
 
 ## Was das Modul fachlich tut
 
-Rollierende 1–3-Monats-Umsatzprognose für den **Baustein Bestand**: Umsatz aus bereits
-in Clockodo angelegten Projekten. Ausgabe ist eine **Bandbreite** (Konfidenzniveaus
-95 % / 85 % / 50 % je Monat und als Summe), kein Punktwert.
+Rollierende 1-3-Monats-Umsatzprognose (**Baustein Bestand**) für bereits in Clockodo
+angelegte Projekte, als Bandbreite (95/85/50 % Konfidenz), kein Punktwert. Zwei
+Annahmen: ein angelegtes Projekt gilt als beauftragt (kein Storno-Modell); die einzige
+modellierte Unsicherheit ist die Abrufquote. Nicht im Modell: Pipeline,
+Kurzfristgeschäft, Cash-Schicht, Abwesenheitsabschlag.
 
-Zwei Annahmen prägen das Modell:
+Additiv daneben:
+- **Schulungsanmeldungen** (`schulungen/`, `spec/spec-schulungsanmeldungen.md`): Umsatz
+  bereits geplanter öffentlicher Schulungstermine aus Google Sheets, Betrag steht schon
+  fest, keine Simulation. Unabhängig vom Bestand.
+- **Kosten** (`kosten/`, `spec/spec-kosten.md`): Kostenprognose je Monat, gleiche
+  Sheets-Datei, eigenes Tabellenblatt. Gilt anders als Schulungsanmeldungen auch für
+  vergangene Monate (Clockodo liefert keine Ist-Kosten). `Gewinn` wird nur in der
+  Darstellungsschicht gebildet (Umsatz minus Kosten), kein eigenes Domänenobjekt.
+- **Kurzarbeitsbereitschaft** (`domaene.kurzarbeit`, `spec/spec-kurzarbeit.md`):
+  komplett losgelöst, Kapazitäts-/Personalsignal statt Umsatz/Kosten – prüft
+  rückblickend je Monat, ob die Organisation Kurzarbeit-Voraussetzungen erfüllt hätte
+  (Schwellenwerte: Quote kurzarbeitsfähiger Personen ≥30 %, Anteil interner Arbeit je
+  Person ≥24 %, Überstundenstand <14 Std. – siehe `domaene.kurzarbeit.Schwellenwerte`).
+  Rollenzuordnung aus `KURZARBEIT_ROLLENZUORDNUNG`. Hinter Feature-Flag
+  `KURZARBEIT_AKTIV` (Standard aus) an allen Konsumenten außer dem eigenen Notebook und
+  der eigenen Datenquelle.
 
-- Ein in Clockodo angelegtes Projekt gilt als beauftragt; Storno auf Projektebene wird
-  nicht modelliert.
-- Die einzige modellierte Unsicherheit ist die **Abrufquote**: wie viel des beauftragten
-  Restvolumens im Prognosezeitraum tatsächlich abgerufen wird.
+## Rechenkern (Monte Carlo, Standard 10.000 Läufe)
 
-Nicht im Modell: Pipeline, Kurzfristgeschäft, Cash-Schicht, Projekte ohne
-Clockodo-Eintrag, ein Abschlag für ungeplante Abwesenheit in der Kapazitätsrechnung.
+`Bestand.simulieren()` → `domaene.simulation.simulieren()`. Gerechnet in Euro als
+Leitgröße, Stunden nur als Zwischenschritt für den Kapazitätsdeckel. Euro-Größen laufen
+an den Fachobjekten als `Decimal`, in der Schleife selbst als `float`-numpy-Arrays
+(`_aufbauen()`/`_ergebnis()` konvertieren an den Rändern, `_ergebnis()` rundet auf den
+Cent).
 
-Additiv daneben steht der **Baustein Schulungsanmeldungen**
-(`spec/spec-schulungsanmeldungen.md`, `domaene.schulung.Schulungsplan`,
-`schulungen/`): der Umsatz bereits geplanter öffentlicher Schulungstermine aus einer
-externen Google-Sheets-Tabelle, eine Datei je Jahr. Anders als beim Bestand steht der
-Betrag je Termin schon fest – keine Simulation, keine Bandbreite. Die einzige
-Unsicherheit ist die Pflegequalität der Quelle, sichtbar über `Schulungsplan.hinweise()`
-statt über eine Kennzahl. Der Baustein bleibt unabhängig von der Bestand-Simulation und
-verändert weder Restvolumen noch Abrufquote noch Kapazitätsdeckel.
-
-Der **Baustein Kosten** (`spec/spec-kosten.md`, `domaene.kosten.Kostenplan`, `kosten/`)
-stellt der Umsatzseite eine Kostenprognose gegenüber: die Gesamtkosten je Monat aus
-derselben jährlichen Google-Sheets-Datei wie die Schulungsanmeldungen, aber einem
-eigenen Tabellenblatt (`Kosten {jahr}`, gelesen wird Zeile 1–20 ohne festen Zeilen- oder
-Spaltenbereich, Kopfzeile inhaltsbasiert ermittelt – siehe unten). Wie bei den
-Schulungsanmeldungen steht der Betrag schon fest – keine Simulation, keine Bandbreite.
-**Anders als die Schulungsanmeldungen gilt die Kostenprognose auch für bereits
-vergangene Monate**, nicht nur für den Prognosehorizont: Clockodo liefert keine
-Ist-Kosten, nur Umsätze aus Einsätzen, also gibt es keine andere Quelle für die
-Vergangenheit. `Gewinn` (Gesamtumsatz aus Bestand und Schulungsanmeldungen minus
-Kosten) wird ausschließlich in der Darstellungsschicht gebildet
-(`tabellen.umsatztabelle()`, `diagramme.umsatzverlauf()`) – es gibt kein eigenes
-Domänenobjekt, das Umsatz und Kosten gegeneinander verrechnet.
-
-Der **Baustein Kurzarbeitsbereitschaft** (`spec/spec-kurzarbeit.md`,
-`domaene.kurzarbeit`, `clockodo.kurzarbeit.KurzarbeitRepository`) steht **komplett
-losgelöst** von den drei vorigen Bausteinen: kein Umsatz- oder Kostensignal, sondern
-ein Kapazitäts-/Personalsignal, das rückblickend je abgeschlossenem Kalendermonat
-prüft, ob die Organisation die Voraussetzungen für Kurzarbeit erfüllt hätte (Quote
-kurzarbeitsfähiger Personen ≥ 30 %, je Person Anteil interner Arbeit ≥ 24 % und
-kumulierter Überstundenstand < 14 Std. – alle drei Schwellenwerte als Parameter,
-siehe `domaene.kurzarbeit.Schwellenwerte`). Wie bei Schulungsanmeldungen/Kosten keine
-Simulation, keine Bandbreite. Die Rollenzuordnung (wer aus Geschäftsführung/Vertrieb
-nie in den Zähler kurzarbeitsfähiger Personen eingeht) ist eine personenbezogene
-Angabe und wird zur Laufzeit aus der Umgebungsvariable `KURZARBEIT_ROLLENZUORDNUNG`
-gelesen (`clockodo.kurzarbeit.rollenzuordnung_automatisch()`), nie im Repository
-geführt. Der kumulierte Überstundenstand lässt sich nicht direkt aus
-`/userreports` lesen: `month_details[].diff` ist live verifiziert **nicht**
-kumuliert, sondern nur die Abweichung des einzelnen Monats – `KurzarbeitRepository`
-bildet ihn deshalb selbst aus `overtime_carryover` plus der aufsummierten
-Monats-`diff`-Werte. Kein Anschluss an `Dashboard` – ein eigenständiges Notebook
-(`notebooks/04_kurzarbeit.ipynb`, wie beim Anmeldungsverlauf) und eine eigenständige
-Webapp-Seite (`/kurzarbeit`, eigener
-`KurzarbeitCache`) zeigen ausschließlich Aggregatzahlen, nie Einzelwerte je Person.
-Der ganze Baustein steht zusätzlich hinter einem eigenen Feature-Flag,
-`clockodo.kurzarbeit.kurzarbeit_aktiv()` (Umgebungsvariable `KURZARBEIT_AKTIV`,
-Standard aus): ungesetzt oder auf "aus" bleibt er an allen drei Stellen unsichtbar –
-Webapp-Seite/-Navigation (`webapp/app.py`, `basis.html`), Diagramm-/Tabellen-Export
-(`scripts/diagramme_exportieren.py`, dort aktuell ohnehin kein Kurzarbeit-Eintrag) und
-Wochenbericht (`scripts/wochenbericht.py`, weder Diagramm noch erwähnender Absatz).
-**`notebooks/04_kurzarbeit.ipynb` selbst kennt das Flag nicht** und bleibt bewusst
-immer ausführbar, unabhängig von `KURZARBEIT_AKTIV` - weder das Notebook noch
-`notebooks/setup.py`s `kurzarbeit_rohdaten()` fragen es ab. Der Schalter blendet den
-Baustein nur aus den drei genannten Konsumenten aus, nicht aus seiner eigenen
-Datenquelle.
-
-## Rechenkern (Monte Carlo, 10.000 Läufe)
-
-`Bestand.simulieren()` delegiert an `domaene.simulation.simulieren()`. Gerechnet wird
-**in Euro als Leitgröße**, Stunden nur als Zwischenschritt für den Kapazitätsdeckel
-(`/targethours` liefert Stunden je Wochentag, keine Taglänge).
-
-Euro-Größen laufen an den Fachobjekten als `Decimal`, in der Monte-Carlo-Schleife selbst
-aber als `float` (numpy-Arrays) – mit `Decimal`-Objektarrays trügen weder `np.quantile`
-noch die übrigen Vektoroperationen performant mit. `_aufbauen()` wandelt beim Einlesen
-der Fachobjekte in `float` um, `_ergebnis()` beim Verlassen der Schleife per
-`simulation._euro()` zurück in `Decimal`, auf den Cent gerundet – jenseits davon trägt
-eine Summe zehntausender float-Additionen ohnehin keine belastbare Genauigkeit mehr.
-
-Der Horizont **beginnt mit dem laufenden Monat**, genauer am Stichtag. Monat 1 ist nur
-der Rest des Monats; gezogene Abrufquote und Kapazität werden mit dem Anteil der
-verbleibenden Arbeitstage skaliert. Was **vor** dem Stichtag gebucht wurde, ist
-Verbrauch und vom Restvolumen abgezogen. Was **nach** dem Stichtag datiert ist, ist die
-Untergrenze, nicht Verbrauch:
-
-    Monatsumsatz = max(simulierter Umsatz, bereits gebuchter Umsatz dieses Monats)
+Horizont beginnt mit dem laufenden Monat ab Stichtag; Monat 1 ist nur der Rest, skaliert
+auf verbleibende Arbeitstage. Vor dem Stichtag Gebuchtes ist Verbrauch; danach
+Datiertes ist Untergrenze: `Monatsumsatz = max(simulierter Umsatz, bereits gebuchter
+Umsatz)`.
 
 Ablauf je Lauf und Horizontmonat:
+1. Restvolumen je Projekt (`budget.amount − revenue_kumuliert`, bei Pauschalleistung
+   über effektiven Stundensatz); prognosewirksam = `max(0, …)`.
+2. Abrufquote aus der portfolioweiten empirischen Verteilung ziehen → Euro-Verbrauch,
+   begrenzt aufs Restvolumen. Projekte mit `Projekt.verbrauchsplan_zielmonat` werden
+   stattdessen linear bis zu diesem Monat verteilt (Kapazitätsdeckel gilt trotzdem).
+3. Über effektiven Stundensatz in Stunden, per `Projekt.anteil_je_mitarbeiter()` auf
+   Personen aufgeteilt. Stundensatz 0/`None` bleibt ungedeckelt.
+4. Je Person Bedarf über alle Projekte gegen `Mitarbeiter.verfuegbare_kapazitaet()`
+   deckeln, anteilig kürzen bei Überschreitung.
+5. Stunden zurück in Euro → Monatsumsatz je Projekt.
+6. Restvolumen um tatsächlichen Verbrauch reduzieren, in nächsten Monat übertragen
+   (≥0).
 
-1. Restvolumen je Projekt: `budget.amount − revenue_kumuliert`. Pauschalleistungen
-   laufen über einen abgeleiteten effektiven Stundensatz. Start ist das
-   **prognosewirksame** Restvolumen (`max(0, …)`); ein Projekt nach `deadline` mit
-   `automatic_completion` trägt ab dem Folgemonat nichts mehr bei.
-2. Abrufquote je Monat aus der **portfolioweiten** empirischen Verteilung ziehen →
-   gewünschter Euro-Verbrauch, **begrenzt auf das verbleibende Restvolumen**. Für
-   Projekte mit von Hand hinterlegtem `Projekt.verbrauchsplan_zielmonat`
-   (`Bestand.mit_verbrauchsplan_uebersteuerungen()`/
-   `Dashboard.verbrauchsplan_uebersteuern()`) entfällt die Ziehung: das Restvolumen
-   wird stattdessen deterministisch linear auf die Monate bis einschließlich diesem
-   Zielmonat verteilt – gedacht für Projekte, deren vollständiger Verbrauch bis zu
-   einem bestimmten Monat schon feststeht, obwohl dafür noch keine Buchungen in
-   Clockodo vorliegen. Der Kapazitätsdeckel (Schritt 4) gilt trotzdem weiter, ein
-   solches Projekt kann also durch Konkurrenz mit anderen, weiterhin
-   probabilistischen Projekten trotzdem weniger als geplant ausgeliefert bekommen.
-3. Über den effektiven Stundensatz in Stunden umrechnen und auf Personen aufteilen –
-   Schlüssel ist `Projekt.anteil_je_mitarbeiter()`, der historische Anteil je Person an
-   den Gesamtstunden, unverändert fortgeschrieben. Stundensatz `0` oder `None` bleibt
-   ungedeckelt (kein Stundenbedarf ableitbar), begrenzt nur durchs Restvolumen.
-4. Je Person Bedarf über **alle** Projekte gegen `Mitarbeiter.verfuegbare_kapazitaet()`
-   deckeln; bei Überschreitung anteilig kürzen. Der Deckel ist projektübergreifend.
-5. Gelieferte Stunden zurück in Euro → Monatsumsatz je Projekt.
-6. Restvolumen um den tatsächlichen Euro-Verbrauch reduzieren, in den nächsten Monat
-   übertragen (bleibt ≥ 0).
+`Prognose` liefert zusätzlich den Anteil Läufe mit Kapazität als limitierendem Faktor,
+`horizontmonate()`, `gebucht()`. `Mitarbeiter.verfuegbare_kapazitaet(jahr, monat)` =
+Sollstunden − Feiertage − Abwesenheit (Urlaub/Krankheit ab „beantragt"), taggenau.
 
-`Prognose` liefert neben den Konfidenzniveaus den **Anteil der Läufe, in denen Kapazität
-der limitierende Faktor war** (unterscheidet Nachfrage- von Kapazitätsengpass), sowie
-`horizontmonate()` und `gebucht()` (bereits gebuchter Betrag je Horizontmonat, 0 im
-Stichtagsmonat). `Bestand.simulieren()` liefert `NochKeinePrognose`, wenn kein Projekt
-im Prognose-Scope liegt oder keine Abrufquote-Verteilung vorliegt.
+**Anteil fakturierbarer Arbeit**: kein fixer Abzug im Modell, sondern standardmäßig ein
+Pauschalwert neben der Abrufquote, wahlweise selbst gezogen. `verfuegbare_kapazitaet()`
+nimmt optional `interne_arbeit_abschlag` (0.0-1.0, gleichmäßiger Abzug über den ganzen
+Horizont). Auf `simulieren()`-Ebene zieht `fakturierbare_arbeit_verteilung`
+(`FakturierbareArbeitZiehung`-Protocol, `ziehen_array(form, zufall)`) stattdessen je
+Lauf/Monat/Person unabhängig – schließen sich gegenseitig aus (sonst `ValueError`). Drei
+Erfüller: `domaene.auslastung.FakturierbareArbeitVerteilung` (historisch/empirisch, aus
+`anteile_fakturierbarer_arbeit()` – **ohne** Ausschluss ausschließlich nicht
+fakturierbarer Personen-Monate, anders als die Aggregatzahlen
+`FakturierbareArbeitBandbreite.je_monat()`/`durchschnittlicher_anteil_fakturierbarer_arbeit()`),
+`WeibullFakturierbareArbeit`, `GaussFakturierbareArbeit` (beide mit
+`aus_stichprobe()`-Momentenschätzer, Weibull braucht ≥2 Werte, auf `[0.0, 1.0]`
+gekappt).
 
-`Mitarbeiter.verfuegbare_kapazitaet(jahr, monat)` = Sollstunden − Feiertage − geplante
-Abwesenheit, taggenau gerechnet (ein Tag zählt nie doppelt). Feiertag setzt die
-Sollstunden seines Wochentags auf 0, ob ganz oder halb. Als Abwesenheit vom Arbeiten
-zählen nur Urlaub und Krankheit, schon ab Status „beantragt" – siehe
-`domaene.mitarbeiter.TYPEN_ABWESEND` und `Abwesenheit.zaehlt_als_kapazitaetsabzug`.
-
-**Der Anteil fakturierbarer Arbeit ist im Modell selbst kein fixer Abzug, sondern
-standardmäßig ein fester Pauschalwert neben der gezogenen Abrufquote, wahlweise selbst
-eine weitere gezogene Unsicherheit.** `verfuegbare_kapazitaet()` nimmt optional
-`interne_arbeit_abschlag` (0.0 bis 1.0, Standard 0.0 – ein reiner
-Kapazitäts-Mechanismus, der selbst nichts von "fakturierbar" oder Verteilungen weiß,
-deshalb unverändert beim alten Namen) entgegen und senkt das Ergebnis gleichmäßig um
-diesen einen, über den ganzen Horizont gleichen Anteil (kein Sonderfall für den
-angebrochenen Monat 1). Auf `simulation.simulieren()`-Ebene zieht stattdessen wahlweise
-`fakturierbare_arbeit_verteilung` (ein `domaene.simulation.FakturierbareArbeitZiehung`
-– ein `typing.Protocol` mit einer einzigen Methode, `ziehen_array(form, zufall)`, siehe
-Code-Qualität oben): **je Lauf, Horizontmonat und Person unabhängig** gezogen und
-direkt mit der verfügbaren Kapazität multipliziert (kein Abzug/Komplement wie bei
-`interne_arbeit_abschlag`), statt eines einzelnen, für alle Läufe gleichen Werts – ein
-Lauf kann dadurch auch einen selten beobachteten bzw. seltenen parametrischen
-Extremfall treffen, statt jeden Lauf gleich zu behandeln. `interne_arbeit_abschlag` und
-`fakturierbare_arbeit_verteilung` schließen sich gegenseitig aus
-(`simulation.simulieren()` wirft sonst einen `ValueError`).
-
-Drei Klassen erfüllen `FakturierbareArbeitZiehung` strukturell:
-
-- `domaene.auslastung.FakturierbareArbeitVerteilung` – die **historische** (empirische)
-  Verteilung, siehe unten.
-- `domaene.simulation.WeibullFakturierbareArbeit` (`formparameter`, `skalenparameter`)
-  – zieht aus einer Weibull-Verteilung.
-- `domaene.simulation.GaussFakturierbareArbeit` (`mittelwert`, `standardabweichung`) –
-  zieht aus einer Normalverteilung.
-
-Beide parametrischen Klassen tragen einen `aus_stichprobe(werte)`-Klassenkonstruktor,
-der ihre Parameter per Momentenmethode aus einer Stichprobe herleitet (Mittelwert und
-Standardabweichung der resultierenden Verteilung stimmen dann mit denen der Stichprobe
-überein; bei Weibull über eine Bisektion auf den Formparameter, siehe
-`_weibull_formparameter_aus_variationskoeffizient()` – kein zusätzliches
-`scipy`-Abhängigkeit, `math.gamma` reicht). Weibull braucht mindestens zwei Werte
-(sonst `ValueError`), Gauss mindestens einen (Standardabweichung 0 bei genau einem
-Wert). Beide Ziehungen werden auf `[0.0, 1.0]` gekappt (`numpy.clip`): ein Anteil
-fakturierbarer Arbeit außerhalb dieses Bereichs ist fachlich nicht sinnvoll, während
-Weibull/Gauss rechnerisch beliebige Werte liefern können – die historische Verteilung
-braucht diese Kappung nicht, sie kann nur tatsächlich beobachtete (also gültige) Werte
-ziehen.
-
-`Dashboard.simuliere()`/`.simuliere_async()` lösen die Automatik auf: ihre Parameter
-heißen `anteil_fakturierbar` (`float | None`, Standard `None`) und
-`fakturierbare_arbeit_ziehung` (`FakturierbareArbeitZiehung | None`, Standard `None`,
-schließen sich gegenseitig aus). Sind **beide** `None` (der Normalfall, Modus
-"Pauschal" ohne eigenen Regler-Wert), verwendet `simuliere()` selbst
-`durchschnittlicher_anteil_fakturierbarer_arbeit()` als festen, über alle Läufe
-gleichen Anteil (1.0 – also unveränderte Kapazität – ganz ohne geladene Auslastung) –
-anders als zuvor **keine** automatische Ziehung aus der vollen historischen Streuung
-mehr, sondern derselbe einzelne Durchschnittswert, den auch der Pauschal-Regler in der
-Webapp vorschlägt. Ein gesetztes `anteil_fakturierbar` erzwingt stattdessen diesen
-festen Wert direkt (Modus "Pauschal" mit eigenem Regler-Wert), ein übergebenes
-`fakturierbare_arbeit_ziehung`-Objekt (`WeibullFakturierbareArbeit`,
-`GaussFakturierbareArbeit`, oder eine selbst zusammengestellte
-`FakturierbareArbeitVerteilung` für eine Ziehung aus der vollen historischen Streuung)
-ersetzt die Pauschale durch eine je Lauf gezogene Verteilung (Modus "Weibull"/"Gauss").
-`Bestand.simulieren()` selbst kennt diese Automatik **nicht** – dort bleiben
-`interne_arbeit_abschlag`/`fakturierbare_arbeit_verteilung` einzelne Parameter mit den
-alten Standardwerten (`0.0`/`None`, unverändertes Verhalten), weil der `Bestand` keine
-Auslastungsmonate kennt (siehe oben); die Automatik lebt bewusst nur in
-`Dashboard.simuliere()`, das genau diese Daten hält.
-
-`domaene.auslastung.anteile_fakturierbarer_arbeit()` liefert die Rohwerte je
-Personen-Monat für `FakturierbareArbeitVerteilung.aus_auslastungen()` – **ohne** den
-„ausschließlich nicht fakturierbar"-Ausschluss (`_ausschliesslich_nicht_fakturierbar()`,
-0 % fakturierbare Arbeit in einem Monat): anders als bei den beiden folgenden
-Aggregatzahlen ist die Verteilung kein einzelner Kennwert, den ein solcher Ausreißer
-verzerren könnte, sondern der Vorrat, aus dem gezogen wird – ein selten vorgekommener
-0-%-Monat soll dort mit seinem eigenen, kleinen Anteil auftauchen dürfen. Der
-Ausschluss gilt weiterhin für `FakturierbareArbeitBandbreite.je_monat()`
-(Minimum/Durchschnitt/Maximum je Monat über alle Personen) und für
-`durchschnittlicher_anteil_fakturierbarer_arbeit()` (ein gewichteter Gesamtdurchschnitt,
-gewichtet nach gebuchter Zeit statt als einfacher Durchschnitt über Personen-Monate) –
-hier würde eine einzelne, ausschließlich intern tätige Person diese eine Kennzahl
-unverhältnismäßig verzerren. `durchschnittlicher_anteil_fakturierbarer_arbeit()` ist
-**keine direkte** Eingabe der Simulation, sondern eine Anzeigekennzahl und zugleich der
-Standardwert, den `Dashboard.simuliere()` im Modus "Pauschal" ohne eigenen Regler-Wert
-heranzieht (siehe oben und Web-Frontend oben für die Regler-Vorbelegung).
-
-In der Webapp ist das ein Dropdown (Abschnitt "Simulations-Parameter", siehe
-Web-Frontend oben für Modus-Auswahl und Regler) auf **beiden** Seiten `/` und
-`/dashboard`. In den Notebooks dieselbe Wahl über zwei eigene Variablen vor „Simulation
-ausführen" (`anteil_fakturierbar: float | None`, Standard `None` fuer den historischen
-Durchschnitt; `fakturierbare_arbeit_ziehung: WeibullFakturierbareArbeit |
-GaussFakturierbareArbeit | None`, Standard `None` – bei Bedarf direkt per
-`WeibullFakturierbareArbeit.aus_stichprobe(dashboard.
-fakturierbare_arbeit_verteilung().werte)`/`GaussFakturierbareArbeit.aus_stichprobe(...)`
-befüllt oder mit eigenen Parametern von Hand konstruiert, kein separater Moduswähler
-nötig, weil eine Notebook-Zelle gewöhnlicher Python-Code ist statt einer
-Formular-Auswahl). Beide Frontends teilen sich damit dieselbe Domänen-API
-(`WeibullFakturierbareArbeit`/`GaussFakturierbareArbeit`), nicht nur dieselbe Idee.
-`01_dashboard.ipynb` zeigt zusätzlich, direkt unter der dortigen Monatstabelle
-(deutlich später im Notebook, nach der Simulation), das zugrunde liegende
-Diagramm/Tabelle sowie die Verteilungsgrafik
-(`Dashboard.anteil_fakturierbarer_arbeit_verteilung()`, aus `Dashboard.
-fakturierbare_arbeit_verteilung()` – derselben `FakturierbareArbeitVerteilung`, aus der
-auch der Pauschal-Durchschnitt bzw. die Weibull-/Gauss-Momentenschätzung abgeleitet
-werden) – `00_datencheck.ipynb` übernimmt nur die Regler-Zelle, ohne eigene
-Grafik/Tabelle.
+`Dashboard.simuliere()`/`.simuliere_async()` lösen die Automatik auf: Parameter
+`anteil_fakturierbar`/`fakturierbare_arbeit_ziehung` (beide `float | None` bzw.
+`FakturierbareArbeitZiehung | None`, schließen sich aus). Beide `None` (Modus
+„Pauschal" ohne Regler-Wert) → `durchschnittlicher_anteil_fakturierbarer_arbeit()` als
+fester Wert (Standard 1.0 ganz ohne Auslastung). Gesetztes `anteil_fakturierbar`
+erzwingt einen festen Wert (Modus „Pauschal" mit Regler-Wert); ein
+`fakturierbare_arbeit_ziehung`-Objekt ersetzt die Pauschale durch eine je Lauf gezogene
+Verteilung (Modus „Weibull"/„Gauss"). `Bestand.simulieren()` kennt diese Automatik
+nicht (alte Standardwerte `0.0`/`None`) – lebt bewusst nur in `Dashboard.simuliere()`,
+das die Auslastungsmonate hält. In den Notebooks dieselbe Wahl über zwei Variablen vor
+„Simulation ausführen" statt eines Dropdowns.
 
 ## Clockodo-API
 
-Die benötigten Daten liegen über vier API-Generationen verteilt:
+Vier API-Generationen, Basis-URL `https://my.clockodo.com/api`, Auth über drei Header
+(`X-ClockodoApiUser`, `X-ClockodoApiKey`, `X-Clockodo-External-Application`).
 
 | Zweck | Endpunkt | Felder |
 |---|---|---|
-| Auftragsvolumen | `GET /v4/projects`, `/v4/projects/{id}` | `budget.amount`, `budget.hard` |
-| Verbrauch, effektiver Satz | `GET /v2/entrygroups`, `grouping[]=projects_id` | `revenue`, `duration` (nicht `hourly_rate`, siehe unten) |
-| Anteil je Person | `GET /v2/entrygroups`, zusätzlich `grouping[]=users_id` | `sub_groups` mit `duration`, `revenue` |
-| Umsatz je Monat | `GET /v2/entrygroups`, `grouping[]=month` | `group` (`"JJJJMM"`), `revenue`, `duration` |
-| Abrufquote, gebuchter Horizont | `GET /v2/entrygroups`, `grouping[]=projects_id&grouping[]=month` | `sub_groups` mit `group` (`"JJJJMM"`), `revenue` |
+| Auftragsvolumen | `GET /v4/projects[/{id}]` | `budget.amount`, `budget.hard` |
+| Verbrauch, effektiver Satz | `GET /v2/entrygroups`, `grouping[]=projects_id` | `revenue`, `duration` |
+| Anteil je Person | `/v2/entrygroups`, zusätzlich `grouping[]=users_id` | `sub_groups` |
+| Umsatz je Monat | `/v2/entrygroups`, `grouping[]=month` | `group`, `revenue`, `duration` |
+| Abrufquote/Horizont | `/v2/entrygroups`, `grouping[]=projects_id&grouping[]=month` | `sub_groups` |
 | Kundenname | `GET /v3/customers` | `id`, `name` |
-| Personen | `GET /v3/users` | `id`, `name`, `active` – **nicht** `default_target_hours` |
-| Sollarbeitszeit | `GET /targethours` (unversioniert) | `users_id`, `date_since`/`date_until`, Stunden je Wochentag |
-| Geplante Abwesenheit | `GET /v4/absences`, `filter[year]` | `Mitarbeiter.abwesenheiten` |
-| Feiertage je Person | `GET /v2/usersNonbusinessDays`, `year` | `users_id`, `days[]` → `Mitarbeiter.feiertage` |
-| Einzeleinträge | `GET /v2/entries` | **wird nicht benutzt** – `/v2/entrygroups` deckt alles ab |
+| Personen | `GET /v3/users` | `id`, `name`, `active` (nicht `default_target_hours`) |
+| Sollarbeitszeit | `GET /targethours` (unversioniert) | Stunden je Wochentag |
+| Abwesenheit | `GET /v4/absences`, `filter[year]` | → `Mitarbeiter.abwesenheiten` |
+| Feiertage | `GET /v2/usersNonbusinessDays`, `year` | → `Mitarbeiter.feiertage` |
+| Einzeleinträge | `GET /v2/entries` | wird nicht benutzt – `/v2/entrygroups` deckt alles ab |
 
-`budget.hard` ist `false` – Budgets sind weiche Grenzen, der Verbrauch kann sie
-übersteigen, das rohe Restvolumen wird dann negativ (Kalibrierungssignal). Für die
-Prognose gilt trotzdem eine harte Grenze: eine Überschreitung kann nur historisch
-entstehen, die Prognose überschreitet das Budget nicht. Deshalb führt `Projekt` beide
-Größen getrennt – `restvolumen_roh` (vorzeichenbehaftet) und
-`restvolumen_prognosewirksam` (bei 0 gekappt).
+`budget.hard=false` (weiche Grenze) → `Projekt` führt `restvolumen_roh`
+(vorzeichenbehaftet) und `restvolumen_prognosewirksam` (bei 0 gekappt) getrennt.
 
-Basis-URL `https://my.clockodo.com/api`. Authentifizierung über drei Pflicht-Header:
-`X-ClockodoApiUser` (E-Mail), `X-ClockodoApiKey`, `X-Clockodo-External-Application`
-(Format `name;email`, max. 50 Zeichen) – gekapselt in `clockodo.config.ClockodoCredentials`.
+Fehler immer im Body diagnostizieren (`{"error": {...}}`), nicht am Status –
+`ClockodoError`. 429 (Ratenbegrenzung) und 504 (Gateway Timeout) sowie ein
+`httpx2.TransportError` vor jeder Antwort werden mit Backoff+Streuung wiederholt
+(`_wartezeit_vor_wiederholung()` bzw. eigener `try`/`except` in `get()`); bleibt ein
+reiner Verbindungsabbruch bestehen, wird die `httpx2`-Ausnahme weitergereicht statt
+eines `ClockodoError`.
 
-**Fehler immer im Body diagnostizieren, nicht am Status.** Clockodo begründet 400er als
-`{"error": {"message": …, "fields": [...]}}`. `get()` wirft deshalb einen eigenen
-`ClockodoError` mit angehängtem Antwortkörper statt `raise_for_status()`.
+Abweichungen von `spec/clocodo-api.yaml` (verifiziert): `EntryGroupV2.group` als
+`string` deklariert, kommt aber als Zahl (`group==0`, `grouping[]=year`);
+`.revenue` als `integer` deklariert, ist Float; `.duration` ist Sekunden (nicht
+dokumentiert). Weitere Fallen: Projekt-ID kommt als String, `group==0` = Kunde ohne
+Projekt; `hourly_rate` unbrauchbar als effektiver Satz (nur bei
+`hourly_rate_is_equal_and_has_no_lumpsums`), stattdessen `revenue/(duration/3600)`;
+`grouping` ist Array-Parameter (`grouping[]=…`), `grouping`+`time_since`/`time_until`
+Pflicht; Monats-`sub_groups` kommen nach `duration` sortiert, nicht chronologisch
+(`Verbrauchsverlauf.fuer()` sortiert selbst); `group==0` kommt darin mehrfach vor,
+`VerbrauchsverlaufRepository.abbilden()` faltet je Projekt-ID zusammen.
 
-**Ratenbegrenzung (429) ist kein Fehler, sondern ein Hinweis, kurz zu warten.**
-Manche Routen begrenzen auf wenige Anfragen pro Minute (`"... limit exceeded (N
-requests per 1 minute)"`) - beim gleichzeitigen Abruf vieler Endpunkte
-(`nebenlaeufig.gleichzeitig()`) real erreichbar, siehe Web-Frontend oben. `get()`
-wiederholt einen 429 deshalb bis zu `RATE_LIMIT_MAX_VERSUCHE`-mal nach
-`RATE_LIMIT_WARTEZEIT_SEKUNDEN` (plus Streuung über das gesamte Wartefenster, nicht
-nur ein paar Sekunden – gegen mehrere gleichzeitig wartende Zweige derselben
-`gleichzeitig()`-Abfrage, die sich sonst mit fast identischer Wartezeit gegenseitig
-das Kontingent wieder auffüllen und so trotz mehrerer Wiederholungen weiter
-scheitern, live beobachtet bei `KurzarbeitRepository`s vier gleichzeitigen
-entrygroups-Aufrufen), bevor doch ein `ClockodoError` geworfen wird.
-
-**Ein 504 (Gateway Timeout) wird ebenfalls wiederholt, kürzer und seltener als ein
-429.** Bei großen, ungecachten `/v2/entrygroups`-Abfragen über mehrere Jahre (z. B.
-`entrygroups_je_monat` ohne Verlaufscache) antwortet Clockodo vereinzelt mit einer
-HTML-Fehlerseite statt JSON, weil das Aggregieren zu lange dauert - kein dauerhafter
-Zustand wie bei der Ratenbegrenzung, deshalb `GATEWAY_TIMEOUT_MAX_VERSUCHE`-mal nach nur
-`GATEWAY_TIMEOUT_WARTEZEIT_SEKUNDEN` (plus einer knapperen Streuung von 0–5 Sekunden -
-anders als beim 429 geht es hier um einen einzelnen Aussetzer, nicht um mehrere
-gleichzeitig um dasselbe Kontingent konkurrierende Zweige). Beide Wiederholungsfälle
-laufen über dieselbe Fallunterscheidung, `_wartezeit_vor_wiederholung()` in
-`client.py`.
-
-**Ein Verbindungsabbruch schon vor jeder Antwort (`httpx2.TransportError`, live
-beobachtet bei `/v4/absences` als `RemoteProtocolError: Server disconnected without
-sending a response`) wird ebenso wiederholt** – anders als 429/504 kein HTTP-Statuscode
-und damit kein Fall für `_wartezeit_vor_wiederholung()`, sondern ein eigener
-`try`/`except` um den Request in `get()`. `NETZWERK_MAX_VERSUCHE`-mal nach
-`NETZWERK_WARTEZEIT_SEKUNDEN` (plus 0–5 Sekunden Streuung, wie beim 504 ein einzelner
-Aussetzer). Bleibt es beim Abbruch, wird die ursprüngliche `httpx2`-Ausnahme
-weitergereicht statt eines `ClockodoError` – es gibt keine Antwort, die einen Body
-hätte.
-
-Abweichungen von `spec/clocodo-api.yaml`, verifiziert über echte Antworten:
-
-- `EntryGroupV2.group` ist als `string` deklariert, kommt aber bei `group == 0` und bei
-  `grouping[]=year` als Zahl → immer `str()` vor dem Zerlegen.
-- `EntryGroupV2.revenue` ist als `integer` deklariert, ist aber ein Float → `float()`.
-- `EntryGroupV2.duration` ist **Sekunden**, ohne dass die Doku das für `/v2/entrygroups`
-  nennt.
-
-Weitere Fallen bei `/v2/entrygroups`:
-
-- Die Projekt-ID kommt als String. `group == 0` steht für Buchungen auf einen Kunden
-  ohne Projekt (Phantom-Projekt ohne Filter).
-- `hourly_rate` ist als effektiver Stundensatz unbrauchbar – nur gesetzt, wenn
-  `hourly_rate_is_equal_and_has_no_lumpsums` `true` ist. Der effektive Satz muss aus
-  `revenue / (duration/3600)` abgeleitet werden; Gruppen mit `duration == 0` und
-  Umsatz sind reine Pauschalleistungen.
-- `grouping` ist ein Array-Parameter (`grouping[]=…`, nicht `grouping=…`). Gültige
-  Zeitgruppierungen sind `month`, `year`, `week`, `day` (Singular, ohne `_id`-Suffix).
-  `grouping` und `time_since`/`time_until` (volle ISO-Form mit Uhrzeit) sind Pflicht.
-- Bei `grouping[]=projects_id&grouping[]=month` kommen die Monats-`sub_groups` nach
-  `duration` absteigend, nie chronologisch – `Verbrauchsverlauf.fuer()` sortiert
-  deshalb selbst. Die Monatssummen gehen nur auf den Cent auf (Clockodo rundet jede
-  Gruppe einzeln). `group == 0` kommt darin mehrfach vor (je Kunde ohne Projekt einmal);
-  `VerbrauchsverlaufRepository.abbilden()` faltet deshalb je Projekt-ID zusammen.
-
-### Sollarbeitszeit
-
-`/targethours` (unversioniert, `/v2`/`/v3` → 404) liefert Zeilen mit `type` (`weekly`
-mit Wochentagsfeldern, oder `monthly` mit `monthly_target` – in dieser Anlage bisher nur
-`weekly`), Stunden als `number` (halbe Stunden möglich). `users.default_target_hours`
-(Firmenstandard) bedeutet **keine eigene Zeile** in `/targethours`;
-`Mitarbeiter.wochenstunden()` liefert dann `None`.
-
-`/v4/absences` ist der richtige Endpunkt für geplante Abwesenheiten (ältere Versionen →
-410 deprecated); Jahresfilter als `deepObject` (`filter[year]`), Envelope-Key `data`,
-kein `paging`.
+`/targethours`: `type` `weekly` (Wochentagsfelder) oder `monthly`. `users.
+default_target_hours` (Firmenstandard) bedeutet keine eigene Zeile;
+`Mitarbeiter.wochenstunden()` liefert dann `None`. `/v4/absences` ist der richtige
+Endpunkt für geplante Abwesenheiten (ältere Versionen deprecated), Jahresfilter als
+`deepObject` (`filter[year]`).
 
 ## Google Sheets (Schulungen und Kosten)
 
-**Kein Service-Account** – für diese Anlage gibt Google nur eine OAuth-Client-ID aus
-(Anwendungstyp „Desktopanwendung"), kein Service-Account-Key. Deshalb zwei
-unterschiedliche Logins statt eines: in Colab meldet sich die aufrufende Person über ihr
-eigenes Google-Konto an (`google.colab.auth.authenticate_user`, kein JSON, kein
-Secret dafür nötig – sie braucht selbst Lesezugriff auf die betreffenden Sheets); lokal
-startet `google_sheets.client._lokale_credentials()` einen einmaligen interaktiven Login
-im Browser (`google_auth_oauthlib.flow.InstalledAppFlow`) auf Basis des Client-JSON aus
-`GOOGLE_OAUTH_CLIENT_JSON` und speichert das Ergebnis in `.google_oauth_token.json`
-(gitignored) zwischen; folgende Aufrufe erneuern den Token automatisch. Dieser gesamte
-Zugriff liegt in `google_sheets/`, gemeinsam genutzt von `schulungen/` und `kosten/`
-(siehe Aufbau) – **welcher Reiter/Zellbereich gelesen wird, weiß nur der jeweilige
-Aufrufer**, nicht `google_sheets.client.GoogleSheetsClient`.
+Kein Service-Account, nur OAuth-Client-ID: Colab nutzt
+`google.colab.auth.authenticate_user`, lokal ein einmaliger interaktiver Login
+(`google_sheets.client._lokale_credentials()`, Basis `GOOGLE_OAUTH_CLIENT_JSON`, Token
+in `.google_oauth_token.json`, gitignored). `KOSTEN_SHEET_IDS` (Jahr→Spreadsheet-ID) und
+`SCHULUNGEN_KATEGORIEN` (Kategorie→Schulungstypen) kommen aus
+Umgebungsvariablen/Colab-Secrets. Ein fehlender/nicht lesbarer Eintrag führt zu einem
+`Hinweis`, nicht zum Fehler.
 
-`KOSTEN_SHEET_IDS` (JSON-Objekt Jahr → Spreadsheet-ID) wird in beiden Umgebungen und
-von beiden Bausteinen gebraucht, gelesen über `google_sheets.config.GoogleSheetsConfig`
-– dieselben drei benannten Konstruktoren wie bei `ClockodoCredentials`, aber ohne
-Abhängigkeit zu `clockodo/` (bewusste kleine Dopplung von
-`in_colab()`/`MissingCredentialsError`). Der Zugriff läuft über `google-api-python-client`, synchron und ohne
-`nebenlaeufig()` – bei ein bis zwei Dateien im Horizont lohnt sich eigene
-Nebenläufigkeit nicht.
+**Schulungsanmeldungen**: Tabellenblatt `Öffentliche Schulungen`, Spalten über
+Kopfzeile namentlich zugeordnet. `Umsatz gesamt` über `domaene.zahlen.euro_parsen()`.
+Leere `TN Zahl`-Zelle zählt als 0, nicht als übersprungen.
 
-**Schulungsanmeldungen:** Tabellenblatt `Öffentliche Schulungen`, Spalten werden **über
-die Kopfzeile namentlich** zugeordnet (`Jahr`, `Monat`, `Umsatz gesamt`), nicht über die
-Position – robust gegenüber den vielen ungenutzten Spalten. `Umsatz gesamt` ist
-uneinheitlich formatiertes deutsches Zahlenformat mit Euro-Zeichen, geparst über
-`domaene.zahlen.euro_parsen()` (entfernt alles außer Ziffern/Punkt/Komma, dann den
-Tausenderpunkt, dann Komma → Punkt). Für den Anmeldungsverlauf (`TN Zahl` je
-Schulungstyp und Monat) steht `Präsenz/Online` **nicht** mehr unter den ungenutzten
-Spalten – `_zeilen_zu_anmeldungen()` liest sie als `Anmeldung.format`, Grundlage der
-Format-Unterteilung im Kategorie-Drilldown der Webapp (siehe oben). Eine leere Zelle in
-`TN Zahl` zählt als 0 Anmeldungen, statt die ganze Zeile zu überspringen – sonst würde
-ein Schulungstyp mit ausschließlich leeren `TN Zahl`-Zellen in einem Zeitraum unbemerkt
-ganz aus dem Anmeldungsverlauf verschwinden, statt mit 0 aufzutauchen. Die
-Kategorie-Zuordnung (`KATEGORIEN`, Scrum/Kanban/Sonstige) ist wie `KOSTEN_SHEET_IDS`
-reine Laufzeit-Konfiguration: `schulungen.kategorien_automatisch()` liest sie aus der
-Umgebungsvariable `SCHULUNGEN_KATEGORIEN` (JSON-Objekt Kategorie → Liste von
-Schulungstypen), Colab-Secrets in Colab, sonst `.env` – dieselbe Quelle für Webapp und
-Notebook.
-
-**Kosten:** Tabellenblatt `Kosten {jahr}` – **ohne festen Zeilen- oder Spaltenbereich**:
-gelesen wird pauschal `1:20`, weder Kopfzeilen-Zeile noch Spaltenlage stimmen
-jahrgangsweise verlässlich überein (verifiziert am Jahrgang 2022, wo der eigentlichen
-Monatsübersicht im selben Zeilenbereich noch eine andere Tabelle vorausgeht, etwa eine
-Mitarbeiteraufstellung mit eigener, ähnlicher aber nicht identischer Kopfzeile).
-`google_sheets.client.kopfzeile_finden()` (geteilt mit `schulungen/`) sucht deshalb
-inhaltsbasiert die erste Zeile, die sowohl `Gesamtkosten` als auch `Allgemeinkosten`
-trägt. `Monat` hat aber nicht in jedem
-Jahrgang eine eigene Kopfzeilen-Bezeichnung – ohne sie ermittelt
-`_monat_spalte_ermitteln()` die Monatsspalte anhand
-ihres Inhalts (die Spalte mit den meisten als deutscher Monatsname erkannten Zellen)
-statt über eine feste Position. `Monat` steht als ausgeschriebener deutscher
-Monatsname (`Januar`…`Dezember`), nicht als Zahl wie bei den Schulungsanmeldungen.
-`Gesamtkosten` wird mit derselben `euro_parsen()` geparst.
-`KostenRepository.laden()` deckt anders als `SchulungenRepository.laden()` nicht nur
-den Prognosehorizont ab, sondern auch die bereits geladene Umsatzhistorie (Parameter
-`historie_monate`) – siehe Moduldocstring von `domaene.kosten`.
-
-Ein für ein Jahr fehlender Eintrag in `KOSTEN_SHEET_IDS` oder eine nicht lesbare Datei
-führt **nicht** zu einem Fehler (anders als bei Clockodo), sondern zu einem `Hinweis` an
-`Schulungsplan.abbildungshinweise` bzw. `Kostenplan.abbildungshinweise`.
+**Kosten**: Tabellenblatt `Kosten {jahr}`, kein fester Zeilen-/Spaltenbereich –
+`kopfzeile_finden()` sucht inhaltsbasiert (`Gesamtkosten`+`Allgemeinkosten`),
+`_monat_spalte_ermitteln()` erkennt die Monatsspalte am Inhalt. `Monat` als
+ausgeschriebener deutscher Name, nicht als Zahl.
