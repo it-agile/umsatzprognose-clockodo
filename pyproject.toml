@@ -94,7 +94,7 @@ commands = [
 [tool.tox.env.ruff]
 extras = [ "ruff" ]
 allowlist_externals = [ "ruff" ]
-commands = [[ "ruff", "check", { replace = "posargs", default = ["src", "tests", "notebooks"], extend = true }]]
+commands = [[ "ruff", "check", { replace = "posargs", default = ["src", "tests", "notebooks", "scripts"], extend = true }]]
 
 [tool.tox.env.mypy]
 extras = [ "mypy", "web", "bericht" ]
@@ -129,7 +129,7 @@ commands = [[ "uvicorn", { replace = "posargs", default = ["umsatzprognose.webap
 
 [tool.ruff]
 line-length = 100
-src = ["src", "tests", "notebooks"]
+src = ["src", "tests", "notebooks", "scripts"]
 
 [tool.ruff.lint]
 select = [
@@ -202,9 +202,8 @@ source = [
 ]
 
 [tool.coverage.run]
-source_pkgs = [
-    "umsatzprognose",
-]
+source_pkgs = ["umsatzprognose"]
+source_dirs = ["scripts"]
 
 [tool.coverage.report]
 fail_under = 90
