@@ -26,7 +26,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@v10.0.1
+      - uses: astral-sh/setup-uv@v10.1.0
       - run: uvx --with tox-uv tox -e ruff
 
   mypy:
@@ -34,7 +34,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@v10.0.1
+      - uses: astral-sh/setup-uv@v10.1.0
       - run: uvx --with tox-uv tox -e mypy
 
   mypy-notebooks:
@@ -42,7 +42,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@v10.0.1
+      - uses: astral-sh/setup-uv@v10.1.0
       - run: uvx --with tox-uv tox -e mypy-notebooks
 
   # Rein beobachtend: ty (github.com/astral-sh/ty) ist noch in frueher Entwicklung
@@ -58,7 +58,7 @@ jobs:
     continue-on-error: true
     steps:
       - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@v10.0.1
+      - uses: astral-sh/setup-uv@v10.1.0
       - run: uvx --with tox-uv tox -e ty
 
   # Je Python-Version ein eigener Job statt eines gemeinsamen Matrix-Laufs mit
@@ -73,7 +73,7 @@ jobs:
         env: [py312, py313, py314]
     steps:
       - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@v10.0.1
+      - uses: astral-sh/setup-uv@v10.1.0
       - run: uvx --with tox-uv tox -e ${{ matrix.env }}
 
   # Coverage ist nur aussagekräftig, wenn die Tests unter allen drei Python-Versionen
@@ -84,5 +84,5 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@v10.0.1
+      - uses: astral-sh/setup-uv@v10.1.0
       - run: uvx --with tox-uv tox -e coverage
