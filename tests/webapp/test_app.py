@@ -1610,6 +1610,20 @@ def test_knoten_flach_haengt_jahr_an_namen_wenn_nur_ein_jahr_von_mehreren_betrof
     assert zeile_ohne_mehrdeutigkeit["name"] == "CSM"
 
 
+def test_knoten_flach_ignoriert_jahr_ohne_jegliche_anmeldung() -> None:
+    """Ein Jahr, in dem dieser Knoten nur einen Termin mit 0 Anmeldungen hatte (z. B.
+    ein abgesagter Kurs), zaehlt nicht als eigenes Jahr - sonst bekaeme der Knoten eine
+    komplett leere Jahr-Zeile und faelschlich einen Ausklapp-Pfeil, obwohl effektiv nur
+    ein einziges Jahr Daten traegt (beobachtet an "A-CSM" > "Präsenz" mit einem
+    einzelnen 0-Anmeldungen-Termin in 2025 neben echten Anmeldungen in 2023/2024/2026)."""
+    knoten = Anmeldungsknoten("A-CSM", {(2024, 5): 6, (2025, 2): 0})
+    [zeile] = app_modul._knoten_flach(
+        knoten, laufender_monat=(2026, 9), mehrere_jahre_insgesamt=True
+    )
+    assert zeile["hat_kinder"] is False
+    assert zeile["name"] == "A-CSM (2024)"
+
+
 def test_schulungen_hebt_noch_offene_schulungstermine_in_der_tabelle_ab(fake_caches):
     """Ein bereits terminierter, aber noch in der Zukunft liegender Schulungstermin
     bekommt in der Schulungsdetails-Tabelle dieselbe abgehobene Markierung wie im

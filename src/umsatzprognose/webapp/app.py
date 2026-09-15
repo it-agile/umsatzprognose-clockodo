@@ -1242,8 +1242,20 @@ def _knoten_flach(
     bevorstehender) unter derselben Spalte vermengen; sie bleibt dort unmarkiert,
     der Jahresvergleich in den zugehoerigen Jahr-Zeilen zeigt die Abgrenzung Monat
     fuer Monat weiterhin praezise.
+
+    Ein Jahr ohne jegliche Anmeldung in diesem Knoten zaehlt dabei nicht als eigenes
+    Jahr, obwohl ``knoten.monate`` einen Eintrag dafuer tragen kann: eine Quellzeile mit
+    ``TN Zahl = 0`` (z. B. ein Termin ohne Anmeldungen) legt den Monatsschluessel mit
+    Wert 0 an (siehe :class:`~umsatzprognose.domaene.anmeldung.Anmeldung`), ohne dass
+    das Jahr fuer diesen Basisname/Format/Dauer-Knoten inhaltlich vorkaeme. Ohne diese
+    Filterung bekaeme ein Knoten wie "A-CSM" > "Präsenz" eine komplett leere
+    Jahr-Zeile fuer ein Jahr, in dem er nur einen abgesagten Termin hatte - und faelschlich
+    einen Ausklapp-Pfeil, obwohl effektiv nur ein einziges Jahr Daten traegt.
     """
-    jahre = sorted({jahr for jahr, _monatsnummer in knoten.monate}, reverse=True)
+    jahressummen: dict[int, int] = {}
+    for (jahr, _monatsnummer), wert in knoten.monate.items():
+        jahressummen[jahr] = jahressummen.get(jahr, 0) + wert
+    jahre = sorted((jahr for jahr, summe in jahressummen.items() if summe > 0), reverse=True)
     mehrere_jahre = len(jahre) > 1
     werte = _monatswerte_kombiniert(knoten.monate)
     knoten_id = f"schulung-zeile-{pfad}"
