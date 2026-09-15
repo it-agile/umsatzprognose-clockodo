@@ -46,6 +46,12 @@ in der Gruppe mit ``Max Zahl``/``Restplaetze``/``Auslastung`` fuer die
 Kapazitaetsauslastung. Verifiziert am Jahrgang 2024: beide tragen denselben Wert. Die
 namentliche Zuordnung ueber ein dict nimmt bei einem doppelten Spaltennamen ohnehin
 automatisch die zuletzt (am weitesten rechts) stehende Spalte.
+
+``Datum`` fliesst ebenfalls in den Anmeldungsverlauf ein (``Anmeldung.datum``) - Grundlage
+fuer eine robustere Dauer-Auspraegung als der Schulungstyp-Suffix allein, siehe
+:func:`~umsatzprognose.domaene.anmeldung._dauer_aus_datumsspanne`. Optional wie
+``Präsenz/Online``: fehlt die Spalte in einem Jahrgang, faellt nur diese Berechnung
+zurueck, statt den Jahrgang auszuschliessen.
 """
 
 from __future__ import annotations
@@ -93,6 +99,7 @@ SPALTE_UMSATZ = "Umsatz gesamt"
 SPALTE_SCHULUNGSTYP = "Schulung"
 SPALTE_TEILNEHMERZAHL = "TN Zahl"
 SPALTE_FORMAT = "Präsenz/Online"
+SPALTE_DATUM = "Datum"
 
 KATEGORIEN_VAR = "SCHULUNGEN_KATEGORIEN"
 
@@ -194,6 +201,10 @@ def _zeilen_zu_anmeldungen(zeilen: list[list[str]]) -> list[Anmeldung]:
     # den gesamten Anmeldungsverlauf dieses Jahres auszuschliessen (analog zu
     # SPALTE_KOSTENERFASSUNG in kosten.py, ebenso optional).
     hat_format = SPALTE_FORMAT in index
+    # Ebenso optional wie SPALTE_FORMAT: robustere Grundlage fuer die Dauer-Auspraegung
+    # (siehe domaene.anmeldung._dauer_aus_datumsspanne), fehlt sie faellt nur diese
+    # Berechnung auf den Schulungstyp-Suffix zurueck statt den Jahrgang auszuschliessen.
+    hat_datum = SPALTE_DATUM in index
 
     anmeldungen = []
     for zeile in zeilen[kopf_zeile + 1 :]:
@@ -215,6 +226,7 @@ def _zeilen_zu_anmeldungen(zeilen: list[list[str]]) -> list[Anmeldung]:
                 if teilnehmerzahl_text
                 else 0,
                 format=zelle(zeile, index, SPALTE_FORMAT).strip() if hat_format else "",
+                datum=zelle(zeile, index, SPALTE_DATUM).strip() if hat_datum else "",
             ),
         )
     return anmeldungen

@@ -12,6 +12,8 @@ from umsatzprognose.domaene.anmeldung import (
     Anmeldung,
     Anmeldungsverlauf,
     _basisname_und_dauer,
+    _dauer,
+    _dauer_aus_datumsspanne,
     _kategorie_zuordnung,
 )
 
@@ -91,11 +93,35 @@ def test_summe_je_typ_summiert_ueber_alle_monate() -> None:
 
 def test_kategorie_zuordnung_kehrt_kategorie_zu_typen_zuordnung_um() -> None:
     assert _kategorie_zuordnung(KATEGORIEN) == {
-        "CSM 2-tägig": "Scrum",
-        "CSPO 3-tägig": "Scrum",
+        "CSM": "Scrum",
+        "CSPO": "Scrum",
         "KSD": "Kanban",
         "SBK": "Kanban",
     }
+
+
+def test_kategorie_zuordnung_normalisiert_konfigurierte_dauer_variante_auf_basisname() -> None:
+    """Ein Konfigurationseintrag mit Dauer-Suffix (wie in KATEGORIEN: "CSM 2-tägig")
+    normalisiert auf denselben Basisname-Schluessel wie ein Eintrag ohne Suffix - beide
+    Schreibweisen fuehren zum selben Nachschlag."""
+    assert _kategorie_zuordnung({"Kanban": ["KSI"]}) == _kategorie_zuordnung(
+        {"Kanban": ["KSI 3-tägig"]},
+    )
+
+
+def test_je_monat_und_kategorie_ordnet_dauer_varianten_derselben_kategorie_zu() -> None:
+    """ "KSI" (2022-2024) und "KSI 3-tägig" (ab 2025) sind derselbe Basisname - eine
+    Kategorie-Konfiguration mit nur einer Schreibweise erfasst beide Jahrgaenge, ohne
+    dass ein Jahrgang unbemerkt auf Sonstige zurueckfaellt."""
+    verlauf = Anmeldungsverlauf(
+        anmeldungen=(
+            Anmeldung(2023, 9, "KSI", 4),
+            Anmeldung(2026, 9, "KSI 3-tägig", 3),
+        ),
+    )
+    ergebnis = verlauf.je_monat_und_kategorie({"Kanban": ["KSI"]})
+    assert ergebnis["Kanban"] == {(2023, 9): 4, (2026, 9): 3}
+    assert ergebnis[KATEGORIE_SONSTIGE] == {}
 
 
 def test_je_monat_und_kategorie_summiert_alle_typen_dieser_kategorie() -> None:
@@ -583,3 +609,75 @@ def test_basisnamen_je_kategorie_enthaelt_alle_kategorien_auch_ohne_anmeldung() 
     ergebnis = verlauf.basisnamen_je_kategorie(KATEGORIEN)
     assert list(ergebnis) == ["Scrum", "Kanban", KATEGORIE_SONSTIGE]
     assert ergebnis["Kanban"] == ()
+
+
+@pytest.mark.parametrize(
+    ("text", "erwartet"),
+    [
+        ("07.-08.02.2022", "2-tägig"),
+        ("07.03.-08.03.2022", "2-tägig"),
+        ("04. -05.04.2022", "2-tägig"),
+        ("14. & 15. Nov 2022", "2-tägig"),
+        ("13. und 14.11.2023", "2-tägig"),
+        ("11. - 12.09.2023", "2-tägig"),
+        ("22. - 23.07.02024", "2-tägig"),  # Jahres-Tippfehler mit fuehrender Null
+        ("10.-12.02.2025", "3-tägig"),
+        ("13.+14.06.2022", "2-tägig"),  # "+" als Trennzeichen
+        ("26.9.-01.10.2024", "6-tägig"),  # Monatsuebergang, einstelliger Monat
+        ("13.-15. Mai 2024", "3-tägig"),  # Monatsname ohne Punkt
+        ("01.04.2025", "1-tägig"),  # Einzeldatum ohne Spanne
+    ],
+)
+def test_dauer_aus_datumsspanne_erkennt_reale_formatvarianten(
+    text: str,
+    erwartet: str,
+) -> None:
+    assert _dauer_aus_datumsspanne(text) == erwartet
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "",
+        "Q1",
+        "Q2 2024",
+        "Oktober 2022",
+        "ACHTUNG Preiserhöhung",
+        "01.01.-30.06.2025",  # mehrmonatiger Zeitraum, keine Schulungsdauer
+        "01.10.23-31.03.24",
+        "13.-14.07.206",  # Jahres-Tippfehler, nicht auf 4 Ziffern reparierbar
+        "05.-06.09.20242024",  # doppelter Jahres-Tippfehler
+        "10./11./17.+18.10.22",  # mehrteilige modulare Schulung, keine einzelne Spanne
+        "21.-22.09.2023 und online bis 20.12.2023",
+    ],
+)
+def test_dauer_aus_datumsspanne_liefert_none_bei_unplausiblem_oder_unlesbarem_text(
+    text: str,
+) -> None:
+    assert _dauer_aus_datumsspanne(text) is None
+
+
+def test_dauer_bevorzugt_datum_vor_schulungstyp_suffix() -> None:
+    """ "KSI" ohne Suffix, aber mit einer zweitaegigen Datumsspanne - die Dauer wird aus
+    dem Datum berechnet, obwohl der Schulungstyp-Text selbst keinen Suffix traegt."""
+    anmeldung = Anmeldung(2022, 2, "KSI", 5, datum="07.-08.02.2022")
+    assert _dauer(anmeldung) == "2-tägig"
+
+
+def test_dauer_faellt_auf_schulungstyp_suffix_zurueck_ohne_interpretierbares_datum() -> None:
+    anmeldung = Anmeldung(2026, 9, "KSI 3-tägig", 5, datum="Q1")
+    assert _dauer(anmeldung) == "3-tägig"
+
+
+def test_dauern_zaehlt_aeltere_jahrgaenge_ueber_datum_statt_suffix_mit() -> None:
+    """Ohne Datum-basierte Berechnung wuerde "KSI" (2022, kein Suffix) gar nicht erst in
+    :attr:`Anmeldungsverlauf.dauern` auftauchen - mit ihr zaehlt es korrekt zu
+    "2-tägig", demselben Wert wie die spaeter explizit benannte Variante."""
+    verlauf = Anmeldungsverlauf(
+        anmeldungen=(
+            Anmeldung(2022, 2, "KSI", 5, datum="07.-08.02.2022"),
+            Anmeldung(2025, 2, "KSI 2-tägig", 3, datum="15.-16.02.2025"),
+        ),
+    )
+    assert verlauf.dauern == ("2-tägig",)
+    assert verlauf.je_monat_und_dauer("2-tägig") == {(2022, 2): 5, (2025, 2): 3}

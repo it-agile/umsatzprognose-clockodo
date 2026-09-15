@@ -37,7 +37,20 @@ sondern wird als Parameter uebergeben (typischerweise eine im Notebook/Skript
 gepflegte ``dict[str, list[str]]``, siehe ``notebooks/03_schulungsanmeldungen.ipynb``)
 - welche Kategorien es gibt und welche Schulungstypen dazuzaehlen, ist reine
 Konfiguration, keine Fachlogik. Ein Schulungstyp, der in keiner Kategorie auftaucht,
-faellt auf :data:`KATEGORIE_SONSTIGE` zurueck.
+faellt auf :data:`KATEGORIE_SONSTIGE` zurueck. Der Nachschlag laeuft dabei ueber den
+Basisnamen (siehe :func:`_kategorie_zuordnung`), nicht ueber den rohen Schulungstyp-
+Text - die Quelle schreibt den Dauer-Suffix uneinheitlich uebers Jahr (z. B. "KSI" in
+2022-2024, "KSI 3-tägig" ab 2025 fuer dieselbe Schulung), ein Konfigurationseintrag muss
+deshalb nicht jede Dauer-Variante einzeln auffuehren.
+
+**Dauer-Auspraegung bevorzugt aus der ``Datum``-Spalte berechnet** (siehe
+:func:`_dauer_aus_datumsspanne`), mit dem Text-Suffix des Schulungstyps als Rueckfall
+(siehe :func:`_basisname_und_dauer`) dort, wo ``Datum`` fehlt oder nicht interpretierbar
+ist - :func:`_dauer` buendelt beide Quellen. ``Datum`` ist reiner Freitext (uneinheitliche
+Trennzeichen, gelegentliche Tippfehler, Zeitraeume statt Einzeltermine bei
+berufsbegleitenden Programmen); eine Berechnung, die unplausibel lang ausfaellt (siehe
+:data:`_MAX_PLAUSIBLE_DAUER_TAGE`) oder scheitert, faellt auf den Suffix zurueck statt
+einen falschen Wert zu zeigen.
 """
 
 from __future__ import annotations
@@ -46,7 +59,6 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Collection, Iterable, Mapping, Sequence
-    from datetime import date
 
     from umsatzprognose.util import Monat
 
@@ -57,6 +69,7 @@ if TYPE_CHECKING:
 import re
 from collections import Counter
 from dataclasses import dataclass, field
+from datetime import date
 
 from umsatzprognose.util import ordnung
 
@@ -69,9 +82,24 @@ _DAUER_MUSTER = re.compile(r"^(?P<basis>.+?)\s+(?P<dauer>\d+-tägig)$")
 
 
 def _kategorie_zuordnung(kategorien: Kategorisierung) -> dict[str, str]:
-    """Kehrt eine Kategorie-zu-Schulungstypen-Zuordnung zu einer Schulungstyp-zu-Kategorie-
-    Zuordnung um - fuer den Nachschlag je Anmeldung."""
-    return {typ: kategorie for kategorie, typen in kategorien.items() for typ in typen}
+    """Kehrt eine Kategorie-zu-Schulungstypen-Zuordnung zu einer Basisname-zu-Kategorie-
+    Zuordnung um - fuer den Nachschlag je Anmeldung.
+
+    Der Schluessel ist der ueber :func:`_basisname_und_dauer` ermittelte Basisname, nicht
+    der rohe, in ``kategorien`` konfigurierte Schulungstyp-Text: die Quelle schreibt den
+    Dauer-Suffix uneinheitlich - z. B. "KSI" in 2022-2024, "KSI 2-tägig"/"KSI 3-tägig"
+    ab 2025, obwohl es sich fachlich um dieselbe Schulung handelt. Ohne diese
+    Normalisierung muesste ``kategorien`` jede Dauer-Variante einzeln auffuehren und bei
+    jeder neu auftauchenden Variante von Hand nachgezogen werden, sonst faellt ein
+    Jahrgang stillschweigend auf :data:`KATEGORIE_SONSTIGE` zurueck. Ein Konfigurations-
+    eintrag darf weiterhin wahlweise den Basisnamen oder eine konkrete Dauer-Variante
+    nennen - beide normalisieren auf denselben Schluessel, mehrfach genannte Varianten
+    sind also harmlos redundant, nicht falsch."""
+    return {
+        _basisname_und_dauer(typ)[0]: kategorie
+        for kategorie, typen in kategorien.items()
+        for typ in typen
+    }
 
 
 def _basisname_und_dauer(schulungstyp: str) -> tuple[str, str | None]:
@@ -86,6 +114,126 @@ def _basisname_und_dauer(schulungstyp: str) -> tuple[str, str | None]:
     if treffer is None:
         return schulungstyp, None
     return treffer.group("basis"), treffer.group("dauer")
+
+
+# Eine Schulungsdauer jenseits dieser Grenze gilt als nicht plausibel berechnet (siehe
+# _dauer_aus_datumsspanne()) - die Datum-Spalte traegt neben einzelnen Trainingsterminen
+# auch mehrmonatige Zeitraeume berufsbegleitender Programme (z. B. "01.01.-30.06.2025"),
+# die keine Schulungsdauer im Sinne dieser Auswertung sind. 10 Tage liegt deutlich ueber
+# jeder beobachteten realen Schulungsdauer (1-3 Tage) und faengt trotzdem grosszuegig
+# kuenftige, laengere Formate ab, ohne Mehrmonats-Zeitraeume durchzulassen.
+_MAX_PLAUSIBLE_DAUER_TAGE = 10
+
+_MONATSNAMEN = {
+    "jan": 1, "feb": 2, "mär": 3, "mrz": 3, "apr": 4, "mai": 5, "jun": 6,
+    "jul": 7, "aug": 8, "sep": 9, "okt": 10, "nov": 11, "dez": 12,
+}  # fmt: skip
+
+# Trennt die beiden Termine einer Datumsspanne - beobachtete Varianten in der Quelle
+# neben dem Bindestrich: "&", "+", ausgeschriebenes "und" (z. B. "13. und 14.11.2023").
+# Nur das erste Vorkommen wird ersetzt (count=1 an der Aufrufstelle), falls der zweite
+# Termin selbst einen Bindestrich enthaelt (kommt in der Quelle nicht vor, aber so bleibt
+# ein "-" im Rest unangetastet).
+_DATUMSSPANNE_TRENNER = re.compile(r"\s*(?:-|\u2013|&|\+|\bund\b)\s*", re.IGNORECASE)
+
+# Nach der Trenner-Normalisierung: Tag(.Monat)?-Tag.Rest, wobei Rest entweder
+# "Monat.Jahr" oder "Monatsname Jahr" ist (siehe _monat_und_jahr_aus_rest()).
+_DATUMSSPANNE_MUSTER = re.compile(
+    r"^(?P<tag1>\d{1,2})\.\s*(?:(?P<monat1>\d{1,2})\.)?-(?P<tag2>\d{1,2})\.\s*(?P<rest>.+)$",
+)
+# Ein einzelner Termin ohne Spanne (z. B. "01.04.2025") - eine eintaegige Schulung.
+_EINZELDATUM_MUSTER = re.compile(r"^(?P<tag>\d{1,2})\.\s*(?P<rest>.+)$")
+
+_REST_NUMERISCH = re.compile(r"^(?P<monat>\d{1,2})\.\s*0*(?P<jahr>\d{4})$")
+_REST_MONATSNAME = re.compile(r"^(?P<monatname>[A-Za-zÄÖÜäöüß]+)\.?\s+0*(?P<jahr>\d{4})$")
+
+
+def _monat_und_jahr_aus_rest(rest: str) -> tuple[int, int] | None:
+    """Monat und Jahr aus dem Rest einer Datumsspanne/eines Einzeldatums - entweder
+    numerisch (``"02.2024"``) oder mit ausgeschriebenem Monatsnamen (``"Nov 2022"``,
+    auch ohne Leerzeichen davor: ``"April 2025"``). Ein Jahres-Tippfehler mit fuehrender
+    Null (beobachtet: ``"02024"``) wird toleriert, ein unbekannter oder abweichend
+    langer Jahreswert nicht - dann gilt die Spanne als nicht interpretierbar."""
+    treffer = _REST_NUMERISCH.match(rest)
+    if treffer is not None:
+        return int(treffer.group("monat")), int(treffer.group("jahr"))
+    treffer = _REST_MONATSNAME.match(rest)
+    if treffer is None:
+        return None
+    monat = _MONATSNAMEN.get(treffer.group("monatname")[:3].lower())
+    return (monat, int(treffer.group("jahr"))) if monat is not None else None
+
+
+def _tage_aus_spanne(spanne: re.Match[str]) -> int | None:
+    """Tagesanzahl einer erkannten Datumsspanne (``tag1(.monat1)?-tag2.rest``) - ``None``
+    bei nicht interpretierbarem Rest oder einem ungueltigen Kalenderdatum."""
+    monat_und_jahr = _monat_und_jahr_aus_rest(spanne.group("rest").strip())
+    if monat_und_jahr is None:
+        return None
+    monat2, jahr = monat_und_jahr
+    monat1 = int(spanne.group("monat1")) if spanne.group("monat1") else monat2
+    try:
+        start = date(jahr, monat1, int(spanne.group("tag1")))
+        ende = date(jahr, monat2, int(spanne.group("tag2")))
+    except ValueError:
+        return None
+    return (ende - start).days + 1
+
+
+def _tage_aus_einzeldatum(einzeldatum: re.Match[str]) -> int | None:
+    """Tagesanzahl (immer 1) eines erkannten Einzeldatums (``tag.rest``) - ``None`` bei
+    nicht interpretierbarem Rest oder einem ungueltigen Kalenderdatum."""
+    monat_und_jahr = _monat_und_jahr_aus_rest(einzeldatum.group("rest").strip())
+    if monat_und_jahr is None:
+        return None
+    monat, jahr = monat_und_jahr
+    try:
+        date(jahr, monat, int(einzeldatum.group("tag")))
+    except ValueError:
+        return None
+    return 1
+
+
+def _dauer_aus_datumsspanne(text: str) -> str | None:
+    """Berechnet die Schulungsdauer (``"N-tägig"``) aus der freitextlichen ``Datum``-
+    Spalte der Quelle, statt sie wie :func:`_basisname_und_dauer` aus einem Suffix im
+    Schulungstyp-Text abzuleiten.
+
+    Die Datum-Spalte traegt die tatsaechlichen Termine und ist deshalb die
+    verlaesslichere Quelle - verifiziert am Jahrgang KSI: 2022-2024 traegt der
+    Schulungstyp nie einen Dauer-Suffix, obwohl die Termine durchgaengig zwei Tage
+    umfassen; erst ab 2025 (als KSI tatsaechlich auf drei Tage wechselte) schreibt die
+    Pflege den Suffix mit.
+
+    ``Datum`` ist reiner, von Hand gepflegter Freitext - uneinheitliche Trennzeichen,
+    Monatsnamen statt Zahl, gelegentliche Tippfehler, sowie Zeitraeume statt einzelner
+    Termine (siehe :data:`_MAX_PLAUSIBLE_DAUER_TAGE`). Nicht interpretierbarer oder
+    unplausibler Text liefert ``None`` statt eines geratenen Werts - der Aufrufer faellt
+    dann auf :func:`_basisname_und_dauer` zurueck (siehe :func:`_dauer`)."""
+    text = text.strip()
+    if not text:
+        return None
+
+    spanne = _DATUMSSPANNE_MUSTER.match(_DATUMSSPANNE_TRENNER.sub("-", text, count=1))
+    if spanne is not None:
+        tage = _tage_aus_spanne(spanne)
+    else:
+        einzeldatum = _EINZELDATUM_MUSTER.match(text)
+        tage = _tage_aus_einzeldatum(einzeldatum) if einzeldatum is not None else None
+
+    if tage is None or not (1 <= tage <= _MAX_PLAUSIBLE_DAUER_TAGE):
+        return None
+    return f"{tage}-tägig"
+
+
+def _dauer(anmeldung: Anmeldung) -> str | None:
+    """Die effektive Dauer-Auspraegung einer Anmeldung: bevorzugt aus ``datum``
+    berechnet (siehe :func:`_dauer_aus_datumsspanne`), sonst aus dem Text-Suffix des
+    Schulungstyps abgeleitet (siehe :func:`_basisname_und_dauer`) - der Rueckfall greift,
+    wo ``datum`` fehlt oder nicht interpretierbar ist."""
+    return (
+        _dauer_aus_datumsspanne(anmeldung.datum) or _basisname_und_dauer(anmeldung.schulungstyp)[1]
+    )
 
 
 def _teilnehmerzahl_je[K](
@@ -110,6 +258,11 @@ class Anmeldung:
     im Kategorie-Drilldown der Webapp (siehe :meth:`Anmeldungsverlauf.
     gliederung_je_kategorie`), die nur dort erscheint, wo tatsaechlich mehr als ein
     Format vorkommt.
+
+    ``datum`` (die rohe ``Datum``-Spalte, z. B. ``"07.-08.02.2022"``) ist ebenso
+    optional und dient ausschliesslich als robustere Quelle fuer die Dauer-Auspraegung
+    (siehe :func:`_dauer_aus_datumsspanne`) - anders als ``format`` fliesst sie in
+    keine eigene Gliederungsebene ein.
     """
 
     jahr: int
@@ -117,6 +270,7 @@ class Anmeldung:
     schulungstyp: str
     teilnehmerzahl: int
     format: str = ""
+    datum: str = ""
 
     @property
     def schluessel(self) -> Monat:
@@ -196,7 +350,7 @@ def _mit_dauer_kindern(name: str, zeilen: Sequence[Anmeldung]) -> Anmeldungsknot
     Namen als Label, statt mit einem erfundenen Platzhalter aufzutauchen."""
     dauer_gruppen = _gruppieren(
         zeilen,
-        lambda a: _basisname_und_dauer(a.schulungstyp)[1] or a.schulungstyp,
+        lambda a: _dauer(a) or a.schulungstyp,
     )
     dauern = _alphabetisch_mit_anmeldungen(dauer_gruppen)
     kinder = (
@@ -269,7 +423,8 @@ class Anmeldungsverlauf:
             name: Counter() for name in (*kategorien, KATEGORIE_SONSTIGE)
         }
         for a in self.anmeldungen:
-            summen = ergebnis[zuordnung.get(a.schulungstyp, KATEGORIE_SONSTIGE)]
+            basisname = _basisname_und_dauer(a.schulungstyp)[0]
+            summen = ergebnis[zuordnung.get(basisname, KATEGORIE_SONSTIGE)]
             summen[a.schluessel] += a.teilnehmerzahl
         return ergebnis
 
@@ -311,7 +466,8 @@ class Anmeldungsverlauf:
             name: [] for name in (*kategorien, KATEGORIE_SONSTIGE)
         }
         for a in self.anmeldungen:
-            je_kategorie[zuordnung.get(a.schulungstyp, KATEGORIE_SONSTIGE)].append(a)
+            basisname = _basisname_und_dauer(a.schulungstyp)[0]
+            je_kategorie[zuordnung.get(basisname, KATEGORIE_SONSTIGE)].append(a)
 
         ergebnis: dict[str, tuple[Anmeldungsknoten, ...]] = {}
         for kategorie, zeilen in je_kategorie.items():
@@ -378,7 +534,7 @@ class Anmeldungsverlauf:
         gesehen: dict[str, set[str]] = {name: set() for name in ergebnis}
         for typ in self.schulungstypen:
             basisname = _basisname_und_dauer(typ)[0]
-            kategorie = zuordnung.get(typ, KATEGORIE_SONSTIGE)
+            kategorie = zuordnung.get(basisname, KATEGORIE_SONSTIGE)
             if basisname not in gesehen[kategorie]:
                 gesehen[kategorie].add(basisname)
                 ergebnis[kategorie].append(basisname)
@@ -404,14 +560,14 @@ class Anmeldungsverlauf:
 
     @property
     def dauern(self) -> tuple[str, ...]:
-        """Alle vorkommenden, erkannten Dauer-Auspraegungen (siehe
-        :func:`_basisname_und_dauer`), nach absteigender Gesamtteilnehmerzahl -
-        derselbe Auffangmechanismus wie :attr:`schulungstypen`, fuer den Dauer-Filter
-        der Webapp. Ein Schulungstyp ohne erkannten Dauer-Suffix traegt nicht zu dieser
-        Liste bei."""
+        """Alle vorkommenden, erkannten Dauer-Auspraegungen (siehe :func:`_dauer`, bevorzugt
+        aus ``datum`` berechnet, sonst aus dem Schulungstyp-Suffix), nach absteigender
+        Gesamtteilnehmerzahl - derselbe Auffangmechanismus wie :attr:`schulungstypen`,
+        fuer den Dauer-Filter der Webapp. Eine Anmeldung ohne erkennbare Dauer traegt
+        nicht zu dieser Liste bei."""
         summen: Counter[str] = Counter()
         for a in self.anmeldungen:
-            dauer = _basisname_und_dauer(a.schulungstyp)[1]
+            dauer = _dauer(a)
             if dauer is not None:
                 summen[dauer] += a.teilnehmerzahl
         return tuple(sorted(summen, key=lambda dauer_wert: summen[dauer_wert], reverse=True))
@@ -421,7 +577,7 @@ class Anmeldungsverlauf:
         (z. B. ``"2-tägig"``), ueber alle Kategorien, Schulungstypen und Formate
         hinweg."""
         return _teilnehmerzahl_je(
-            (a for a in self.anmeldungen if _basisname_und_dauer(a.schulungstyp)[1] == dauer_wert),
+            (a for a in self.anmeldungen if _dauer(a) == dauer_wert),
             lambda a: a.schluessel,
         )
 
@@ -448,15 +604,12 @@ class Anmeldungsverlauf:
         zuordnung = _kategorie_zuordnung(kategorien) if kategorien is not None else {}
 
         def passt(a: Anmeldung) -> bool:
-            if (
-                kategorie is not None
-                and zuordnung.get(a.schulungstyp, KATEGORIE_SONSTIGE) != kategorie
-            ):
+            basis = _basisname_und_dauer(a.schulungstyp)[0]
+            if kategorie is not None and zuordnung.get(basis, KATEGORIE_SONSTIGE) != kategorie:
                 return False
-            basis, dauer = _basisname_und_dauer(a.schulungstyp)
             if basisname is not None and basis != basisname:
                 return False
-            if dauer_wert is not None and dauer != dauer_wert:
+            if dauer_wert is not None and _dauer(a) != dauer_wert:
                 return False
             return format_wert is None or a.format == format_wert
 
@@ -479,7 +632,8 @@ class Anmeldungsverlauf:
         zuordnung = _kategorie_zuordnung(kategorien)
         ergebnis: dict[str, list[str]] = {name: [] for name in (*kategorien, KATEGORIE_SONSTIGE)}
         for typ in self.schulungstypen:
-            ergebnis[zuordnung.get(typ, KATEGORIE_SONSTIGE)].append(typ)
+            basisname = _basisname_und_dauer(typ)[0]
+            ergebnis[zuordnung.get(basisname, KATEGORIE_SONSTIGE)].append(typ)
         return {kategorie: tuple(typen) for kategorie, typen in ergebnis.items()}
 
     def letzte(self, *, monate: int, stichtag: date) -> Anmeldungsverlauf:

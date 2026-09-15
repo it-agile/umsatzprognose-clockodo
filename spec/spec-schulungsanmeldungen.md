@@ -177,7 +177,24 @@ Restvolumen, Abrufquote oder Kapazitätsdeckel davon berührt werden.
   Kürzel (`CSM`, `KSD`, `SBK` = "Scrum better with Kanban", ...), nicht über die
   ausgeschriebenen Wörter "Scrum"/"Kanban". Ein Schulungstyp, der in keiner
   konfigurierten Kategorie auftaucht, fällt auf `Sonstige` zurück
-  (`domaene.anmeldung.KATEGORIE_SONSTIGE`).
+  (`domaene.anmeldung.KATEGORIE_SONSTIGE`). Der Nachschlag läuft dabei über den
+  Basisnamen (`domaene.anmeldung._basisname_und_dauer()`), nicht über den rohen
+  Schulungstyp-Text - die Quelle schreibt den Dauer-Suffix uneinheitlich übers Jahr
+  (verifiziert an KSI: `"KSI"` 2022-2024, `"KSI 3-tägig"` ab 2025 für dieselbe Schulung).
+  Ein Konfigurationseintrag muss deshalb nicht jede Dauer-Variante einzeln auflisten;
+  mehrfach genannte Varianten normalisieren auf denselben Schlüssel und sind harmlos
+  redundant.
+- **Dauer-Auswertung robust gegen die Schreibweise des Schulungstyps:** die
+  Dauer-Ausprägung (z. B. `"2-tägig"`) wird bevorzugt aus der `Datum`-Spalte berechnet
+  (`domaene.anmeldung._dauer_aus_datumsspanne()`), mit dem Text-Suffix des Schulungstyps
+  als Rückfall dort, wo `Datum` fehlt oder nicht interpretierbar ist
+  (`domaene.anmeldung._dauer()` bündelt beide Quellen). `Datum` ist wie `Präsenz/Online`
+  keine Pflichtspalte für die Kopfzeilensuche - fehlt sie in einem Jahrgang, bleibt nur
+  diese Berechnung ohne Wirkung, statt den Jahrgang auszuschließen. Die Spalte ist
+  reiner, von Hand gepflegter Freitext (uneinheitliche Trennzeichen, gelegentlich
+  Monatsnamen statt Zahl, Tippfehler, sowie mehrmonatige Zeiträume statt einzelner
+  Termine bei berufsbegleitenden Programmen); eine Berechnung, die unplausibel lang
+  ausfällt oder scheitert, liefert `None` statt eines falschen Werts.
 - **Betrachtungszeitraum:** konfigurierbar, standardmäßig die letzten 13 Kalendermonate
   bis einschließlich des Stichtagsmonats (`Anmeldungsverlauf.letzte(monate=...,
   stichtag=...)` - `monate` keyword-only, damit an der Aufrufstelle lesbar bleibt, was
@@ -192,7 +209,9 @@ Restvolumen, Abrufquote oder Kapazitätsdeckel davon berührt werden.
   `Dashboard` der Umsatzprognose.
 
 Umgesetzt: `domaene.anmeldung.Anmeldung`/`Anmeldungsverlauf` (inkl. `letzte()`,
-`je_monat_und_kategorie()`), `SchulungenRepository.anmeldungsverlauf_laden()`,
+`je_monat_und_kategorie()`), `_kategorie_zuordnung()` (Basisname-Nachschlag),
+`_dauer_aus_datumsspanne()`/`_dauer()` (Dauer bevorzugt aus `Datum` berechnet, Suffix als
+Rückfall), `SchulungenRepository.anmeldungsverlauf_laden()` (inkl. `Anmeldung.datum`),
 `diagramme.anmeldungsverlauf()` (inkl. `_linearer_trend()`),
 `tabellen.anmeldungstabelle()`, `notebooks/setup.anmeldungsverlauf()` und
 `notebooks/03_schulungsanmeldungen.ipynb`.

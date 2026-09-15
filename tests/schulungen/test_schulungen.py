@@ -148,6 +148,55 @@ def test_zeilen_zu_anmeldungen_nimmt_die_zuletzt_stehende_tn_zahl_spalte() -> No
     assert anmeldung.teilnehmerzahl == 9
 
 
+def test_zeilen_zu_anmeldungen_liest_datum_spalte() -> None:
+    kopfzeile = [*KOPFZEILE_ANMELDUNGEN, "Datum"]
+    zeilen = [
+        kopfzeile,
+        [
+            "KSI",
+            "2022",
+            "2",
+            "A. Beispiel",
+            "1",
+            "0,00 €",
+            "",
+            "12",
+            "15",
+            "3",
+            "80%",
+            "Präsenz",
+            "07.-08.02.2022",
+        ],
+    ]
+    [anmeldung] = _zeilen_zu_anmeldungen(zeilen)
+    assert anmeldung.datum == "07.-08.02.2022"
+
+
+def test_zeilen_zu_anmeldungen_ohne_datum_spalte_bleibt_datum_leer() -> None:
+    """Wie ``Präsenz/Online`` keine Pflichtspalte fuer die Kopfzeilensuche - fehlt sie in
+    einem Jahrgang, bleibt nur ``Anmeldung.datum`` leer."""
+    [anmeldung] = _zeilen_zu_anmeldungen(
+        [
+            KOPFZEILE_ANMELDUNGEN,
+            [
+                "KSI",
+                "2022",
+                "2",
+                "A. Beispiel",
+                "1",
+                "0,00 €",
+                "",
+                "12",
+                "15",
+                "3",
+                "80%",
+                "Präsenz",
+            ],
+        ],
+    )
+    assert anmeldung.datum == ""
+
+
 def test_zeilen_zu_anmeldungen_ohne_format_spalte_bleibt_format_leer() -> None:
     """ "Präsenz/Online" ist anders als Monat/Schulungstyp/TN-Zahl keine Pflichtspalte
     fuer die Kopfzeilensuche (analog zu "Kostenerfassung" in kosten.py) - fehlt sie in
