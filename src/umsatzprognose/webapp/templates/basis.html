@@ -96,6 +96,7 @@
         .kategorie-tiefe-1 { padding-left: 1.5rem; }
         .kategorie-tiefe-2 { padding-left: 3rem; }
         .kategorie-tiefe-3 { padding-left: 4.5rem; }
+        .kategorie-tiefe-4 { padding-left: 6rem; }
         /* kategorieZeileUmschalten() blendet Kindzeilen nur per style.display ein/
            aus, sie bleiben also im DOM - die allgemeine Zebra-Regel oben (:nth-child)
            zaehlt dabei auch unsichtbare Zeilen mit und wuerde je nach Anzahl gerade
@@ -106,11 +107,19 @@
         tbody tr[data-tiefe="1"] { background: #f6f6f6; }
         tbody tr[data-tiefe="2"] { background: #eeeeee; }
         tbody tr[data-tiefe="3"] { background: #e6e6e6; }
-        /* Die Gesamt-Zeile hat kein data-tiefe (kein Teil des Baums) - ohne eigene
-           Regel bliebe sie der zufaelligen Zebra-Parität nach vorausgehenden,
-           teils unsichtbaren Zeilen ausgeliefert; stattdessen hebt sie sich immer
-           gleich ab. */
-        tr.zeile-gesamt { background: #f0f0f0; font-weight: 600; border-top: 2px solid #ccc; }
+        tbody tr[data-tiefe="4"] { background: #dedede; }
+        /* Die Gesamt-Zeile traegt (anders als eine frueheren Fassung) inzwischen ein
+           eigenes data-tiefe, weil sie bei mehreren Jahren im Zeitraum genauso in
+           Jahr-Zeilen aufklappt wie eine Kategorie-Zeile - ohne "tbody"-Praefix waere
+           die Spezifitaet gleich der data-tiefe-Regeln oben und wuerde je nach
+           Regel-Reihenfolge verlieren, stattdessen soll sie sich immer abheben. */
+        tbody tr.zeile-gesamt { background: #f0f0f0; font-weight: 600; border-top: 2px solid #ccc; }
+        /* Die Jahr-Zeile im Kategorie-Drilldown (Jahresvergleich, siehe app._knoten_flach)
+           ist eine ergaenzende Aufschluesselung der kombinierten Zeile direkt darueber,
+           keine gleichrangige weitere Baumebene - gedaempfte Farbe statt nur kleinerer
+           Schrift, damit sie trotzdem gut lesbar bleibt (Kontrast zu den hellsten wie
+           den dunkelsten Zeilenhintergruenden oben bleibt klar ueber 4.5:1). */
+        tr.zeile-jahr { color: #555; font-size: 0.9em; }
         /* Bei so vielen Spalten nebeneinander (Kategorie-Drilldown, Monatstabelle,
            Kurzarbeit-Monatsuebersicht) ist auf den ersten Blick schwer zu sehen,
            welche Zahl zu welcher Spalte gehoert - ein zartes Spaltenraster hilft

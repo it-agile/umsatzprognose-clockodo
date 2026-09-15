@@ -21,6 +21,28 @@
     </details>
 </div>
 {% endmacro %}
+{% macro kategorie_zeile(zeile, ist_gesamt=False) %}
+{%- set klassen = [] -%}
+{%- if ist_gesamt and zeile.tiefe == 0 -%}{%- set _ = klassen.append("zeile-gesamt") -%}{%- endif -%}
+{%- if zeile.ist_jahr -%}{%- set _ = klassen.append("zeile-jahr") -%}{%- endif -%}
+<tr id="{{ zeile.id }}" data-tiefe="{{ zeile.tiefe }}"{% if zeile.tiefe > 0 %} style="display: none"{% endif %}{% if klassen %} class="{{ klassen | join(' ') }}"{% endif %}>
+    <td class="kategorie-tiefe-{{ zeile.tiefe }}">{% if zeile.hat_kinder -%}
+        <button
+            type="button"
+            class="kategorie-knopf"
+            aria-expanded="false"
+            aria-controls="{{ zeile.kinder_ids | join(' ') }}"
+            onclick="kategorieZeileUmschalten(this)"
+        ><span class="kategorie-pfeil">▸</span>{{ zeile.name }}</button>
+        {%- else -%}
+        <span class="kategorie-pfeil-platzhalter"></span>{{ zeile.name }}
+        {%- endif %}</td>
+    {% for wert in zeile.werte %}
+    <td>{{ wert if wert else "" }}</td>
+    {% endfor %}
+    <td>{{ zeile.summe if zeile.summe else "" }}</td>
+</tr>
+{% endmacro %}
 {% block inhalt %}
 <form method="get" class="parameter" id="schulungen-form">
     <label>Anmeldungen ab Jahr
@@ -74,31 +96,11 @@
         </thead>
         <tbody>
             {% for zeile in kategorie_zeilen %}
-            <tr id="{{ zeile.id }}" data-tiefe="{{ zeile.tiefe }}"{% if zeile.tiefe > 0 %} style="display: none"{% endif %}>
-                <td class="kategorie-tiefe-{{ zeile.tiefe }}">{% if zeile.hat_kinder -%}
-                    <button
-                        type="button"
-                        class="kategorie-knopf"
-                        aria-expanded="false"
-                        aria-controls="{{ zeile.kinder_ids | join(' ') }}"
-                        onclick="kategorieZeileUmschalten(this)"
-                    ><span class="kategorie-pfeil">▸</span>{{ zeile.name }}</button>
-                    {%- else -%}
-                    <span class="kategorie-pfeil-platzhalter"></span>{{ zeile.name }}
-                    {%- endif %}</td>
-                {% for wert in zeile.werte %}
-                <td>{{ wert if wert else "" }}</td>
-                {% endfor %}
-                <td>{{ zeile.summe if zeile.summe else "" }}</td>
-            </tr>
+            {{ kategorie_zeile(zeile) }}
             {% endfor %}
-            <tr class="zeile-gesamt">
-                <td><span class="kategorie-pfeil-platzhalter"></span>Gesamt</td>
-                {% for wert in gesamt_werte %}
-                <td>{{ wert if wert else "" }}</td>
-                {% endfor %}
-                <td>{{ gesamt_summe if gesamt_summe else "" }}</td>
-            </tr>
+            {% for zeile in gesamt_zeilen %}
+            {{ kategorie_zeile(zeile, ist_gesamt=True) }}
+            {% endfor %}
         </tbody>
     </table>
     </div>

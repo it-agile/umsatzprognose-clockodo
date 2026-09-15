@@ -1110,6 +1110,49 @@ def test_schulungen_vier_ebenen_format_und_dauer_zusammen(fake_caches):
     assert online_index > cspo_index
 
 
+def test_schulungen_zeigt_jahr_zeilen_bei_mehreren_jahren_im_zeitraum(fake_caches):
+    """Umfasst der Zeitraum mehrere Jahre, bekommt ein Knoten zusaetzliche,
+    ausklappbare Jahr-Zeilen mit demselben Januar-Dezember-Monatsraster wie seine
+    eigene, ueber alle Jahre kombinierte Zeile - Grundlage fuer den Jahresvergleich
+    Monat fuer Monat, ohne dass die Tabelle mit der Anzahl betrachteter Jahre in die
+    Breite waechst (feste 14 Spalten: Kategorie, Januar-Dezember, Summe)."""
+    _, anmeldungsverlauf_cache, _ = fake_caches
+    anmeldungsverlauf_cache.ergebnis = Anmeldungsverlauf(
+        anmeldungen=(
+            Anmeldung(2025, 3, "KSD", 3),
+            Anmeldung(2026, 3, "KSD", 5),
+            Anmeldung(2026, 7, "KSD", 2),
+        )
+    )
+    client = TestClient(app_modul.app)
+
+    antwort = client.get("/schulungen?ab_jahr=2025")
+
+    kopf = antwort.text[antwort.text.index("<thead>") : antwort.text.index("</thead>")]
+    assert kopf.count('<th scope="col">') == 14
+    assert ">Jan<" in kopf
+    assert ">Dez<" in kopf
+
+    tabelle = antwort.text[antwort.text.index("<tbody>") :]
+    ksd_index = tabelle.index(">KSD<")
+    assert "kategorie-knopf" in tabelle[max(0, ksd_index - 300) : ksd_index]
+    ksd_zeile_ende = tabelle.index("</tr>", ksd_index)
+    ksd_zeile = tabelle[ksd_index:ksd_zeile_ende]
+    assert "<td>8</td>" in ksd_zeile  # März kombiniert: 3 (2025) + 5 (2026)
+    assert "<td>10</td>" in ksd_zeile  # Summe ueber beide Jahre
+
+    zeile_2025_index = tabelle.index(">2025<", ksd_index)
+    zeile_2025_ende = tabelle.index("</tr>", zeile_2025_index)
+    assert "<td>3</td>" in tabelle[zeile_2025_index:zeile_2025_ende]
+
+    zeile_2026_index = tabelle.index(">2026<", ksd_index)
+    zeile_2026_ende = tabelle.index("</tr>", zeile_2026_index)
+    zeile_2026 = tabelle[zeile_2026_index:zeile_2026_ende]
+    assert "<td>5</td>" in zeile_2026
+    assert "<td>2</td>" in zeile_2026
+    assert "<td>7</td>" in zeile_2026
+
+
 def test_schulungen_filterabschnitt_bleibt_ohne_filter_zugeklappt():
     client = TestClient(app_modul.app)
 

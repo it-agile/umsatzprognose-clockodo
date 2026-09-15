@@ -93,7 +93,7 @@ from typing import TYPE_CHECKING, Annotated, Literal, get_args
 from urllib.parse import urlencode
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator, Callable
+    from collections.abc import AsyncIterator, Callable, Mapping
     from datetime import date
 
     import pandas as pd
@@ -119,7 +119,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from umsatzprognose.clockodo import kurzarbeit_aktiv
-from umsatzprognose.darstellung import Dashboard, diagramme, tabellen
+from umsatzprognose.darstellung import Dashboard, diagramme
 from umsatzprognose.domaene import (
     Anmeldungsknoten,
     GaussFakturierbareArbeit,
@@ -127,6 +127,7 @@ from umsatzprognose.domaene import (
     WeibullFakturierbareArbeit,
 )
 from umsatzprognose.domaene.anmeldung import KATEGORIE_SONSTIGE
+from umsatzprognose.domaene.umsatzhistorie import MONATSNAMEN
 from umsatzprognose.domaene.zahlen import betrag_parsen
 from umsatzprognose.schulungen import kategorien_automatisch
 
@@ -1141,9 +1142,24 @@ def _kategorie_knoten(name: str, kinder: tuple[Anmeldungsknoten, ...]) -> Anmeld
     return Anmeldungsknoten(name, _monate_summieren(kinder), kinder)
 
 
+def _monatswerte_kombiniert(monate: Mapping[Monat, int]) -> list[int]:
+    """Teilnehmerzahl je Kalendermonat (Januar-Dezember-Raster, jahresunabhaengig),
+    ueber alle im Knoten vorkommenden Jahre aufsummiert - die Werte der eigenen Zeile
+    eines Knotens in ``schulungen.html``, egal ob dessen Daten ein oder mehrere Jahre
+    umfassen (siehe :func:`_knoten_flach`)."""
+    summen = [0] * 12
+    for (_jahr, monatsnummer), wert in monate.items():
+        summen[monatsnummer - 1] += wert
+    return summen
+
+
+def _monatswerte_jahr(monate: Mapping[Monat, int], jahr: int) -> list[int]:
+    """Teilnehmerzahl je Kalendermonat (Januar-Dezember) eines einzelnen Jahres."""
+    return [monate.get((jahr, monatsnummer), 0) for monatsnummer in range(1, 13)]
+
+
 def _knoten_flach(
     knoten: Anmeldungsknoten,
-    monate: Sequence[Monat],
     *,
     tiefe: int = 0,
     pfad: str = "0",
@@ -1165,25 +1181,57 @@ def _knoten_flach(
     unsichtbaren) Zeilen hinweg korrekt; das Auf-/Zuklappen blendet Zeilen deshalb nur
     noch per ``style.display`` ein/aus (siehe ``kategorieZeileUmschalten()`` in
     ``schulungen.html``), ohne die Spaltenberechnung zu beeinflussen.
+
+    Die Spalten sind ein festes Januar-Dezember-Raster statt einer mit der Anzahl
+    betrachteter Jahre wachsenden Spaltenliste - die eigene Zeile eines Knotens zeigt
+    dazu die ueber alle vorkommenden Jahre aufsummierten Monatswerte
+    (:func:`_monatswerte_kombiniert`). Umfassen die Daten eines Knotens mehr als ein
+    Jahr, bekommt er zusaetzliche, ausklappbare Jahr-Zeilen (eine je Jahr, mit dessen
+    eigenen Monatswerten) vor seinen eigentlichen Kindern - fuer den Jahresvergleich
+    Monat fuer Monat, ohne die Tabelle in die Breite wachsen zu lassen. Bei nur einem
+    Jahr im Zeitraum entfaellt diese zusaetzliche Ebene (die kombinierte Zeile zeigt
+    dann ohnehin schon genau dessen Werte).
     """
-    werte = [knoten.monate.get(monat, 0) for monat in monate]
+    jahre = sorted({jahr for jahr, _monatsnummer in knoten.monate})
+    mehrere_jahre = len(jahre) > 1
+    werte = _monatswerte_kombiniert(knoten.monate)
     knoten_id = f"schulung-zeile-{pfad}"
+    jahr_ids = [f"{knoten_id}-jahr-{jahr}" for jahr in jahre] if mehrere_jahre else []
     zeile: dict[str, object] = {
         "id": knoten_id,
         "name": knoten.name,
         "werte": werte,
         "summe": sum(werte),
         "tiefe": tiefe,
-        "hat_kinder": bool(knoten.kinder),
+        "hat_kinder": bool(knoten.kinder) or bool(jahr_ids),
         # Direkte Kinder-IDs fuer aria-controls am Auf-/Zuklapp-Knopf - das JS selbst
         # blendet zwar auch tiefer verschachtelte Nachfahren mit ein/aus, aber
         # aria-controls beschreibt nur den unmittelbar gesteuerten Bereich, tiefere
-        # Ebenen haben ihren eigenen Knopf mit eigenem aria-controls.
-        "kinder_ids": [f"{knoten_id}-{i}" for i in range(len(knoten.kinder))],
+        # Ebenen haben ihren eigenen Knopf mit eigenem aria-controls. Jahr-Zeilen
+        # zaehlen dabei als eigene, direkte Kinder, vor den fachlichen Kindern.
+        "kinder_ids": [*jahr_ids, *(f"{knoten_id}-{i}" for i in range(len(knoten.kinder)))],
     }
     zeilen = [zeile]
+    if mehrere_jahre:
+        for jahr, jahr_id in zip(jahre, jahr_ids, strict=True):
+            jahr_werte = _monatswerte_jahr(knoten.monate, jahr)
+            jahr_zeile: dict[str, object] = {
+                "id": jahr_id,
+                "name": str(jahr),
+                "werte": jahr_werte,
+                "summe": sum(jahr_werte),
+                "tiefe": tiefe + 1,
+                "hat_kinder": False,
+                "kinder_ids": [],
+                # Grundlage fuer eine gedaempfte Darstellung in schulungen.html - die
+                # Jahr-Zeile ist eine ergaenzende Aufschluesselung der kombinierten
+                # Zeile darueber, nicht eine gleichrangige weitere Kategorie/Basisname/
+                # Format/Dauer-Stufe.
+                "ist_jahr": True,
+            }
+            zeilen.append(jahr_zeile)
     for i, kind in enumerate(knoten.kinder):
-        zeilen.extend(_knoten_flach(kind, monate, tiefe=tiefe + 1, pfad=f"{pfad}-{i}"))
+        zeilen.extend(_knoten_flach(kind, tiefe=tiefe + 1, pfad=f"{pfad}-{i}"))
     return zeilen
 
 
@@ -1302,7 +1350,7 @@ async def schulungen(
     verlauf_ab_jahr = verlauf.ab_jahr(jahr)
 
     monate = verlauf_ab_jahr.monate
-    monatsbeschriftungen = [tabellen.monatsbeschriftung(monat) for monat in monate]
+    monatsbeschriftungen = list(MONATSNAMEN)
     kategorien: Kategorisierung = kategorien_automatisch()
 
     trendlinien = "an" in trendlinien_werte
@@ -1329,10 +1377,10 @@ async def schulungen(
     kategorie_zeilen = [
         zeile
         for i, knoten in enumerate(kategorie_knoten)
-        for zeile in _knoten_flach(knoten, monate, pfad=str(i))
+        for zeile in _knoten_flach(knoten, pfad=str(i))
     ]
     gesamt_monate = _monate_summieren(kategorie_knoten)
-    gesamt_werte = [gesamt_monate.get(monat, 0) for monat in monate]
+    gesamt_zeilen = _knoten_flach(Anmeldungsknoten("Gesamt", gesamt_monate), pfad="gesamt")
 
     return _antwort(
         request,
@@ -1380,8 +1428,7 @@ async def schulungen(
         ),
         monatsbeschriftungen=monatsbeschriftungen,
         kategorie_zeilen=kategorie_zeilen,
-        gesamt_werte=gesamt_werte,
-        gesamt_summe=sum(gesamt_werte),
+        gesamt_zeilen=gesamt_zeilen,
     )
 
 
