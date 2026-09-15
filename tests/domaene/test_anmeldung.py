@@ -231,6 +231,37 @@ def test_gliederung_je_kategorie_sortiert_basisnamen_alphabetisch_nicht_nach_anm
     assert [k.name for k in knoten] == ["Auffrischung", "Zertifizierung"]
 
 
+def test_gliederung_je_kategorie_sortiert_basisnamen_nach_juengstem_jahr_vor_namen() -> None:
+    """Ein Basisname, der nur in einem laengst vergangenen Jahr stattfand, taucht
+    unterhalb aller Basisnamen des juengsten vorkommenden Jahres auf - hier bewusst
+    mit gegenlaeufiger alphabetischer Reihenfolge ("Auffrischung" vor "Zertifizierung"),
+    damit ein Ruecksprung auf rein alphabetische Sortierung auffiele."""
+    kategorien = {"Scrum": ["Auffrischung 2-tägig", "Zertifizierung 2-tägig"]}
+    verlauf = Anmeldungsverlauf(
+        anmeldungen=(
+            Anmeldung(2024, 9, "Auffrischung 2-tägig", 5),
+            Anmeldung(2026, 9, "Zertifizierung 2-tägig", 1),
+        ),
+    )
+    knoten = verlauf.gliederung_je_kategorie(kategorien)["Scrum"]
+    assert [k.name for k in knoten] == ["Zertifizierung", "Auffrischung"]
+
+
+def test_gliederung_je_kategorie_zaehlt_mehrjaehrigen_basisnamen_zu_seinem_juengsten_jahr() -> None:
+    """Ein Basisname mit Anmeldungen in mehreren Jahren sortiert nach seinem juengsten
+    Jahr, nicht seinem aeltesten."""
+    kategorien = {"Scrum": ["Auffrischung 2-tägig", "Zertifizierung 2-tägig"]}
+    verlauf = Anmeldungsverlauf(
+        anmeldungen=(
+            Anmeldung(2024, 9, "Auffrischung 2-tägig", 5),
+            Anmeldung(2026, 9, "Auffrischung 2-tägig", 3),
+            Anmeldung(2025, 9, "Zertifizierung 2-tägig", 1),
+        ),
+    )
+    knoten = verlauf.gliederung_je_kategorie(kategorien)["Scrum"]
+    assert [k.name for k in knoten] == ["Auffrischung", "Zertifizierung"]
+
+
 def test_gliederung_je_kategorie_sortiert_format_alphabetisch_nicht_nach_anmeldezahl() -> None:
     kategorien = {"Scrum": ["CSPO 2-tägig"]}
     verlauf = Anmeldungsverlauf(
@@ -381,6 +412,29 @@ def test_ab_jahr_behaelt_abbildungshinweise() -> None:
         abbildungshinweise=(hinweis,),
     )
     gefiltert = verlauf.ab_jahr(2023)
+    assert gefiltert.abbildungshinweise == (hinweis,)
+
+
+def test_nur_jahre_behaelt_nur_anmeldungen_der_angegebenen_jahre() -> None:
+    verlauf = Anmeldungsverlauf(
+        anmeldungen=(
+            Anmeldung(2022, 12, "KSD", 1),
+            Anmeldung(2023, 1, "KSD", 2),
+            Anmeldung(2024, 6, "KSD", 3),
+        ),
+    )
+    gefiltert = verlauf.nur_jahre({2022, 2024})
+    assert gefiltert.monate == ((2022, 12), (2024, 6))
+    assert gefiltert.je_monat() == {(2022, 12): 1, (2024, 6): 3}
+
+
+def test_nur_jahre_behaelt_abbildungshinweise() -> None:
+    hinweis = Hinweis("Die Schulungs-Datei für 2022 konnte nicht gelesen werden (HttpError)")
+    verlauf = Anmeldungsverlauf(
+        anmeldungen=(Anmeldung(2024, 9, "KSD", 1),),
+        abbildungshinweise=(hinweis,),
+    )
+    gefiltert = verlauf.nur_jahre({2024})
     assert gefiltert.abbildungshinweise == (hinweis,)
 
 

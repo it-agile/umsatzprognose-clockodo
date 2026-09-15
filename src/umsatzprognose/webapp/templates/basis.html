@@ -120,6 +120,15 @@
            Schrift, damit sie trotzdem gut lesbar bleibt (Kontrast zu den hellsten wie
            den dunkelsten Zeilenhintergruenden oben bleibt klar ueber 4.5:1). */
         tr.zeile-jahr { color: #555; font-size: 0.9em; }
+        /* Monatszellen mit noch nicht abgeschlossenen Schulungsterminen (Kategorie-
+           Drilldown auf /schulungen, siehe app._zukuenftige_monate) - dieselbe
+           gepunktete Abhebung wie im Anmeldungsverlauf-Diagramm darueber (siehe
+           diagramme.anmeldungsverlauf_reihen), hier als Unterstreichung statt als
+           Linienart, bewusst ohne Textfarbe zu aendern: #666 haelt einen Kontrast von
+           mindestens 3:1 zu jedem in dieser Tabelle vorkommenden Zeilenhintergrund
+           (von Weiss bis zum dunkelsten Tiefe-4-Grau #dedede), unabhaengig vom
+           eigentlichen Zellenwert. */
+        .zelle-zukunft { border-bottom: 2px dotted #666; }
         /* Bei so vielen Spalten nebeneinander (Kategorie-Drilldown, Monatstabelle,
            Kurzarbeit-Monatsuebersicht) ist auf den ersten Blick schwer zu sehen,
            welche Zahl zu welcher Spalte gehoert - ein zartes Spaltenraster hilft
@@ -148,6 +157,71 @@
         .spalte-zusammenfassung th:last-child, .spalte-zusammenfassung td:last-child {
             border-left: var(--spalte-grenze); background: var(--spalte-grenze-flaeche);
         }
+        /* Quartalsgrenzen im Kategorie-Drilldown auf /schulungen - eine sichtbare, aber
+           schwaechere Abhebung als die Summenspalte oben: dieselbe Linienfarbe/-staerke
+           (--spalte-grenze) wirkt hier ohne deren zusaetzliche Flaeche deutlich
+           zurueckhaltender. Eine Zwischenstufe wie 1.5px wuerde das nicht zuverlaessig
+           leisten - Browser runden nicht ganzzahlige Randbreiten ohne hochaufloesenden
+           Bildschirm oft auf 1px und damit auf die normale Gitterlinie herunter (siehe
+           Handbuch-Vermerk zu dieser Regel). Fest positionierte nth-child-Regeln sind
+           hier zulaessig, weil die Spaltenreihenfolge (Kategorie, Januar-Dezember,
+           Summe) immer gleich bleibt (siehe app._knoten_flach) - anders als die
+           Monatstabelle mit rollierenden Monaten, die ihre Zusammenfassungsspalten
+           deshalb ueber generierte, spaltennamen-basierte Regeln abhebt (siehe
+           app._tabelle_html). */
+        .quartalsraster th:nth-child(2), .quartalsraster td:nth-child(2),
+        .quartalsraster th:nth-child(5), .quartalsraster td:nth-child(5),
+        .quartalsraster th:nth-child(8), .quartalsraster td:nth-child(8),
+        .quartalsraster th:nth-child(11), .quartalsraster td:nth-child(11) {
+            border-left: var(--spalte-grenze);
+        }
+        /* Fixierte erste Spalte im Kategorie-Drilldown auf /schulungen - bleibt beim
+           horizontalen Scrollen der breiten Tabelle sichtbar, analog zur bereits
+           fixierten Kopfzeile (siehe .tabelle-fixierte-kopfzeile). Anders als dort
+           reicht hier position: sticky ohne JavaScript-Klon: der dokumentierte
+           Chromium-Fehler betrifft nur den erzwungenen Mal-Vorrang von Kopf- vor
+           Koerper-Zeilengruppe (siehe dortiger Vermerk) - Zellen innerhalb derselben
+           Zeile haben keine vergleichbare, von der Spezifikation erzwungene Reihenfolge.
+           position: sticky erzeugt trotzdem einen eigenen Stapelkontext, der ohne
+           eigenen Hintergrund von durchscrollenden Nachbarzellen durchschienen wuerde
+           - deshalb je Zeilenart (Zebrastreifen, Baumtiefe, Gesamt-Zeile) eine eigene,
+           deckende Farbe auf die erste Zelle statt nur auf die Zeile, in derselben
+           Reihenfolge/Spezifitaet wie die zugehoerigen Zeilenregeln oben, damit dieselbe
+           Rangfolge bei Ueberschneidung gilt (etwa Gesamt-Zeile vor Baumtiefe). */
+        .tabelle-fixierte-erste-spalte th:first-child,
+        .tabelle-fixierte-erste-spalte td:first-child {
+            position: sticky; left: 0; z-index: 1; border-right: var(--spalte-grenze);
+        }
+        .tabelle-fixierte-erste-spalte tbody tr:nth-child(even) > td:first-child {
+            background: #f8f8f8;
+        }
+        .tabelle-fixierte-erste-spalte tbody tr[data-tiefe] > td:first-child {
+            background: #fff;
+        }
+        .tabelle-fixierte-erste-spalte tbody tr[data-tiefe="1"] > td:first-child {
+            background: #f6f6f6;
+        }
+        .tabelle-fixierte-erste-spalte tbody tr[data-tiefe="2"] > td:first-child {
+            background: #eeeeee;
+        }
+        .tabelle-fixierte-erste-spalte tbody tr[data-tiefe="3"] > td:first-child {
+            background: #e6e6e6;
+        }
+        .tabelle-fixierte-erste-spalte tbody tr[data-tiefe="4"] > td:first-child {
+            background: #dedede;
+        }
+        .tabelle-fixierte-erste-spalte tbody tr.zeile-gesamt > td:first-child {
+            background: #f0f0f0;
+        }
+        /* fixierteKopfzeileEinrichten() (siehe Skript unten) uebernimmt die Klassen der
+           echten Tabelle 1:1 fuer ihre schwebende Kopie, inklusive
+           .tabelle-fixierte-erste-spalte - deren sticky-Positionierung braucht die
+           Kopie aber nicht: sie verschiebt sich als Ganzes per transform: translateX()
+           synchron zum horizontalen Scrollen (siehe dortiger Kommentar), eine
+           zusaetzliche sticky-Positionierung nur der ersten Zelle wuerde dort ohne
+           echten horizontalen Scroll-Container ins Leere laufen und die Spalte gegen
+           die uebrigen, per transform verschobenen Kopf-Zellen verrutschen lassen. */
+        .tabelle-kopfzeile-klon th:first-child { position: static; }
         /* Gewinn/Verlust-Faerbung der Monatstabelle (siehe app._gewinn_eingefaerbt) -
            eine 0 (kein Kostenplan geladen oder tatsaechlich ausgeglichen) bleibt
            bewusst ungefaerbt statt in einer der beiden Farben. Dieselben Farbwerte wie
@@ -195,6 +269,21 @@
             display: flex; align-items: center; gap: 0.4rem; color: #222;
             font-weight: normal; white-space: nowrap;
         }
+        /* Kategorie-Unterueberschrift im Schulungen-Dropdown (schulungen.html:
+           schulung_dropdown()) - reine Gliederung zum Wiederfinden, kein eigenes
+           Kontrollkaestchen (siehe Docstring von app._schulung_gruppen). */
+        .filter-optionen .filter-untergruppe {
+            font-weight: 600; color: #555; font-size: 0.85em; margin-top: 0.3rem;
+        }
+        .filter-optionen .filter-untergruppe:first-of-type { margin-top: 0; }
+        /* "Auswahl zuruecksetzen"-Link im Schulungen-Dropdown - kleiner als der
+           uebergreifende .zuruecksetzen-Knopf unten, weil er in den engen
+           Dropdown-Rahmen (siehe .filter-optionen) passen muss. */
+        .filter-optionen .filter-zuruecksetzen {
+            color: #555; text-decoration: none; font-size: 0.85em;
+            align-self: flex-start; margin: 0.1rem 0 0.2rem;
+        }
+        .filter-optionen .filter-zuruecksetzen:hover { text-decoration: underline; }
         .filter-checkbox { display: flex; align-items: center; gap: 0.4rem; color: #222; }
         /* Textarea auf eine eigene Zeile unter ihrer Beschriftung, statt (als
            Inline-Element im Label) rechts daneben - und breiter als der

@@ -1,5 +1,5 @@
 {% extends "basis.html" %}
-{% macro filter_dropdown(feldname, beschriftung, optionen, ausgewaehlt) %}
+{% macro filter_dropdown(feldname, beschriftung, optionen, ausgewaehlt, standardwert) %}
 <div class="filter-spalte">
     <span class="filter-beschriftung">{{ beschriftung }}</span>
     <details class="filter-dropdown">
@@ -13,10 +13,86 @@
                     name="{{ feldname }}"
                     value="{{ option }}"
                     form="schulungen-form"
+                    data-standard="{{ 'true' if option == standardwert else 'false' }}"
                     {{ "checked" if option in ausgewaehlt }}
                 >
                 {{ option }}
             </label>
+            {% endfor %}
+        </div>
+    </details>
+</div>
+{% endmacro %}
+{% macro jahr_dropdown(optionen, ausgewaehlt) %}
+{%- set alle_ausgewaehlt = optionen[0] in ausgewaehlt -%}
+<div class="filter-spalte">
+    <span class="filter-beschriftung">Jahre</span>
+    <details class="filter-dropdown">
+        <summary title="{{ ausgewaehlt | join(', ') }}">{{ ausgewaehlt | join(", ") if ausgewaehlt else "–" }}</summary>
+        <div class="filter-optionen">
+            <input type="hidden" name="jahr_filter" value="__keine_auswahl__" form="schulungen-form">
+            {% for option in optionen %}
+            <label>
+                <input
+                    type="checkbox"
+                    name="jahr_filter"
+                    value="{{ option }}"
+                    form="schulungen-form"
+                    class="{{ 'jahr-filter-alle' if loop.first else 'jahr-filter-einzeln' }}"
+                    onclick="{{ 'jahrFilterAlleUmschalten(this)' if loop.first else 'jahrFilterEinzelnUmschalten(this)' }}"
+                    data-standard="true"
+                    {# "Alle Jahre" bedingt die einzelnen Jahre (siehe jahrFilterAlleUmschalten() unten) -
+                       ohne diese Vorauswahl waeren beim ersten Aufklappen alle einzelnen Jahre
+                       abgewaehlt, obwohl "Alle Jahre" selbst angehakt ist. #}
+                    {{ "checked" if option in ausgewaehlt or (not loop.first and alle_ausgewaehlt) }}
+                >
+                {{ option }}
+            </label>
+            {% endfor %}
+        </div>
+    </details>
+</div>
+{% endmacro %}
+{% macro schulung_dropdown(alle_schulungen, gruppen, ausgewaehlt) %}
+<div class="filter-spalte">
+    <span class="filter-beschriftung">Schulungen</span>
+    <details class="filter-dropdown">
+        <summary title="{{ ausgewaehlt | join(', ') }}">{{ ausgewaehlt | join(", ") if ausgewaehlt else "–" }}</summary>
+        <div class="filter-optionen">
+            <input type="hidden" name="schulung_filter" value="__keine_auswahl__" form="schulungen-form">
+            <label>
+                <input
+                    type="checkbox"
+                    name="schulung_filter"
+                    value="{{ alle_schulungen }}"
+                    form="schulungen-form"
+                    id="schulung-filter-alle"
+                    data-standard="true"
+                    {{ "checked" if alle_schulungen in ausgewaehlt }}
+                >
+                {{ alle_schulungen }}
+            </label>
+            <button
+                type="button"
+                class="filter-zuruecksetzen"
+                onclick="schulungFilterZuruecksetzen(this)"
+                title="Hakt nur die Kontrollkästchen unten wieder ab und waehlt „{{ alle_schulungen }}“ - erst „Anwenden“ wendet das an"
+            >Auswahl zurücksetzen</button>
+            {% for kategorie, namen in gruppen %}
+            <span class="filter-untergruppe">{{ kategorie }}</span>
+            {% for name in namen %}
+            <label>
+                <input
+                    type="checkbox"
+                    name="schulung_filter"
+                    value="{{ name }}"
+                    form="schulungen-form"
+                    data-standard="false"
+                    {{ "checked" if name in ausgewaehlt }}
+                >
+                {{ name }}
+            </label>
+            {% endfor %}
             {% endfor %}
         </div>
     </details>
@@ -39,15 +115,16 @@
         <span class="kategorie-pfeil-platzhalter"></span>{{ zeile.name }}
         {%- endif %}</td>
     {% for wert in zeile.werte %}
-    <td>{{ wert if wert else "" }}</td>
+    {%- set noch_offen = zeile.zukuenftige_monate[loop.index0] %}
+    <td{% if noch_offen %} class="zelle-zukunft" title="Schulungstermin noch nicht abgeschlossen – kann noch Anmeldungen bekommen"{% endif %}>{{ wert if wert else "" }}</td>
     {% endfor %}
     <td>{{ zeile.summe if zeile.summe else "" }}</td>
 </tr>
 {% endmacro %}
 {% block inhalt %}
-<form method="get" class="parameter" id="schulungen-form">
+<form method="get" class="parameter" id="schulungen-form" onsubmit="schulungenFormBereinigen()">
     <label>Anmeldungen ab Jahr
-        <select name="ab_jahr" onchange="this.form.submit()">
+        <select name="ab_jahr" onchange="this.form.requestSubmit()">
             {% for jahr in ab_jahr_optionen %}
             <option value="{{ jahr }}" {{ "selected" if jahr == ab_jahr }}>{{ jahr }}</option>
             {% endfor %}
@@ -57,10 +134,16 @@
 <details class="regler-abschnitt" {{ "open" if filter_abweichend }}>
     <summary>Filter für Schulungen</summary>
     <div class="filter-spalten">
-        {{ filter_dropdown("kategorie_filter", "Kategorie", kategorie_optionen, kategorie_filter) }}
-        {{ filter_dropdown("schulung_filter", "Schulungen", schulung_optionen, schulung_filter) }}
-        {{ filter_dropdown("format_filter", "Format", format_optionen, format_filter) }}
-        {{ filter_dropdown("dauer_filter", "Dauer", dauer_optionen, dauer_filter) }}
+        {% if zeige_ansicht_umschalter %}
+        <div class="filter-spalte">
+            <span class="filter-beschriftung">Ansicht</span>
+            <select name="ansicht" form="schulungen-form" onchange="this.form.requestSubmit()">
+                {% for wert in ansicht_optionen %}
+                <option value="{{ wert }}" {{ "selected" if wert == ansicht }}>{{ ansicht_beschriftungen[wert] }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        {% endif %}
         <div class="filter-spalte">
             <span class="filter-beschriftung">Trendlinien</span>
             <label class="filter-checkbox">
@@ -70,11 +153,20 @@
                     name="trendlinien_werte"
                     value="an"
                     form="schulungen-form"
+                    onchange="this.form.requestSubmit()"
                     {{ "checked" if trendlinien }}
                 >
                 anzeigen
             </label>
         </div>
+    </div>
+    <div class="filter-spalten regler-trenner">
+        {% if zeige_jahr_filter %}
+        {{ jahr_dropdown(jahr_optionen, jahr_filter) }}
+        {% endif %}
+        {{ schulung_dropdown(schulung_alle_schulungen, schulung_gruppen, schulung_filter) }}
+        {{ filter_dropdown("format_filter", "Format", format_optionen, format_filter, format_optionen[0]) }}
+        {{ filter_dropdown("dauer_filter", "Dauer", dauer_optionen, dauer_filter, dauer_optionen[0]) }}
     </div>
     <div class="regler-aktionen">
         <button type="submit" form="schulungen-form">Anwenden</button>
@@ -85,7 +177,7 @@
 <details>
     <summary>Schulungsdetails</summary>
     <div class="tabelle-wrapper tabelle-fixierte-kopfzeile">
-    <table class="tabelle spaltenraster spalte-zusammenfassung">
+    <table class="tabelle spaltenraster spalte-zusammenfassung quartalsraster tabelle-fixierte-erste-spalte">
         <thead>
             <tr>
                 <th scope="col"><span class="kategorie-pfeil-platzhalter"></span>Kategorie</th>
@@ -134,6 +226,75 @@
             }
             naechste = naechste.nextElementSibling;
         }
+    }
+
+    // Hakt im Schulungen-Dropdown alle Kontrollkaestchen bis auf "Alle Schulungen"
+    // wieder ab, rein im Browser ohne Formular-Absenden - erst der "Anwenden"-Knopf
+    // wendet das (wie jede andere Aenderung an den Kontrollkaestchen) tatsaechlich an.
+    function schulungFilterZuruecksetzen(knopf) {
+        var optionen = knopf.closest(".filter-optionen");
+        optionen.querySelectorAll('input[type="checkbox"][name="schulung_filter"]').forEach(
+            function (kontrollkaestchen) {
+                kontrollkaestchen.checked = kontrollkaestchen.id === "schulung-filter-alle";
+            },
+        );
+    }
+
+    // "Alle Jahre" und die einzelnen Jahre schliessen sich gegenseitig nicht aus,
+    // sondern bedingen sich: "Alle Jahre" an-/abwaehlen setzt alle einzelnen Jahre auf
+    // denselben Zustand; ein einzelnes Jahr an-/abwaehlen setzt "Alle Jahre" nur dann
+    // an, wenn danach wirklich jedes einzelne Jahr angehakt ist - beides rein im
+    // Browser, ohne Formular-Absenden (wie schulungFilterZuruecksetzen() oben).
+    function jahrFilterAlleUmschalten(knopf) {
+        var optionen = knopf.closest(".filter-optionen");
+        optionen.querySelectorAll(".jahr-filter-einzeln").forEach(function (kontrollkaestchen) {
+            kontrollkaestchen.checked = knopf.checked;
+        });
+    }
+
+    function jahrFilterEinzelnUmschalten(knopf) {
+        var optionen = knopf.closest(".filter-optionen");
+        var alle = optionen.querySelector(".jahr-filter-alle");
+        var einzelne = optionen.querySelectorAll(".jahr-filter-einzeln");
+        alle.checked = Array.prototype.every.call(einzelne, function (kontrollkaestchen) {
+            return kontrollkaestchen.checked;
+        });
+    }
+
+    // Vor dem Absenden je Mehrfachauswahl-Filter (Jahre/Schulungen/Format/Dauer)
+    // pruefen, ob der aktuelle Zustand exakt dem Standard entspricht (siehe
+    // data-standard-Attribut je Kontrollkaestchen in den obigen Makros - "true" markiert
+    // die Kontrollkaestchen, die im Standardzustand angehakt sein sollen, "false" die
+    // uebrigen). Trifft das zu, werden alle Kontrollkaestchen dieses Filters (inklusive
+    // seines versteckten Sentinel-Begleitfelds, siehe KEINE_AUSWAHL in app.py) vor dem
+    // Absenden deaktiviert - ein deaktiviertes Feld wird nicht mitgesendet, FastAPI
+    // faellt dann von selbst auf denselben Standardwert zurueck. Ohne das wuerde jede
+    // Anfrage unveraendert saemtliche Standard-Kontrollkaestchen als Query-Parameter
+    // mitschleppen (inklusive "__keine_auswahl__"), auch wenn der Filter gar nicht
+    // angeruehrt wurde - bei "Jahre" zusaetzlich jedes einzelne Jahr, weil "Alle Jahre"
+    // sie alle mit anhakt (siehe jahrFilterAlleUmschalten() oben).
+    function schulungenFormBereinigen() {
+        var namen = new Set();
+        document.querySelectorAll('.filter-optionen input[type="checkbox"]').forEach(
+            function (kontrollkaestchen) {
+                namen.add(kontrollkaestchen.name);
+            },
+        );
+        namen.forEach(function (name) {
+            var kontrollkaestchen = document.querySelectorAll(
+                '.filter-optionen input[type="checkbox"][name="' + name + '"]',
+            );
+            var istStandard = Array.prototype.every.call(kontrollkaestchen, function (kb) {
+                return kb.checked === (kb.dataset.standard === "true");
+            });
+            if (istStandard) {
+                document.querySelectorAll('input[name="' + name + '"]').forEach(
+                    function (feld) {
+                        feld.disabled = true;
+                    },
+                );
+            }
+        });
     }
 </script>
 {% endblock %}

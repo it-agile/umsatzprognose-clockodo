@@ -1530,6 +1530,7 @@ def anmeldungsverlauf_reihen(
     monate: Sequence[Monat],
     *,
     mit_trend: bool = False,
+    laufender_monat: Monat | None = None,
     hoehe: int = 420,
 ) -> go.Figure:
     """Wie :func:`anmeldungsverlauf`, aber mit einer waehlbaren Anzahl benannter,
@@ -1550,6 +1551,17 @@ def anmeldungsverlauf_reihen(
     ``mit_trend`` ergaenzt je Reihe eine gestrichelte lineare Trendlinie
     (:func:`_linearer_trend`) in derselben Farbe, ohne eigenen Legendeneintrag -
     zusammen mit der Datenlinie durch dieselbe ``legendgroup`` verbunden.
+
+    ``laufender_monat`` hebt Monate ab (einschliesslich) dem aktuellen Kalendermonat
+    als noch nicht abgeschlossen ab: anders als bereits vergangene Schulungen koennen
+    diese noch neue Anmeldungen bekommen (``ab_jahr()`` laedt anders als
+    :meth:`~umsatzprognose.domaene.anmeldung.Anmeldungsverlauf.letzte` auch bereits
+    terminierte kuenftige Schulungen). Gezeichnet als gedaempfter Abschnitt
+    (:data:`~umsatzprognose.darstellung.gestaltung.PROGNOSE_DECKKRAFT`) mit
+    gepunkteter statt gestrichelter Linie - bewusst eine andere Strichart als die
+    Trendlinie, damit beide Abhebungen auseinanderzuhalten bleiben. Ohne Angabe (z. B.
+    kein Monat im angezeigten Zeitraum erreicht/ueberschreitet den aktuellen Monat)
+    bleibt die gesamte Linie durchgezogen.
     """
     fig = figur(
         "Anmeldungen je Monat",
@@ -1565,6 +1577,11 @@ def anmeldungsverlauf_reihen(
         return fig
 
     beschriftungen = [f"{MONATSNAMEN[monat - 1]} {jahr}" for jahr, monat in monate]
+    grenze = (
+        next((i for i, monat in enumerate(monate) if monat >= laufender_monat), len(monate))
+        if laufender_monat is not None
+        else len(monate)
+    )
     farbenindex = 0
     for name, je_monat in reihen.items():
         if name == "Alle Schulungen":
@@ -1573,15 +1590,29 @@ def anmeldungsverlauf_reihen(
             farbe = JAHRESFARBEN[farbenindex % len(JAHRESFARBEN)]
             farbenindex += 1
         werte = [je_monat.get(monat, 0) for monat in monate]
-        fig.add_scatter(
-            x=beschriftungen,
-            y=werte,
-            mode="lines+markers",
-            name=name,
-            legendgroup=name,
-            line={"color": farbe, "width": 2},
-            marker={"size": 6, "color": farbe},
-        )
+        if grenze > 0:
+            fig.add_scatter(
+                x=beschriftungen[:grenze],
+                y=werte[:grenze],
+                mode="lines+markers",
+                name=name,
+                legendgroup=name,
+                line={"color": farbe, "width": 2},
+                marker={"size": 6, "color": farbe},
+            )
+        if grenze < len(beschriftungen):
+            start = max(grenze - 1, 0)
+            fig.add_scatter(
+                x=beschriftungen[start:],
+                y=werte[start:],
+                mode="lines+markers",
+                name=name,
+                legendgroup=name,
+                showlegend=grenze == 0,
+                opacity=PROGNOSE_DECKKRAFT,
+                line={"color": farbe, "width": 2, "dash": "dot"},
+                marker={"size": 6, "color": farbe, "opacity": PROGNOSE_DECKKRAFT},
+            )
         if mit_trend:
             fig.add_scatter(
                 x=beschriftungen,
@@ -1597,6 +1628,117 @@ def anmeldungsverlauf_reihen(
     achsen(fig)
     fig.update_yaxes(rangemode="tozero")
     _tickangle_setzen(fig)
+    return fig
+
+
+# Strichart je Reihe im Jahresvergleich (siehe anmeldungsverlauf_jahresvergleich) -
+# die Farbe traegt dort das Jahr, eine zweite Reihe (aus Schulungen-/Format-/
+# Dauer-Filter) braucht deshalb eine andere Unterscheidung als Farbe. Im
+# Regelfall genau eine Reihe (kein Filter aktiv) - dann bleibt jede Jahreslinie
+# durchgezogen (erster Eintrag ``None``), die weiteren Facetten dienen nur dem
+# selteneren Fall mehrerer gleichzeitig gewaehlter Reihen.
+_JAHRESVERGLEICH_STRICHARTEN = (None, "dash", "dot", "dashdot", "longdash", "longdashdot")
+
+
+def anmeldungsverlauf_jahresvergleich(
+    reihen: Mapping[str, Mapping[Monat, int]],
+    jahre: Sequence[int],
+    *,
+    mit_trend: bool = False,
+    laufender_monat: Monat | None = None,
+    hoehe: int = 420,
+) -> go.Figure:
+    """Wie :func:`anmeldungsverlauf_reihen`, aber als Jahresvergleich auf einer
+    gemeinsamen Januar-Dezember-Monatsachse statt eines durchgehenden Zeitraums -
+    dieselbe Darstellung wie beim Kalenderjahresvergleich des Umsatzes (siehe
+    :func:`gewinn_verlust_je_jahr`), hier fuer den Anmeldungsverlauf der Webapp
+    (``webapp/templates/schulungen.html``, umschaltbar gegen
+    :func:`anmeldungsverlauf_reihen`, wenn mehrere Jahre geladen sind).
+
+    Anders als dort traegt die Farbe hier nicht die Reihe (Schulungen-/Format-/
+    Dauer-Auswahl), sondern das Jahr (:data:`~umsatzprognose.darstellung.gestaltung.
+    JAHRESFARBEN`) - stimmt so mit der Jahresfarbgebung ueberall sonst in der App
+    ueberein. Bei genau einer Reihe (der Regelfall: kein Schulungen-/Format-/Dauer-
+    Filter aktiv) traegt die Legende deshalb nur das Jahr; bei mehrereren Reihen
+    zusaetzlich deren Namen, unterschieden per Strichart
+    (:data:`_JAHRESVERGLEICH_STRICHARTEN`) statt Farbe.
+
+    ``laufender_monat`` hebt wie dort noch nicht abgeschlossene Monate gepunktet und
+    gedaempft ab - bezogen auf das jeweilige Kalenderjahr der Linie, nicht auf eine
+    fortlaufende Position: ein bereits vergangenes Jahr bleibt deshalb durchgehend
+    durchgezogen, auch wenn im Diagramm ein noch laufendes Jahr danebensteht.
+
+    ``mit_trend`` ergaenzt wie dort je Linie (hier: je Reihe **und** Jahr) eine
+    gestrichelte lineare Trendlinie (:func:`_linearer_trend`) ueber deren zwoelf
+    Monatswerte, in derselben Farbe, ohne eigenen Legendeneintrag.
+    """
+    fig = figur(
+        "Anmeldungen je Monat",
+        untertitel="Teilnehmerzahl öffentlicher Schulungen, Jahresvergleich",
+        hoehe=hoehe,
+    )
+    if not jahre or not reihen:
+        fig.add_annotation(
+            text="Keine Anmeldedaten für den gewählten Zeitraum/die gewählte Auswahl.",
+            showarrow=False,
+            font={"color": TINTE_ZWEITRANGIG, "size": 13},
+        )
+        return fig
+
+    jahre_sortiert = sorted(jahre)
+    mehrere_reihen = len(reihen) > 1
+    for reihen_index, (name, je_monat) in enumerate(reihen.items()):
+        dash = _JAHRESVERGLEICH_STRICHARTEN[reihen_index % len(_JAHRESVERGLEICH_STRICHARTEN)]
+        for jahr_index, jahr in enumerate(jahre_sortiert):
+            farbe = JAHRESFARBEN[jahr_index % len(JAHRESFARBEN)]
+            werte = [je_monat.get((jahr, monatsnummer), 0) for monatsnummer in range(1, 13)]
+            legendenname = f"{name} {jahr}" if mehrere_reihen else str(jahr)
+            grenze = (
+                next(
+                    (i for i in range(12) if (jahr, i + 1) >= laufender_monat),
+                    12,
+                )
+                if laufender_monat is not None
+                else 12
+            )
+            if grenze > 0:
+                fig.add_scatter(
+                    x=MONATSNAMEN[:grenze],
+                    y=werte[:grenze],
+                    mode="lines+markers",
+                    name=legendenname,
+                    legendgroup=legendenname,
+                    line={"color": farbe, "width": 2, "dash": dash},
+                    marker={"size": 6, "color": farbe},
+                )
+            if grenze < 12:
+                start = max(grenze - 1, 0)
+                fig.add_scatter(
+                    x=MONATSNAMEN[start:],
+                    y=werte[start:],
+                    mode="lines+markers",
+                    name=legendenname,
+                    legendgroup=legendenname,
+                    showlegend=grenze == 0,
+                    opacity=PROGNOSE_DECKKRAFT,
+                    line={"color": farbe, "width": 2, "dash": dash},
+                    marker={"size": 6, "color": farbe, "opacity": PROGNOSE_DECKKRAFT},
+                )
+            if mit_trend:
+                fig.add_scatter(
+                    x=MONATSNAMEN,
+                    y=_linearer_trend([float(w) for w in werte]),
+                    mode="lines",
+                    name=f"{legendenname} (Trend)",
+                    legendgroup=legendenname,
+                    showlegend=False,
+                    line={"color": farbe, "width": 2, "dash": "dash"},
+                )
+
+    _horizontale_legende(fig)
+    achsen(fig)
+    fig.update_yaxes(rangemode="tozero")
+    _tickangle_setzen(fig, categoryorder="array", categoryarray=list(MONATSNAMEN))
     return fig
 
 

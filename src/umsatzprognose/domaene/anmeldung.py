@@ -45,7 +45,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterable, Mapping, Sequence
+    from collections.abc import Callable, Collection, Iterable, Mapping, Sequence
     from datetime import date
 
     from umsatzprognose.util import Monat
@@ -166,6 +166,28 @@ def _alphabetisch_mit_anmeldungen(
     return sorted(mit_anmeldungen, key=lambda kv: kv[0].lower())
 
 
+def _nach_juengstem_jahr_und_name_mit_anmeldungen(
+    gruppen: dict[str, list[Anmeldung]],
+) -> list[tuple[str, list[Anmeldung]]]:
+    """Wie :func:`_alphabetisch_mit_anmeldungen` (dieselbe Ausblendung leerer Gruppen),
+    aber primaer nach dem juengsten vorkommenden Jahr sortiert (absteigend), erst
+    danach alphabetisch - fuer die direkten Basisname-Kinder einer Kategorie im
+    Tabellen-Drilldown (siehe :meth:`Anmeldungsverlauf.gliederung_je_kategorie`): eine
+    Schulung, die nur in einem laengst vergangenen Jahr stattfand, taucht dort
+    unterhalb aller Schulungen des juengsten vorkommenden Jahres auf, statt sich rein
+    alphabetisch dazwischenzumischen. Eine Schulung mit Anmeldungen in mehreren Jahren
+    zaehlt dabei zu ihrem juengsten Jahr."""
+    mit_anmeldungen = [
+        (name, gruppe)
+        for name, gruppe in gruppen.items()
+        if sum(a.teilnehmerzahl for a in gruppe) > 0
+    ]
+    return sorted(
+        mit_anmeldungen,
+        key=lambda kv: (-max(a.jahr for a in kv[1]), kv[0].lower()),
+    )
+
+
 def _mit_dauer_kindern(name: str, zeilen: Sequence[Anmeldung]) -> Anmeldungsknoten:
     """Ein Knoten mit Dauer-Kindern, falls ``zeilen`` mehr als eine (tatsaechlich
     besetzte) Dauer-Auspraegung zeigt, sonst ein Blatt ohne Kinder - die Dauer-Ebene
@@ -270,13 +292,19 @@ class Anmeldungsverlauf:
         nicht erst als eigene Zeile auf (siehe :func:`_alphabetisch_mit_anmeldungen`)
         - anders als bei einer Kategorie ist das hier reine Anzeige-Deko ohne den
         Zweck, auf eine moeglicherweise veraltete Konfiguration hinzuweisen.
-        Basisname-, Format- und Dauer-Knoten sind alphabetisch sortiert (anders als
+        Die direkten Basisname-Kinder einer Kategorie sind primaer nach ihrem
+        juengsten vorkommenden Jahr sortiert (absteigend), erst dann alphabetisch
+        (siehe :func:`_nach_juengstem_jahr_und_name_mit_anmeldungen`) - eine Schulung,
+        die nur in einem laengst vergangenen Jahr stattfand, taucht so unterhalb aller
+        Schulungen des juengsten Jahres auf, statt sich rein alphabetisch
+        dazwischenzumischen. Format- und Dauer-Knoten darunter bleiben dagegen rein
+        alphabetisch sortiert (:func:`_alphabetisch_mit_anmeldungen`, anders als
         :attr:`schulungstypen`/:attr:`formate`/:attr:`dauern` nach absteigender
         Gesamtteilnehmerzahl) - im Tabellen-Drilldown soll man einen bekannten Namen
-        alphabetisch wiederfinden, nicht nach Anmeldezahl suchen muessen; eine
-        Kategorie ohne Anmeldung in diesem Zeitraum liefert dagegen weiterhin eine
-        leere Tupel statt zu fehlen (derselbe Auffangmechanismus wie bei
-        :meth:`je_monat_und_kategorie`).
+        dort weiterhin alphabetisch wiederfinden, nicht nach Anmeldezahl suchen
+        muessen; eine Kategorie ohne Anmeldung in diesem Zeitraum liefert dagegen
+        weiterhin eine leere Tupel statt zu fehlen (derselbe Auffangmechanismus wie
+        bei :meth:`je_monat_und_kategorie`).
         """
         zuordnung = _kategorie_zuordnung(kategorien)
         je_kategorie: dict[str, list[Anmeldung]] = {
@@ -290,7 +318,7 @@ class Anmeldungsverlauf:
             je_basisname = _gruppieren(zeilen, lambda a: _basisname_und_dauer(a.schulungstyp)[0])
             ergebnis[kategorie] = tuple(
                 _basisname_knoten(basisname, gruppe)
-                for basisname, gruppe in _alphabetisch_mit_anmeldungen(je_basisname)
+                for basisname, gruppe in _nach_juengstem_jahr_und_name_mit_anmeldungen(je_basisname)
             )
         return ergebnis
 
@@ -479,4 +507,16 @@ class Anmeldungsverlauf:
         :class:`~umsatzprognose.webapp.cache.AnmeldungsverlaufCache`).
         """
         gefiltert = tuple(a for a in self.anmeldungen if a.jahr >= jahr)
+        return type(self)(anmeldungen=gefiltert, abbildungshinweise=self.abbildungshinweise)
+
+    def nur_jahre(self, jahre: Collection[int]) -> Anmeldungsverlauf:
+        """Nur die Anmeldungen genau eines der angegebenen Jahre.
+
+        Anders als :meth:`ab_jahr` kein zusammenhaengender Beginn, sondern eine
+        beliebige Teilmenge einzelner Kalenderjahre - Grundlage fuer die Jahres-Auswahl
+        des Anmeldungsverlauf-Diagramms der Webapp (siehe ``webapp/app.py``), die im
+        Gegensatz zu ``ab_jahr`` nur das Diagramm, nicht die Schulungsdetails-Tabelle
+        einschraenkt.
+        """
+        gefiltert = tuple(a for a in self.anmeldungen if a.jahr in jahre)
         return type(self)(anmeldungen=gefiltert, abbildungshinweise=self.abbildungshinweise)

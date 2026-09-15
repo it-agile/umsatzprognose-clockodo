@@ -64,6 +64,7 @@ from umsatzprognose.domaene import (
     Wochenarbeitszeit,
 )
 from umsatzprognose.domaene.projekt import OHNE_BUDGET
+from umsatzprognose.domaene.umsatzhistorie import MONATSNAMEN
 from umsatzprognose.domaene.zahlen import STUNDEN_JE_TAG, euro
 from umsatzprognose.kosten import KostenRepository
 from umsatzprognose.schulungen import SchulungenRepository
@@ -273,6 +274,125 @@ def test_anmeldungsverlauf_reihen_ohne_auswahl_zeigt_hinweis():
     fig = diagramme.anmeldungsverlauf_reihen({}, ((2026, 9),))
     assert fig.data == ()
     assert "gewählte Auswahl" in fig.layout.annotations[0].text
+
+
+def test_anmeldungsverlauf_reihen_hebt_noch_offene_monate_gepunktet_und_gedaempft_ab():
+    monate = ((2026, 7), (2026, 8), (2026, 9), (2026, 10))
+    reihen = {"Scrum": {(2026, 7): 3, (2026, 8): 4, (2026, 9): 5, (2026, 10): 6}}
+    fig = diagramme.anmeldungsverlauf_reihen(reihen, monate, laufender_monat=(2026, 9))
+
+    vergangenheit = next(s for s in fig.data if s.line.dash is None)
+    zukunft = next(s for s in fig.data if s.line.dash == "dot")
+
+    # Der noch offene Abschnitt beginnt am letzten vergangenen Punkt, damit die Linie
+    # ohne Bruch weiterlaeuft (dieselbe Ueberlappung wie bei den Umsatzdiagrammen).
+    assert list(vergangenheit.x) == ["Jul 2026", "Aug 2026"]
+    assert list(zukunft.x) == ["Aug 2026", "Sep 2026", "Okt 2026"]
+    assert zukunft.opacity == PROGNOSE_DECKKRAFT
+    assert zukunft.marker.opacity == PROGNOSE_DECKKRAFT
+    assert zukunft.showlegend is False
+    assert vergangenheit.showlegend is not False
+
+
+def test_anmeldungsverlauf_reihen_ganz_in_der_zukunft_zeigt_nur_gepunktete_spur():
+    monate = ((2026, 10), (2026, 11))
+    reihen = {"Scrum": {(2026, 10): 1, (2026, 11): 2}}
+    fig = diagramme.anmeldungsverlauf_reihen(reihen, monate, laufender_monat=(2026, 9))
+
+    assert len(fig.data) == 1
+    assert fig.data[0].line.dash == "dot"
+    assert fig.data[0].showlegend is not False
+
+
+def test_anmeldungsverlauf_reihen_ganz_in_der_vergangenheit_bleibt_durchgezogen():
+    monate = ((2026, 6), (2026, 7))
+    reihen = {"Scrum": {(2026, 6): 1, (2026, 7): 2}}
+    fig = diagramme.anmeldungsverlauf_reihen(reihen, monate, laufender_monat=(2026, 9))
+
+    assert len(fig.data) == 1
+    assert fig.data[0].line.dash is None
+
+
+def test_anmeldungsverlauf_jahresvergleich_faerbt_je_jahr_bei_einer_reihe():
+    reihen = {"Alle Schulungen": {(2025, 3): 3, (2026, 3): 5}}
+    fig = diagramme.anmeldungsverlauf_jahresvergleich(reihen, (2025, 2026))
+
+    namen = {spur.name for spur in fig.data}
+    assert namen == {"2025", "2026"}
+
+    linie_2025 = next(s for s in fig.data if s.name == "2025")
+    linie_2026 = next(s for s in fig.data if s.name == "2026")
+    assert list(linie_2025.x) == list(MONATSNAMEN)
+    assert linie_2025.y[2] == 3
+    assert linie_2026.y[2] == 5
+    assert linie_2025.line.color == JAHRESFARBEN[0]
+    assert linie_2026.line.color == JAHRESFARBEN[1]
+    assert linie_2025.line.dash is None
+    assert linie_2026.line.dash is None
+
+
+def test_anmeldungsverlauf_jahresvergleich_unterscheidet_reihen_per_strichart():
+    reihen = {
+        "CSPO": {(2025, 3): 3, (2026, 3): 5},
+        "CSM": {(2025, 3): 1, (2026, 3): 2},
+    }
+    fig = diagramme.anmeldungsverlauf_jahresvergleich(reihen, (2025, 2026))
+
+    cspo_2025 = next(s for s in fig.data if s.name == "CSPO 2025")
+    csm_2025 = next(s for s in fig.data if s.name == "CSM 2025")
+    cspo_2026 = next(s for s in fig.data if s.name == "CSPO 2026")
+    csm_2026 = next(s for s in fig.data if s.name == "CSM 2026")
+
+    # Farbe traegt das Jahr, Strichart die Reihe - beide Achsen unabhaengig lesbar.
+    assert cspo_2025.line.color == csm_2025.line.color == JAHRESFARBEN[0]
+    assert cspo_2026.line.color == csm_2026.line.color == JAHRESFARBEN[1]
+    assert cspo_2025.line.dash != csm_2025.line.dash
+
+
+def test_anmeldungsverlauf_jahresvergleich_hebt_noch_offenes_jahr_ab():
+    reihen = {"Alle Schulungen": {(2025, 8): 1, (2026, 8): 2}}
+    fig = diagramme.anmeldungsverlauf_jahresvergleich(
+        reihen, (2025, 2026), laufender_monat=(2026, 9)
+    )
+
+    # 2025 liegt komplett in der Vergangenheit - eine einzelne, durchgezogene Spur.
+    linien_2025 = [s for s in fig.data if s.name == "2025"]
+    assert len(linien_2025) == 1
+    assert linien_2025[0].line.dash is None
+
+    # 2026 laeuft noch - ab September ein zweiter, gedaempfter Abschnitt. Die Strichart
+    # bleibt dieselbe wie beim vergangenen Abschnitt (sie traegt hier die Reihe, nicht
+    # den zukuenftig/vergangen-Unterschied) - nur die Deckkraft markiert ihn.
+    linien_2026 = [s for s in fig.data if s.name == "2026"]
+    assert len(linien_2026) == 2
+    zukunft_2026 = next(s for s in linien_2026 if s.opacity == PROGNOSE_DECKKRAFT)
+    assert zukunft_2026.line.dash is None
+    assert next(iter(zukunft_2026.x)) == "Aug"
+
+
+def test_anmeldungsverlauf_jahresvergleich_ohne_daten_zeigt_hinweis():
+    fig = diagramme.anmeldungsverlauf_jahresvergleich({}, (2026,))
+    assert fig.data == ()
+    assert "gewählte Auswahl" in fig.layout.annotations[0].text
+
+
+def test_anmeldungsverlauf_jahresvergleich_mit_trend_ergaenzt_spur_je_jahr():
+    reihen = {"Alle Schulungen": {(2025, 3): 3, (2026, 3): 5, (2026, 6): 7}}
+    fig = diagramme.anmeldungsverlauf_jahresvergleich(reihen, (2025, 2026), mit_trend=True)
+
+    trend_2025 = next(s for s in fig.data if s.name == "2025 (Trend)")
+    trend_2026 = next(s for s in fig.data if s.name == "2026 (Trend)")
+    assert trend_2025.line.dash == "dash"
+    assert trend_2025.line.color == JAHRESFARBEN[0]
+    assert trend_2026.line.color == JAHRESFARBEN[1]
+    assert trend_2025.showlegend is False
+    assert list(trend_2025.x) == list(MONATSNAMEN)
+
+
+def test_anmeldungsverlauf_jahresvergleich_ohne_trend_zeigt_keine_trendspuren():
+    reihen = {"Alle Schulungen": {(2026, 3): 5}}
+    fig = diagramme.anmeldungsverlauf_jahresvergleich(reihen, (2026,))
+    assert not any("Trend" in (spur.name or "") for spur in fig.data)
 
 
 def _kurzarbeit_ergebnisse() -> dict[tuple[int, int], Kurzarbeitsbewertung]:
