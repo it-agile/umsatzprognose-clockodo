@@ -54,6 +54,13 @@
             z-index: 2; background: #fff;
         }
         .tabelle-kopfzeile-klon table { margin: 0; table-layout: fixed; }
+        /* Per JavaScript gesetzte th-Breiten stammen aus getBoundingClientRect() der
+           echten Kopfzeile (Rahmenkasten inklusive Padding/Rahmen) - ohne
+           border-box wertet der Browser dieselbe Zahl als reine Inhaltsbreite und
+           rechnet Padding/Rahmen oben drauf, wodurch die Spalten der Kopie in Summe
+           breiter als die echte Tabelle werden und (bei table-layout: fixed auf die
+           verfuegbare Breite gestaucht) gegenueber den Werten darunter verrutschen. */
+        .tabelle-kopfzeile-klon th { box-sizing: border-box; }
         .parameter { margin-bottom: 1rem; }
         .parameter label { margin-right: 1.5rem; color: #555; }
         .parameter output { display: inline-block; min-width: 3.5em; }
