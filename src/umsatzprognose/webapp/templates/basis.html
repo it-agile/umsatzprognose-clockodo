@@ -38,6 +38,22 @@
         /* Umhuellt jede eingebettete pandas-Tabelle - scrollt bei schmalem Viewport
            nur die Tabelle selbst horizontal, statt die ganze Seite zu sprengen. */
         .tabelle-wrapper { overflow-x: auto; }
+        /* Schwebende Kopie der Kopfzeile des Kategorie-Drilldowns auf /schulungen -
+           eingeblendet per JavaScript (siehe schulungen.html), sobald die echte
+           Kopfzeile beim Seiten-Scroll ueber den oberen Viewport-Rand hinausgelaufen
+           ist. position: sticky direkt auf den th-Elementen der echten Tabelle waere
+           einfacher, zeigt in Chromium aber eine dokumentierte Eigenart: die von der
+           CSS-Spezifikation vorgeschriebene Mal-Reihenfolge von Tabellen-
+           Hintergruenden (Kopf vor Koerper, unabhaengig von position/z-index) laesst
+           bereits durchgescrollte Zeileninhalte sichtbar durch die sticky Kopfzeile
+           schimmern - unabhaengig von Hintergrundfarbe, border-collapse, z-index oder
+           eigener Compositing-Ebene. Eine Kopie ausserhalb der <table> umgeht das
+           vollstaendig, weil sie nicht mehr am Tabellen-Malalgorithmus teilnimmt. */
+        .tabelle-kopfzeile-klon {
+            position: fixed; overflow: hidden; visibility: hidden; pointer-events: none;
+            z-index: 2; background: #fff;
+        }
+        .tabelle-kopfzeile-klon table { margin: 0; table-layout: fixed; }
         .parameter { margin-bottom: 1rem; }
         .parameter label { margin-right: 1.5rem; color: #555; }
         .parameter output { display: inline-block; min-width: 3.5em; }

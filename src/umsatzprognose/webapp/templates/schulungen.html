@@ -61,7 +61,7 @@
 {{ anmeldungsverlauf | safe }}
 <details>
     <summary>Schulungsdetails</summary>
-    <div class="tabelle-wrapper">
+    <div class="tabelle-wrapper tabelle-fixierte-kopfzeile">
     <table class="tabelle spaltenraster spalte-zusammenfassung">
         <thead>
             <tr>
@@ -132,5 +132,62 @@
             naechste = naechste.nextElementSibling;
         }
     }
+
+    // Baut je .tabelle-fixierte-kopfzeile eine schwebende Kopie der Kopfzeile auf
+    // (siehe Begruendung im CSS von basis.html: position: sticky auf den echten
+    // th-Elementen zeigt in Chromium durchscheinende Zeileninhalte). Die Kopie lebt
+    // ausserhalb der <table> in document.body, uebernimmt die Spaltenbreiten der
+    // echten Kopfzeile laufend und wird nur eingeblendet, waehrend die echte
+    // Kopfzeile ueber den oberen Viewport-Rand hinausgescrollt ist.
+    function fixierteKopfzeileEinrichten(wrapper) {
+        var echteTabelle = wrapper.querySelector("table");
+        var thead = echteTabelle.querySelector("thead");
+
+        var huelle = document.createElement("div");
+        huelle.className = "tabelle-kopfzeile-klon";
+        huelle.setAttribute("aria-hidden", "true");
+        var klonTabelle = document.createElement("table");
+        klonTabelle.className = echteTabelle.className;
+        klonTabelle.appendChild(thead.cloneNode(true));
+        huelle.appendChild(klonTabelle);
+        document.body.appendChild(huelle);
+
+        var aktualisierungGeplant = false;
+        function aktualisieren() {
+            aktualisierungGeplant = false;
+            var wrapperRect = wrapper.getBoundingClientRect();
+            var kopfHoehe = thead.getBoundingClientRect().height;
+            if (wrapperRect.top >= 0 || wrapperRect.bottom <= kopfHoehe) {
+                huelle.style.visibility = "hidden";
+                return;
+            }
+            var echteZellen = thead.querySelectorAll("th");
+            var klonZellen = klonTabelle.querySelectorAll("th");
+            echteZellen.forEach(function (zelle, index) {
+                klonZellen[index].style.width = zelle.getBoundingClientRect().width + "px";
+            });
+            huelle.style.top = "0";
+            huelle.style.left = wrapperRect.left + "px";
+            huelle.style.width = wrapperRect.width + "px";
+            huelle.style.height = kopfHoehe + "px";
+            klonTabelle.style.transform = "translateX(" + -wrapper.scrollLeft + "px)";
+            huelle.style.visibility = "visible";
+        }
+        function anstossen() {
+            if (!aktualisierungGeplant) {
+                aktualisierungGeplant = true;
+                requestAnimationFrame(aktualisieren);
+            }
+        }
+
+        window.addEventListener("scroll", anstossen, { passive: true });
+        window.addEventListener("resize", anstossen);
+        wrapper.addEventListener("scroll", anstossen, { passive: true });
+        // Auf-/Zuklappen von Kategorien aendert die Tabellenhoehe und damit, ob die
+        // Kopie noch sichtbar sein soll (siehe kategorieZeileUmschalten oben).
+        document.addEventListener("click", anstossen);
+        aktualisieren();
+    }
+    document.querySelectorAll(".tabelle-fixierte-kopfzeile").forEach(fixierteKopfzeileEinrichten);
 </script>
 {% endblock %}
