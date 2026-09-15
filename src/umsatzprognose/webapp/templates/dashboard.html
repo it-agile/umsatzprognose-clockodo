@@ -31,7 +31,7 @@
 </form>
 {{ umsatzverlauf | safe }}
 <h2>Monatstabelle</h2>
-<div class="tabelle-wrapper">{{ umsatztabelle | safe }}</div>
+<div class="tabelle-wrapper tabelle-fixierte-kopfzeile">{{ umsatztabelle | safe }}</div>
 
 <h2>Anteil fakturierbarer Arbeit</h2>
 <p>Minimum, Durchschnitt und Maximum je Monat über alle Personen mit gebuchter Zeit
@@ -47,7 +47,7 @@
     Trendlinie anzeigen
 </label>
 {{ anteil_fakturierbarer_arbeit | safe }}
-<div class="tabelle-wrapper">{{ anteil_fakturierbarer_arbeit_tabelle | safe }}</div>
+<div class="tabelle-wrapper tabelle-fixierte-kopfzeile">{{ anteil_fakturierbarer_arbeit_tabelle | safe }}</div>
 
 <h3>Verteilung über Personen-Monate</h3>
 <p>Wie sich die einzelnen Personen-Monate hinter Durchschnitt und Bandbreite oben
@@ -85,5 +85,5 @@
     "Filter zurücksetzen",
     "dashboard-form"
 ) }}
-<div class="tabelle-wrapper">{{ projekte_ohne_budget | safe }}</div>
+<div class="tabelle-wrapper tabelle-fixierte-kopfzeile">{{ projekte_ohne_budget | safe }}</div>
 {% endblock %}
