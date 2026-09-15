@@ -5,6 +5,7 @@
     <details class="filter-dropdown">
         <summary title="{{ ausgewaehlt | join(', ') }}">{{ ausgewaehlt | join(", ") if ausgewaehlt else "–" }}</summary>
         <div class="filter-optionen">
+            <input type="hidden" name="{{ feldname }}" value="__keine_auswahl__" form="schulungen-form">
             {% for option in optionen %}
             <label>
                 <input

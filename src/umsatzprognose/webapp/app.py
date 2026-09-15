@@ -275,6 +275,15 @@ TrendlinienWerte = Annotated[Sequence[str], Query()]
 ALLE_KATEGORIEN = "Alle Kategorien"
 ALLE_SCHULUNGEN = "Alle Schulungen"
 ALLE = "Alle"
+# Verstecktes Begleitfeld je Filter-Dropdown (siehe schulungen.html) - ohne dieses
+# Sentinel-Feld verschwindet ein Mehrfachauswahl-Feld beim Abwaehlen aller
+# Kontrollkaestchen komplett aus dem abgeschickten Formular (anders als beim einzelnen
+# Trendlinien-Kontrollkaestchen gibt es hier kein festes "aus", das dieselbe Rolle
+# uebernehmen koennte), FastAPI faellt dann auf den Query-Default (z. B.
+# ``(ALLE_KATEGORIEN,)``) zurueck - die Auswahl "vergisst" sich selbst und laesst sich
+# nicht auf leer stellen. Das Sentinel-Feld wird in _anmeldungsreihen()/der Route
+# sofort wieder herausgefiltert.
+KEINE_AUSWAHL = "__keine_auswahl__"
 
 # Je Seite die Parameter-Standardwerte (als String, wie sie im Query-String stehen) -
 # _anfrage_query() blendet damit auf ihren Standard stehende Parameter aus
@@ -1235,6 +1244,68 @@ def _knoten_flach(
     return zeilen
 
 
+def _ohne_sentinel(werte: Sequence[str]) -> tuple[str, ...]:
+    """Entfernt :data:`KEINE_AUSWAHL` (siehe dort) aus einer Filter-Auswahl - macht ein
+    vollstaendig abgewaehltes Dropdown von einem unberuehrten (Query-Default) unter-
+    scheidbar."""
+    return tuple(wert for wert in werte if wert != KEINE_AUSWAHL)
+
+
+def _identitaeten(
+    verlauf: Anmeldungsverlauf,
+    kategorie_filter: Sequence[str],
+    schulung_filter: Sequence[str],
+    kategorien: Kategorisierung,
+) -> list[tuple[str, Callable[..., dict[Monat, int]]]]:
+    """Je Auswahl im Kategorie- oder Schulungen-Dropdown eine eigene Identitaet (Name
+    plus an ``verlauf.``:meth:`~Anmeldungsverlauf.je_monat_gefiltert` gebundene
+    Filterkriterien, als ``functools.partial`` statt eines Kwargs-Dict, damit mypy die
+    Schluesselwort-Typen an der Bindungsstelle prueft statt an einem spaeteren
+    ``**kwargs``) - beide Dropdowns beschreiben dieselbe Achse ("was wird gezeigt") auf
+    unterschiedlicher Granularitaet (Kategorie vs. einzelner Basisname), ihre Auswahlen
+    werden deshalb nicht miteinander gekreuzt, sondern nebeneinander gestellt. Alle
+    "Alle"-Varianten (:data:`ALLE_KATEGORIEN`, :data:`ALLE_SCHULUNGEN`) meinen dieselbe
+    Gesamtzahl und fallen dedupliziert zu einer gemeinsamen, ungefilterten Identitaet
+    zusammen, egal in welchem der beiden Dropdowns oder wie oft gewaehlt."""
+    identitaeten: list[tuple[str, Callable[..., dict[Monat, int]]]] = []
+    alle_gesehen = False
+    for name in kategorie_filter:
+        if name == ALLE_KATEGORIEN:
+            if not alle_gesehen:
+                identitaeten.append((ALLE_SCHULUNGEN, verlauf.je_monat_gefiltert))
+                alle_gesehen = True
+            continue
+        identitaeten.append(
+            (name, partial(verlauf.je_monat_gefiltert, kategorie=name, kategorien=kategorien))
+        )
+    for basisname in schulung_filter:
+        if basisname == ALLE_SCHULUNGEN:
+            if not alle_gesehen:
+                identitaeten.append((ALLE_SCHULUNGEN, verlauf.je_monat_gefiltert))
+                alle_gesehen = True
+            continue
+        identitaeten.append((basisname, partial(verlauf.je_monat_gefiltert, basisname=basisname)))
+    return identitaeten
+
+
+def _slice_werte(filter_werte: Sequence[str]) -> list[tuple[str, str | None]]:
+    """Je Auswahl im Format- oder Dauer-Dropdown ein (Label-Bestandteil, Filterwert)-
+    Paar - :data:`ALLE` liefert einen leeren Label-Bestandteil und ``None`` als
+    Filterwert (keine Einschraenkung auf dieser Achse), dedupliziert falls mehrfach
+    gewaehlt. Jede Auswahl kreuzt sich mit jeder Identitaet aus :func:`_identitaeten`
+    und mit jeder Auswahl der jeweils anderen Achse (siehe :func:`_anmeldungsreihen`)."""
+    ergebnis: list[tuple[str, str | None]] = []
+    alle_gesehen = False
+    for wert in filter_werte:
+        if wert == ALLE:
+            if not alle_gesehen:
+                ergebnis.append(("", None))
+                alle_gesehen = True
+            continue
+        ergebnis.append((wert, wert))
+    return ergebnis
+
+
 def _anmeldungsreihen(
     verlauf: Anmeldungsverlauf,
     kategorien: Kategorisierung,
@@ -1244,40 +1315,35 @@ def _anmeldungsreihen(
     format_filter: Sequence[str],
     dauer_filter: Sequence[str],
 ) -> dict[str, dict[Monat, int]]:
-    """Eine Reihe je ausgewaehltem Filterkriterium, ueber alle vier Dropdowns hinweg -
-    nicht nur eine je Kategorie: jede Auswahl (Kategorie, Basisname, Format oder Dauer)
-    erzeugt ihre eigene Linie im Diagramm (siehe
-    :func:`~umsatzprognose.darstellung.diagramme.anmeldungsverlauf_reihen`), auch wenn
-    mehrere Dropdowns gleichzeitig etwas auswaehlen. :data:`ALLE_KATEGORIEN` (im
-    Kategorie-Dropdown), :data:`ALLE_SCHULUNGEN` (im Schulungen-Dropdown) und
-    :data:`ALLE` (in Format- oder Dauer-Dropdown) meinen dieselbe Gesamtzahl -
-    unabhaengig davon, in welchem Dropdown oder wie oft gewaehlt, liefert das genau
-    eine Reihe (``dict.setdefault``).
+    """Eine Reihe je Kombination aus Identitaet (Kategorie- oder Schulungen-Auswahl,
+    siehe :func:`_identitaeten`) und den gewaehlten Format-/Dauer-Auswahlen (siehe
+    :func:`_slice_werte`) - Format und Dauer wirken als kreuzende Achsen statt als
+    weitere, nur additive Auswahl: "CSPO" zusammen mit "2-tägig" **und** "3-tägig"
+    erzeugt zwei Reihen ("CSPO 2-tägig", "CSPO 3-tägig") statt einer gemeinsamen
+    "CSPO"- und einer gemeinsamen Dauer-Reihe. Zusaetzlich :data:`ALLE` in derselben
+    Achse gewaehlt erzeugt eine dritte, auf dieser Achse ungefilterte Reihe ("CSPO").
+    Eine Achse ohne jede Auswahl (leeres Dropdown, siehe :data:`KEINE_AUSWAHL`)
+    schraenkt nicht ein und verzweigt nicht (ein stellvertretender neutraler Eintrag
+    genuegt) - sind dagegen **alle drei** Achsen (Identitaet, Format, Dauer) leer, gibt
+    es keine einzige Reihe (leeres Diagramm), statt automatisch auf die Gesamtzahl
+    zurueckzufallen.
     """
+    identitaeten = _identitaeten(verlauf, kategorie_filter, schulung_filter, kategorien)
+    formate = _slice_werte(format_filter)
+    dauern = _slice_werte(dauer_filter)
+    if not identitaeten and not formate and not dauern:
+        return {}
+
     reihen: dict[str, dict[Monat, int]] = {}
-    je_kategorie: dict[str, dict[Monat, int]] | None = None
-    for name in kategorie_filter:
-        if name == ALLE_KATEGORIEN:
-            reihen.setdefault(ALLE_SCHULUNGEN, verlauf.je_monat())
-            continue
-        if je_kategorie is None:
-            je_kategorie = verlauf.je_monat_und_kategorie(kategorien)
-        reihen.setdefault(name, je_kategorie.get(name, {}))
-    for basisname in schulung_filter:
-        if basisname == ALLE_SCHULUNGEN:
-            reihen.setdefault(ALLE_SCHULUNGEN, verlauf.je_monat())
-        else:
-            reihen.setdefault(basisname, verlauf.je_monat_und_basisname(basisname))
-    for format_wert in format_filter:
-        if format_wert == ALLE:
-            reihen.setdefault(ALLE_SCHULUNGEN, verlauf.je_monat())
-        else:
-            reihen.setdefault(format_wert, verlauf.je_monat_und_format(format_wert))
-    for dauer_wert in dauer_filter:
-        if dauer_wert == ALLE:
-            reihen.setdefault(ALLE_SCHULUNGEN, verlauf.je_monat())
-        else:
-            reihen.setdefault(dauer_wert, verlauf.je_monat_und_dauer(dauer_wert))
+    for identitaet_name, identitaet_je_monat in identitaeten or [("", verlauf.je_monat_gefiltert)]:
+        for format_label, format_wert in formate or [("", None)]:
+            for dauer_label, dauer_wert in dauern or [("", None)]:
+                teile = [teil for teil in (identitaet_name, format_label, dauer_label) if teil]
+                name = " ".join(teile) if teile else ALLE_SCHULUNGEN
+                reihen.setdefault(
+                    name,
+                    identitaet_je_monat(format_wert=format_wert, dauer_wert=dauer_wert),
+                )
     return reihen
 
 
@@ -1326,12 +1392,18 @@ async def schulungen(
     Angabe gilt :func:`_standard_anzeige_ab_jahr` statt starr :data:`STANDARD_AB_JAHR`.
 
     Die vier Filter-Dropdowns (Mehrfachauswahl) darueber, was der Anmeldungsverlauf
-    zeigt, sind unabhaengige Auswahlkriterien statt einer Filterkette: jede Auswahl
-    erzeugt ihre eigene Linie (siehe :func:`_anmeldungsreihen`), das Diagramm zeigt
-    also die Vereinigung aller vier Dropdowns. ``trendlinien_werte`` traegt den
-    Checkbox-Zustand ueber ein verstecktes Begleitfeld (siehe Docstring von
-    :data:`TrendlinienWerte`).
+    zeigt, kombinieren sich zu Reihen im Diagramm (siehe :func:`_anmeldungsreihen`):
+    Kategorie- und Schulungen-Auswahl bilden je eine eigene Identitaet nebeneinander,
+    Format und Dauer kreuzen sich mit jeder Identitaet und miteinander. Ein
+    vollstaendig abgewaehltes Dropdown wird ueber :data:`KEINE_AUSWAHL` erkennbar - erst
+    :func:`_ohne_sentinel` macht daraus wieder eine echte leere Auswahl statt des
+    Query-Defaults. ``trendlinien_werte`` traegt den Checkbox-Zustand ueber ein
+    verstecktes Begleitfeld (siehe Docstring von :data:`TrendlinienWerte`).
     """
+    kategorie_filter = _ohne_sentinel(kategorie_filter)
+    schulung_filter = _ohne_sentinel(schulung_filter)
+    format_filter = _ohne_sentinel(format_filter)
+    dauer_filter = _ohne_sentinel(dauer_filter)
     standardwerte = {"ab_jahr": str(_standard_anzeige_ab_jahr())}
     ergebnis = _bereit_oder_ladeseite(
         request,

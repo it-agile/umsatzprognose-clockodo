@@ -1253,6 +1253,119 @@ def test_schulungen_schulung_filter_summiert_ueber_dauer_varianten_hinweg():
     assert reihen["CSPO"] == {(2026, 9): 7}
 
 
+def test_anmeldungsreihen_kreuzt_schulung_und_dauer_statt_nur_additiv_zu_sein():
+    """Schulung "CSPO" zusammen mit Dauer "2-tägig" und "3-tägig" ergibt zwei
+    kombinierte Reihen ("CSPO 2-tägig", "CSPO 3-tägig") statt einer gemeinsamen
+    "CSPO"- und einer gemeinsamen Dauer-Reihe."""
+    verlauf = Anmeldungsverlauf(
+        anmeldungen=(
+            Anmeldung(2026, 9, "CSPO 2-tägig", 5),
+            Anmeldung(2026, 9, "CSPO 3-tägig", 2),
+            Anmeldung(2026, 9, "KSD", 9),
+        )
+    )
+
+    reihen = app_modul._anmeldungsreihen(
+        verlauf,
+        {},
+        kategorie_filter=(),
+        schulung_filter=("CSPO",),
+        format_filter=(),
+        dauer_filter=("2-tägig", "3-tägig"),
+    )
+
+    assert set(reihen) == {"CSPO 2-tägig", "CSPO 3-tägig"}
+    assert reihen["CSPO 2-tägig"] == {(2026, 9): 5}
+    assert reihen["CSPO 3-tägig"] == {(2026, 9): 2}
+
+
+def test_anmeldungsreihen_zusaetzlich_alle_in_derselben_achse_ergibt_dritte_reihe():
+    """Zusaetzlich "Alle" im Dauer-Filter neben "2-tägig"/"3-tägig" erzeugt eine dritte
+    Reihe fuer "CSPO" ueber alle Dauern hinweg, neben den beiden Dauer-Varianten."""
+    verlauf = Anmeldungsverlauf(
+        anmeldungen=(
+            Anmeldung(2026, 9, "CSPO 2-tägig", 5),
+            Anmeldung(2026, 9, "CSPO 3-tägig", 2),
+        )
+    )
+
+    reihen = app_modul._anmeldungsreihen(
+        verlauf,
+        {},
+        kategorie_filter=(),
+        schulung_filter=("CSPO",),
+        format_filter=(),
+        dauer_filter=(app_modul.ALLE, "2-tägig", "3-tägig"),
+    )
+
+    assert set(reihen) == {"CSPO", "CSPO 2-tägig", "CSPO 3-tägig"}
+    assert reihen["CSPO"] == {(2026, 9): 7}
+
+
+def test_anmeldungsreihen_format_kreuzt_wie_dauer():
+    """Dieselbe Kreuzprodukt-Logik gilt fuer den Format-Filter (Online/Präsenz)."""
+    verlauf = Anmeldungsverlauf(
+        anmeldungen=(
+            Anmeldung(2026, 9, "CSPO 2-tägig", 5, format="Online"),
+            Anmeldung(2026, 9, "CSPO 2-tägig", 3, format="Präsenz"),
+        )
+    )
+
+    reihen = app_modul._anmeldungsreihen(
+        verlauf,
+        {},
+        kategorie_filter=(),
+        schulung_filter=("CSPO",),
+        format_filter=("Online", "Präsenz"),
+        dauer_filter=(),
+    )
+
+    assert set(reihen) == {"CSPO Online", "CSPO Präsenz"}
+    assert reihen["CSPO Online"] == {(2026, 9): 5}
+    assert reihen["CSPO Präsenz"] == {(2026, 9): 3}
+
+
+def test_anmeldungsreihen_alle_vier_filter_leer_ergibt_kein_diagramm():
+    """Sind alle vier Filter-Dropdowns vollstaendig abgewaehlt, gibt es keine einzige
+    Reihe - anders als frueher faellt das nicht mehr automatisch auf die Gesamtzahl
+    zurueck (siehe test_schulungen_alle_kategorien_abwaehlen_leert_das_diagramm)."""
+    verlauf = Anmeldungsverlauf(anmeldungen=(Anmeldung(2026, 9, "CSPO 2-tägig", 5),))
+
+    reihen = app_modul._anmeldungsreihen(
+        verlauf,
+        {},
+        kategorie_filter=(),
+        schulung_filter=(),
+        format_filter=(),
+        dauer_filter=(),
+    )
+
+    assert reihen == {}
+
+
+def test_schulungen_alle_kategorien_abwaehlen_leert_das_diagramm(fake_caches):
+    """Werden in allen vier Dropdowns nur die versteckten Sentinel-Begleitfelder
+    (siehe KEINE_AUSWAHL) uebermittelt, also keine einzige Checkbox angehakt, faellt
+    das nicht mehr auf den Query-Default ("Alle Kategorien" & Co.) zurueck - die
+    Anmeldedaten-Meldung statt einer Linie erscheint."""
+    _, anmeldungsverlauf_cache, _ = fake_caches
+    anmeldungsverlauf_cache.ergebnis = Anmeldungsverlauf(
+        anmeldungen=(Anmeldung(2026, 9, "CSM 2-tägig", 5),)
+    )
+    client = TestClient(app_modul.app)
+
+    antwort = client.get(
+        "/schulungen"
+        "?kategorie_filter=__keine_auswahl__"
+        "&schulung_filter=__keine_auswahl__"
+        "&format_filter=__keine_auswahl__"
+        "&dauer_filter=__keine_auswahl__"
+    )
+
+    assert '"name":"Alle Schulungen"' not in antwort.text
+    assert "Keine Anmeldedaten" in antwort.text
+
+
 def test_schulungen_filter_dropdowns_sind_ohne_filter_alle_vier_auf_alle_gesetzt():
     """Ohne explizite Auswahl sind alle vier 'alle'-Eintraege vorausgewaehlt, aber das
     Diagramm zeigt trotzdem nur die eine Gesamtlinie und der Filterabschnitt bleibt

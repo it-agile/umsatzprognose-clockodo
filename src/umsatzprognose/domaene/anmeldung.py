@@ -397,6 +397,43 @@ class Anmeldungsverlauf:
             lambda a: a.schluessel,
         )
 
+    def je_monat_gefiltert(
+        self,
+        *,
+        kategorien: Kategorisierung | None = None,
+        kategorie: str | None = None,
+        basisname: str | None = None,
+        format_wert: str | None = None,
+        dauer_wert: str | None = None,
+    ) -> dict[Monat, int]:
+        """Teilnehmerzahl je Monat, gleichzeitig (UND-verknuepft) eingeschraenkt auf
+        eine beliebige Kombination der uebrigen ``je_monat_und_*``-Kriterien - Grundlage
+        fuer die kombinierbaren Filter-Dropdowns der Webapp (siehe
+        ``webapp.app._anmeldungsreihen``), die z. B. Basisname UND Dauer gleichzeitig
+        einschraenken sollen ("CSPO 2-tägig" statt getrennter "CSPO"- und
+        "2-tägig"-Linien). Jedes Kriterium ist optional (``None`` = keine Einschraenkung
+        auf dieser Achse); ``kategorie`` setzt ``kategorien`` voraus, dieselbe Zuordnung
+        wie bei :meth:`je_monat_und_kategorie`."""
+        if kategorie is not None and kategorien is None:
+            msg = "kategorie setzt kategorien voraus"
+            raise ValueError(msg)
+        zuordnung = _kategorie_zuordnung(kategorien) if kategorien is not None else {}
+
+        def passt(a: Anmeldung) -> bool:
+            if (
+                kategorie is not None
+                and zuordnung.get(a.schulungstyp, KATEGORIE_SONSTIGE) != kategorie
+            ):
+                return False
+            basis, dauer = _basisname_und_dauer(a.schulungstyp)
+            if basisname is not None and basis != basisname:
+                return False
+            if dauer_wert is not None and dauer != dauer_wert:
+                return False
+            return format_wert is None or a.format == format_wert
+
+        return _teilnehmerzahl_je((a for a in self.anmeldungen if passt(a)), lambda a: a.schluessel)
+
     def schulungstypen_je_kategorie(
         self,
         kategorien: Kategorisierung,

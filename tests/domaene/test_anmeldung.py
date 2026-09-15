@@ -428,6 +428,47 @@ def test_je_monat_und_dauer_beschraenkt_auf_eine_dauer() -> None:
     assert verlauf.je_monat_und_dauer("2-tägig") == {(2026, 9): 5, (2026, 10): 3}
 
 
+def test_je_monat_gefiltert_kombiniert_basisname_und_dauer_gleichzeitig() -> None:
+    verlauf = Anmeldungsverlauf(
+        anmeldungen=(
+            Anmeldung(2026, 9, "CSPO 2-tägig", 5),
+            Anmeldung(2026, 9, "CSPO 3-tägig", 2),
+            Anmeldung(2026, 9, "CSM 2-tägig", 9),
+        ),
+    )
+    assert verlauf.je_monat_gefiltert(basisname="CSPO", dauer_wert="2-tägig") == {(2026, 9): 5}
+
+
+def test_je_monat_gefiltert_kombiniert_kategorie_und_format_gleichzeitig() -> None:
+    verlauf = Anmeldungsverlauf(
+        anmeldungen=(
+            Anmeldung(2026, 9, "CSM 2-tägig", 5, format="Online"),
+            Anmeldung(2026, 9, "CSPO 3-tägig", 2, format="Präsenz"),
+            Anmeldung(2026, 9, "KSD", 9, format="Online"),
+        ),
+    )
+    ergebnis = verlauf.je_monat_gefiltert(
+        kategorien=KATEGORIEN, kategorie="Scrum", format_wert="Online"
+    )
+    assert ergebnis == {(2026, 9): 5}
+
+
+def test_je_monat_gefiltert_ohne_kriterien_entspricht_je_monat() -> None:
+    verlauf = Anmeldungsverlauf(
+        anmeldungen=(
+            Anmeldung(2026, 9, "CSPO 2-tägig", 5),
+            Anmeldung(2026, 10, "KSD", 3),
+        ),
+    )
+    assert verlauf.je_monat_gefiltert() == verlauf.je_monat()
+
+
+def test_je_monat_gefiltert_kategorie_ohne_kategorien_wirft_fehler() -> None:
+    verlauf = Anmeldungsverlauf()
+    with pytest.raises(ValueError, match="kategorien"):
+        verlauf.je_monat_gefiltert(kategorie="Scrum")
+
+
 def test_schulungstypen_je_kategorie_gruppiert_nach_absteigender_gesamtteilnehmerzahl() -> None:
     verlauf = Anmeldungsverlauf(
         anmeldungen=(
