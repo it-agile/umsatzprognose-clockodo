@@ -66,7 +66,6 @@ if TYPE_CHECKING:
     from umsatzprognose.util import Fortschritt
 
 import datetime
-import json
 from functools import partial
 
 from dotenv import load_dotenv
@@ -85,6 +84,7 @@ from umsatzprognose.google_sheets import (
     MissingCredentialsError,
     TabellenClient,
     jahre_laden,
+    json_geladen,
     kopfzeile_finden,
     zelle,
     zelle_an,
@@ -135,12 +135,7 @@ def kategorien_aus_colab_secrets() -> Kategorisierung:
 
 
 def _kategorien_aus_json(roh: str) -> Kategorisierung:
-    try:
-        wert = json.loads(roh)
-    except json.JSONDecodeError as fehler:
-        raise MissingCredentialsError(
-            f"{KATEGORIEN_VAR} enthaelt kein gueltiges JSON: {fehler}",
-        ) from fehler
+    wert = json_geladen(roh, KATEGORIEN_VAR)
     ungueltig = not isinstance(wert, dict) or not all(
         isinstance(kategorie, str)
         and isinstance(typen, list)

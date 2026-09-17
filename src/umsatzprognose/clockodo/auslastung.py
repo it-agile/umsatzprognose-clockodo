@@ -46,13 +46,16 @@ if TYPE_CHECKING:
 from umsatzprognose.domaene import Auslastungsmonat
 from umsatzprognose.util import Monat, aus_ordnung, monatsfolge, ordnung
 
-from .client import ClockodoClient, stunden_je_person_und_monat, verbrauch_bis
+from .client import (
+    BILLABLE_ABRECHENBAR,
+    BILLABLE_FAKTURIERT,
+    BILLABLE_INTERN,
+    ClockodoClient,
+    stunden_je_person_und_monat,
+    verbrauch_bis,
+)
 from .config import ClockodoCredentials
 from .nebenlaeufig import gleichzeitig, synchron
-
-BILLABLE_INTERN = 0
-BILLABLE_ABRECHENBAR = 1
-BILLABLE_FAKTURIERT = 2
 
 
 class AuslastungRepository:
@@ -90,21 +93,15 @@ class AuslastungRepository:
         """
         zeitraum = _letzte_monate(stichtag, monate)
         von = f"{zeitraum[0][0]:04d}-{zeitraum[0][1]:02d}-01T00:00:00Z"
+        bis = verbrauch_bis(stichtag)
         intern, abrechenbar, fakturiert = await gleichzeitig(
-            self._client.entrygroups_je_person_und_monat(
-                billable=BILLABLE_INTERN,
-                time_since=von,
-                time_until=verbrauch_bis(stichtag),
-            ),
-            self._client.entrygroups_je_person_und_monat(
-                billable=BILLABLE_ABRECHENBAR,
-                time_since=von,
-                time_until=verbrauch_bis(stichtag),
-            ),
-            self._client.entrygroups_je_person_und_monat(
-                billable=BILLABLE_FAKTURIERT,
-                time_since=von,
-                time_until=verbrauch_bis(stichtag),
+            *(
+                self._client.entrygroups_je_person_und_monat(
+                    billable=billable,
+                    time_since=von,
+                    time_until=bis,
+                )
+                for billable in (BILLABLE_INTERN, BILLABLE_ABRECHENBAR, BILLABLE_FAKTURIERT)
             ),
         )
         return self.abbilden(intern, abrechenbar, fakturiert, mitarbeiter, monate=zeitraum)

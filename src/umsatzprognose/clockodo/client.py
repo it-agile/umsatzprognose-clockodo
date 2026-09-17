@@ -80,6 +80,7 @@ import datetime
 import random
 from calendar import monthrange
 from datetime import date
+from decimal import Decimal
 
 import httpx2
 
@@ -136,6 +137,13 @@ HISTORIE_VON = "2021-01-01T00:00:00Z"
 GRUPPIERUNG_PROJEKT = "projects_id"
 GRUPPIERUNG_PERSON = "users_id"
 GRUPPIERUNG_MONAT = "month"
+
+# Gueltige Werte fuer filter[billable] laut ``BillableDistinct`` der API (siehe
+# entrygroups()) - gemeinsam genutzt von .auslastung und .kurzarbeit, die beide je
+# Billable-Status einen eigenen Abruf brauchen.
+BILLABLE_INTERN = 0
+BILLABLE_ABRECHENBAR = 1
+BILLABLE_FAKTURIERT = 2
 
 
 class BudgetV4(TypedDict):
@@ -269,6 +277,25 @@ class EntryGroupV2(TypedDict):
     sub_groups: NotRequired[list[EntryGroupV2]]
 
 
+def umsatz_der_gruppe(gruppe: EntryGroupV2) -> Decimal:
+    """``revenue`` einer Gruppe als Decimal.
+
+    Clockodo liefert ``revenue`` trotz spec-deklariertem ``integer`` als Float; ein
+    fehlender Wert wird als 0 gedeutet. Gemeinsame Auswertung fuer
+    :mod:`.projekte` und :mod:`.umsatz`.
+    """
+    return Decimal(str(gruppe.get("revenue") or 0.0))
+
+
+def stunden_der_gruppe(gruppe: EntryGroupV2) -> float:
+    """``duration`` einer Gruppe (Sekunden, nicht dokumentiert) in Stunden.
+
+    Ein fehlender Wert wird als 0 gedeutet. Gemeinsame Auswertung fuer
+    :mod:`.projekte`, :mod:`.umsatz` und :func:`stunden_je_person_und_monat`.
+    """
+    return float(gruppe.get("duration") or 0.0) / SEKUNDEN_JE_STUNDE
+
+
 def stunden_je_person_und_monat(
     *gruppenlisten: list[EntryGroupV2],
 ) -> dict[tuple[int, Monat], float]:
@@ -293,10 +320,9 @@ def stunden_je_person_und_monat(
             for monatsgruppe in person_gruppe.get("sub_groups") or ():
                 schluessel = str(monatsgruppe["group"])
                 monat: Monat = (int(schluessel[:4]), int(schluessel[4:6]))
-                stunden[(mitarbeiter_id, monat)] = (
-                    stunden.get((mitarbeiter_id, monat), 0.0)
-                    + float(monatsgruppe.get("duration") or 0.0) / SEKUNDEN_JE_STUNDE
-                )
+                stunden[(mitarbeiter_id, monat)] = stunden.get(
+                    (mitarbeiter_id, monat), 0.0
+                ) + stunden_der_gruppe(monatsgruppe)
     return stunden
 
 

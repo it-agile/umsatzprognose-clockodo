@@ -265,13 +265,11 @@ class Bestand:
         )
 
     def ohne_budget(self, *, projekt_filter: Iterable[str] | None = None) -> list[Projekt]:
-        if projekt_filter is None:
-            projekt_filter = []
-
+        filter_ = projekt_filter or ()
         return [
             p
             for p in self.aktive_projekte
-            if not verwertbar(p.budget) and not any(f in p.bezeichnung for f in projekt_filter)
+            if not verwertbar(p.budget) and not any(f in p.bezeichnung for f in filter_)
         ]
 
 
@@ -300,7 +298,7 @@ def _mit_uebersteuerung[V](
 
 def _hinweis_wenn(betroffene_projekte: Iterable[Projekt], text: str) -> Hinweis | None:
     """Ein :class:`Hinweis` fuer ``betroffene_projekte``, ``None`` wenn die Liste leer ist."""
-    betroffene = tuple(p.name if p.name else str(p.id) for p in betroffene_projekte)
+    betroffene = tuple(_projekt_schluessel(p) for p in betroffene_projekte)
     return Hinweis(text, betroffene) if betroffene else None
 
 

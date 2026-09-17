@@ -50,6 +50,9 @@ from umsatzprognose.util import (
 )
 
 from .client import (
+    BILLABLE_ABRECHENBAR,
+    BILLABLE_FAKTURIERT,
+    BILLABLE_INTERN,
     GRUPPIERUNG_MONAT,
     GRUPPIERUNG_PERSON,
     ClockodoClient,
@@ -58,10 +61,6 @@ from .client import (
 )
 from .config import ClockodoCredentials, MissingCredentialsError
 from .nebenlaeufig import gleichzeitig, mit_meldung, synchron
-
-BILLABLE_INTERN = 0
-BILLABLE_ABRECHENBAR = 1
-BILLABLE_FAKTURIERT = 2
 
 ROLLENZUORDNUNG_VAR = "KURZARBEIT_ROLLENZUORDNUNG"
 KURZARBEIT_AKTIV_VAR = "KURZARBEIT_AKTIV"

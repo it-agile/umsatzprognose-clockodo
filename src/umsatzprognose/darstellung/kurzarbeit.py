@@ -53,7 +53,7 @@ def _status_farbe(bewertung: Kurzarbeitsbewertung, *, mit_farbe: bool) -> str:
     schluessel = (
         KURZARBEIT_SCHWELLE_ERREICHT
         if bewertung.vorbereitet
-        else (KURZARBEIT_SCHWELLE_NICHT_ERREICHT)
+        else KURZARBEIT_SCHWELLE_NICHT_ERREICHT
     )
     return _ansi_vordergrund(schluessel)
 

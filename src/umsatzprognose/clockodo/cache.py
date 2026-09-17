@@ -69,19 +69,24 @@ def _dauer_text(sekunden: float) -> str:
     return f"{sekunden:.1f} s".replace(".", ",")
 
 
+def _int_env(var: str, standard: int) -> int:
+    """Eine Umgebungsvariable als Zahl, oder ``standard`` wenn ungesetzt oder ungueltig."""
+    wert = os.environ.get(var)
+    if wert is not None:
+        with suppress(ValueError):
+            return int(wert)
+    return standard
+
+
 def ttl_sekunden() -> int | None:
     """Der konfigurierte Cache-Zeitraum in Sekunden - ``None`` bedeutet: kein Cache.
 
     Eine ungesetzte Variable schaltet den Cache aus. Gesetzt, aber keine gueltige Zahl,
     gilt :data:`STANDARD_TTL_SEKUNDEN`.
     """
-    wert = os.environ.get(TTL_ENV)
-    if wert is None:
+    if TTL_ENV not in os.environ:
         return None
-    ergebnis = STANDARD_TTL_SEKUNDEN
-    with suppress(ValueError):
-        ergebnis = int(wert)
-    return ergebnis
+    return _int_env(TTL_ENV, STANDARD_TTL_SEKUNDEN)
 
 
 def cutoff_monate(uebersteuerung: int | None = None) -> int:
@@ -92,13 +97,7 @@ def cutoff_monate(uebersteuerung: int | None = None) -> int:
     """
     if uebersteuerung is not None:
         return uebersteuerung
-    wert = os.environ.get(CUTOFF_ENV)
-    if wert is None:
-        return STANDARD_CUTOFF_MONATE
-    ergebnis = STANDARD_CUTOFF_MONATE
-    with suppress(ValueError):
-        ergebnis = int(wert)
-    return ergebnis
+    return _int_env(CUTOFF_ENV, STANDARD_CUTOFF_MONATE)
 
 
 def cutoff_datum(time_until: str, *, monate: int) -> str:

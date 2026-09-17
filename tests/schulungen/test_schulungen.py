@@ -12,6 +12,7 @@ from decimal import Decimal
 
 import pytest
 
+from conftest import FakeTabellenClient
 from umsatzprognose.schulungen.schulungen import (
     SchulungenRepository,
     _benoetigte_jahre,
@@ -40,19 +41,6 @@ KOPFZEILE_ANMELDUNGEN = [
     "Auslastung",
     "Präsenz/Online",
 ]
-
-
-class FakeClient:
-    """Liefert je Spreadsheet-ID feste Zeilen, oder wirft, wenn konfiguriert."""
-
-    def __init__(self, antworten: dict[str, list[list[str]] | Exception]) -> None:
-        self._antworten = antworten
-
-    def werte(self, spreadsheet_id: str, bereich: str = "") -> list[list[str]]:
-        antwort = self._antworten[spreadsheet_id]
-        if isinstance(antwort, Exception):
-            raise antwort
-        return antwort
 
 
 def test_zeilen_zu_terminen_findet_spalten_ueber_die_kopfzeile() -> None:
@@ -289,7 +277,7 @@ def test_zeilen_zu_anmeldungen_findet_kopfzeile_hinter_einer_vorausgehenden_zeil
 
 
 def test_anmeldungsverlauf_laden_fuehrt_mehrere_jahre_zusammen() -> None:
-    client = FakeClient(
+    client = FakeTabellenClient(
         {
             "sheet-2022": [
                 KOPFZEILE_ANMELDUNGEN,
@@ -335,7 +323,7 @@ def test_anmeldungsverlauf_laden_fuehrt_mehrere_jahre_zusammen() -> None:
 
 
 def test_anmeldungsverlauf_laden_meldet_fortschritt_je_jahr_mit_kumulierter_anzahl() -> None:
-    client = FakeClient(
+    client = FakeTabellenClient(
         {
             "sheet-2022": [
                 KOPFZEILE_ANMELDUNGEN,
@@ -385,7 +373,7 @@ def test_anmeldungsverlauf_laden_meldet_fortschritt_je_jahr_mit_kumulierter_anza
 
 
 def test_anmeldungsverlauf_laden_meldet_fortschritt_auch_fuer_ein_fehlendes_jahr() -> None:
-    repository = SchulungenRepository(FakeClient({}), {})
+    repository = SchulungenRepository(FakeTabellenClient({}), {})
     gemeldet: list[str] = []
 
     repository.anmeldungsverlauf_laden([2022], fortschritt=gemeldet.append)
@@ -394,7 +382,7 @@ def test_anmeldungsverlauf_laden_meldet_fortschritt_auch_fuer_ein_fehlendes_jahr
 
 
 def test_anmeldungsverlauf_laden_meldet_nicht_konfiguriertes_jahr_als_hinweis() -> None:
-    repository = SchulungenRepository(FakeClient({}), {})
+    repository = SchulungenRepository(FakeTabellenClient({}), {})
     verlauf = repository.anmeldungsverlauf_laden([2022])
 
     assert verlauf.anmeldungen == ()
@@ -415,7 +403,7 @@ def test_benoetigte_jahre(stichtag: date, horizont_monate: int, erwartet: tuple[
 
 
 def test_laden_fuehrt_mehrere_jahre_zusammen() -> None:
-    client = FakeClient(
+    client = FakeTabellenClient(
         {
             "sheet-2026": [KOPFZEILE, ["Kurs A", "2026", "12", "", "1.000,00 €", ""]],
             "sheet-2027": [KOPFZEILE, ["Kurs B", "2027", "1", "", "2.000,00 €", ""]],
@@ -429,7 +417,7 @@ def test_laden_fuehrt_mehrere_jahre_zusammen() -> None:
 
 
 def test_laden_mit_leerer_datei_liefert_keine_termine_und_keinen_hinweis() -> None:
-    client = FakeClient({"sheet-2026": [KOPFZEILE]})
+    client = FakeTabellenClient({"sheet-2026": [KOPFZEILE]})
     repository = SchulungenRepository(client, {2026: "sheet-2026"})
     plan = repository.laden(stichtag=date(2026, 9, 15), horizont_monate=1)
 
@@ -438,7 +426,7 @@ def test_laden_mit_leerer_datei_liefert_keine_termine_und_keinen_hinweis() -> No
 
 
 def test_laden_meldet_nicht_konfiguriertes_jahr_als_hinweis() -> None:
-    repository = SchulungenRepository(FakeClient({}), {})
+    repository = SchulungenRepository(FakeTabellenClient({}), {})
     plan = repository.laden(stichtag=date(2026, 9, 15), horizont_monate=1)
 
     assert len(plan.abbildungshinweise) == 1
@@ -447,7 +435,7 @@ def test_laden_meldet_nicht_konfiguriertes_jahr_als_hinweis() -> None:
 
 
 def test_laden_meldet_lesefehler_als_hinweis_statt_absturz() -> None:
-    client = FakeClient({"sheet-2026": RuntimeError("kein Zugriff")})
+    client = FakeTabellenClient({"sheet-2026": RuntimeError("kein Zugriff")})
     repository = SchulungenRepository(client, {2026: "sheet-2026"})
     plan = repository.laden(stichtag=date(2026, 9, 15), horizont_monate=1)
 

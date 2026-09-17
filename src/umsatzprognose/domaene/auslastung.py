@@ -55,6 +55,15 @@ from functools import cached_property
 import numpy as np
 
 
+def _anteil_fakturierbar(*, abrechenbare_stunden: float, interne_stunden: float) -> float | None:
+    """Anteil abrechenbar gebuchter Zeit an der gesamten gebuchten Zeit (abrechenbar +
+    intern), ``None`` ohne jede gebuchte Stunde - gemeinsamer Kern von
+    :attr:`Auslastungsmonat.anteil_fakturierbarer_arbeit` und
+    :attr:`Auslastungssumme.anteil_fakturierbarer_arbeit`."""
+    gebucht = interne_stunden + abrechenbare_stunden
+    return abrechenbare_stunden / gebucht if gebucht else None
+
+
 @dataclass(frozen=True, slots=True)
 class Auslastungsmonat:
     """Abrechenbare und intern gebuchte Stunden einer Person in einem Kalendermonat."""
@@ -84,8 +93,10 @@ class Auslastungsmonat:
         """Anteil abrechenbar gebuchter Zeit an der gesamten gebuchten Zeit (abrechenbar
         + intern) dieses Monats, ``None`` ohne jede gebuchte Stunde - anders als
         :attr:`quote` unabhaengig von der verfuegbaren Kapazitaet."""
-        gebucht = self.interne_stunden + self.abrechenbare_stunden
-        return self.abrechenbare_stunden / gebucht if gebucht else None
+        return _anteil_fakturierbar(
+            abrechenbare_stunden=self.abrechenbare_stunden,
+            interne_stunden=self.interne_stunden,
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -119,8 +130,10 @@ class Auslastungssumme:
     def anteil_fakturierbarer_arbeit(self) -> float | None:
         """Anteil abrechenbar gebuchter Zeit an der gesamten gebuchten Zeit ueber den
         gesamten Zeitraum - siehe :attr:`Auslastungsmonat.anteil_fakturierbarer_arbeit`."""
-        gebucht = self.interne_stunden + self.abrechenbare_stunden
-        return self.abrechenbare_stunden / gebucht if gebucht else None
+        return _anteil_fakturierbar(
+            abrechenbare_stunden=self.abrechenbare_stunden,
+            interne_stunden=self.interne_stunden,
+        )
 
     @staticmethod
     def je_mitarbeiter(auslastungen: Iterable[Auslastungsmonat]) -> tuple[Auslastungssumme, ...]:

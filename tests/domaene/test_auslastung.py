@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import date
+
 import numpy as np
 import pytest
 
@@ -17,8 +19,6 @@ from umsatzprognose.domaene.mitarbeiter import Mitarbeiter, Wochenarbeitszeit
 
 
 def _mitarbeiter_mit_wochenstunden(stunden_je_tag: float) -> Mitarbeiter:
-    from datetime import date
-
     arbeitszeit = Wochenarbeitszeit(
         stunden_je_wochentag=(stunden_je_tag,) * 5 + (0.0, 0.0),
         gueltig_ab=date(2020, 1, 1),

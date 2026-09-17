@@ -12,6 +12,7 @@ from decimal import Decimal
 
 import pytest
 
+from conftest import FakeTabellenClient
 from umsatzprognose.domaene.kosten import Erfasst, Geschaetzt
 from umsatzprognose.google_sheets import kopfzeile_finden
 from umsatzprognose.kosten.kosten import (
@@ -28,19 +29,6 @@ KOSTEN_PFLICHTSPALTEN = {SPALTE_GESAMTKOSTEN, SPALTE_ALLGEMEINKOSTEN}
 
 KOPFZEILE = ["Monat", "Gehälter", "Spesen", "Allgemeinkosten", "Gesamtkosten"]
 KOPFZEILE_MIT_ERFASSUNG = [*KOPFZEILE, "Kostenerfassung"]
-
-
-class FakeClient:
-    """Liefert je Spreadsheet-ID feste Zeilen, oder wirft, wenn konfiguriert."""
-
-    def __init__(self, antworten: dict[str, list[list[str]] | Exception]) -> None:
-        self._antworten = antworten
-
-    def werte(self, spreadsheet_id: str, bereich: str) -> list[list[str]]:
-        antwort = self._antworten[spreadsheet_id]
-        if isinstance(antwort, Exception):
-            raise antwort
-        return antwort
 
 
 @pytest.mark.parametrize(
@@ -208,7 +196,7 @@ def test_monatsfolge(stichtag: date, horizont_monate: int, erwartet: list[tuple[
 
 
 def test_laden_deckt_historie_und_prognosehorizont_ab() -> None:
-    client = FakeClient(
+    client = FakeTabellenClient(
         {
             "sheet-2026": [
                 KOPFZEILE,
@@ -230,7 +218,7 @@ def test_laden_deckt_historie_und_prognosehorizont_ab() -> None:
 
 
 def test_laden_meldet_fortschritt_je_jahr_mit_kumulierter_anzahl() -> None:
-    client = FakeClient(
+    client = FakeTabellenClient(
         {
             "sheet-2026": [
                 KOPFZEILE,
@@ -257,7 +245,7 @@ def test_laden_meldet_fortschritt_je_jahr_mit_kumulierter_anzahl() -> None:
 
 
 def test_laden_ohne_historie_deckt_nur_den_horizont_ab() -> None:
-    client = FakeClient({"sheet-2026": [KOPFZEILE, ["September", "", "", "", "300,00 €"]]})
+    client = FakeTabellenClient({"sheet-2026": [KOPFZEILE, ["September", "", "", "", "300,00 €"]]})
     repository = KostenRepository(client, {2026: "sheet-2026"})
     plan = repository.laden(stichtag=date(2026, 9, 15), horizont_monate=1)
 
@@ -265,7 +253,7 @@ def test_laden_ohne_historie_deckt_nur_den_horizont_ab() -> None:
 
 
 def test_laden_meldet_nicht_konfiguriertes_jahr_als_hinweis() -> None:
-    repository = KostenRepository(FakeClient({}), {})
+    repository = KostenRepository(FakeTabellenClient({}), {})
     plan = repository.laden(stichtag=date(2026, 9, 15), horizont_monate=1)
 
     assert len(plan.abbildungshinweise) == 1
@@ -274,16 +262,16 @@ def test_laden_meldet_nicht_konfiguriertes_jahr_als_hinweis() -> None:
 
 
 def test_fruehestes_konfiguriertes_jahr_ist_das_minimum() -> None:
-    repository = KostenRepository(FakeClient({}), {2024: "x", 2022: "y", 2026: "z"})
+    repository = KostenRepository(FakeTabellenClient({}), {2024: "x", 2022: "y", 2026: "z"})
     assert repository.fruehestes_konfiguriertes_jahr == 2022
 
 
 def test_fruehestes_konfiguriertes_jahr_ohne_konfiguration_ist_none() -> None:
-    assert KostenRepository(FakeClient({}), {}).fruehestes_konfiguriertes_jahr is None
+    assert KostenRepository(FakeTabellenClient({}), {}).fruehestes_konfiguriertes_jahr is None
 
 
 def test_laden_meldet_lesefehler_als_hinweis_statt_absturz() -> None:
-    client = FakeClient({"sheet-2026": RuntimeError("kein Zugriff")})
+    client = FakeTabellenClient({"sheet-2026": RuntimeError("kein Zugriff")})
     repository = KostenRepository(client, {2026: "sheet-2026"})
     plan = repository.laden(stichtag=date(2026, 9, 15), horizont_monate=1)
 
@@ -296,7 +284,7 @@ def test_laden_meldet_lesefehler_als_hinweis_statt_absturz() -> None:
 
 
 def test_laden_meldet_fehlende_spalten_mit_der_konkreten_meldung_als_hinweis() -> None:
-    client = FakeClient({"sheet-2022": [["Monat", "Gesamtkosten"]]})
+    client = FakeTabellenClient({"sheet-2022": [["Monat", "Gesamtkosten"]]})
     repository = KostenRepository(client, {2022: "sheet-2022"})
     plan = repository.laden(stichtag=date(2022, 9, 15), horizont_monate=1)
 

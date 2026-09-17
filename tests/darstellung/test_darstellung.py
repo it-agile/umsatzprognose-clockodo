@@ -68,6 +68,7 @@ from umsatzprognose.domaene.umsatzhistorie import MONATSNAMEN
 from umsatzprognose.domaene.zahlen import STUNDEN_JE_TAG, euro
 from umsatzprognose.kosten import KostenRepository
 from umsatzprognose.schulungen import SchulungenRepository
+from umsatzprognose.util import monatsfolge
 
 STICHTAG = date(2026, 8, 24)
 KUNDE = Kunde(id=7, name="Musterkunde Vermögensverwaltung AG")
@@ -215,15 +216,12 @@ def test_anmeldungsverlauf_ohne_daten_zeigt_hinweis_statt_balken():
 
 
 def _anmeldungsverlauf_ueber_monate(anzahl: int) -> Anmeldungsverlauf:
-    anmeldungen = []
-    jahr, monat = 2024, 1
-    for _ in range(anzahl):
-        anmeldungen.append(Anmeldung(jahr, monat, "CSM 2-tägig", 1))
-        monat += 1
-        if monat > 12:
-            monat = 1
-            jahr += 1
-    return Anmeldungsverlauf(anmeldungen=tuple(anmeldungen))
+    return Anmeldungsverlauf(
+        anmeldungen=tuple(
+            Anmeldung(jahr, monat, "CSM 2-tägig", 1)
+            for jahr, monat in monatsfolge((2024, 1), anzahl)
+        ),
+    )
 
 
 def test_anmeldungsverlauf_beschriftung_steht_immer_schraeg():

@@ -16,7 +16,11 @@ from umsatzprognose.google_sheets.client import (
     zelle,
     zelle_an,
 )
-from umsatzprognose.google_sheets.config import GoogleSheetsConfig, MissingCredentialsError
+from umsatzprognose.google_sheets.config import (
+    GoogleSheetsConfig,
+    MissingCredentialsError,
+    json_geladen,
+)
 
 __all__ = [
     "GoogleSheetsClient",
@@ -24,6 +28,7 @@ __all__ = [
     "MissingCredentialsError",
     "TabellenClient",
     "jahre_laden",
+    "json_geladen",
     "kopfzeile_finden",
     "zelle",
     "zelle_an",

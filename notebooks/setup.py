@@ -303,6 +303,7 @@ def anmeldungsverlauf(*, ab_jahr: int = 2022) -> Anmeldungsverlauf:
         anzeige.aktualisieren("Anmeldungsverlauf", anmeldungsverlauf_bericht())
     else:
         anzeige.aktualisieren("Anmeldungsverlauf", anmeldungsverlauf_bericht(dauer=zugriffsdauer))
+    assert _anmeldungsverlauf is not None  # neu geladen oder schon vorhanden (neu_geladen=False)
     return _anmeldungsverlauf
 
 
@@ -366,6 +367,7 @@ def kurzarbeit_rohdaten(
             "Kurzarbeit-Rohdaten",
             kurzarbeit_rohdaten_bericht(dauer=zugriffsdauer),
         )
+    assert _kurzarbeit_rohdaten is not None  # neu geladen oder schon vorhanden (neu_geladen=False)
     return _kurzarbeit_rohdaten
 
 

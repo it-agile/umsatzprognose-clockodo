@@ -1459,6 +1459,75 @@ def _linearer_trend(werte: Sequence[float]) -> list[float]:
     return [achsenabschnitt + steigung * x for x in range(n)]
 
 
+def _grenze_laufender_monat(
+    anzahl: int,
+    laufender_monat: Monat | None,
+    monat_bei: Callable[[int], Monat],
+) -> int:
+    """Index der ersten Stelle (0..``anzahl``) mit einem Monat ab (einschliesslich)
+    ``laufender_monat`` - ``anzahl``, wenn keine erreicht oder ``laufender_monat`` None
+    ist. Gemeinsame Grundlage von :func:`anmeldungsverlauf`,
+    :func:`anmeldungsverlauf_reihen` und :func:`anmeldungsverlauf_jahresvergleich`."""
+    if laufender_monat is None:
+        return anzahl
+    return next((i for i in range(anzahl) if monat_bei(i) >= laufender_monat), anzahl)
+
+
+def _linie_mit_vorlaeufigem_abschnitt(
+    fig: go.Figure,
+    *,
+    x: Sequence[str],
+    y: Sequence[float],
+    name: str,
+    legendgroup: str,
+    farbe: str,
+    grenze: int,
+    dash: str | None = None,
+    dash_vorlaeufig: str | None = "dot",
+) -> None:
+    """Zeichnet eine Datenreihe in bis zu zwei Abschnitten: durchgezogen (Strichart
+    ``dash``) bis ``grenze`` (ausschliesslich), danach gedaempft
+    (:data:`~umsatzprognose.darstellung.gestaltung.PROGNOSE_DECKKRAFT`) mit Strichart
+    ``dash_vorlaeufig`` fuer noch nicht abgeschlossene Monate (siehe
+    :func:`anmeldungsverlauf`). Faellt ``grenze`` mit Anfang oder Ende von ``x``
+    zusammen, entfaellt der jeweils andere Abschnitt. ``dash_vorlaeufig=None`` laesst
+    die Strichart des ersten Abschnitts unveraendert - fuer
+    :func:`anmeldungsverlauf_jahresvergleich`, wo die Strichart bereits eine andere
+    Bedeutung (die gewaehlte Reihe) traegt.
+
+    Gemeinsamer Kern von :func:`anmeldungsverlauf`, :func:`anmeldungsverlauf_reihen`
+    und :func:`anmeldungsverlauf_jahresvergleich` - Aufbau und Deckkraft-Konvention
+    unterscheiden sich zwischen den dreien nicht, nur Achsenbeschriftung, Farbe und
+    Strichart."""
+    if grenze > 0:
+        fig.add_scatter(
+            x=x[:grenze],
+            y=y[:grenze],
+            mode="lines+markers",
+            name=name,
+            legendgroup=legendgroup,
+            line={"color": farbe, "width": 2, "dash": dash},
+            marker={"size": 6, "color": farbe},
+        )
+    if grenze < len(x):
+        start = max(grenze - 1, 0)
+        fig.add_scatter(
+            x=x[start:],
+            y=y[start:],
+            mode="lines+markers",
+            name=name,
+            legendgroup=legendgroup,
+            showlegend=grenze == 0,
+            opacity=PROGNOSE_DECKKRAFT,
+            line={
+                "color": farbe,
+                "width": 2,
+                "dash": dash_vorlaeufig if dash_vorlaeufig is not None else dash,
+            },
+            marker={"size": 6, "color": farbe, "opacity": PROGNOSE_DECKKRAFT},
+        )
+
+
 def anmeldungsverlauf(
     verlauf: Anmeldungsverlauf,
     *,
@@ -1513,34 +1582,16 @@ def anmeldungsverlauf(
     je_monat = verlauf.je_monat()
     gesamt = [je_monat.get(m, 0) for m in monate]
 
-    grenze = (
-        next((i for i, monat in enumerate(monate) if monat >= laufender_monat), len(monate))
-        if laufender_monat is not None
-        else len(monate)
+    grenze = _grenze_laufender_monat(len(monate), laufender_monat, lambda i: monate[i])
+    _linie_mit_vorlaeufigem_abschnitt(
+        fig,
+        x=beschriftungen,
+        y=gesamt,
+        name="Anmeldungen",
+        legendgroup="Anmeldungen",
+        farbe=TINTE,
+        grenze=grenze,
     )
-    if grenze > 0:
-        fig.add_scatter(
-            x=beschriftungen[:grenze],
-            y=gesamt[:grenze],
-            mode="lines+markers",
-            name="Anmeldungen",
-            legendgroup="Anmeldungen",
-            line={"color": TINTE, "width": 2},
-            marker={"size": 6, "color": TINTE},
-        )
-    if grenze < len(beschriftungen):
-        start = max(grenze - 1, 0)
-        fig.add_scatter(
-            x=beschriftungen[start:],
-            y=gesamt[start:],
-            mode="lines+markers",
-            name="Anmeldungen",
-            legendgroup="Anmeldungen",
-            showlegend=grenze == 0,
-            opacity=PROGNOSE_DECKKRAFT,
-            line={"color": TINTE, "width": 2, "dash": "dot"},
-            marker={"size": 6, "color": TINTE, "opacity": PROGNOSE_DECKKRAFT},
-        )
     fig.add_scatter(
         x=beschriftungen,
         y=_linearer_trend(gesamt),
@@ -1609,11 +1660,7 @@ def anmeldungsverlauf_reihen(
         return fig
 
     beschriftungen = [f"{MONATSNAMEN[monat - 1]} {jahr}" for jahr, monat in monate]
-    grenze = (
-        next((i for i, monat in enumerate(monate) if monat >= laufender_monat), len(monate))
-        if laufender_monat is not None
-        else len(monate)
-    )
+    grenze = _grenze_laufender_monat(len(monate), laufender_monat, lambda i: monate[i])
     farbenindex = 0
     for name, je_monat in reihen.items():
         if name == "Alle Schulungen":
@@ -1622,29 +1669,15 @@ def anmeldungsverlauf_reihen(
             farbe = JAHRESFARBEN[farbenindex % len(JAHRESFARBEN)]
             farbenindex += 1
         werte = [je_monat.get(monat, 0) for monat in monate]
-        if grenze > 0:
-            fig.add_scatter(
-                x=beschriftungen[:grenze],
-                y=werte[:grenze],
-                mode="lines+markers",
-                name=name,
-                legendgroup=name,
-                line={"color": farbe, "width": 2},
-                marker={"size": 6, "color": farbe},
-            )
-        if grenze < len(beschriftungen):
-            start = max(grenze - 1, 0)
-            fig.add_scatter(
-                x=beschriftungen[start:],
-                y=werte[start:],
-                mode="lines+markers",
-                name=name,
-                legendgroup=name,
-                showlegend=grenze == 0,
-                opacity=PROGNOSE_DECKKRAFT,
-                line={"color": farbe, "width": 2, "dash": "dot"},
-                marker={"size": 6, "color": farbe, "opacity": PROGNOSE_DECKKRAFT},
-            )
+        _linie_mit_vorlaeufigem_abschnitt(
+            fig,
+            x=beschriftungen,
+            y=werte,
+            name=name,
+            legendgroup=name,
+            farbe=farbe,
+            grenze=grenze,
+        )
         if mit_trend:
             fig.add_scatter(
                 x=beschriftungen,
@@ -1725,37 +1758,22 @@ def anmeldungsverlauf_jahresvergleich(
             farbe = JAHRESFARBEN[jahr_index % len(JAHRESFARBEN)]
             werte = [je_monat.get((jahr, monatsnummer), 0) for monatsnummer in range(1, 13)]
             legendenname = f"{name} {jahr}" if mehrere_reihen else str(jahr)
-            grenze = (
-                next(
-                    (i for i in range(12) if (jahr, i + 1) >= laufender_monat),
-                    12,
-                )
-                if laufender_monat is not None
-                else 12
+
+            def _monat_bei(i: int, jahr: int = jahr) -> Monat:
+                return (jahr, i + 1)
+
+            grenze = _grenze_laufender_monat(12, laufender_monat, _monat_bei)
+            _linie_mit_vorlaeufigem_abschnitt(
+                fig,
+                x=MONATSNAMEN,
+                y=werte,
+                name=legendenname,
+                legendgroup=legendenname,
+                farbe=farbe,
+                grenze=grenze,
+                dash=dash,
+                dash_vorlaeufig=None,
             )
-            if grenze > 0:
-                fig.add_scatter(
-                    x=MONATSNAMEN[:grenze],
-                    y=werte[:grenze],
-                    mode="lines+markers",
-                    name=legendenname,
-                    legendgroup=legendenname,
-                    line={"color": farbe, "width": 2, "dash": dash},
-                    marker={"size": 6, "color": farbe},
-                )
-            if grenze < 12:
-                start = max(grenze - 1, 0)
-                fig.add_scatter(
-                    x=MONATSNAMEN[start:],
-                    y=werte[start:],
-                    mode="lines+markers",
-                    name=legendenname,
-                    legendgroup=legendenname,
-                    showlegend=grenze == 0,
-                    opacity=PROGNOSE_DECKKRAFT,
-                    line={"color": farbe, "width": 2, "dash": dash},
-                    marker={"size": 6, "color": farbe, "opacity": PROGNOSE_DECKKRAFT},
-                )
             if mit_trend:
                 fig.add_scatter(
                     x=MONATSNAMEN,
@@ -1902,21 +1920,20 @@ _SPALTEN_ZUSAMMENFASSUNG = {"Summe", "Gewinn"}
 _SPALTE_GEWINN = "Gewinn"
 
 
+def _gewinn_farbe(betrag: Decimal) -> str:
+    if betrag > 0:
+        return ERGEBNIS_POSITIV
+    if betrag < 0:
+        return ERGEBNIS_NEGATIV
+    return TINTE
+
+
 def _gewinn_spaltenfarben(werte: pd.Series) -> list[str]:
     """Je Zeile Gruen bei positivem, Rot bei negativem Gewinn - eine 0 (kein
     Kostenplan geladen, oder ein Monat tatsaechlich exakt ausgeglichen) bleibt
     bewusst in der neutralen Schriftfarbe, weil weder Gewinn noch Verlust vorliegt.
     """
-    farben = []
-    for wert in werte:
-        betrag = betrag_parsen(str(wert))
-        if betrag > 0:
-            farben.append(ERGEBNIS_POSITIV)
-        elif betrag < 0:
-            farben.append(ERGEBNIS_NEGATIV)
-        else:
-            farben.append(TINTE)
-    return farben
+    return [_gewinn_farbe(betrag_parsen(str(wert))) for wert in werte]
 
 
 def tabelle_als_grafik(titel: str, tabelle: pd.DataFrame, *, hoehe: int | None = None) -> go.Figure:

@@ -107,6 +107,7 @@ if TYPE_CHECKING:
     from umsatzprognose.domaene.anmeldung import Kategorisierung
     from umsatzprognose.util import Monat
 
+from collections import Counter
 from collections.abc import Sequence
 from contextlib import asynccontextmanager, suppress
 from dataclasses import dataclass
@@ -497,8 +498,9 @@ def _tabelle_html(tabelle: pd.DataFrame, *, zusatzklasse: str = "", element_id: 
     # erzeugten Fragment ausschliesslich die Header-Zellen aus <th>, Datenzellen sind
     # <td> - ein gezielter Ersatz reicht deshalb ohne den Index faelschlich zu treffen.
     hat_gewinnspalte = _SPALTE_GEWINN in tabelle.columns
-    anzeige = tabelle.copy()
+    anzeige = tabelle
     if hat_gewinnspalte:
+        anzeige = tabelle.copy()
         anzeige[_SPALTE_GEWINN] = anzeige[_SPALTE_GEWINN].map(_gewinn_eingefaerbt)
     html = anzeige.to_html(
         index=False,
@@ -1193,10 +1195,9 @@ def _monate_summieren(knoten: Sequence[Anmeldungsknoten]) -> dict[Monat, int]:
     """Monatswerte mehrerer Geschwister-Knoten aufsummiert - Grundlage fuer den
     virtuellen Wurzelknoten einer Kategorie (:func:`_kategorie_knoten`) und die
     Gesamt-Zeile ueber alle Kategorien."""
-    summen: dict[Monat, int] = {}
+    summen: Counter[Monat] = Counter()
     for kind in knoten:
-        for monat, wert in kind.monate.items():
-            summen[monat] = summen.get(monat, 0) + wert
+        summen.update(kind.monate)
     return summen
 
 
@@ -1342,16 +1343,17 @@ def _knoten_flach(
                 "zukuenftige_monate": _zukuenftige_monate(jahr, laufender_monat),
             }
             zeilen.append(jahr_zeile)
-    for i, kind in enumerate(knoten.kinder):
-        zeilen.extend(
-            _knoten_flach(
-                kind,
-                laufender_monat=laufender_monat,
-                mehrere_jahre_insgesamt=mehrere_jahre_insgesamt,
-                tiefe=tiefe + 1,
-                pfad=f"{pfad}-{i}",
-            )
+    zeilen.extend(
+        zeile
+        for i, kind in enumerate(knoten.kinder)
+        for zeile in _knoten_flach(
+            kind,
+            laufender_monat=laufender_monat,
+            mehrere_jahre_insgesamt=mehrere_jahre_insgesamt,
+            tiefe=tiefe + 1,
+            pfad=f"{pfad}-{i}",
         )
+    )
     return zeilen
 
 

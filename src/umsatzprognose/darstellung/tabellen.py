@@ -279,13 +279,7 @@ def anmeldungstabelle(verlauf: Anmeldungsverlauf, kategorien: Kategorisierung) -
 def projekte_ohne_budget(projekte: Iterable[tuple[str, str]]) -> pd.DataFrame:
     return _ohne_index(
         pd.DataFrame(
-            [
-                {
-                    "Projekt": projekt[0],
-                    "Grund": projekt[1],
-                }
-                for projekt in projekte
-            ],
+            [{"Projekt": name, "Grund": grund} for name, grund in projekte],
             columns=PROJEKT_OHNE_BUDGET_SPALTEN,
         ),
     )

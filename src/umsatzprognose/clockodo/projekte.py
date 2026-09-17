@@ -85,7 +85,7 @@ from umsatzprognose.domaene import (
 )
 from umsatzprognose.domaene.zahlen import euro, stunden
 
-from .client import HISTORIE_VON, SEKUNDEN_JE_STUNDE
+from .client import HISTORIE_VON, SEKUNDEN_JE_STUNDE, stunden_der_gruppe, umsatz_der_gruppe
 from .nebenlaeufig import gleichzeitig, synchron
 
 
@@ -212,8 +212,8 @@ class ProjektRepository:
                     # Eine Person ohne Stammdatensatz bekommt ein Platzhalterobjekt
                     # statt eines KeyError: ein fehlender Name darf keine Stunde kosten.
                     mitarbeiter=self._mitarbeiter.get(users_id, Mitarbeiter(id=users_id)),
-                    stunden=float(untergruppe.get("duration") or 0.0) / SEKUNDEN_JE_STUNDE,
-                    umsatz=Decimal(str(untergruppe.get("revenue") or 0.0)),
+                    stunden=stunden_der_gruppe(untergruppe),
+                    umsatz=umsatz_der_gruppe(untergruppe),
                 ),
             )
         return tuple(anteile)
@@ -229,15 +229,15 @@ class ProjektRepository:
             # Summiert statt zugewiesen: eine Gruppierung liefert je Projekt eine
             # Gruppe, ein doppelter Schluessel wuerde sonst still eine Zeile verwerfen.
             eintrag = verbrauch.setdefault(projects_id, _leerer_verbrauch())
-            eintrag["revenue"] += Decimal(str(gruppe.get("revenue") or 0.0))
-            eintrag["stunden"] += float(gruppe.get("duration") or 0.0) / SEKUNDEN_JE_STUNDE
+            eintrag["revenue"] += umsatz_der_gruppe(gruppe)
+            eintrag["stunden"] += stunden_der_gruppe(gruppe)
             eintrag["sub_groups"].extend(gruppe.get("sub_groups") or [])
         return verbrauch
 
     @staticmethod
     def _verbrauch_ohne_projekt_hinweis(gruppen: list[EntryGroupV2]) -> tuple[Hinweis, ...]:
         ohne_projekt = [g for g in gruppen if int(g["group"]) == 0]
-        umsatz = sum((Decimal(str(g.get("revenue") or 0.0)) for g in ohne_projekt), Decimal("0"))
+        umsatz = sum((umsatz_der_gruppe(g) for g in ohne_projekt), Decimal("0"))
         zeit = sum(float(g.get("duration") or 0.0) for g in ohne_projekt) / SEKUNDEN_JE_STUNDE
         if not (umsatz or zeit):
             return ()

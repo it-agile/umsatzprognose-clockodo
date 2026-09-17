@@ -158,7 +158,7 @@ class Abrufquotenverteilung:
     def _anteil(self, zaehlt: Callable[[float], bool]) -> float:
         if not self.quoten:
             return 0.0
-        return sum(1 for wert in self._werte if zaehlt(wert)) / self.anzahl
+        return sum(zaehlt(wert) for wert in self._werte) / self.anzahl
 
     @property
     def anteil_ohne_abruf(self) -> float:
@@ -179,21 +179,23 @@ class Abrufquotenverteilung:
         """Die auffaelligsten Beobachtungen - fuer die Kalibrierung."""
         return tuple(sorted(self.quoten, key=lambda q: q.wert, reverse=True)[:anzahl])
 
+    def _werte_array_oder_fehler(self) -> np.ndarray:
+        if not self.quoten:
+            raise ValueError("Aus einer leeren Verteilung kann nicht gezogen werden")
+        return self._werte_array
+
     def ziehen(self, zufall: np.random.Generator) -> float:
         """Eine Quote, mit Zuruecklegen gezogen.
 
         Der Zufallsgenerator wird uebergeben und nicht hier erzeugt: ein Lauf muss
         wiederholbar sein, und wer den Startwert setzt, ist der Aufrufer.
         """
-        if not self.quoten:
-            raise ValueError("Aus einer leeren Verteilung kann nicht gezogen werden")
-        return float(zufall.choice(self._werte_array))
+        return float(zufall.choice(self._werte_array_oder_fehler()))
 
     def ziehungen(self, anzahl: int, zufall: np.random.Generator) -> tuple[float, ...]:
         """``anzahl`` Quoten in einem Zug - unabhaengig und mit Zuruecklegen."""
-        if not self.quoten:
-            raise ValueError("Aus einer leeren Verteilung kann nicht gezogen werden")
-        return tuple(float(wert) for wert in zufall.choice(self._werte_array, size=anzahl))
+        werte_array = self._werte_array_oder_fehler()
+        return tuple(float(wert) for wert in zufall.choice(werte_array, size=anzahl))
 
     def ziehen_array(self, form: tuple[int, ...], zufall: np.random.Generator) -> np.ndarray:
         """Wie :meth:`ziehungen`, aber als Array beliebiger Form statt als Tupel.
@@ -203,6 +205,4 @@ class Abrufquotenverteilung:
         :meth:`ziehen` - der Gewinn der numpy-Umstellung entsteht durch das
         Vektorisieren ueber die Laeufe, nicht durch den Zufallsgenerator allein.
         """
-        if not self.quoten:
-            raise ValueError("Aus einer leeren Verteilung kann nicht gezogen werden")
-        return zufall.choice(self._werte_array, size=form)
+        return zufall.choice(self._werte_array_oder_fehler(), size=form)

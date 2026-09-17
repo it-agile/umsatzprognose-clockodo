@@ -28,12 +28,10 @@ if TYPE_CHECKING:
 
     from .client import ClockodoClient, EntryGroupV2
 
-from decimal import Decimal
-
 from umsatzprognose.domaene import Monatsumsatz, Umsatzhistorie
 from umsatzprognose.util import aus_ordnung, ordnung
 
-from .client import SEKUNDEN_JE_STUNDE, monatsende
+from .client import monatsende, stunden_der_gruppe, umsatz_der_gruppe
 from .nebenlaeufig import synchron
 
 
@@ -72,8 +70,8 @@ def monatsumsatz(gruppe: EntryGroupV2) -> Monatsumsatz:
     return Monatsumsatz(
         jahr=int(schluessel[:4]),
         monat=int(schluessel[4:6]),
-        umsatz=Decimal(str(gruppe.get("revenue") or 0.0)),
-        stunden=float(gruppe.get("duration") or 0.0) / SEKUNDEN_JE_STUNDE,
+        umsatz=umsatz_der_gruppe(gruppe),
+        stunden=stunden_der_gruppe(gruppe),
     )
 
 

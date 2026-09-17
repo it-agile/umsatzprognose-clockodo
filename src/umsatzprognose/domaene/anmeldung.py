@@ -310,45 +310,50 @@ def _gruppieren(
     return gruppen
 
 
-def _alphabetisch_mit_anmeldungen(
+def _mit_anmeldungen(
     gruppen: dict[str, list[Anmeldung]],
 ) -> list[tuple[str, list[Anmeldung]]]:
-    """Sortiert alphabetisch (gross-/kleinschreibungsunabhaengig) - und laesst Gruppen
-    ganz ohne Anmeldung in diesem Zeitraum weg: eine Schulung ohne Teilnehmende in
-    diesem Zeitraum soll nicht als eigene (leere) Zeile auftauchen. Diese Filterung
-    wirkt ausschliesslich auf Basisname-/Format-/Dauer-Ebene im Tabellen-Drilldown
-    (siehe :meth:`Anmeldungsverlauf.gliederung_je_kategorie`) - eine Kategorie bleibt
-    dort auch ohne Anmeldung sichtbar, weil das schon dort dokumentiert ist. Anders als
-    :attr:`Anmeldungsverlauf.schulungstypen`/:attr:`~.formate`/:attr:`~.dauern` (nach
-    absteigender Gesamtteilnehmendenzahl, fuer die Dropdown-Optionen der Webapp-Filter) -
-    in der Tabelle soll man einen bekannten Namen alphabetisch wiederfinden, nicht nach
-    Anmeldezahl suchen muessen."""
-    mit_anmeldungen = [
+    """Laesst Gruppen ganz ohne Anmeldung in diesem Zeitraum weg: eine Schulung ohne
+    Teilnehmende in diesem Zeitraum soll nicht als eigene (leere) Zeile auftauchen.
+    Gemeinsamer Kern von :func:`_alphabetisch_mit_anmeldungen` und
+    :func:`_nach_juengstem_jahr_und_name_mit_anmeldungen`, die je eine eigene
+    Sortierung darauf anwenden."""
+    return [
         (name, gruppe)
         for name, gruppe in gruppen.items()
         if sum(a.teilnehmendenzahl for a in gruppe) > 0
     ]
-    return sorted(mit_anmeldungen, key=lambda kv: kv[0].lower())
+
+
+def _alphabetisch_mit_anmeldungen(
+    gruppen: dict[str, list[Anmeldung]],
+) -> list[tuple[str, list[Anmeldung]]]:
+    """Sortiert alphabetisch (gross-/kleinschreibungsunabhaengig), siehe
+    :func:`_mit_anmeldungen` fuer die Ausblendung leerer Gruppen. Diese Filterung wirkt
+    ausschliesslich auf Basisname-/Format-/Dauer-Ebene im Tabellen-Drilldown (siehe
+    :meth:`Anmeldungsverlauf.gliederung_je_kategorie`) - eine Kategorie bleibt dort auch
+    ohne Anmeldung sichtbar, weil das schon dort dokumentiert ist. Anders als
+    :attr:`Anmeldungsverlauf.schulungstypen`/:attr:`~.formate`/:attr:`~.dauern` (nach
+    absteigender Gesamtteilnehmendenzahl, fuer die Dropdown-Optionen der Webapp-Filter) -
+    in der Tabelle soll man einen bekannten Namen alphabetisch wiederfinden, nicht nach
+    Anmeldezahl suchen muessen."""
+    return sorted(_mit_anmeldungen(gruppen), key=lambda kv: kv[0].lower())
 
 
 def _nach_juengstem_jahr_und_name_mit_anmeldungen(
     gruppen: dict[str, list[Anmeldung]],
 ) -> list[tuple[str, list[Anmeldung]]]:
-    """Wie :func:`_alphabetisch_mit_anmeldungen` (dieselbe Ausblendung leerer Gruppen),
-    aber primaer nach dem juengsten vorkommenden Jahr sortiert (absteigend), erst
-    danach alphabetisch - fuer die direkten Basisname-Kinder einer Kategorie im
-    Tabellen-Drilldown (siehe :meth:`Anmeldungsverlauf.gliederung_je_kategorie`): eine
-    Schulung, die nur in einem laengst vergangenen Jahr stattfand, taucht dort
-    unterhalb aller Schulungen des juengsten vorkommenden Jahres auf, statt sich rein
-    alphabetisch dazwischenzumischen. Eine Schulung mit Anmeldungen in mehreren Jahren
-    zaehlt dabei zu ihrem juengsten Jahr."""
-    mit_anmeldungen = [
-        (name, gruppe)
-        for name, gruppe in gruppen.items()
-        if sum(a.teilnehmendenzahl for a in gruppe) > 0
-    ]
+    """Wie :func:`_alphabetisch_mit_anmeldungen` (dieselbe Ausblendung leerer Gruppen,
+    siehe :func:`_mit_anmeldungen`), aber primaer nach dem juengsten vorkommenden Jahr
+    sortiert (absteigend), erst danach alphabetisch - fuer die direkten Basisname-Kinder
+    einer Kategorie im Tabellen-Drilldown (siehe
+    :meth:`Anmeldungsverlauf.gliederung_je_kategorie`): eine Schulung, die nur in einem
+    laengst vergangenen Jahr stattfand, taucht dort unterhalb aller Schulungen des
+    juengsten vorkommenden Jahres auf, statt sich rein alphabetisch dazwischenzumischen.
+    Eine Schulung mit Anmeldungen in mehreren Jahren zaehlt dabei zu ihrem juengsten
+    Jahr."""
     return sorted(
-        mit_anmeldungen,
+        _mit_anmeldungen(gruppen),
         key=lambda kv: (-max(a.jahr for a in kv[1]), kv[0].lower()),
     )
 
@@ -683,8 +688,7 @@ class Anmeldungsverlauf:
         """
         ende = ordnung(stichtag.year, stichtag.month) + monate_voraus
         start = ende - monate_voraus - monate
-        gefiltert = tuple(a for a in self.anmeldungen if start <= ordnung(a.jahr, a.monat) <= ende)
-        return type(self)(anmeldungen=gefiltert, abbildungshinweise=self.abbildungshinweise)
+        return self._gefiltert(lambda a: start <= ordnung(a.jahr, a.monat) <= ende)
 
     def ab_jahr(self, jahr: int) -> Anmeldungsverlauf:
         """Nur die Anmeldungen ab (einschliesslich) dem angegebenen Jahr.
@@ -695,8 +699,7 @@ class Anmeldungsverlauf:
         ohne dass dafuer neu geladen werden muesste (siehe
         :class:`~umsatzprognose.webapp.cache.AnmeldungsverlaufCache`).
         """
-        gefiltert = tuple(a for a in self.anmeldungen if a.jahr >= jahr)
-        return type(self)(anmeldungen=gefiltert, abbildungshinweise=self.abbildungshinweise)
+        return self._gefiltert(lambda a: a.jahr >= jahr)
 
     def nur_jahre(self, jahre: Collection[int]) -> Anmeldungsverlauf:
         """Nur die Anmeldungen genau eines der angegebenen Jahre.
@@ -707,5 +710,13 @@ class Anmeldungsverlauf:
         Gegensatz zu ``ab_jahr`` nur das Diagramm, nicht die Schulungsdetails-Tabelle
         einschraenkt.
         """
-        gefiltert = tuple(a for a in self.anmeldungen if a.jahr in jahre)
-        return type(self)(anmeldungen=gefiltert, abbildungshinweise=self.abbildungshinweise)
+        return self._gefiltert(lambda a: a.jahr in jahre)
+
+    def _gefiltert(self, passt: Callable[[Anmeldung], bool]) -> Anmeldungsverlauf:
+        """Gemeinsamer Kern von :meth:`letzte`, :meth:`ab_jahr` und :meth:`nur_jahre`:
+        ein neuer :class:`Anmeldungsverlauf` mit nur den ``passt``-Anmeldungen, gleichen
+        ``abbildungshinweise``."""
+        return type(self)(
+            anmeldungen=tuple(a for a in self.anmeldungen if passt(a)),
+            abbildungshinweise=self.abbildungshinweise,
+        )

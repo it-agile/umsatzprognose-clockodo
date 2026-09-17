@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import pytest
+
 from umsatzprognose.util import aus_ordnung, monatsfolge, ordnung, vormonat
 
 
-def test_ordnung_und_aus_ordnung_sind_zueinander_umkehrbar():
-    for jahr, monat in [(2025, 1), (2025, 6), (2025, 12), (2026, 1)]:
-        assert aus_ordnung(ordnung(jahr, monat)) == (jahr, monat)
+@pytest.mark.parametrize(("jahr", "monat"), [(2025, 1), (2025, 6), (2025, 12), (2026, 1)])
+def test_ordnung_und_aus_ordnung_sind_zueinander_umkehrbar(jahr, monat):
+    assert aus_ordnung(ordnung(jahr, monat)) == (jahr, monat)
 
 
 def test_ordnung_waechst_ueber_die_jahresgrenze_hinweg():

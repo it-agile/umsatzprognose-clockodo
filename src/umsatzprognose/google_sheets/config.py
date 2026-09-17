@@ -36,6 +36,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from functools import partial
+from typing import Any
 
 from dotenv import load_dotenv
 
@@ -87,13 +88,24 @@ class GoogleSheetsConfig:
         return cls(jahre_zu_dateien=_jahre_zu_dateien(_colab_secret(SHEET_ID_VAR)))
 
 
-def _oauth_client_json(roh: str) -> dict:
+def json_geladen(roh: str, var_name: str) -> Any:
+    """Parst ``roh`` als JSON, sonst :class:`MissingCredentialsError` mit ``var_name``.
+
+    Gemeinsame Grundlage der JSON-Umgebungsvariablen dieses Bausteins
+    (``GOOGLE_OAUTH_CLIENT_JSON``, ``KOSTEN_SHEET_IDS``) und von
+    ``SCHULUNGEN_KATEGORIEN`` in :mod:`umsatzprognose.schulungen.schulungen` - die
+    darueber hinausgehende Struktur-Validierung bleibt Sache des jeweiligen Aufrufers.
+    """
     try:
-        wert = json.loads(roh)
+        return json.loads(roh)
     except json.JSONDecodeError as fehler:
         raise MissingCredentialsError(
-            f"{OAUTH_CLIENT_VAR} enthaelt kein gueltiges JSON: {fehler}",
+            f"{var_name} enthaelt kein gueltiges JSON: {fehler}",
         ) from fehler
+
+
+def _oauth_client_json(roh: str) -> dict:
+    wert = json_geladen(roh, OAUTH_CLIENT_VAR)
     if not isinstance(wert, dict) or not ({"installed", "web"} & wert.keys()):
         raise MissingCredentialsError(
             f"{OAUTH_CLIENT_VAR} sieht nicht nach einer OAuth-Client-ID aus - erwartet wird "
@@ -105,12 +117,7 @@ def _oauth_client_json(roh: str) -> dict:
 
 
 def _jahre_zu_dateien(roh: str) -> dict[int, str]:
-    try:
-        wert = json.loads(roh)
-    except json.JSONDecodeError as fehler:
-        raise MissingCredentialsError(
-            f"{SHEET_ID_VAR} enthaelt kein gueltiges JSON: {fehler}",
-        ) from fehler
+    wert = json_geladen(roh, SHEET_ID_VAR)
     if not isinstance(wert, dict):
         raise MissingCredentialsError(f"{SHEET_ID_VAR} muss ein JSON-Objekt Jahr -> ID sein.")
     try:

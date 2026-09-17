@@ -114,6 +114,23 @@ def client_mit_routen(routen: dict[str, object]):
     return client_mit(handler)
 
 
+class FakeTabellenClient:
+    """Liefert je Spreadsheet-ID feste Zeilen, oder wirft, wenn konfiguriert.
+
+    Gemeinsamer Fake fuer ``test_schulungen.py``/``test_kosten.py`` mit derselben
+    ``werte()``-Schnittstelle wie ``google_sheets.client.TabellenClient``.
+    """
+
+    def __init__(self, antworten: dict[str, list[list[str]] | Exception]) -> None:
+        self._antworten = antworten
+
+    def werte(self, spreadsheet_id: str, bereich: str) -> list[list[str]]:
+        antwort = self._antworten[spreadsheet_id]
+        if isinstance(antwort, Exception):
+            raise antwort
+        return antwort
+
+
 @pytest.fixture
 def projekt_antwort() -> dict:
     """Zwei aktive Projekte, eines mit und eines ohne Budget, plus ein inaktives."""
