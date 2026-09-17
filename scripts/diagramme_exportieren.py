@@ -54,7 +54,7 @@ import sys
 import time
 from datetime import date, timedelta
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Any, cast
 
 import humanize
 import plotly.io as pio
@@ -178,35 +178,127 @@ def _jahresvergleich_jahre_typ(wert: str) -> str:
     return wert
 
 
+_GruppenEintrag = tuple[str, "str | None", "list[argparse.Action]"]
+
+
+def _themengruppe(
+    parser: argparse.ArgumentParser,
+    gruppen: dict[str, _GruppenEintrag],
+    schluessel: str,
+    titel: str,
+    beschreibung: str | None = None,
+) -> Callable[..., argparse.Action]:
+    """Legt eine argparse-Argumentgruppe an und liefert deren ``add_argument``
+    zurück, das zusätzlich jede erzeugte Action in ``gruppen`` mitschneidet - für die
+    gefilterte '-h THEMA'-Hilfe (siehe :func:`_hilfe_drucken`), ohne auf das private
+    ``ArgumentGroup._group_actions`` zuzugreifen (von ``ruff`` ohnehin verboten,
+    siehe ``SLF001``)."""
+    aktionen: list[argparse.Action] = []
+    gruppen[schluessel] = (titel, beschreibung, aktionen)
+    add_argument = parser.add_argument_group(titel, beschreibung).add_argument
+
+    def _add(*args: Any, **kwargs: Any) -> argparse.Action:
+        aktion = add_argument(*args, **kwargs)
+        aktionen.append(aktion)
+        return aktion
+
+    return _add
+
+
+def _themen_hinweis(gruppen: dict[str, _GruppenEintrag], ausser: str) -> str:
+    """Kurzhinweis auf die übrigen Themen, an den per '-h THEMA' gezeigten
+    Themen-Abschnitt angehängt (siehe :func:`_hilfe_drucken`)."""
+    zeilen = "\n".join(
+        f"  {schluessel:<30} {titel}"
+        for schluessel, (titel, _beschreibung, _aktionen) in gruppen.items()
+        if schluessel != ausser
+    )
+    return (
+        "Weitere Themen ('-h THEMA' zeigt nur dessen Optionen, "
+        "'-h alle' die komplette Hilfe):\n" + zeilen
+    )
+
+
+def _hilfe_drucken(
+    parser: argparse.ArgumentParser, gruppen: dict[str, _GruppenEintrag], thema: str
+) -> None:
+    """Druckt die Hilfe zu '-h'/'--help' und beendet den Prozess - 'alle' zeigt die
+    komplette, ungefilterte Hilfe, ein Schlüssel aus ``gruppen`` nur dessen
+    Abschnitt (plus Themenhinweis). Ohne Angabe (siehe ``const="allgemein"`` unten)
+    landet man beim Schlüssel 'allgemein', zeigt also nur die Allgemein-Gruppe."""
+    if thema == "alle":
+        parser.print_help()
+        parser.exit()
+
+    if thema not in gruppen:
+        parser.error(
+            f"ungültiges Thema '{thema}' für '-h/--help' - erlaubt: alle, {', '.join(gruppen)}"
+        )
+
+    titel, beschreibung, aktionen = gruppen[thema]
+    formatter = parser.formatter_class(prog=parser.prog)
+    formatter.add_usage(parser.usage, aktionen, [])
+    formatter.add_text(parser.description)
+    formatter.start_section(titel)
+    formatter.add_text(beschreibung)
+    formatter.add_arguments(aktionen)
+    formatter.end_section()
+    # Nicht ueber formatter.add_text(): das wuerde den Zeilenumbruch der Liste
+    # durch argparse' eigenen Fliesstext-Umbruch (textwrap.fill()) zerstoeren.
+    print(formatter.format_help())
+    print()
+    print(_themen_hinweis(gruppen, thema))
+    parser.exit()
+
+
 def _argumente(argv: list[str]) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Diagramme als Dateien exportieren.")
-    parser.add_argument(
+    parser = argparse.ArgumentParser(
+        description="Diagramme als Dateien exportieren.", add_help=False
+    )
+    gruppen: dict[str, _GruppenEintrag] = {}
+
+    allgemein = _themengruppe(parser, gruppen, "allgemein", "Allgemein")
+    allgemein(
+        "-h",
+        "--help",
+        nargs="?",
+        const="allgemein",
+        default=None,
+        dest="hilfe_thema",
+        metavar="THEMA",
+        help=(
+            "Hilfe anzeigen: ohne THEMA nur 'Allgemein' (dieser Abschnitt), 'alle' "
+            "für die komplette Hilfe, oder eines der Themen aus dem Hinweis am Ende "
+            "dieser Ausgabe."
+        ),
+    )
+    allgemein(
         "--ausgabeverzeichnis",
         "-o",
         type=Path,
         default=Path("diagramme"),
         help="Zielverzeichnis für die exportierten Dateien (Standard: ./diagramme).",
     )
-    parser.add_argument(
+    allgemein(
         "--format",
         choices=FORMATE,
         default=STANDARD_FORMAT,
         help=f"Ausgabeformat je Diagramm (Standard: {STANDARD_FORMAT}).",
     )
-    parser.add_argument(
+    allgemein(
         "--diagramm",
         action="append",
         choices=ALLE_DIAGRAMME,
         dest="diagramme",
         help="Nur dieses Diagramm exportieren (mehrfach angebbar). Ohne Angabe: alle.",
     )
-    parser.add_argument(
+    allgemein(
         "--stichtag",
         type=date.fromisoformat,
         default=None,
         help="Stichtag im Format JJJJ-MM-TT (Standard: heute).",
     )
-    parser.add_argument(
+    allgemein(
         "--horizont-monate",
         type=int,
         default=3,
@@ -215,7 +307,11 @@ def _argumente(argv: list[str]) -> argparse.Namespace:
             "(Standard: 3, nur für Dashboard-Diagramme)."
         ),
     )
-    parser.add_argument(
+
+    jahresvergleich = _themengruppe(
+        parser, gruppen, "kalenderjahresvergleich", "Kalenderjahresvergleich"
+    )
+    jahresvergleich(
         "--jahresvergleich-jahre",
         type=_jahresvergleich_jahre_typ,
         default=str(STANDARD_JAHRESVERGLEICH_JAHRE),
@@ -226,7 +322,17 @@ def _argumente(argv: list[str]) -> argparse.Namespace:
             f"(Standard: {STANDARD_JAHRESVERGLEICH_JAHRE})."
         ),
     )
-    parser.add_argument(
+
+    anmeldungsverlauf = _themengruppe(
+        parser,
+        gruppen,
+        "anmeldungsverlauf",
+        "Anmeldungsverlauf",
+        f"Gelten nur für '{DIAGRAMM_ANMELDUNGSVERLAUF}' (bzw. wie vermerkt nur für "
+        "dessen Ansichten), analog zu den gleichnamigen Reglern/Filtern in der Webapp "
+        "auf /schulungen.",
+    )
+    anmeldungsverlauf(
         "--monate-rueckblick",
         type=int,
         default=STANDARD_MONATE_RUECKBLICK,
@@ -236,7 +342,7 @@ def _argumente(argv: list[str]) -> argparse.Namespace:
             f"'{DIAGRAMM_ANMELDUNGSTABELLE}' (Standard: {STANDARD_MONATE_RUECKBLICK})."
         ),
     )
-    parser.add_argument(
+    anmeldungsverlauf(
         "--monate-voraus",
         type=int,
         default=STANDARD_MONATE_VORAUS,
@@ -246,7 +352,7 @@ def _argumente(argv: list[str]) -> argparse.Namespace:
             f"(Standard: {STANDARD_MONATE_VORAUS})."
         ),
     )
-    parser.add_argument(
+    anmeldungsverlauf(
         "--ansicht",
         choices=ANSICHT_OPTIONEN,
         default=STANDARD_ANSICHT,
@@ -255,7 +361,7 @@ def _argumente(argv: list[str]) -> argparse.Namespace:
             f"Umschalter in der Webapp (Standard: {STANDARD_ANSICHT})."
         ),
     )
-    parser.add_argument(
+    anmeldungsverlauf(
         "--zeitraum",
         choices=ZEITRAUM_OPTIONEN,
         default=None,
@@ -267,7 +373,7 @@ def _argumente(argv: list[str]) -> argparse.Namespace:
             "wirkungslos."
         ),
     )
-    parser.add_argument(
+    anmeldungsverlauf(
         "--ab-jahr",
         type=int,
         default=None,
@@ -278,7 +384,7 @@ def _argumente(argv: list[str]) -> argparse.Namespace:
             "'zeitverlauf' wirkungslos."
         ),
     )
-    parser.add_argument(
+    anmeldungsverlauf(
         "--schulung-filter",
         action="append",
         dest="schulung_filter",
@@ -289,7 +395,7 @@ def _argumente(argv: list[str]) -> argparse.Namespace:
             f"Ohne Angabe: '{ALLE_SCHULUNGEN}'."
         ),
     )
-    parser.add_argument(
+    anmeldungsverlauf(
         "--format-filter",
         action="append",
         dest="format_filter",
@@ -299,7 +405,7 @@ def _argumente(argv: list[str]) -> argparse.Namespace:
             f"zeigen (mehrfach angebbar). Ohne Angabe: '{ALLE}'."
         ),
     )
-    parser.add_argument(
+    anmeldungsverlauf(
         "--dauer-filter",
         action="append",
         dest="dauer_filter",
@@ -309,7 +415,7 @@ def _argumente(argv: list[str]) -> argparse.Namespace:
             f"(mehrfach angebbar). Ohne Angabe: '{ALLE}'."
         ),
     )
-    parser.add_argument(
+    anmeldungsverlauf(
         "--trendlinien",
         choices=("an", "aus"),
         default=None,
@@ -319,16 +425,24 @@ def _argumente(argv: list[str]) -> argparse.Namespace:
             f"('an' bei hoechstens {STANDARD_TRENDLINIEN_MAX_LINIEN}, sonst 'aus')."
         ),
     )
-    parser.add_argument(
+
+    # Vier Themen statt einer gemeinsamen "Simulation"-Gruppe: Modus/Verteilungsanzeige
+    # gelten immer, Weibull-/Gauss-Parameter nur im jeweils gleichnamigen Modus (siehe
+    # --interne-arbeit-modus) - mit '-h simulation-weibull' o. ae. gezielt abrufbar.
+    simulation_modus = _themengruppe(
+        parser,
+        gruppen,
+        "simulation-modus",
+        "Anteil fakturierbarer Arbeit: Modus",
+        "Modus und fester Anteil im Modus 'pauschal', wie der gleichnamige Regler in der Webapp.",
+    )
+    simulation_modus(
         "--interne-arbeit-modus",
         choices=("pauschal", "weibull", "gauss"),
         default="pauschal",
-        help=(
-            "Simulationsverteilung für den Anteil fakturierbarer Arbeit, wie der "
-            "gleichnamige Regler in der Webapp (Standard: pauschal)."
-        ),
+        help="Modus (Standard: pauschal).",
     )
-    parser.add_argument(
+    simulation_modus(
         "--anteil-fakturierbar",
         type=float,
         default=None,
@@ -336,49 +450,73 @@ def _argumente(argv: list[str]) -> argparse.Namespace:
             "Fester Anteil (0.0-1.0) im Modus 'pauschal' (Standard: der historische Durchschnitt)."
         ),
     )
-    parser.add_argument(
+
+    simulation_weibull = _themengruppe(
+        parser,
+        gruppen,
+        "simulation-weibull",
+        "Anteil fakturierbarer Arbeit: Weibull",
+        "Nur im Modus 'weibull' wirksam (siehe --interne-arbeit-modus).",
+    )
+    simulation_weibull(
         "--weibull-formparameter",
         type=float,
         default=None,
-        help="Formparameter (k) im Modus 'weibull' (Standard: aus der Historie geschätzt).",
+        help="Formparameter (k) (Standard: aus der Historie geschätzt).",
     )
-    parser.add_argument(
+    simulation_weibull(
         "--weibull-skalenparameter",
         type=float,
         default=None,
-        help="Skalenparameter (λ) im Modus 'weibull' (Standard: aus der Historie geschätzt).",
+        help="Skalenparameter (λ) (Standard: aus der Historie geschätzt).",
     )
-    parser.add_argument(
+
+    simulation_gauss = _themengruppe(
+        parser,
+        gruppen,
+        "simulation-gauss",
+        "Anteil fakturierbarer Arbeit: Gauss",
+        "Nur im Modus 'gauss' wirksam (siehe --interne-arbeit-modus).",
+    )
+    simulation_gauss(
         "--gauss-mittelwert",
         type=float,
         default=None,
-        help="Mittelwert (μ) im Modus 'gauss' (Standard: aus der Historie geschätzt).",
+        help="Mittelwert (μ) (Standard: aus der Historie geschätzt).",
     )
-    parser.add_argument(
+    simulation_gauss(
         "--gauss-standardabweichung",
         type=float,
         default=None,
-        help="Standardabweichung (σ) im Modus 'gauss' (Standard: aus der Historie geschätzt).",
+        help="Standardabweichung (σ) (Standard: aus der Historie geschätzt).",
     )
-    parser.add_argument(
+
+    simulation_verteilungsanzeige = _themengruppe(
+        parser,
+        gruppen,
+        "simulation-verteilungsanzeige",
+        "Anteil fakturierbarer Arbeit: Verteilungsanzeige",
+        f"Nur für '{next(iter(MIT_AUSREISSER_BEREICH_FAEHIG))}': blendet Ausreisser am "
+        "unteren/oberen Ende der gezeigten Verteilung aus, wie die beiden Regler in "
+        "der Webapp.",
+    )
+    simulation_verteilungsanzeige(
         "--anteil-fakturierbar-minimum",
         type=float,
         default=0.0,
-        help=(
-            "Unteres Ende des gezeigten Bereichs für "
-            f"'{next(iter(MIT_AUSREISSER_BEREICH_FAEHIG))}' (Standard: 0.0)."
-        ),
+        help="Unteres Ende des gezeigten Bereichs (Standard: 0.0).",
     )
-    parser.add_argument(
+    simulation_verteilungsanzeige(
         "--anteil-fakturierbar-maximum",
         type=float,
         default=1.0,
-        help=(
-            "Oberes Ende des gezeigten Bereichs für "
-            f"'{next(iter(MIT_AUSREISSER_BEREICH_FAEHIG))}' (Standard: 1.0)."
-        ),
+        help="Oberes Ende des gezeigten Bereichs (Standard: 1.0).",
     )
-    return parser.parse_args(argv)
+
+    args = parser.parse_args(argv)
+    if args.hilfe_thema is not None:
+        _hilfe_drucken(parser, gruppen, args.hilfe_thema)
+    return args
 
 
 def _interne_arbeit_ziehung(
