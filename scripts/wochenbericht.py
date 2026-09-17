@@ -10,31 +10,31 @@ Zugangsdaten kommen ausschließlich aus Umgebungsvariablen (``ClockodoCredential
 aus_umgebung()`` bzw. ``GoogleSheetsConfig.aus_umgebung()``) - in der Action als
 Secrets, siehe .github/workflows/wochenbericht.yml.
 
-Ein einziger Post ("Wochenbericht Zahlen, Daten, Fakten") trägt alle Diagramme als Bilder,
-einschließlich der Umsatztabelle als gerendertes Bild statt als Text - dieselben
-Ansichten wie in notebooks/01_dashboard.ipynb, notebooks/00_datencheck.ipynb und
+Ein einziger Post ("Wochenbericht Zahlen, Daten, Fakten") trägt eine bewusst schlanke
+Auswahl von vier Diagrammen/Tabellen als Bilder (siehe ``DIAGRAMM_ERLAEUTERUNGEN``),
+einschließlich der Umsatztabelle als gerendertes Bild statt als Text - ein Ausschnitt
+der Ansichten aus notebooks/01_dashboard.ipynb, notebooks/00_datencheck.ipynb und
 notebooks/03_schulungsanmeldungen.ipynb. Ein einzelner Slack-API-Aufruf
 (``files_upload_v2`` mit ``file_uploads``) hängt dabei alle Bilder gemeinsam an
 dieselbe Nachricht, statt je Bild eine eigene Unternachricht zu erzeugen.
 
-``WOCHENBERICHT_HORIZONT_MONATE`` und ``WOCHENBERICHT_GEWINN_VERLUST_MONATE`` sind
-optional - ohne gesetztes Secret gelten dieselben Standardwerte wie in den Notebooks
-(``Dashboard.laden`` bzw. ``Dashboard.gewinn_verlust_monatlich``).
+``WOCHENBERICHT_HORIZONT_MONATE`` ist optional - ohne gesetztes Secret gilt derselbe
+Standardwert wie in den Notebooks (``Dashboard.laden``).
 
 Mit ``--nur-text`` gibt das Skript nur den Text des Slack-Posts auf der Kommandozeile
 aus, statt ihn zu posten - weder Diagramm-Rendering noch Slack-Zugangsdaten nötig, zum
 Nachlesen des Textes vor einem echten Post.
 
-Die drei voneinander unabhängigen Datenquellen (Dashboard, Kurzarbeit-Rohdaten,
-Anmeldungsverlauf) laden dabei gleichzeitig statt nacheinander - wie
-``Dashboard.laden_async`` intern schon seine vier Bestandteile gleichzeitig lädt, und
-wie ``webapp/app.py``s ``_vorladen()`` alle drei Caches beim Start unabhängig
-voneinander anstößt. Jede Quelle trägt ihren Ladefortschritt in einer eigenen Zeile
-vor (siehe ``Mehrzeilenanzeige``), ersetzt am Ende durch die fertige Statuszeile -
-sowohl mit als auch ohne ``--nur-text``, und sowohl im lokalen Terminal als auch im Log
-des GitHub-Actions-Laufs. Eine Leerzeile trennt den Ladebericht ("Daten geladen und
-simuliert.") sichtbar vom Folgenden - dem Post-Text bei ``--nur-text``, den
-Export-Balken sonst.
+Die beiden voneinander unabhängigen Datenquellen (Dashboard, Anmeldungsverlauf) laden
+dabei gleichzeitig statt nacheinander - wie ``Dashboard.laden_async`` intern schon
+seine vier Bestandteile gleichzeitig lädt. Kurzarbeit-Rohdaten werden bewusst nicht
+geholt: der Bericht enthält seit der Abspeckung auf vier Diagramme/Tabellen (siehe
+``DIAGRAMM_ERLAEUTERUNGEN``) keinen Kurzarbeit-Inhalt mehr. Jede Quelle trägt ihren
+Ladefortschritt in einer eigenen Zeile vor (siehe ``Mehrzeilenanzeige``), ersetzt am
+Ende durch die fertige Statuszeile - sowohl mit als auch ohne ``--nur-text``, und
+sowohl im lokalen Terminal als auch im Log des GitHub-Actions-Laufs. Eine Leerzeile
+trennt den Ladebericht ("Daten geladen und simuliert.") sichtbar vom Folgenden - dem
+Post-Text bei ``--nur-text``, den Export-Balken sonst.
 """
 
 from __future__ import annotations
@@ -72,17 +72,8 @@ from _fortschritt import (
     relativer_pfad,
 )
 from umsatzprognose import Dashboard, SchulungenRepository
-from umsatzprognose.clockodo import (
-    KurzarbeitRepository,
-    anzahl_ladeschritte,
-    gleichzeitig,
-    kurzarbeit_aktiv,
-    rollenzuordnung_automatisch,
-    synchron,
-)
+from umsatzprognose.clockodo import gleichzeitig, synchron
 from umsatzprognose.darstellung import diagramme
-from umsatzprognose.darstellung.dashboard import STANDARD_GEWINN_VERLUST_MONATE
-from umsatzprognose.domaene import Kurzarbeitsbewertung, bewertungen
 from umsatzprognose.domaene.umsatzhistorie import MONATSNAMEN
 from umsatzprognose.domaene.zahlen import euro, prozent
 
@@ -151,23 +142,13 @@ class _Dashboardauszug(Protocol):
     def kostenplan(self) -> _Summenquelle: ...
 
     def umsatzverlauf(self, *, mit_beschriftung: bool = False) -> go.Figure: ...
-    def restvolumen_je_projekt(self) -> go.Figure: ...
-    def gewinn_verlust_monatlich(
-        self,
-        *,
-        monate: int | None = None,
-        mit_beschriftung: bool = False,
-    ) -> go.Figure: ...
-    def gewinn_verlust_je_jahr(self, *, mit_beschriftung: bool = False) -> go.Figure: ...
     def umsatzrendite_kumuliert(self, *, mit_beschriftung: bool = False) -> go.Figure: ...
-    def auslastung_je_mitarbeiter(self) -> go.Figure: ...
     def umsatztabelle(self) -> pd.DataFrame: ...
 
 
 SLACK_CHANNEL_VAR = "SLACK_CHANNEL_ID"
 SLACK_TOKEN_VAR = "SLACK_BOT_TOKEN"
 HORIZONT_MONATE_VAR = "WOCHENBERICHT_HORIZONT_MONATE"
-GEWINN_VERLUST_MONATE_VAR = "WOCHENBERICHT_GEWINN_VERLUST_MONATE"
 
 STANDARD_HORIZONT_MONATE = 3
 
@@ -177,11 +158,6 @@ STANDARD_HORIZONT_MONATE = 3
 # die ID der DM-Konversation (Slack-Client: Konversation oeffnen, "Copy link" - der
 # "D..."-Teil der URL), nicht die eigene Mitglieds-ID ("U...").
 _CHANNEL_ID_MUSTER = re.compile(r"^[CGDZ][A-Z0-9]{8,}$")
-
-# Deckt sich mit "anzahl_monate" in notebooks/04_kurzarbeit.ipynb und
-# STANDARD_KURZARBEIT_MONATE in webapp/app.py - hier ohne eigenes Secret, weil nicht
-# angefragt.
-KURZARBEIT_ANZAHL_MONATE = 6
 
 # Deckt sich mit "monate_fenster"/"ab_jahr" in notebooks/03_schulungsanmeldungen.ipynb -
 # derselbe Betrachtungszeitraum für den Anmeldungsverlauf, hier ohne eigenes Secret,
@@ -194,28 +170,23 @@ async def _daten_laden_async(
     *,
     stichtag: date,
     horizont_monate: int,
-    mit_kurzarbeit: bool,
     mit_anmeldungsverlauf: bool,
-) -> tuple[Dashboard, dict[Monat, Kurzarbeitsbewertung] | None, Anmeldungsverlauf | None]:
-    """Laedt Dashboard, Kurzarbeit-Rohdaten und Anmeldungsverlauf gleichzeitig statt
-    nacheinander - drei voneinander unabhaengige Datenquellen (siehe CLAUDE.md), genau
-    wie ``Dashboard.laden_async`` intern schon seine vier Bestandteile gleichzeitig
-    laedt, und wie ``webapp/app.py``s ``_vorladen()`` alle drei Caches beim Start
-    unabhaengig voneinander anstoesst statt eine der drei erst abzuwarten, ehe die
-    naechste beginnt.
+) -> tuple[Dashboard, Anmeldungsverlauf | None]:
+    """Laedt Dashboard und Anmeldungsverlauf gleichzeitig statt nacheinander - zwei
+    voneinander unabhaengige Datenquellen (siehe CLAUDE.md), genau wie
+    ``Dashboard.laden_async`` intern schon seine vier Bestandteile gleichzeitig laedt.
+    Keine Kurzarbeit-Rohdaten: der Bericht zeigt seit der Abspeckung auf vier
+    Diagramme/Tabellen (siehe ``DIAGRAMM_ERLAEUTERUNGEN``) keinen Kurzarbeit-Inhalt
+    mehr, ein Abruf waere verlorene Arbeit.
 
-    Jede tragt ihren Ladefortschritt in einer eigenen Zeile vor (siehe
+    Jede Quelle tragt ihren Ladefortschritt in einer eigenen Zeile vor (siehe
     :class:`Mehrzeilenanzeige`), ersetzt am Ende durch die fertige Statuszeile -
     unabhaengig davon, in welcher Reihenfolge sie tatsaechlich fertig werden.
-    ``mit_kurzarbeit``/``mit_anmeldungsverlauf`` lassen die zugehoerige Zeile (und den
-    Abruf) ganz entfallen, statt unnoetig zu laden: Kurzarbeit nur hinter dem
-    Feature-Flag (:func:`~umsatzprognose.clockodo.kurzarbeit_aktiv`), Anmeldungsverlauf
-    nur, wenn tatsaechlich Diagramme gebraucht werden (nicht bei ``--nur-text``, siehe
-    :func:`main`).
+    ``mit_anmeldungsverlauf`` laesst die zugehoerige Zeile (und den Abruf) ganz
+    entfallen, statt unnoetig zu laden - nur wenn tatsaechlich Diagramme gebraucht
+    werden (nicht bei ``--nur-text``, siehe :func:`main`).
     """
     namen = ["Bestand", "Schulungsplan", "Kostenplan", "Auslastung", "Simulation"]
-    if mit_kurzarbeit:
-        namen.append("Kurzarbeit-Rohdaten")
     if mit_anmeldungsverlauf:
         namen.append("Anmeldungsverlauf")
     anzeige = Mehrzeilenanzeige(namen)
@@ -233,37 +204,6 @@ async def _daten_laden_async(
         )
         await dashboard.simuliere_async(monate=horizont_monate, fortschritt=melden)
         return dashboard
-
-    async def _kurzarbeit_laden() -> dict[Monat, Kurzarbeitsbewertung] | None:
-        if not mit_kurzarbeit:
-            return None
-
-        erledigt = 0
-        total = anzahl_ladeschritte(stichtag, KURZARBEIT_ANZAHL_MONATE)
-
-        def _melden(_text: str) -> None:
-            nonlocal erledigt
-            erledigt += 1
-            anzeige.aktualisieren(
-                "Kurzarbeit-Rohdaten",
-                f"Kurzarbeit-Rohdaten laden {fortschrittsbalken(erledigt, total)} "
-                f"{erledigt}/{total}",
-            )
-
-        start = time.perf_counter()
-        rohdaten = await KurzarbeitRepository.mit_automatischen_zugangsdaten().laden_async(
-            stichtag=stichtag,
-            anzahl_monate=KURZARBEIT_ANZAHL_MONATE,
-            fortschritt=_melden,
-        )
-        dauer = timedelta(seconds=time.perf_counter() - start)
-        anzahl_personen = len({p.mitarbeiter_id for pm in rohdaten.values() for p in pm})
-        anzeige.aktualisieren(
-            "Kurzarbeit-Rohdaten",
-            f"Kurzarbeits-Rohdaten aus {len(rohdaten)} Monate(n) von {anzahl_personen} "
-            f"Person(en) geladen (in {humanize.naturaldelta(dauer)})",
-        )
-        return bewertungen(rohdaten, rollenzuordnung=rollenzuordnung_automatisch())
 
     async def _anmeldungsverlauf_laden() -> Anmeldungsverlauf | None:
         if not mit_anmeldungsverlauf:
@@ -285,10 +225,9 @@ async def _daten_laden_async(
         start = time.perf_counter()
         # asyncio.to_thread(): anmeldungsverlauf_laden() ist ein synchroner Aufruf
         # (siehe Moduldocstring von umsatzprognose.schulungen.schulungen) - im eigenen
-        # Worker-Thread blockiert er nicht den Event-Loop, in dem gleichzeitig
-        # Dashboard und Kurzarbeit-Rohdaten laufen. Mehrzeilenanzeige ist threadsicher
-        # (siehe dort), _melden() darf also direkt aus dem Worker-Thread aufgerufen
-        # werden.
+        # Worker-Thread blockiert er nicht den Event-Loop, in dem gleichzeitig das
+        # Dashboard laedt. Mehrzeilenanzeige ist threadsicher (siehe dort), _melden()
+        # darf also direkt aus dem Worker-Thread aufgerufen werden.
         anmeldungsverlauf = await asyncio.to_thread(
             SchulungenRepository.mit_automatischen_zugangsdaten().anmeldungsverlauf_laden,
             anmeldungsverlauf_jahre,
@@ -303,36 +242,28 @@ async def _daten_laden_async(
         )
         return fenster
 
-    dashboard, kurzarbeit_ergebnisse, anmeldungsverlauf_fenster = await gleichzeitig(
+    dashboard, anmeldungsverlauf_fenster = await gleichzeitig(
         _dashboard_laden(),
-        _kurzarbeit_laden(),
         _anmeldungsverlauf_laden(),
     )
-    return dashboard, kurzarbeit_ergebnisse, anmeldungsverlauf_fenster
+    return dashboard, anmeldungsverlauf_fenster
 
 
 # Eine Zeile Kontext je Grafik (Kollegen-Feedback: "etwas mehr Kontext als nur die
 # Grafiken") - dieselben Titel wie in diagrammtitel_und_figuren(), hier als
-# Bildunterschriften im Post statt nur als Bild-Titel im Slack-Anhang.
+# Bildunterschriften im Post statt nur als Bild-Titel im Slack-Anhang. Bewusst nur
+# diese vier (Kollegen-Feedback: der Bericht sollte schlanker sein als die volle
+# Diagrammauswahl der Notebooks) - Reihenfolge hier bestimmt die Reihenfolge im Post.
 DIAGRAMM_ERLAEUTERUNGEN: dict[str, str] = {
     "Umsatz je Monat": (
-        "Historischer und prognostizierter Umsatz, inklusive Schulungsanmeldungen "
+        "Historischer und prognostizierter Umsatz, inklusive Schulungsteilnehmenden "
         "und Kostenprognose."
     ),
-    "Offenes Auftragsvolumen je Projekt": "Restvolumen der größten Projekte im Prognose-Scope.",
-    "Gewinn/Verlust je Monat": "Umsatz minus Kosten je Monat im gezeigten Betrachtungsfenster.",
-    "Gewinn/Verlust je Monat und Jahr": "Dieselbe Differenz, gruppiert nach Kalenderjahr.",
-    "Kumulierte Umsatzrendite je Jahr": "Gewinn in Prozent des Umsatzes, kumuliert über das Jahr.",
-    "Auslastung je Person": (
-        "Anteil abrechenbarer Stunden an der verfügbaren Kapazität je Person, über "
-        "die geladenen Monate."
-    ),
-    "Kurzarbeitsbereitschaft je Monat": (
-        "Rückblickend je Monat, ob die Organisation die Voraussetzungen für "
-        "Kurzarbeit erfüllt hätte - unabhängig von der Umsatzprognose."
-    ),
-    "Anmeldungen je Monat": "Teilnehmerzahl öffentlicher Schulungen je Monat, insgesamt.",
     "Umsatztabelle": "Dieselben Monatswerte aus dem Umsatzverlauf als Tabelle.",
+    "Kumulierte Umsatzrendite je Jahr": "Gewinn in Prozent des Umsatzes, kumuliert über das Jahr.",
+    "Schulungsteilnehmende je Monat": (
+        "Teilnehmendenzahlen öffentlicher Schulungen je Monat, insgesamt."
+    ),
 }
 
 # Titel aus DIAGRAMM_ERLAEUTERUNGEN, die eine Tabelle statt eines Diagramms sind (siehe
@@ -413,110 +344,49 @@ def kontext_text(dashboard: _Dashboardauszug) -> str:
     return text
 
 
-def kurzarbeit_erlaeuterung(ergebnisse: dict[Monat, Kurzarbeitsbewertung]) -> str:
-    """Ein Satz zum juengsten bewerteten Monat - die Erläuterung neben der Grafik."""
-    jahr, monat_nr = sorted(ergebnisse)[-1]
-    bewertung = ergebnisse[(jahr, monat_nr)]
-    monatsname = f"{MONATSNAMEN[monat_nr - 1]} {jahr}"
-    if bewertung.vorbereitet is None:
-        return f"Kurzarbeitsbereitschaft ({monatsname}): keine Auswertung möglich."
-    status = "Voraussetzung erfüllt" if bewertung.vorbereitet else "Voraussetzung nicht erfüllt"
-    quote = f"{bewertung.quote:.0%}" if bewertung.quote is not None else "n/a"
-    # Slack-mrkdwn kennt keine Textfarbe (anders als die Grafik mit
-    # ERGEBNIS_POSITIV/ERGEBNIS_NEGATIV) - Fettung ist die naheliegende Entsprechung
-    # fuer denselben Zweck: erfuellt/nicht erfuellt auf den ersten Blick unterscheiden.
-    return (
-        f"Kurzarbeitsbereitschaft ({monatsname}): *{status}* (Quote {quote}, Schwelle "
-        f"{bewertung.schwellenwerte.quote_organisation:.0%})."
-    )
-
-
 def diagrammtitel_und_figuren(
     dashboard: _Dashboardauszug,
-    kurzarbeit_ergebnisse: dict[Monat, Kurzarbeitsbewertung] | None,
     anmeldungsverlauf_fenster: Anmeldungsverlauf,
-    *,
-    gewinn_verlust_monate: int | None,
 ) -> list[tuple[str, go.Figure]]:
-    """Titel und Figur je Diagramm, in der Reihenfolge des Posts.
+    """Titel und Figur je Diagramm/Tabelle, in der Reihenfolge des Posts - dieselbe
+    Reihenfolge und denselben Titelsatz wie :data:`DIAGRAMM_ERLAEUTERUNGEN`.
 
-    ``kurzarbeit_ergebnisse`` ``None`` (Baustein ausgeschaltet, siehe
-    ``umsatzprognose.clockodo.kurzarbeit_aktiv``) lässt den entsprechenden Eintrag
-    ganz entfallen, statt eine leere Grafik zu zeigen. ``anmeldungsverlauf_fenster``
-    kommt bereits fertig geladen und auf das Anzeigefenster zugeschnitten herein
-    (siehe :func:`_daten_laden_async`) - diese Funktion lädt selbst nichts mehr, damit
-    Dashboard, Kurzarbeit-Rohdaten und Anmeldungsverlauf gleichzeitig statt erst
-    nacheinander (hier vor dem eigentlichen Rendern) geladen werden können.
+    ``anmeldungsverlauf_fenster`` kommt bereits fertig geladen und auf das
+    Anzeigefenster zugeschnitten herein (siehe :func:`_daten_laden_async`) - diese
+    Funktion lädt selbst nichts mehr, damit Dashboard und Anmeldungsverlauf
+    gleichzeitig statt erst nacheinander (hier vor dem eigentlichen Rendern) geladen
+    werden können.
     """
     # mit_beschriftung=True nur hier: ein statischer Bildexport ohne Hover-Tooltip
     # braucht die Werte als Text, Notebooks und Webapp zeigen sie interaktiv per Hover.
-    eintraege: list[tuple[str, go.Figure]] = [
+    return [
         ("Umsatz je Monat", dashboard.umsatzverlauf(mit_beschriftung=True)),
-        ("Offenes Auftragsvolumen je Projekt", dashboard.restvolumen_je_projekt()),
         (
-            "Gewinn/Verlust je Monat",
-            dashboard.gewinn_verlust_monatlich(monate=gewinn_verlust_monate, mit_beschriftung=True),
-        ),
-        (
-            "Gewinn/Verlust je Monat und Jahr",
-            dashboard.gewinn_verlust_je_jahr(mit_beschriftung=True),
+            "Umsatztabelle",
+            diagramme.tabelle_als_grafik("Umsatz je Monat", dashboard.umsatztabelle()),
         ),
         (
             "Kumulierte Umsatzrendite je Jahr",
             dashboard.umsatzrendite_kumuliert(mit_beschriftung=True),
         ),
-        ("Auslastung je Person", dashboard.auslastung_je_mitarbeiter()),
-    ]
-    if kurzarbeit_ergebnisse is not None:
-        eintraege.append(
-            (
-                "Kurzarbeitsbereitschaft je Monat",
-                diagramme.kurzarbeit_grafik(kurzarbeit_ergebnisse, mit_beschriftung=True),
-            ),
-        )
-    eintraege += [
-        ("Anmeldungen je Monat", diagramme.anmeldungsverlauf(anmeldungsverlauf_fenster)),
         (
-            "Umsatztabelle",
-            diagramme.tabelle_als_grafik("Umsatz je Monat", dashboard.umsatztabelle()),
+            "Schulungsteilnehmende je Monat",
+            diagramme.anmeldungsverlauf(anmeldungsverlauf_fenster),
         ),
     ]
-    return eintraege
 
 
-def _aktive_diagrammtitel(
-    kurzarbeit_ergebnisse: dict[Monat, Kurzarbeitsbewertung] | None,
-) -> list[str]:
-    """Titel in Post-Reihenfolge, ohne Kurzarbeit wenn ausgeschaltet - dieselbe
-    Reihenfolge wie :func:`diagrammtitel_und_figuren`, hier ohne den Umweg über
-    tatsaechlich gerenderte Figuren (fuer :func:`post_text`, das ganz ohne
-    Diagramm-Rendering auskommt)."""
-    return [
-        titel
-        for titel in DIAGRAMM_ERLAEUTERUNGEN
-        if kurzarbeit_ergebnisse is not None or titel != "Kurzarbeitsbereitschaft je Monat"
-    ]
-
-
-def post_text(
-    dashboard: _Dashboardauszug,
-    kurzarbeit_ergebnisse: dict[Monat, Kurzarbeitsbewertung] | None,
-) -> str:
+def post_text(dashboard: _Dashboardauszug) -> str:
     """Der vollstaendige Text des Slack-Posts, unabhaengig von Diagrammen und Upload -
     dieselbe Funktion baut ihn fuer den echten Post (:func:`posten_async`) wie fuer die
     Kommandozeilen-Ausgabe (``--nur-text``, siehe :func:`main`)."""
     erlaeuterungen = "\n".join(
-        f"• {titel}: {DIAGRAMM_ERLAEUTERUNGEN[titel]}"
-        for titel in _aktive_diagrammtitel(kurzarbeit_ergebnisse)
-    )
-    kurzarbeit_absatz = (
-        f"\n\n{kurzarbeit_erlaeuterung(kurzarbeit_ergebnisse)}"
-        if kurzarbeit_ergebnisse is not None
-        else ""
+        f"• {titel}: {erlaeuterung}" for titel, erlaeuterung in DIAGRAMM_ERLAEUTERUNGEN.items()
     )
     return (
+        "(automatisch generiert)\n"
         f"Wochenbericht Zahlen, Daten, Fakten - Stand {dashboard.stichtag:%d.%m.%Y}\n\n"
-        f"{kontext_text(dashboard)}{kurzarbeit_absatz}\n\n"
+        f"{kontext_text(dashboard)}\n\n"
         f"{erlaeuterungen}"
     )
 
@@ -583,11 +453,8 @@ async def posten_async(
     client: WebClient,
     kanal: str,
     dashboard: _Dashboardauszug,
-    kurzarbeit_ergebnisse: dict[Monat, Kurzarbeitsbewertung] | None,
     anmeldungsverlauf_fenster: Anmeldungsverlauf,
     verzeichnis: Path,
-    *,
-    gewinn_verlust_monate: int | None,
 ) -> list[str]:
     if not _CHANNEL_ID_MUSTER.match(kanal):
         raise RuntimeError(
@@ -597,12 +464,7 @@ async def posten_async(
             "„Copy link“ - der Teil nach der letzten '/'), nicht die eigene Mitglieds-ID.",
         )
 
-    titel_figuren = diagrammtitel_und_figuren(
-        dashboard,
-        kurzarbeit_ergebnisse,
-        anmeldungsverlauf_fenster,
-        gewinn_verlust_monate=gewinn_verlust_monate,
-    )
+    titel_figuren = diagrammtitel_und_figuren(dashboard, anmeldungsverlauf_fenster)
     bilder = await _bilder_exportieren_async(titel_figuren, verzeichnis)
 
     # file_uploads statt einer Schleife aus einzelnen files_upload_v2-Aufrufen: so
@@ -610,7 +472,7 @@ async def posten_async(
     # eine eigene Unternachricht im Thread zu erzeugen.
     client.files_upload_v2(
         channel=kanal,
-        initial_comment=post_text(dashboard, kurzarbeit_ergebnisse),
+        initial_comment=post_text(dashboard),
         file_uploads=[
             {"file": str(bild), "title": titel}
             for (titel, _figur), bild in zip(titel_figuren, bilder, strict=True)
@@ -636,17 +498,12 @@ def main() -> None:
     argumente = _argumente()
 
     horizont_monate = _optionale_ganzzahl(HORIZONT_MONATE_VAR, STANDARD_HORIZONT_MONATE)
-    gewinn_verlust_monate = _optionale_ganzzahl(
-        GEWINN_VERLUST_MONATE_VAR,
-        STANDARD_GEWINN_VERLUST_MONATE,
-    )
     stichtag = datetime.datetime.now(tz=datetime.UTC).date()
 
-    dashboard, kurzarbeit_ergebnisse, anmeldungsverlauf_fenster = synchron(
+    dashboard, anmeldungsverlauf_fenster = synchron(
         _daten_laden_async(
             stichtag=stichtag,
             horizont_monate=horizont_monate,
-            mit_kurzarbeit=kurzarbeit_aktiv(),
             mit_anmeldungsverlauf=not argumente.nur_text,
         ),
     )
@@ -656,7 +513,7 @@ def main() -> None:
     print("Daten geladen und simuliert.\n")
 
     if argumente.nur_text:
-        print(post_text(dashboard, kurzarbeit_ergebnisse))
+        print(post_text(dashboard))
         return
 
     client = WebClient(token=_umgebungsvariable(SLACK_TOKEN_VAR))
@@ -669,10 +526,8 @@ def main() -> None:
                 client,
                 kanal,
                 dashboard,
-                kurzarbeit_ergebnisse,
                 anmeldungsverlauf_fenster,
                 Path(verzeichnis),
-                gewinn_verlust_monate=gewinn_verlust_monate,
             ),
         )
     print(f"{_export_zusammenfassung(titel)} exportiert und an Slack gepostet")

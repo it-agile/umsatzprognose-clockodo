@@ -2,7 +2,7 @@ name: Wochenbericht nach Slack
 
 on:
   schedule:
-    # Montags 05:13 UTC, damit der Bericht zur Sommerzeit (CEST, UTC+2) um 07:13
+    # Sonntags 05:13 UTC, damit der Bericht zur Sommerzeit (CEST, UTC+2) um 07:13
     # deutscher Zeit steht - zur Winterzeit (CET, UTC+1) entsprechend um 06:13, eine
     # Stunde frueher statt spaeter als das Ziel. Zeiten hier sind immer UTC; ein
     # einzelner Cron-Eintrag kann die Zeitumstellung nicht automatisch mitverfolgen,
@@ -12,7 +12,7 @@ on:
     # Cron-Zeitpunkten - garantiert aber keine punktgenaue Ausfuehrung: GitHub kann
     # schedule-Events bei hoher Last verzoegern (beobachtet: ueber 6 Stunden beim
     # ersten Lauf am 2026-09-07).
-    - cron: "13 5 * * 1"
+    - cron: "13 5 * * 0"
   workflow_dispatch: {}
 
 jobs:
@@ -30,9 +30,8 @@ jobs:
           GOOGLE_OAUTH_TOKEN_JSON: ${{ secrets.GOOGLE_OAUTH_TOKEN_JSON }}
         run: printf '%s' "$GOOGLE_OAUTH_TOKEN_JSON" > .google_oauth_token.json
 
-      # WOCHENBERICHT_HORIZONT_MONATE und WOCHENBERICHT_GEWINN_VERLUST_MONATE sind
-      # optional - ohne gesetztes Secret gelten dieselben Standardwerte wie in den
-      # Notebooks, siehe scripts/wochenbericht.py.
+      # WOCHENBERICHT_HORIZONT_MONATE ist optional - ohne gesetztes Secret gilt
+      # derselbe Standardwert wie in den Notebooks, siehe scripts/wochenbericht.py.
       - run: uv run python scripts/wochenbericht.py
         env:
           CLOCKODO_API_USER: ${{ secrets.CLOCKODO_API_USER }}
@@ -41,9 +40,6 @@ jobs:
           CLOCKODO_APP_EMAIL: ${{ secrets.CLOCKODO_APP_EMAIL }}
           GOOGLE_OAUTH_CLIENT_JSON: ${{ secrets.GOOGLE_OAUTH_CLIENT_JSON }}
           KOSTEN_SHEET_IDS: ${{ secrets.KOSTEN_SHEET_IDS }}
-          KURZARBEIT_AKTIV: ${{ secrets.KURZARBEIT_AKTIV }}
-          KURZARBEIT_ROLLENZUORDNUNG: ${{ secrets.KURZARBEIT_ROLLENZUORDNUNG }}
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
           SLACK_CHANNEL_ID: ${{ secrets.SLACK_CHANNEL_ID }}
           WOCHENBERICHT_HORIZONT_MONATE: ${{ secrets.WOCHENBERICHT_HORIZONT_MONATE }}
-          WOCHENBERICHT_GEWINN_VERLUST_MONATE: ${{ secrets.WOCHENBERICHT_GEWINN_VERLUST_MONATE }}

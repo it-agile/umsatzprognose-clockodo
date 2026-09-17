@@ -1,5 +1,4 @@
-"""Fruehwarn-Tests fuer scripts/wochenbericht.py, samt der Kurzarbeit-Integration -
-keine Live-API, kein Slack-Post.
+"""Fruehwarn-Tests fuer scripts/wochenbericht.py - keine Live-API, kein Slack-Post.
 
 Deckt genau die Art von Regression ab, die zuletzt unbemerkt blieb, bis der
 woechentliche Actions-Lauf fehlschlug: eine falsche Signatur, ein vertauschter
@@ -24,13 +23,7 @@ import plotly.graph_objects as go
 import pytest
 
 from umsatzprognose.darstellung import diagramme
-from umsatzprognose.domaene import (
-    Kurzarbeitsbewertung,
-    NochKeinePrognose,
-    Prognose,
-    Rollenzuordnung,
-    Schwellenwerte,
-)
+from umsatzprognose.domaene import NochKeinePrognose, Prognose
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -42,17 +35,6 @@ if TYPE_CHECKING:
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent / "scripts"))
 import wochenbericht
-
-# Minimale, gueltige Kurzarbeit-Rohdaten fuer Tests von diagrammtitel_und_figuren() -
-# die Funktion ruft echten Code auf (diagramme.kurzarbeit_grafik()), kein Mock noetig.
-_KURZARBEIT_ERGEBNISSE = {
-    (2026, 8): Kurzarbeitsbewertung(
-        jahr=2026,
-        monat=8,
-        schwellenwerte=Schwellenwerte(),
-        anzahl_kurzarbeitsfaehig=1,
-    ),
-}
 
 
 class _FakeBestand:
@@ -82,24 +64,7 @@ class _FakeDashboard:
     def umsatzverlauf(self, *, mit_beschriftung: bool = False) -> go.Figure:
         return go.Figure()
 
-    def restvolumen_je_projekt(self) -> go.Figure:
-        return go.Figure()
-
-    def gewinn_verlust_monatlich(
-        self,
-        *,
-        monate: int | None = None,
-        mit_beschriftung: bool = False,
-    ) -> go.Figure:
-        return go.Figure()
-
-    def gewinn_verlust_je_jahr(self, *, mit_beschriftung: bool = False) -> go.Figure:
-        return go.Figure()
-
     def umsatzrendite_kumuliert(self, *, mit_beschriftung: bool = False) -> go.Figure:
-        return go.Figure()
-
-    def auslastung_je_mitarbeiter(self) -> go.Figure:
         return go.Figure()
 
     def umsatztabelle(self) -> pd.DataFrame:
@@ -135,46 +100,21 @@ class _FakeSchulungenRepository:
         return _FakeAnmeldungsverlauf()
 
 
-def test_diagrammtitel_und_figuren_liefert_alle_neun_diagramme_in_reihenfolge(monkeypatch):
+def test_diagrammtitel_und_figuren_liefert_alle_vier_diagramme_in_reihenfolge(monkeypatch):
     monkeypatch.setattr(diagramme, "anmeldungsverlauf", lambda *a, **kw: go.Figure())
 
     ergebnis = wochenbericht.diagrammtitel_und_figuren(
         _FakeDashboard(),
-        _KURZARBEIT_ERGEBNISSE,
         _als_anmeldungsverlauf(_FakeAnmeldungsverlauf()),
-        gewinn_verlust_monate=12,
     )
 
     assert [titel for titel, _figur in ergebnis] == [
         "Umsatz je Monat",
-        "Offenes Auftragsvolumen je Projekt",
-        "Gewinn/Verlust je Monat",
-        "Gewinn/Verlust je Monat und Jahr",
-        "Kumulierte Umsatzrendite je Jahr",
-        "Auslastung je Person",
-        "Kurzarbeitsbereitschaft je Monat",
-        "Anmeldungen je Monat",
         "Umsatztabelle",
+        "Kumulierte Umsatzrendite je Jahr",
+        "Schulungsteilnehmende je Monat",
     ]
     assert all(isinstance(figur, go.Figure) for _titel, figur in ergebnis)
-
-
-def test_diagrammtitel_und_figuren_laesst_kurzarbeit_weg_wenn_ausgeschaltet(monkeypatch):
-    """``kurzarbeit_ergebnisse=None`` (Baustein ausgeschaltet, siehe
-    ``umsatzprognose.clockodo.kurzarbeit_aktiv``) laesst den Eintrag entfallen, statt
-    eine leere Grafik zu zeigen."""
-    monkeypatch.setattr(diagramme, "anmeldungsverlauf", lambda *a, **kw: go.Figure())
-
-    ergebnis = wochenbericht.diagrammtitel_und_figuren(
-        _FakeDashboard(),
-        None,
-        _als_anmeldungsverlauf(_FakeAnmeldungsverlauf()),
-        gewinn_verlust_monate=12,
-    )
-
-    titel = [titel for titel, _figur in ergebnis]
-    assert "Kurzarbeitsbereitschaft je Monat" not in titel
-    assert len(titel) == 8
 
 
 @pytest.mark.parametrize("kanal", ["C0123456789", "D0123456789", "G0123456789", "Z0123456789"])
@@ -194,10 +134,8 @@ def test_posten_lehnt_ungueltige_channel_id_ab_vor_jedem_api_zugriff():
                 client=cast("WebClient", object()),
                 kanal="U0123456789",
                 dashboard=cast("wochenbericht._Dashboardauszug", object()),
-                kurzarbeit_ergebnisse=None,
                 anmeldungsverlauf_fenster=cast("Anmeldungsverlauf", object()),
                 verzeichnis=Path("/tmp"),
-                gewinn_verlust_monate=None,
             ),
         )
 
@@ -210,11 +148,10 @@ class _FakeSlackClient:
         self.aufrufe.append(kwargs)
 
 
-def test_posten_laesst_kurzarbeit_weg_wenn_ausgeschaltet(monkeypatch, tmp_path):
-    """Ohne Kurzarbeit-Ergebnisse (``kurzarbeit_ergebnisse=None`` - Baustein
-    ausgeschaltet oder nicht geladen, entschieden schon in :func:`main` bzw.
-    :func:`_daten_laden_async`) weder das Diagramm noch der Absatz im Post-Text -
-    kein Hinweis auf einen fehlenden Kurzarbeit-Report."""
+def test_posten_haengt_alle_vier_bilder_an_einen_einzigen_post(monkeypatch, tmp_path):
+    """Ein einzelner ``files_upload_v2``-Aufruf traegt alle vier Bilder gemeinsam an
+    einer Nachricht (``file_uploads``), statt je Bild eine eigene Unternachricht zu
+    erzeugen (siehe Moduldocstring)."""
     monkeypatch.setattr(diagramme, "anmeldungsverlauf", lambda *a, **kw: go.Figure())
     monkeypatch.setattr(wochenbericht.pio, "write_images", lambda **kw: None)  # type: ignore[attr-defined]
 
@@ -222,29 +159,24 @@ def test_posten_laesst_kurzarbeit_weg_wenn_ausgeschaltet(monkeypatch, tmp_path):
     dashboard.prognose = NochKeinePrognose()
     client = _FakeSlackClient()
 
-    asyncio.run(
+    titel = asyncio.run(
         wochenbericht.posten_async(
             cast("WebClient", client),
             "C0123456789",
             dashboard,
-            None,
             _als_anmeldungsverlauf(_FakeAnmeldungsverlauf()),
             tmp_path,
-            gewinn_verlust_monate=None,
         ),
     )
 
+    assert titel == list(wochenbericht.DIAGRAMM_ERLAEUTERUNGEN)
     assert len(client.aufrufe) == 1
-    titel_post = client.aufrufe[0]["initial_comment"]
-    assert "Kurzarbeit" not in titel_post
-    assert all(
-        "Kurzarbeit" not in eintrag["title"] for eintrag in client.aufrufe[0]["file_uploads"]
-    )
+    assert [eintrag["title"] for eintrag in client.aufrufe[0]["file_uploads"]] == titel
 
 
 def test_export_zusammenfassung_zaehlt_nur_diagramme_ohne_tabellen():
     zusammenfassung = wochenbericht._export_zusammenfassung(
-        ["Umsatz je Monat", "Auslastung je Person"],
+        ["Umsatz je Monat", "Kumulierte Umsatzrendite je Jahr"],
     )
 
     assert zusammenfassung == "2 Diagramm(e)"
@@ -407,79 +339,26 @@ def test_diagramm_erlaeuterungen_deckt_alle_diagrammtitel_ab(monkeypatch):
         titel
         for titel, _figur in wochenbericht.diagrammtitel_und_figuren(
             _FakeDashboard(),
-            _KURZARBEIT_ERGEBNISSE,
             _als_anmeldungsverlauf(_FakeAnmeldungsverlauf()),
-            gewinn_verlust_monate=12,
         )
     }
 
     assert titel == set(wochenbericht.DIAGRAMM_ERLAEUTERUNGEN)
 
 
-def test_kurzarbeit_erlaeuterung_nennt_status_und_quote_des_juengsten_monats():
-    ergebnisse = {
-        (2026, 7): Kurzarbeitsbewertung(
-            jahr=2026,
-            monat=7,
-            schwellenwerte=Schwellenwerte(quote_organisation=0.30),
-        ),
-        (2026, 8): Kurzarbeitsbewertung(
-            jahr=2026,
-            monat=8,
-            schwellenwerte=Schwellenwerte(quote_organisation=0.30),
-            anzahl_kurzarbeitsfaehig=3,
-            anzahl_scheitert_interne_arbeit=1,
-        ),
-    }
-
-    text = wochenbericht.kurzarbeit_erlaeuterung(ergebnisse)
-
-    assert "Aug 2026" in text
-    assert "*Voraussetzung erfüllt*" in text  # Slack-mrkdwn kennt keine Textfarbe
-    assert "75%" in text
-    assert "Schwelle 30%" in text
-
-
-def test_kurzarbeit_erlaeuterung_ohne_quote_meldet_keine_auswertung_moeglich():
-    ergebnisse = {
-        (2026, 8): Kurzarbeitsbewertung(jahr=2026, monat=8, schwellenwerte=Schwellenwerte()),
-    }
-
-    text = wochenbericht.kurzarbeit_erlaeuterung(ergebnisse)
-
-    assert text == "Kurzarbeitsbereitschaft (Aug 2026): keine Auswertung möglich."
-
-
-def test_aktive_diagrammtitel_laesst_kurzarbeit_weg_wenn_ausgeschaltet():
-    assert "Kurzarbeitsbereitschaft je Monat" not in wochenbericht._aktive_diagrammtitel(None)
-    assert "Kurzarbeitsbereitschaft je Monat" in wochenbericht._aktive_diagrammtitel(
-        _KURZARBEIT_ERGEBNISSE,
-    )
-
-
-def test_post_text_enthaelt_titel_kontext_und_erlaeuterungen_ohne_kurzarbeit():
+def test_post_text_enthaelt_titel_kontext_und_erlaeuterungen():
     """``post_text`` baut denselben Text wie ``posten`` an Slack schickt (siehe
     ``initial_comment``), hier aber ganz ohne Diagramm-Rendering oder Slack-Client -
     Grundlage fuer die ``--nur-text``-Kommandozeilenausgabe in ``main``."""
     dashboard = _FakeDashboard()
     dashboard.prognose = NochKeinePrognose(fehlt="Kein Projekt im Prognose-Scope.")
 
-    text = wochenbericht.post_text(dashboard, None)
+    text = wochenbericht.post_text(dashboard)
 
+    assert text.startswith("(automatisch generiert)\n")
     assert "Wochenbericht Zahlen, Daten, Fakten" in text
     assert "Kein Projekt im Prognose-Scope." in text
     assert "• Umsatz je Monat:" in text
-    assert "Kurzarbeit" not in text
-
-
-def test_post_text_mit_kurzarbeit_ergebnissen_enthaelt_absatz_und_diagrammtitel():
-    dashboard = _FakeDashboard()
-    dashboard.prognose = NochKeinePrognose(fehlt="Kein Projekt im Prognose-Scope.")
-
-    text = wochenbericht.post_text(dashboard, _KURZARBEIT_ERGEBNISSE)
-
-    assert "• Kurzarbeitsbereitschaft je Monat:" in text
-    assert "Kurzarbeitsbereitschaft (Aug 2026)" in text
 
 
 def test_argumente_ohne_flag_liefert_nur_text_false(monkeypatch):
@@ -497,13 +376,15 @@ class _FakeGeladenesDashboard:
         pass
 
 
-def test_daten_laden_async_laedt_alle_drei_quellen_gleichzeitig(monkeypatch):
+def test_daten_laden_async_laedt_beide_quellen_gleichzeitig(monkeypatch):
     """Zeitmessung statt Barrier (siehe ``tests/clockodo/test_nebenlaeufig.py`` fuer
     die dortige Barrier-Variante): die per ``asyncio.to_thread`` laufende
     Anmeldungsverlauf-Ladung liegt in einem eigenen Thread, wo eine ``asyncio.Barrier``
-    nicht direkt wartbar waere. Liefen Dashboard, Kurzarbeit-Rohdaten und
-    Anmeldungsverlauf nacheinander statt gleichzeitig, dauerte der Aufruf mindestens
-    ``3 * sleep`` statt nur knapp ``sleep``."""
+    nicht direkt wartbar waere. Liefen Dashboard und Anmeldungsverlauf nacheinander
+    statt gleichzeitig, dauerte der Aufruf mindestens ``2 * sleep`` statt nur knapp
+    ``sleep``. Keine Kurzarbeit-Rohdaten mehr: der Bericht zeigt seit der Abspeckung
+    auf vier Diagramme/Tabellen keinen Kurzarbeit-Inhalt mehr (siehe
+    ``DIAGRAMM_ERLAEUTERUNGEN``)."""
     sleep = 0.2
 
     class _FakeDashboardKlasse:
@@ -522,21 +403,6 @@ def test_daten_laden_async_laedt_alle_drei_quellen_gleichzeitig(monkeypatch):
                 fortschritt("Auslastungsmonat(e) geladen: 1")
             return _FakeGeladenesDashboard()
 
-    class _FakeKurzarbeitRepository:
-        @classmethod
-        def mit_automatischen_zugangsdaten(cls) -> _FakeKurzarbeitRepository:
-            return cls()
-
-        async def laden_async(
-            self,
-            *,
-            stichtag: date,
-            anzahl_monate: int,
-            fortschritt: Fortschritt | None = None,
-        ) -> dict:
-            await asyncio.sleep(sleep)
-            return {}
-
     class _FakeSchulungenRepositoryLangsam:
         @classmethod
         def mit_automatischen_zugangsdaten(cls) -> _FakeSchulungenRepositoryLangsam:
@@ -552,34 +418,28 @@ def test_daten_laden_async_laedt_alle_drei_quellen_gleichzeitig(monkeypatch):
             return _FakeAnmeldungsverlauf()
 
     monkeypatch.setattr(wochenbericht, "Dashboard", _FakeDashboardKlasse)
-    monkeypatch.setattr(wochenbericht, "KurzarbeitRepository", _FakeKurzarbeitRepository)
     monkeypatch.setattr(wochenbericht, "SchulungenRepository", _FakeSchulungenRepositoryLangsam)
-    monkeypatch.setattr(wochenbericht, "rollenzuordnung_automatisch", Rollenzuordnung)
 
     start = time.perf_counter()
-    _dashboard, kurzarbeit_ergebnisse, anmeldungsverlauf_fenster = asyncio.run(
+    _dashboard, anmeldungsverlauf_fenster = asyncio.run(
         wochenbericht._daten_laden_async(
             stichtag=date(2026, 9, 1),
             horizont_monate=3,
-            mit_kurzarbeit=True,
             mit_anmeldungsverlauf=True,
         ),
     )
     dauer = time.perf_counter() - start
 
-    assert dauer < sleep * 2  # sequenziell waeren es mindestens 3 * sleep
-    assert kurzarbeit_ergebnisse == {}
+    assert dauer < sleep * 2  # sequenziell waeren es mindestens 2 * sleep
     assert isinstance(anmeldungsverlauf_fenster, _FakeAnmeldungsverlauf)
 
 
-def test_daten_laden_async_ueberspringt_kurzarbeit_und_anmeldungsverlauf_wenn_nicht_gebraucht(
-    monkeypatch,
-):
-    """``mit_kurzarbeit=False``/``mit_anmeldungsverlauf=False`` (siehe ``--nur-text`` in
-    :func:`main`, das ohne Diagramme keinen Anmeldungsverlauf braucht) lassen den
-    jeweiligen Abruf ganz entfallen, statt ihn unnoetig aufzurufen - die beiden
-    Repositories bleiben hier absichtlich ohne ``mit_automatischen_zugangsdaten()``,
-    ein Zugriff wuerde also mit einem ``AttributeError`` auffallen."""
+def test_daten_laden_async_ueberspringt_anmeldungsverlauf_wenn_nicht_gebraucht(monkeypatch):
+    """``mit_anmeldungsverlauf=False`` (siehe ``--nur-text`` in :func:`main`, das ohne
+    Diagramme keinen Anmeldungsverlauf braucht) laesst den Abruf ganz entfallen, statt
+    ihn unnoetig aufzurufen - das Repository bleibt hier absichtlich ohne
+    ``mit_automatischen_zugangsdaten()``, ein Zugriff wuerde also mit einem
+    ``AttributeError`` auffallen."""
 
     class _FakeDashboardKlasse:
         @staticmethod
@@ -595,17 +455,14 @@ def test_daten_laden_async_ueberspringt_kurzarbeit_und_anmeldungsverlauf_wenn_ni
         pass
 
     monkeypatch.setattr(wochenbericht, "Dashboard", _FakeDashboardKlasse)
-    monkeypatch.setattr(wochenbericht, "KurzarbeitRepository", _NichtAufzurufendesRepository)
     monkeypatch.setattr(wochenbericht, "SchulungenRepository", _NichtAufzurufendesRepository)
 
-    _dashboard, kurzarbeit_ergebnisse, anmeldungsverlauf_fenster = asyncio.run(
+    _dashboard, anmeldungsverlauf_fenster = asyncio.run(
         wochenbericht._daten_laden_async(
             stichtag=date(2026, 9, 1),
             horizont_monate=3,
-            mit_kurzarbeit=False,
             mit_anmeldungsverlauf=False,
         ),
     )
 
-    assert kurzarbeit_ergebnisse is None
     assert anmeldungsverlauf_fenster is None
