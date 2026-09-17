@@ -750,10 +750,15 @@ def test_dashboard_seite_interne_arbeit_verteilung_regler_erzwingt_mindestbreite
 
 def _checkbox_markup(text: str, feldname: str) -> str:
     """Das vollstaendige (mehrzeilige) <input type="checkbox">-Tag zu ``feldname``,
-    ausgeschnitten zwischen seinem Namensattribut und dem naechsten '>'."""
+    ausgeschnitten zwischen seinem Namensattribut und dem naechsten '>' - das
+    onchange-Attribut (enthaelt "this.checked" als JavaScript-Ausdruck) wird dabei
+    herausgeschnitten, damit ein reiner Substring-Test auf das HTML-Attribut
+    "checked" nicht faelschlich auf "this.checked" anschlaegt."""
     start = text.index(f'name="{feldname}" value="an"')
     ende = text.index(">", start)
-    return text[start:ende]
+    markup = text[start:ende]
+    onchange_start = markup.index("onchange=")
+    return markup[:onchange_start]
 
 
 def test_dashboard_seite_trendlinie_startet_angehakt():
@@ -771,6 +776,22 @@ def test_dashboard_seite_trendlinie_ausgeschaltet_zeigt_keine_trendspur():
 
     assert "checked" not in _checkbox_markup(antwort.text, "interne_arbeit_trend_werte")
     assert '"Trend"' not in antwort.text
+
+
+def test_dashboard_seite_trendlinie_verstecktes_feld_deaktiviert_wenn_angehakt():
+    """Regression: dasselbe versteckte-Feld-Muster wie bei /schulungen (siehe dortigen
+    Test) - deaktiviert, sobald die Checkbox angehakt ist, sonst zwei Werte auf einmal."""
+    client = TestClient(app_modul.app)
+
+    angehakt = client.get("/dashboard")
+    abgehakt = client.get("/dashboard", params={"interne_arbeit_trend_werte": "aus"})
+
+    def aus_feld_markup(text: str) -> str:
+        start = text.index('name="interne_arbeit_trend_werte" value="aus"')
+        return text[start : text.index(">", start)]
+
+    assert "disabled" in aus_feld_markup(angehakt.text)
+    assert "disabled" not in aus_feld_markup(abgehakt.text)
 
 
 def test_dashboard_seite_gauss_modus_uebernimmt_historischen_mittelwert(fake_caches):
@@ -958,15 +979,25 @@ def test_schulungen_zeigt_den_anmeldungsverlauf():
 
     assert antwort.status_code == 200
     assert "plotly" in antwort.text.lower()
-    assert 'value="2023" selected' in antwort.text
 
 
-def test_schulungen_ohne_ab_jahr_zeigt_den_dynamischen_standard():
+def test_schulungen_ohne_ab_jahr_zeigt_den_dynamischen_standard(fake_caches):
+    """ "Anmeldungen ab Jahr" erscheint nur in der Ansicht "Jahresvergleich" (siehe
+    test_schulungen_ab_jahr_dropdown_erscheint_nur_bei_jahresvergleich) - die Daten
+    muessen deshalb ueber den dynamischen Standard hinaus mindestens zwei Jahre
+    umfassen, sonst bliebe der Ansicht-Umschalter selbst schon verborgen."""
+    _, anmeldungsverlauf_cache, _ = fake_caches
+    erwartet = app_modul._standard_anzeige_ab_jahr()
+    anmeldungsverlauf_cache.ergebnis = Anmeldungsverlauf(
+        anmeldungen=(
+            Anmeldung(erwartet, 3, "KSD", 3),
+            Anmeldung(erwartet + 1, 3, "KSD", 5),
+        )
+    )
     client = TestClient(app_modul.app)
 
-    antwort = client.get("/schulungen")
+    antwort = client.get("/schulungen?ansicht=jahresvergleich")
 
-    erwartet = app_modul._standard_anzeige_ab_jahr()
     assert antwort.status_code == 200
     assert f'value="{erwartet}" selected' in antwort.text
 
@@ -1208,6 +1239,9 @@ def test_schulungen_tabelle_ordnet_und_kennzeichnet_nach_juengstem_jahr(fake_cac
 
 
 def test_schulungen_jahr_filter_erscheint_nicht_bei_nur_einem_jahr(fake_caches):
+    """ "Ansicht" bleibt anders als "Jahre" auch bei nur einem Jahr sichtbar - ein
+    Umschalter, der mal da ist und mal nicht, waere verwirrender als eine wenig
+    aussagekraeftige Jahresvergleich-Ansicht mit nur einer Linie."""
     _, anmeldungsverlauf_cache, _ = fake_caches
     anmeldungsverlauf_cache.ergebnis = Anmeldungsverlauf(
         anmeldungen=(Anmeldung(2026, 3, "KSD", 4),)
@@ -1217,7 +1251,7 @@ def test_schulungen_jahr_filter_erscheint_nicht_bei_nur_einem_jahr(fake_caches):
     antwort = client.get("/schulungen?ab_jahr=2026")
 
     assert 'name="jahr_filter"' not in antwort.text
-    assert 'name="ansicht"' not in antwort.text
+    assert 'name="ansicht"' in antwort.text
 
 
 def test_schulungen_jahr_filter_erscheint_bei_mehreren_jahren(fake_caches):
@@ -1230,7 +1264,7 @@ def test_schulungen_jahr_filter_erscheint_bei_mehreren_jahren(fake_caches):
     )
     client = TestClient(app_modul.app)
 
-    antwort = client.get("/schulungen?ab_jahr=2025")
+    antwort = client.get("/schulungen?ab_jahr=2025&ansicht=jahresvergleich")
 
     assert 'name="ansicht"' in antwort.text
     ausschnitt_start = antwort.text.index('name="jahr_filter"')
@@ -1253,7 +1287,7 @@ def test_schulungen_jahr_filter_checkboxen_tragen_die_javascript_synchronisation
     )
     client = TestClient(app_modul.app)
 
-    antwort = client.get("/schulungen?ab_jahr=2025")
+    antwort = client.get("/schulungen?ab_jahr=2025&ansicht=jahresvergleich")
 
     ausschnitt_start = antwort.text.index('name="jahr_filter"')
     ausschnitt_ende = antwort.text.index("</div>", ausschnitt_start)
@@ -1278,7 +1312,7 @@ def test_schulungen_jahr_filter_hakt_einzelne_jahre_bei_alle_jahre_vor(fake_cach
     )
     client = TestClient(app_modul.app)
 
-    antwort = client.get("/schulungen?ab_jahr=2025")
+    antwort = client.get("/schulungen?ab_jahr=2025&ansicht=jahresvergleich")
 
     ausschnitt_start = antwort.text.index('name="jahr_filter"')
     ausschnitt_ende = antwort.text.index("</div>", ausschnitt_start)
@@ -1302,7 +1336,7 @@ def test_schulungen_jahr_filter_hakt_nicht_alle_einzelnen_jahre_bei_expliziter_a
     )
     client = TestClient(app_modul.app)
 
-    antwort = client.get("/schulungen?ab_jahr=2025&jahr_filter=2026")
+    antwort = client.get("/schulungen?ab_jahr=2025&ansicht=jahresvergleich&jahr_filter=2026")
 
     ausschnitt_start = antwort.text.index('name="jahr_filter"')
     ausschnitt_ende = antwort.text.index("</div>", ausschnitt_start)
@@ -1344,14 +1378,33 @@ def test_schulungen_trendlinien_checkbox_sendet_das_formular_sofort_ab():
     verstecktes_feld = antwort.text.index('name="trendlinien_werte"')
     ausschnitt_start = antwort.text.index('name="trendlinien_werte"', verstecktes_feld + 1)
     ausschnitt_ende = antwort.text.index(">", ausschnitt_start)
-    assert 'onchange="this.form.requestSubmit()"' in antwort.text[ausschnitt_start:ausschnitt_ende]
+    assert "this.form.requestSubmit()" in antwort.text[ausschnitt_start:ausschnitt_ende]
+
+
+def test_schulungen_trendlinien_verstecktes_feld_deaktiviert_wenn_angehakt():
+    """Regression: das versteckte "aus"-Begleitfeld muss deaktiviert sein, sobald
+    Trendlinien angehakt sind - sonst sendet ein erneutes Absenden (z. B. durch einen
+    anderen Regler) sowohl "aus" als auch "an" gleichzeitig, weil ein deaktiviertes
+    Formularfeld anders als ein aktives beim Absenden ausgelassen wird."""
+    client = TestClient(app_modul.app)
+
+    angehakt = client.get("/schulungen")
+    abgehakt = client.get("/schulungen?trendlinien_werte=aus")
+
+    def aus_feld_markup(text: str) -> str:
+        # Erstes Vorkommen: das versteckte Feld steht im Markup vor der Checkbox.
+        start = text.index('name="trendlinien_werte"')
+        return text[start : text.index(">", start)]
+
+    assert "disabled" in aus_feld_markup(angehakt.text)
+    assert "disabled" not in aus_feld_markup(abgehakt.text)
 
 
 def test_schulungen_formular_traegt_die_bereinigungsfunktion_beim_absenden():
     """Vor dem Absenden werden Mehrfachauswahl-Filter im Standardzustand deaktiviert
     (schulungenFormBereinigen(), siehe dortigen Kommentar) - sonst wuerde jede Anfrage
-    unveraendert saemtliche Standard-Kontrollkaestchen inklusive der versteckten
-    "__keine_auswahl__"-Sentinel-Felder als Query-Parameter mitschleppen."""
+    unveraendert saemtliche Standardfilter als (kommagetrennte) Query-Parameter
+    mitschleppen."""
     client = TestClient(app_modul.app)
 
     antwort = client.get("/schulungen")
@@ -1402,7 +1455,7 @@ def test_schulungen_data_standard_markiert_alle_jahre_checkboxen_als_standard(fa
     )
     client = TestClient(app_modul.app)
 
-    antwort = client.get("/schulungen?ab_jahr=2025")
+    antwort = client.get("/schulungen?ab_jahr=2025&ansicht=jahresvergleich")
 
     ausschnitt_start = antwort.text.index('name="jahr_filter"')
     ausschnitt_ende = antwort.text.index("</div>", ausschnitt_start)
@@ -1430,12 +1483,12 @@ def test_schulungen_data_standard_markiert_nur_alle_schulungen_als_standard(fake
     assert ausschnitt.count('data-standard="false"') == 2
 
 
-def test_schulungen_ansicht_und_trendlinien_stehen_in_eigener_abgetrennter_zeile(fake_caches):
-    """ "Ansicht" und "Trendlinien" stehen zusammen in einer eigenen Zeile - beides sind
-    Anzeige-Umschalter, keine Auswahl-Filter - optisch per .regler-trenner
-    (Trennlinie) von Jahre/Schulungen/Format/Dauer abgesetzt, statt (wie zuvor)
-    zwischen diesen platziert zu sein und dabei bei vielen Auswahlen in eine neue
-    Zeile zu rutschen."""
+def test_schulungen_ansicht_steht_vor_dem_einklappbaren_filterbereich(fake_caches):
+    """ "Ansicht" steht dauerhaft sichtbar vor dem einklappbaren Filterbereich, nicht
+    mehr darin - anders als die uebrigen, seltener gebrauchten Filter (Jahre/
+    Schulungen/Format/Dauer) muss man dafuer nicht erst aufklappen. "Trendlinien"
+    bleibt als einziger verbleibender Anzeige-Umschalter dort in eigener, per
+    .regler-trenner abgesetzter erster Zeile."""
     _, anmeldungsverlauf_cache, _ = fake_caches
     anmeldungsverlauf_cache.ergebnis = Anmeldungsverlauf(
         anmeldungen=(
@@ -1445,20 +1498,157 @@ def test_schulungen_ansicht_und_trendlinien_stehen_in_eigener_abgetrennter_zeile
     )
     client = TestClient(app_modul.app)
 
-    antwort = client.get("/schulungen?ab_jahr=2025")
+    antwort = client.get("/schulungen?ab_jahr=2025&ansicht=jahresvergleich")
 
+    regler_start = antwort.text.index('<details class="regler-abschnitt"')
+    vor_regler = antwort.text[:regler_start]
     erste_zeile_start = antwort.text.index('<div class="filter-spalten">')
     zweite_zeile_start = antwort.text.index('<div class="filter-spalten regler-trenner">')
     erste_zeile = antwort.text[erste_zeile_start:zweite_zeile_start]
     zweite_zeile = antwort.text[zweite_zeile_start:]
 
-    assert 'name="ansicht"' in erste_zeile
+    assert 'name="ansicht"' in vor_regler
+    assert 'name="ansicht"' not in erste_zeile
     assert 'name="trendlinien_werte"' in erste_zeile
     assert 'name="jahr_filter"' not in erste_zeile
     assert 'name="schulung_filter"' not in erste_zeile
 
     assert 'name="jahr_filter"' in zweite_zeile
     assert 'name="schulung_filter"' in zweite_zeile
+
+
+def test_schulungen_zeitraum_dropdown_erscheint_statt_ab_jahr_bei_zeitverlauf():
+    """Ohne Jahresvergleich (Standardansicht) zeigt der Kopfbereich das Zeitraum-
+    Dropdown fuer die Ruecklick-Laenge des rollierenden Fensters, nicht "Anmeldungen
+    ab Jahr" - das waere ohnehin wirkungslos (siehe Route-Docstring)."""
+    client = TestClient(app_modul.app)
+
+    antwort = client.get("/schulungen")
+
+    assert '<select name="zeitraum"' in antwort.text
+    assert '<select name="ab_jahr"' not in antwort.text
+
+
+def test_schulungen_ab_jahr_dropdown_erscheint_nur_bei_jahresvergleich(fake_caches):
+    """Erst mit ausgewaehltem Jahresvergleich (und mehr als einem Jahr im Zeitraum,
+    siehe zeige_ansicht_umschalter) ersetzt "Anmeldungen ab Jahr" das Zeitraum-
+    Dropdown - ein Kalenderjahresvergleich braucht einen Startjahrgang, kein
+    rollierendes Monatsfenster."""
+    _, anmeldungsverlauf_cache, _ = fake_caches
+    anmeldungsverlauf_cache.ergebnis = Anmeldungsverlauf(
+        anmeldungen=(
+            Anmeldung(2025, 3, "KSD", 3),
+            Anmeldung(2026, 3, "KSD", 5),
+        )
+    )
+    client = TestClient(app_modul.app)
+
+    antwort = client.get("/schulungen?ab_jahr=2025&ansicht=jahresvergleich")
+
+    assert '<select name="ab_jahr"' in antwort.text
+    assert '<select name="zeitraum"' not in antwort.text
+
+
+def test_schulungen_zeitraum_verkuerzt_das_rollierende_fenster(fake_caches):
+    """Die Ruecklick-Laenge des Diagramm-Standardfensters ist ueber "zeitraum"
+    waehlbar (siehe STANDARD_MONATE_VORSCHAU/STANDARD_SCHULUNGEN_ZEITRAUM) - ein 13
+    Monate vor dem laufenden Monat abgeschlossener Monat faellt beim Standard (12
+    Monate) heraus, bleibt bei 24 Monaten aber sichtbar."""
+    _, anmeldungsverlauf_cache, _ = fake_caches
+    anmeldungsverlauf_cache.ergebnis = Anmeldungsverlauf(
+        anmeldungen=(
+            Anmeldung(2025, 7, "KSD", 3),
+            Anmeldung(2026, 9, "KSD", 5),
+        )
+    )
+    client = TestClient(app_modul.app)
+
+    antwort_standard = client.get("/schulungen")
+    antwort_24 = client.get("/schulungen?zeitraum=24")
+
+    assert "Jul 2025" not in antwort_standard.text
+    assert "Jul 2025" in antwort_24.text
+
+
+def test_schulungen_zeitraum_ignoriert_ab_jahr(fake_caches):
+    """Regression: "ab_jahr" ist in der "zeitverlauf"-Ansicht gar nicht sichtbar/
+    waehlbar (siehe Template) und darf das rollierende Fenster deshalb nicht
+    einschraenken - ein dynamischer Standard wie 2026 ab Juni
+    (_standard_anzeige_ab_jahr()) hat sonst frueherer Monate unsichtbar aus dem
+    Rueckblick herausgeschnitten, obwohl "zeitraum" sie eigentlich zeigen sollte."""
+    _, anmeldungsverlauf_cache, _ = fake_caches
+    anmeldungsverlauf_cache.ergebnis = Anmeldungsverlauf(
+        anmeldungen=(
+            Anmeldung(2025, 9, "KSD", 3),
+            Anmeldung(2026, 9, "KSD", 5),
+        )
+    )
+    client = TestClient(app_modul.app)
+
+    # ab_jahr=2026 wuerde verlauf_ab_jahr auf 2026 begrenzen - das rollierende Fenster
+    # (12 Monate: September Vorjahr bis September laufend) muss trotzdem Sep 2025 zeigen.
+    antwort = client.get("/schulungen?ab_jahr=2026")
+
+    assert "Sep 2025" in antwort.text
+
+
+def test_schulungen_zeitraum_alle_zeigt_den_gesamten_geladenen_zeitraum(fake_caches):
+    """ "alle" haengt das rollierende Fenster aus und zeigt den gesamten geladenen
+    Zeitraum, unabhaengig von "ab_jahr" (siehe test_schulungen_zeitraum_ignoriert_ab_jahr)."""
+    _, anmeldungsverlauf_cache, _ = fake_caches
+    anmeldungsverlauf_cache.ergebnis = Anmeldungsverlauf(
+        anmeldungen=(
+            Anmeldung(2023, 1, "KSD", 3),
+            Anmeldung(2026, 9, "KSD", 5),
+        )
+    )
+    client = TestClient(app_modul.app)
+
+    antwort = client.get("/schulungen?ab_jahr=2026&zeitraum=alle")
+
+    assert "Jan 2023" in antwort.text
+
+
+def test_schulungen_ab_jahr_bleibt_bei_zeitverlauf_als_verstecktes_feld_erhalten(fake_caches):
+    """Regression: ohne dieses versteckte Feld ging die zuletzt gewaehlte
+    "Anmeldungen ab Jahr"-Auswahl beim Wechsel zu "Zeitverlauf" verloren - ein
+    GET-Formular sendet beim Absenden nur die gerade sichtbaren Felder, und
+    "Anmeldungen ab Jahr" ist in dieser Ansicht durch "Zeitraum" ersetzt. Ein
+    anschliessender Wechsel zurueck zu "Jahresvergleich" fiel dadurch auf den
+    dynamischen Standard zurueck, was je nach Datenlage sogar den Ansicht-
+    Umschalter selbst verschwinden lassen konnte ("kommt nicht mehr zurueck")."""
+    _, anmeldungsverlauf_cache, _ = fake_caches
+    anmeldungsverlauf_cache.ergebnis = Anmeldungsverlauf(
+        anmeldungen=(
+            Anmeldung(2023, 3, "KSD", 3),
+            Anmeldung(2026, 3, "KSD", 5),
+        )
+    )
+    client = TestClient(app_modul.app)
+
+    antwort = client.get("/schulungen?ansicht=zeitverlauf&ab_jahr=2023")
+
+    assert 'name="zeitraum"' in antwort.text
+    assert 'type="hidden" name="ab_jahr" value="2023"' in antwort.text
+
+
+def test_schulungen_zeitraum_bleibt_bei_jahresvergleich_als_verstecktes_feld_erhalten(fake_caches):
+    """Gegenstueck zu test_schulungen_ab_jahr_bleibt_bei_zeitverlauf_als_verstecktes_feld_erhalten
+    fuer die umgekehrte Richtung: die zuletzt gewaehlte "Zeitraum"-Auswahl bleibt beim
+    Wechsel zu "Jahresvergleich" ueber ein verstecktes Feld erhalten."""
+    _, anmeldungsverlauf_cache, _ = fake_caches
+    anmeldungsverlauf_cache.ergebnis = Anmeldungsverlauf(
+        anmeldungen=(
+            Anmeldung(2025, 3, "KSD", 3),
+            Anmeldung(2026, 3, "KSD", 5),
+        )
+    )
+    client = TestClient(app_modul.app)
+
+    antwort = client.get("/schulungen?ansicht=jahresvergleich&ab_jahr=2025&zeitraum=24")
+
+    assert 'name="ab_jahr"' in antwort.text
+    assert 'type="hidden" name="zeitraum" value="24"' in antwort.text
 
 
 def test_schulungen_jahr_filter_wirkt_nur_auf_das_diagramm_nicht_auf_die_tabelle(fake_caches):
@@ -1478,9 +1668,9 @@ def test_schulungen_jahr_filter_wirkt_nur_auf_das_diagramm_nicht_auf_die_tabelle
 
     assert "Mär 2025" not in antwort.text
     assert "Mär 2026" in antwort.text
-    # Bei nur noch einem Jahr im Diagramm ergibt der Ansicht-Umschalter keinen Sinn
-    # mehr und verschwindet, obwohl die Tabelle weiterhin beide Jahre zeigt.
-    assert 'name="ansicht"' not in antwort.text
+    # "Ansicht" bleibt trotzdem sichtbar, obwohl "jahr_filter" das Diagramm auf nur
+    # noch ein Jahr einschraenkt - die Tabelle zeigt weiterhin beide Jahre.
+    assert 'name="ansicht"' in antwort.text
 
     tabelle = antwort.text[antwort.text.index("<tbody>") :]
     assert ">2025<" in tabelle
@@ -1693,7 +1883,7 @@ def test_schulungen_alle_schulungen_und_basisname_ergeben_je_eine_farbige_reihe(
     )
     client = TestClient(app_modul.app)
 
-    antwort = client.get("/schulungen?schulung_filter=Alle+Schulungen&schulung_filter=CSM")
+    antwort = client.get("/schulungen?schulung_filter=Alle+Schulungen,CSM")
 
     assert '"name":"Alle Schulungen"' in antwort.text
     assert '"name":"CSM"' in antwort.text
@@ -1860,10 +2050,11 @@ def test_anmeldungsreihen_alle_drei_filter_leer_ergibt_kein_diagramm():
 
 
 def test_schulungen_alle_filter_abwaehlen_leert_das_diagramm(fake_caches):
-    """Werden in allen drei Dropdowns nur die versteckten Sentinel-Begleitfelder
-    (siehe KEINE_AUSWAHL) uebermittelt, also keine einzige Checkbox angehakt, faellt
-    das nicht mehr auf den Query-Default ("Alle Schulungen" & Co.) zurueck - die
-    Anmeldedaten-Meldung statt einer Linie erscheint."""
+    """Wird in allen drei Dropdowns eine leere Auswahl uebermittelt (kommagetrennter
+    Parameter als leere Zeichenkette, siehe _liste_aus_kommagetrennt), also keine
+    einzige Checkbox angehakt, faellt das nicht mehr auf den Query-Default ("Alle
+    Schulungen" & Co.) zurueck - die Anmeldedaten-Meldung statt einer Linie
+    erscheint."""
     _, anmeldungsverlauf_cache, _ = fake_caches
     anmeldungsverlauf_cache.ergebnis = Anmeldungsverlauf(
         anmeldungen=(Anmeldung(2026, 9, "CSM 2-tägig", 5),)
@@ -1871,10 +2062,7 @@ def test_schulungen_alle_filter_abwaehlen_leert_das_diagramm(fake_caches):
     client = TestClient(app_modul.app)
 
     antwort = client.get(
-        "/schulungen"
-        "?schulung_filter=__keine_auswahl__"
-        "&format_filter=__keine_auswahl__"
-        "&dauer_filter=__keine_auswahl__"
+        "/schulungen?schulung_filter=&format_filter=&dauer_filter=",
     )
 
     assert '"name":"Alle Schulungen"' not in antwort.text
@@ -1934,8 +2122,8 @@ def test_schulungen_schulung_optionen_je_kategorie_alphabetisch_mit_alle_schulun
 
 
 def test_schulungen_trendlinien_standardmaessig_an(fake_caches):
-    """Ohne Interaktion mit dem Filter-Formular soll die Trendlinie wie bisher immer
-    angezeigt werden - das Kontrollkaestchen startet deshalb angehakt."""
+    """Ohne Interaktion mit dem Filter-Formular und bei wenigen (hier: einer) Linien
+    ist die Trendlinie standardmaessig an - das Kontrollkaestchen startet angehakt."""
     _, anmeldungsverlauf_cache, _ = fake_caches
     anmeldungsverlauf_cache.ergebnis = Anmeldungsverlauf(
         anmeldungen=(
@@ -1948,6 +2136,55 @@ def test_schulungen_trendlinien_standardmaessig_an(fake_caches):
     antwort = client.get("/schulungen")
 
     assert '"name":"Alle Schulungen (Trend)"' in antwort.text
+
+
+def test_schulungen_trendlinien_standardmaessig_aus_bei_vielen_linien(fake_caches):
+    """Ohne explizite Auswahl sind Trendlinien standardmaessig aus, sobald mehr als
+    STANDARD_TRENDLINIEN_MAX_LINIEN Linien gezeichnet werden - viele Trendlinien
+    uebereinander verschlechtern die Lesbarkeit eher, als dass sie helfen. Sechs
+    Format-Auswahlen (die "Alle"-Reihe zusaetzlich zu fuenf echten Formaten) ergeben
+    hier sechs Reihen."""
+    _, anmeldungsverlauf_cache, _ = fake_caches
+    anmeldungsverlauf_cache.ergebnis = Anmeldungsverlauf(
+        anmeldungen=(
+            Anmeldung(2026, 9, "KSD", 1, format="A"),
+            Anmeldung(2026, 9, "KSD", 2, format="B"),
+            Anmeldung(2026, 9, "KSD", 3, format="C"),
+            Anmeldung(2026, 9, "KSD", 4, format="D"),
+            Anmeldung(2026, 9, "KSD", 5, format="E"),
+        )
+    )
+    client = TestClient(app_modul.app)
+
+    antwort = client.get(
+        "/schulungen?format_filter=Alle,A,B,C,D,E",
+    )
+
+    assert "(Trend)" not in antwort.text
+    checkbox_start = antwort.text.index('name="trendlinien_werte"', antwort.text.index("checkbox"))
+    assert "checked" not in antwort.text[checkbox_start : antwort.text.index(">", checkbox_start)]
+
+
+def test_schulungen_trendlinien_explizite_auswahl_wirkt_trotz_vieler_linien(fake_caches):
+    """Eine explizite Auswahl (hier: bewusst eingeschaltet) bleibt vom dynamischen
+    Standard unberuehrt, auch wenn viele Linien gezeichnet werden."""
+    _, anmeldungsverlauf_cache, _ = fake_caches
+    anmeldungsverlauf_cache.ergebnis = Anmeldungsverlauf(
+        anmeldungen=(
+            Anmeldung(2026, 9, "KSD", 1, format="A"),
+            Anmeldung(2026, 9, "KSD", 2, format="B"),
+            Anmeldung(2026, 9, "KSD", 3, format="C"),
+            Anmeldung(2026, 9, "KSD", 4, format="D"),
+            Anmeldung(2026, 9, "KSD", 5, format="E"),
+        )
+    )
+    client = TestClient(app_modul.app)
+
+    antwort = client.get(
+        "/schulungen?format_filter=Alle,A,B,C,D,E&trendlinien_werte=an",
+    )
+
+    assert "(Trend)" in antwort.text
 
 
 def test_schulungen_trendlinien_checkbox_ausgeschaltet_zeigt_keine_trendreihe(

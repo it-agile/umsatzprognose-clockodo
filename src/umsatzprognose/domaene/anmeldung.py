@@ -1,13 +1,13 @@
-"""Anmeldungsverlauf oeffentlicher Schulungen - Teilnehmerzahl statt Umsatz.
+"""Anmeldungsverlauf oeffentlicher Schulungen - Teilnehmendenzahl statt Umsatz.
 
 Zweite, unabhaengige Lesart derselben Google-Sheets-Quelle wie
 :mod:`umsatzprognose.domaene.schulung` (Tabellenblatt "Oeffentliche Schulungen"): nicht
-der Umsatz, sondern die Teilnehmerzahl je Schulungstyp und Monat - Grundlage fuer den
+der Umsatz, sondern die Teilnehmendenzahl je Schulungstyp und Monat - Grundlage fuer den
 internen Verlauf "Anmeldungen bleiben auf niedrigem Niveau".
 
 Anders als :class:`~umsatzprognose.domaene.schulung.Schulungsplan` deckt dieser Verlauf
 bewusst **mehrere zurueckliegende Jahre** ab statt nur des Prognosehorizonts: eine
-Teilnehmerzahl ist kein Umsatz und dupliziert daher nichts aus Clockodo - anders als beim
+Teilnehmendenzahl ist kein Umsatz und dupliziert daher nichts aus Clockodo - anders als beim
 Baustein Schulungsanmeldungen gibt es hier kein Doppelzaehlungsrisiko, das den Blick auf
 die Vergangenheit ausschliessen wuerde. Bleibt wie der Baustein Schulungsanmeldungen
 additiv: kein Einfluss auf Restvolumen, Abrufquote oder Kapazitaetsdeckel.
@@ -74,6 +74,17 @@ from datetime import date
 from umsatzprognose.util import ordnung
 
 KATEGORIE_SONSTIGE = "Sonstige"
+
+# Default-Betrachtungsfenster fuer den Anmeldungsverlauf (siehe Anmeldungsverlauf.letzte()):
+# rollierend die letzten STANDARD_MONATE_RUECKBLICK abgeschlossenen Kalendermonate plus
+# der Stichtagsmonat selbst, plus STANDARD_MONATE_VORSCHAU bereits terminierte kommende
+# Monate. Von der Standardansicht von webapp/app.py (Route /schulungen) importiert;
+# notebooks/03_schulungsanmeldungen.ipynb und die scripts/ duplizieren dieselben Werte
+# bewusst als eigene Literale statt zu importieren (siehe dortige Kommentare) -
+# scripts/ ist kein Teil des installierten Pakets, das Notebook eine dünne, direkt
+# editierbare Schicht.
+STANDARD_MONATE_RUECKBLICK = 12
+STANDARD_MONATE_VORSCHAU = 3
 
 # Erkennt einen Dauer-Suffix wie "2-tägig"/"3-tägig" am Ende eines Schulungstyps (z. B.
 # "CSPO 2-tägig" -> Basisname "CSPO", Dauer "2-tägig") - rein aus dem Text abgeleitet,
@@ -236,22 +247,22 @@ def _dauer(anmeldung: Anmeldung) -> str | None:
     )
 
 
-def _teilnehmerzahl_je[K](
+def _teilnehmendenzahl_je[K](
     anmeldungen: Iterable[Anmeldung],
     schluessel: Callable[[Anmeldung], K],
 ) -> dict[K, int]:
-    """Teilnehmerzahl aufsummiert je ``schluessel(a)`` - der gemeinsame Kern hinter
+    """Teilnehmendenzahl aufsummiert je ``schluessel(a)`` - der gemeinsame Kern hinter
     :meth:`Anmeldungsverlauf.summe_je_typ`, :meth:`~.je_monat` und
     :meth:`~.je_monat_und_typ`."""
     summen: Counter[K] = Counter()
     for a in anmeldungen:
-        summen[schluessel(a)] += a.teilnehmerzahl
+        summen[schluessel(a)] += a.teilnehmendenzahl
     return summen
 
 
 @dataclass(frozen=True, slots=True)
 class Anmeldung:
-    """Teilnehmerzahl eines Schulungstyps in einem Monat - eine Zeile der Quelltabelle.
+    """Teilnehmendenzahl eines Schulungstyps in einem Monat - eine Zeile der Quelltabelle.
 
     ``format`` ("Präsenz"/"Online", aus der gleichnamigen Spalte) ist optional -
     leer, wenn die Quelle keinen Wert traegt. Grundlage fuer die Format-Unterteilung
@@ -268,7 +279,7 @@ class Anmeldung:
     jahr: int
     monat: int
     schulungstyp: str
-    teilnehmerzahl: int
+    teilnehmendenzahl: int
     format: str = ""
     datum: str = ""
 
@@ -309,13 +320,13 @@ def _alphabetisch_mit_anmeldungen(
     (siehe :meth:`Anmeldungsverlauf.gliederung_je_kategorie`) - eine Kategorie bleibt
     dort auch ohne Anmeldung sichtbar, weil das schon dort dokumentiert ist. Anders als
     :attr:`Anmeldungsverlauf.schulungstypen`/:attr:`~.formate`/:attr:`~.dauern` (nach
-    absteigender Gesamtteilnehmerzahl, fuer die Dropdown-Optionen der Webapp-Filter) -
+    absteigender Gesamtteilnehmendenzahl, fuer die Dropdown-Optionen der Webapp-Filter) -
     in der Tabelle soll man einen bekannten Namen alphabetisch wiederfinden, nicht nach
     Anmeldezahl suchen muessen."""
     mit_anmeldungen = [
         (name, gruppe)
         for name, gruppe in gruppen.items()
-        if sum(a.teilnehmerzahl for a in gruppe) > 0
+        if sum(a.teilnehmendenzahl for a in gruppe) > 0
     ]
     return sorted(mit_anmeldungen, key=lambda kv: kv[0].lower())
 
@@ -334,7 +345,7 @@ def _nach_juengstem_jahr_und_name_mit_anmeldungen(
     mit_anmeldungen = [
         (name, gruppe)
         for name, gruppe in gruppen.items()
-        if sum(a.teilnehmerzahl for a in gruppe) > 0
+        if sum(a.teilnehmendenzahl for a in gruppe) > 0
     ]
     return sorted(
         mit_anmeldungen,
@@ -355,13 +366,13 @@ def _mit_dauer_kindern(name: str, zeilen: Sequence[Anmeldung]) -> Anmeldungsknot
     dauern = _alphabetisch_mit_anmeldungen(dauer_gruppen)
     kinder = (
         tuple(
-            Anmeldungsknoten(dauer_name, _teilnehmerzahl_je(gruppe, lambda a: a.schluessel))
+            Anmeldungsknoten(dauer_name, _teilnehmendenzahl_je(gruppe, lambda a: a.schluessel))
             for dauer_name, gruppe in dauern
         )
         if len(dauern) > 1
         else ()
     )
-    return Anmeldungsknoten(name, _teilnehmerzahl_je(zeilen, lambda a: a.schluessel), kinder)
+    return Anmeldungsknoten(name, _teilnehmendenzahl_je(zeilen, lambda a: a.schluessel), kinder)
 
 
 def _basisname_knoten(basisname: str, zeilen: Sequence[Anmeldung]) -> Anmeldungsknoten:
@@ -372,7 +383,7 @@ def _basisname_knoten(basisname: str, zeilen: Sequence[Anmeldung]) -> Anmeldungs
     formate = _alphabetisch_mit_anmeldungen(_gruppieren(zeilen, lambda a: a.format))
     if len(formate) > 1:
         kinder = tuple(_mit_dauer_kindern(format_wert, gruppe) for format_wert, gruppe in formate)
-        monate = _teilnehmerzahl_je(zeilen, lambda a: a.schluessel)
+        monate = _teilnehmendenzahl_je(zeilen, lambda a: a.schluessel)
         return Anmeldungsknoten(basisname, monate, kinder)
     return _mit_dauer_kindern(basisname, zeilen)
 
@@ -397,18 +408,18 @@ class Anmeldungsverlauf:
 
     @property
     def schulungstypen(self) -> tuple[str, ...]:
-        """Alle vorkommenden Schulungstypen, nach absteigender Gesamtteilnehmerzahl."""
+        """Alle vorkommenden Schulungstypen, nach absteigender Gesamtteilnehmendenzahl."""
         summen = self.summe_je_typ()
         return tuple(sorted(summen, key=lambda typ: summen[typ], reverse=True))
 
     def summe_je_typ(self) -> dict[str, int]:
-        """Teilnehmerzahl je Schulungstyp, ueber den gesamten abgedeckten Zeitraum -
+        """Teilnehmendenzahl je Schulungstyp, ueber den gesamten abgedeckten Zeitraum -
         der Drilldown hinter der Gesamtzahl aus :meth:`je_monat`, siehe
         :func:`~umsatzprognose.darstellung.tabellen.anmeldungstabelle`."""
-        return _teilnehmerzahl_je(self.anmeldungen, lambda a: a.schulungstyp)
+        return _teilnehmendenzahl_je(self.anmeldungen, lambda a: a.schulungstyp)
 
     def je_monat_und_kategorie(self, kategorien: Kategorisierung) -> dict[str, dict[Monat, int]]:
-        """Teilnehmerzahl je Monat, gruppiert nach den uebergebenen Kategorien - der
+        """Teilnehmendenzahl je Monat, gruppiert nach den uebergebenen Kategorien - der
         Drilldown hinter der Gesamtzahl aus :meth:`je_monat`, siehe
         :func:`~umsatzprognose.darstellung.tabellen.anmeldungstabelle`.
 
@@ -425,7 +436,7 @@ class Anmeldungsverlauf:
         for a in self.anmeldungen:
             basisname = _basisname_und_dauer(a.schulungstyp)[0]
             summen = ergebnis[zuordnung.get(basisname, KATEGORIE_SONSTIGE)]
-            summen[a.schluessel] += a.teilnehmerzahl
+            summen[a.schluessel] += a.teilnehmendenzahl
         return ergebnis
 
     def gliederung_je_kategorie(
@@ -455,7 +466,7 @@ class Anmeldungsverlauf:
         dazwischenzumischen. Format- und Dauer-Knoten darunter bleiben dagegen rein
         alphabetisch sortiert (:func:`_alphabetisch_mit_anmeldungen`, anders als
         :attr:`schulungstypen`/:attr:`formate`/:attr:`dauern` nach absteigender
-        Gesamtteilnehmerzahl) - im Tabellen-Drilldown soll man einen bekannten Namen
+        Gesamtteilnehmendenzahl) - im Tabellen-Drilldown soll man einen bekannten Namen
         dort weiterhin alphabetisch wiederfinden, nicht nach Anmeldezahl suchen
         muessen; eine Kategorie ohne Anmeldung in diesem Zeitraum liefert dagegen
         weiterhin eine leere Tupel statt zu fehlen (derselbe Auffangmechanismus wie
@@ -479,22 +490,22 @@ class Anmeldungsverlauf:
         return ergebnis
 
     def je_monat(self) -> dict[Monat, int]:
-        """Summe der Teilnehmerzahl je Monat, ueber alle Schulungstypen hinweg."""
-        return _teilnehmerzahl_je(self.anmeldungen, lambda a: a.schluessel)
+        """Summe der Teilnehmendenzahl je Monat, ueber alle Schulungstypen hinweg."""
+        return _teilnehmendenzahl_je(self.anmeldungen, lambda a: a.schluessel)
 
     def je_monat_und_typ(self, schulungstyp: str) -> dict[Monat, int]:
-        """Teilnehmerzahl je Monat fuer einen einzelnen Schulungstyp."""
-        return _teilnehmerzahl_je(
+        """Teilnehmendenzahl je Monat fuer einen einzelnen Schulungstyp."""
+        return _teilnehmendenzahl_je(
             (a for a in self.anmeldungen if a.schulungstyp == schulungstyp),
             lambda a: a.schluessel,
         )
 
     def summe_je_basisname(self) -> dict[str, int]:
-        """Teilnehmerzahl je Basisname (siehe :func:`_basisname_und_dauer`), ueber den
+        """Teilnehmendenzahl je Basisname (siehe :func:`_basisname_und_dauer`), ueber den
         gesamten abgedeckten Zeitraum - Dauer-Varianten wie "CSPO 2-tägig"/"CSPO
         3-tägig" zaehlen hier zusammen auf "CSPO", derselbe Zusammenfassungsschritt
         wie in der Basisname-Ebene von :meth:`gliederung_je_kategorie`."""
-        return _teilnehmerzahl_je(
+        return _teilnehmendenzahl_je(
             self.anmeldungen,
             lambda a: _basisname_und_dauer(a.schulungstyp)[0],
         )
@@ -502,7 +513,7 @@ class Anmeldungsverlauf:
     @property
     def basisnamen(self) -> tuple[str, ...]:
         """Alle vorkommenden Basisnamen (Dauer-Varianten zusammengefasst, siehe
-        :meth:`summe_je_basisname`), nach absteigender Gesamtteilnehmerzahl - derselbe
+        :meth:`summe_je_basisname`), nach absteigender Gesamtteilnehmendenzahl - derselbe
         Auffangmechanismus wie :attr:`schulungstypen`, fuer den Schulungen-Filter der
         Webapp, der dieselbe Zusammenfassung wie der Tabellen-Drilldown zeigt statt
         einzelner Dauer-Varianten."""
@@ -510,16 +521,16 @@ class Anmeldungsverlauf:
         return tuple(sorted(summen, key=lambda name: summen[name], reverse=True))
 
     def je_monat_und_basisname(self, basisname: str) -> dict[Monat, int]:
-        """Teilnehmerzahl je Monat fuer einen Basisnamen, ueber alle seine Dauer-
+        """Teilnehmendenzahl je Monat fuer einen Basisnamen, ueber alle seine Dauer-
         Varianten hinweg (siehe :meth:`summe_je_basisname`)."""
-        return _teilnehmerzahl_je(
+        return _teilnehmendenzahl_je(
             (a for a in self.anmeldungen if _basisname_und_dauer(a.schulungstyp)[0] == basisname),
             lambda a: a.schluessel,
         )
 
     def basisnamen_je_kategorie(self, kategorien: Kategorisierung) -> dict[str, tuple[str, ...]]:
         """Die vorkommenden Basisnamen je Kategorie, jeweils nach absteigender
-        Gesamtteilnehmerzahl ihres jeweils staerksten Schulungstyps (wie
+        Gesamtteilnehmendenzahl ihres jeweils staerksten Schulungstyps (wie
         :meth:`schulungstypen_je_kategorie`, aber mit zusammengefassten Dauer-
         Varianten) - fuer die Webapp, um die Auswahlmoeglichkeiten des Schulungen-
         Filters auf die gerade gewaehlten Kategorien einzuschraenken, analog zu
@@ -543,17 +554,19 @@ class Anmeldungsverlauf:
     @property
     def formate(self) -> tuple[str, ...]:
         """Alle vorkommenden, tatsaechlich befuellten Formate (Praesenz/Online, siehe
-        :attr:`Anmeldung.format`), nach absteigender Gesamtteilnehmerzahl - derselbe
+        :attr:`Anmeldung.format`), nach absteigender Gesamtteilnehmendenzahl - derselbe
         Auffangmechanismus wie :attr:`schulungstypen`, fuer den Format-Filter der
         Webapp (siehe ``webapp/templates/schulungen.html``). Eine leere ``format``-
         Angabe (Quelle ohne Wert) zaehlt nicht als eigene Auspraegung."""
-        summen = _teilnehmerzahl_je((a for a in self.anmeldungen if a.format), lambda a: a.format)
+        summen = _teilnehmendenzahl_je(
+            (a for a in self.anmeldungen if a.format), lambda a: a.format
+        )
         return tuple(sorted(summen, key=lambda format_wert: summen[format_wert], reverse=True))
 
     def je_monat_und_format(self, format_wert: str) -> dict[Monat, int]:
-        """Teilnehmerzahl je Monat fuer ein einzelnes Format (Praesenz/Online), ueber
+        """Teilnehmendenzahl je Monat fuer ein einzelnes Format (Praesenz/Online), ueber
         alle Kategorien und Schulungstypen hinweg."""
-        return _teilnehmerzahl_je(
+        return _teilnehmendenzahl_je(
             (a for a in self.anmeldungen if a.format == format_wert),
             lambda a: a.schluessel,
         )
@@ -562,21 +575,21 @@ class Anmeldungsverlauf:
     def dauern(self) -> tuple[str, ...]:
         """Alle vorkommenden, erkannten Dauer-Auspraegungen (siehe :func:`_dauer`, bevorzugt
         aus ``datum`` berechnet, sonst aus dem Schulungstyp-Suffix), nach absteigender
-        Gesamtteilnehmerzahl - derselbe Auffangmechanismus wie :attr:`schulungstypen`,
+        Gesamtteilnehmendenzahl - derselbe Auffangmechanismus wie :attr:`schulungstypen`,
         fuer den Dauer-Filter der Webapp. Eine Anmeldung ohne erkennbare Dauer traegt
         nicht zu dieser Liste bei."""
         summen: Counter[str] = Counter()
         for a in self.anmeldungen:
             dauer = _dauer(a)
             if dauer is not None:
-                summen[dauer] += a.teilnehmerzahl
+                summen[dauer] += a.teilnehmendenzahl
         return tuple(sorted(summen, key=lambda dauer_wert: summen[dauer_wert], reverse=True))
 
     def je_monat_und_dauer(self, dauer_wert: str) -> dict[Monat, int]:
-        """Teilnehmerzahl je Monat fuer eine einzelne, erkannte Dauer-Auspraegung
+        """Teilnehmendenzahl je Monat fuer eine einzelne, erkannte Dauer-Auspraegung
         (z. B. ``"2-tägig"``), ueber alle Kategorien, Schulungstypen und Formate
         hinweg."""
-        return _teilnehmerzahl_je(
+        return _teilnehmendenzahl_je(
             (a for a in self.anmeldungen if _dauer(a) == dauer_wert),
             lambda a: a.schluessel,
         )
@@ -590,7 +603,7 @@ class Anmeldungsverlauf:
         format_wert: str | None = None,
         dauer_wert: str | None = None,
     ) -> dict[Monat, int]:
-        """Teilnehmerzahl je Monat, gleichzeitig (UND-verknuepft) eingeschraenkt auf
+        """Teilnehmendenzahl je Monat, gleichzeitig (UND-verknuepft) eingeschraenkt auf
         eine beliebige Kombination der uebrigen ``je_monat_und_*``-Kriterien - Grundlage
         fuer die kombinierbaren Filter-Dropdowns der Webapp (siehe
         ``webapp.app._anmeldungsreihen``), die z. B. Basisname UND Dauer gleichzeitig
@@ -613,14 +626,16 @@ class Anmeldungsverlauf:
                 return False
             return format_wert is None or a.format == format_wert
 
-        return _teilnehmerzahl_je((a for a in self.anmeldungen if passt(a)), lambda a: a.schluessel)
+        return _teilnehmendenzahl_je(
+            (a for a in self.anmeldungen if passt(a)), lambda a: a.schluessel
+        )
 
     def schulungstypen_je_kategorie(
         self,
         kategorien: Kategorisierung,
     ) -> dict[str, tuple[str, ...]]:
         """Die vorkommenden Schulungstypen je Kategorie, jeweils nach absteigender
-        Gesamtteilnehmerzahl (wie :attr:`schulungstypen`) - fuer die Webapp, um die
+        Gesamtteilnehmendenzahl (wie :attr:`schulungstypen`) - fuer die Webapp, um die
         Auswahlmoeglichkeiten des Schulungen-Filters auf die gerade gewaehlten
         Kategorien einzuschraenken (siehe ``webapp/app.py``), ohne dass diese
         Einschraenkung selbst Fachlogik waere.
@@ -636,18 +651,38 @@ class Anmeldungsverlauf:
             ergebnis[zuordnung.get(basisname, KATEGORIE_SONSTIGE)].append(typ)
         return {kategorie: tuple(typen) for kategorie, typen in ergebnis.items()}
 
-    def letzte(self, *, monate: int, stichtag: date) -> Anmeldungsverlauf:
-        """Nur die ``monate`` Kalendermonate bis einschliesslich des Stichtagsmonats.
+    def letzte(
+        self,
+        *,
+        monate: int,
+        monate_voraus: int = 0,
+        stichtag: date,
+    ) -> Anmeldungsverlauf:
+        """Die ``monate`` vor dem Stichtagsmonat abgeschlossenen Kalendermonate, plus der
+        Stichtagsmonat selbst (also ``monate + 1`` Monate insgesamt), optional erweitert
+        um ``monate_voraus`` weitere, bereits terminierte kommende Kalendermonate danach
+        (Standard 0, deckt sich mit dem bisherigen Verhalten).
 
-        ``monate`` ist keyword-only, damit an der Aufrufstelle sofort lesbar ist, was
-        die Zahl bedeutet (``letzte(monate=13, ...)`` statt einer nackten ``13``).
-        Grundlage fuer einen konfigurierbaren Betrachtungszeitraum im Diagramm (etwa die
-        letzten 13 Monate ab heute, inklusive des laufenden Monats) -
-        :func:`~umsatzprognose.darstellung.diagramme.anmeldungsverlauf` wendet selbst
-        kein Zeitfenster an, sondern zeigt den Verlauf unveraendert.
+        ``monate`` zaehlt bewusst nur die bereits abgeschlossenen Monate, nicht den
+        laufenden mit - "12 Monate" im Zeitverlauf-Dropdown der Webapp zeigt so bei
+        einem Stichtag im September z. B. September des Vorjahres bis zum laufenden
+        September (13 Kalendermonate), nicht erst ab Oktober des Vorjahres. Deckt sich
+        mit der Erwartung "die letzten 12 abgeschlossenen Monate plus der laufende",
+        wie sie auch fuer ``scripts/wochenbericht.py`` gilt (siehe dort).
+
+        ``monate``/``monate_voraus`` sind keyword-only, damit an der Aufrufstelle sofort
+        lesbar ist, was die Zahl bedeutet (``letzte(monate=13, ...)`` statt einer nackten
+        ``13``). Grundlage fuer ein rollierendes Betrachtungsfenster im Diagramm (siehe
+        :data:`STANDARD_MONATE_RUECKBLICK`/:data:`STANDARD_MONATE_VORSCHAU`, etwa die
+        letzten 12 abgeschlossenen Monate plus der laufende, plus 3 kommende) - weder
+        :func:`~umsatzprognose.darstellung.diagramme.anmeldungsverlauf` noch
+        :func:`~umsatzprognose.darstellung.diagramme.anmeldungsverlauf_reihen` wenden
+        selbst ein Zeitfenster an, sondern zeigen den uebergebenen Verlauf unveraendert;
+        deren ``laufender_monat``-Parameter hebt darin nur noch nicht abgeschlossene
+        Monate (ab dem Stichtagsmonat) optisch ab.
         """
-        ende = ordnung(stichtag.year, stichtag.month)
-        start = ende - (monate - 1)
+        ende = ordnung(stichtag.year, stichtag.month) + monate_voraus
+        start = ende - monate_voraus - monate
         gefiltert = tuple(a for a in self.anmeldungen if start <= ordnung(a.jahr, a.monat) <= ende)
         return type(self)(anmeldungen=gefiltert, abbildungshinweise=self.abbildungshinweise)
 

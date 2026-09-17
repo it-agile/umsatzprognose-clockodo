@@ -126,6 +126,7 @@ from umsatzprognose.domaene import (
     Schwellenwerte,
     WeibullFakturierbareArbeit,
 )
+from umsatzprognose.domaene.anmeldung import STANDARD_MONATE_VORSCHAU
 from umsatzprognose.domaene.umsatzhistorie import MONATSNAMEN
 from umsatzprognose.domaene.zahlen import betrag_parsen
 from umsatzprognose.schulungen import kategorien_automatisch
@@ -256,31 +257,50 @@ InterneArbeitVerteilungMaxProzent = Annotated[int, Query(ge=1, le=100)]
 STANDARD_INTERNE_ARBEIT_VERTEILUNG_MIN_PROZENT = 0
 STANDARD_INTERNE_ARBEIT_VERTEILUNG_MAX_PROZENT = 100
 
-# Die drei unabhaengigen Filter-Dropdowns (Mehrfachauswahl) fuer den Anmeldungsverlauf
+# Die vier unabhaengigen Filter-Dropdowns (Mehrfachauswahl) fuer den Anmeldungsverlauf
 # auf /schulungen (siehe _anmeldungsreihen()) - anders als HorizontMonate & Co. keine
 # Annotated[Literal[...]], weil ihre gueltigen Werte von den geladenen Daten bzw. der
 # .env-Konfiguration abhaengen, nicht von einer festen, im Code kuratierten Auswahl.
 # jahr_filter gehoert thematisch dazu, wirkt aber (anders als die uebrigen drei sowie
 # der fruehere, inzwischen entfernte Kategorie-Filter) nur auf das Diagramm, nicht auf
 # die Schulungsdetails-Tabelle darunter - siehe Route.
-SchulungFilter = Annotated[Sequence[str], Query()]
-FormatFilter = Annotated[Sequence[str], Query()]
-DauerFilter = Annotated[Sequence[str], Query()]
-JahrFilter = Annotated[Sequence[str], Query()]
+#
+# Jede Mehrfachauswahl steht als EIN kommagetrennter String im Query-String (z. B.
+# ``?schulung_filter=CSM,KSD``) statt als mehrfach wiederholter Parameter
+# (``?schulung_filter=CSM&schulung_filter=KSD``) - eine leere Zeichenkette bedeutet
+# "vollstaendig abgewaehlt" (siehe :func:`_liste_aus_kommagetrennt`), ein fehlender
+# Parameter faellt auf den Query-Default zurueck. Das macht die Checkbox-Auswahl im
+# Template selbst client-seitig JavaScript-verwaltet (siehe schulungen.html,
+# schulungenFormBereinigen()) statt sie unveraendert vom Browser als native
+# Mehrfachwerte serialisieren zu lassen.
+SchulungFilter = Annotated[str, Query()]
+FormatFilter = Annotated[str, Query()]
+DauerFilter = Annotated[str, Query()]
+JahrFilter = Annotated[str, Query()]
 # Checkbox-Wert per verstecktem Begleitfeld (siehe schulungen.html/dashboard.html): ein
 # einzelnes HTML-Kontrollkaestchen kann seinen "aus"-Zustand nicht selbst senden, ein
-# Begleitfeld mit demselben Namen und Wert "aus" tut das immer, das Kontrollkaestchen
-# selbst nur zusaetzlich mit Wert "an", wenn angehakt. Wiederverwendet fuer den
+# Begleitfeld mit demselben Namen und Wert "aus" uebernimmt das - deaktiviert per
+# JavaScript, sobald das Kontrollkaestchen angehakt ist (siehe onchange dort), damit
+# stets genau ein Wert ankommt statt beider gleichzeitig. Wiederverwendet fuer den
 # Trendlinien-Regler auf /dashboard (Anteil interner Arbeit), nicht nur /schulungen.
 TrendlinienWerte = Annotated[Sequence[str], Query()]
+# Fuer /schulungen (siehe Route): dieselbe Auswahl, aber optional - "None" (Parameter
+# fehlt ganz, siehe schulungenFormBereinigen()) unterscheidet "vom Benutzenden nicht
+# angeruehrt" von einer expliziten Auswahl, damit der dynamische Trendlinien-Standard
+# greifen kann. Bewusst Sequence[str] | None INNERHALB von Annotated statt
+# TrendlinienWerte | None - FastAPI erkennt die Mehrfachwert-Semantik (mehrere
+# gleichnamige Query-Parameter) sonst nicht mehr und liefert immer None.
+OptionaleTrendlinienWerte = Annotated[Sequence[str] | None, Query()]
 
-# Umschalter im Anmeldungsverlauf-Diagramm auf /schulungen, nur angezeigt, wenn der
-# ausgewaehlte Zeitraum (nach jahr_filter) mehr als ein Jahr umfasst: "zeitverlauf" der
-# bisherige durchgehende Zeitraum (diagramme.anmeldungsverlauf_reihen),
-# "jahresvergleich" stattdessen eine gemeinsame Januar-Dezember-Achse mit einer Farbe
-# je Jahr (diagramme.anmeldungsverlauf_jahresvergleich), wie beim Kalenderjahres-
-# vergleich des Umsatzes. Fester Standardwert wie InterneArbeitModus oben, deshalb
-# eine kuratierte Annotated[Literal[...]] statt eines freien Werts.
+# Umschalter im Anmeldungsverlauf-Diagramm auf /schulungen, immer sichtbar (auch bei
+# nur einem Jahr im Zeitraum - ein Umschalter, der mal da ist und mal nicht, waere
+# verwirrender als eine wenig aussagekraeftige Jahresvergleich-Ansicht mit nur einer
+# Linie): "zeitverlauf" der bisherige durchgehende Zeitraum (diagramme.
+# anmeldungsverlauf_reihen), "jahresvergleich" stattdessen eine gemeinsame Januar-
+# Dezember-Achse mit einer Farbe je Jahr (diagramme.anmeldungsverlauf_jahresvergleich),
+# wie beim Kalenderjahresvergleich des Umsatzes. Fester Standardwert wie
+# InterneArbeitModus oben, deshalb eine kuratierte Annotated[Literal[...]] statt eines
+# freien Werts.
 AnsichtWert = Literal["zeitverlauf", "jahresvergleich"]
 Ansicht = Annotated[AnsichtWert, Query()]
 STANDARD_ANSICHT: AnsichtWert = "zeitverlauf"
@@ -290,18 +310,33 @@ ANSICHT_BESCHRIFTUNGEN: dict[AnsichtWert, str] = {
     "jahresvergleich": "Jahresvergleich",
 }
 
+# Rollierendes Betrachtungsfenster fuer die "zeitverlauf"-Ansicht (siehe Route) - die
+# waehlbare Rueckblick-Laenge neben dem festen Ansicht-Umschalter, analog zu
+# GewinnVerlustMonate oben. "12" zeigt (ueber Anmeldungsverlauf.letzte(), siehe dort)
+# die letzten 12 abgeschlossenen Monate plus den laufenden - bei einem Stichtag im
+# September also September des Vorjahres bis zum laufenden September, nicht erst ab
+# Oktober des Vorjahres. Der Standardwert "12" deckt sich bewusst mit
+# umsatzprognose.domaene.anmeldung.STANDARD_MONATE_RUECKBLICK (dort ein int fuer
+# Anmeldungsverlauf.letzte(), hier ein waehlbarer str-Literal fuer die Route - kein
+# gemeinsamer Typ, deshalb keine Wiederverwendung). "alle" zeigt wie vor Einfuehrung
+# dieses Reglers den gesamten seit ab_jahr geladenen Zeitraum (Anmeldungsverlauf.
+# letzte() wird dann gar nicht erst angewendet). Kein Einfluss auf "jahresvergleich" (braucht volle
+# Kalenderjahre, siehe Route) oder die Schulungsdetails-Tabelle.
+_SchulungenZeitraumWert = Literal["12", "24", "36", "alle"]
+SchulungenZeitraum = Annotated[_SchulungenZeitraumWert, Query()]
+SCHULUNGEN_ZEITRAUM_OPTIONEN = get_args(_SchulungenZeitraumWert)
+STANDARD_SCHULUNGEN_ZEITRAUM: _SchulungenZeitraumWert = "12"
+
+# Der Trendlinien-Standardwert auf /schulungen ist dynamisch statt fest "an" (siehe
+# Route): bei mehr als so vielen gezeichneten Linien sind Trendlinien standardmaessig
+# aus, sonst an - viele Trendlinien uebereinander verschlechtern die Lesbarkeit eher,
+# als dass sie helfen. Gilt nur, solange trendlinien_werte nicht explizit gesetzt
+# wurde (siehe dort); eine bewusste Auswahl bleibt davon unberuehrt.
+STANDARD_TRENDLINIEN_MAX_LINIEN = 5
+
 ALLE_SCHULUNGEN = "Alle Schulungen"
 ALLE_JAHRE = "Alle Jahre"
 ALLE = "Alle"
-# Verstecktes Begleitfeld je Filter-Dropdown (siehe schulungen.html) - ohne dieses
-# Sentinel-Feld verschwindet ein Mehrfachauswahl-Feld beim Abwaehlen aller
-# Kontrollkaestchen komplett aus dem abgeschickten Formular (anders als beim einzelnen
-# Trendlinien-Kontrollkaestchen gibt es hier kein festes "aus", das dieselbe Rolle
-# uebernehmen koennte), FastAPI faellt dann auf den Query-Default (z. B.
-# ``(ALLE_SCHULUNGEN,)``) zurueck - die Auswahl "vergisst" sich selbst und laesst sich
-# nicht auf leer stellen. Das Sentinel-Feld wird in _anmeldungsreihen()/der Route
-# sofort wieder herausgefiltert.
-KEINE_AUSWAHL = "__keine_auswahl__"
 
 # Je Seite die Parameter-Standardwerte (als String, wie sie im Query-String stehen) -
 # _anfrage_query() blendet damit auf ihren Standard stehende Parameter aus
@@ -383,7 +418,10 @@ _STANDARDWERTE_KURZARBEIT: dict[str, str] = {
 }
 
 _dashboard_cache = DashboardCache()
-_anmeldungsverlauf_cache = AnmeldungsverlaufCache(ab_jahr=STANDARD_AB_JAHR)
+_anmeldungsverlauf_cache = AnmeldungsverlaufCache(
+    ab_jahr=STANDARD_AB_JAHR,
+    monate_voraus=STANDARD_MONATE_VORSCHAU,
+)
 _kurzarbeit_cache = KurzarbeitCache(maximale_monate=MAXIMALE_KURZARBEIT_MONATE)
 _templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
 
@@ -1170,7 +1208,7 @@ def _kategorie_knoten(name: str, kinder: tuple[Anmeldungsknoten, ...]) -> Anmeld
 
 
 def _monatswerte_kombiniert(monate: Mapping[Monat, int]) -> list[int]:
-    """Teilnehmerzahl je Kalendermonat (Januar-Dezember-Raster, jahresunabhaengig),
+    """Teilnehmendenzahl je Kalendermonat (Januar-Dezember-Raster, jahresunabhaengig),
     ueber alle im Knoten vorkommenden Jahre aufsummiert - die Werte der eigenen Zeile
     eines Knotens in ``schulungen.html``, egal ob dessen Daten ein oder mehrere Jahre
     umfassen (siehe :func:`_knoten_flach`)."""
@@ -1181,7 +1219,7 @@ def _monatswerte_kombiniert(monate: Mapping[Monat, int]) -> list[int]:
 
 
 def _monatswerte_jahr(monate: Mapping[Monat, int], jahr: int) -> list[int]:
-    """Teilnehmerzahl je Kalendermonat (Januar-Dezember) eines einzelnen Jahres."""
+    """Teilnehmendenzahl je Kalendermonat (Januar-Dezember) eines einzelnen Jahres."""
     return [monate.get((jahr, monatsnummer), 0) for monatsnummer in range(1, 13)]
 
 
@@ -1317,11 +1355,13 @@ def _knoten_flach(
     return zeilen
 
 
-def _ohne_sentinel(werte: Sequence[str]) -> tuple[str, ...]:
-    """Entfernt :data:`KEINE_AUSWAHL` (siehe dort) aus einer Filter-Auswahl - macht ein
-    vollstaendig abgewaehltes Dropdown von einem unberuehrten (Query-Default) unter-
-    scheidbar."""
-    return tuple(wert for wert in werte if wert != KEINE_AUSWAHL)
+def _liste_aus_kommagetrennt(wert: str) -> tuple[str, ...]:
+    """Eine kommagetrennte Mehrfachauswahl aus der URL (siehe :data:`SchulungFilter`
+    & Co.) in ein Tupel zerlegt. Eine leere Zeichenkette (alle Kontrollkaestchen im
+    Template abgewaehlt, siehe schulungenFormBereinigen()) ergibt bewusst ein leeres
+    Tupel statt eines Tupels mit einer leeren Zeichenkette - macht ein vollstaendig
+    abgewaehltes Dropdown von einem unberuehrten (Query-Default) unterscheidbar."""
+    return tuple(teil for teil in wert.split(",") if teil)
 
 
 def _identitaeten(
@@ -1334,7 +1374,8 @@ def _identitaeten(
     Typen an der Bindungsstelle prueft statt an einem spaeteren ``**kwargs``).
     :data:`ALLE_SCHULUNGEN` steht fuer die ungefilterte Gesamtzahl, dedupliziert bei
     mehrfacher Auswahl (kann in der Praxis nicht vorkommen, das Dropdown bietet den
-    Eintrag nur einmal an, aber :func:`_ohne_sentinel` garantiert das nicht)."""
+    Eintrag nur einmal an, aber :func:`_liste_aus_kommagetrennt` garantiert das
+    nicht)."""
     identitaeten: list[tuple[str, Callable[..., dict[Monat, int]]]] = []
     alle_gesehen = False
     for basisname in schulung_filter:
@@ -1379,11 +1420,11 @@ def _anmeldungsreihen(
     erzeugt zwei Reihen ("CSPO 2-tägig", "CSPO 3-tägig") statt einer gemeinsamen
     "CSPO"- und einer gemeinsamen Dauer-Reihe. Zusaetzlich :data:`ALLE` in derselben
     Achse gewaehlt erzeugt eine dritte, auf dieser Achse ungefilterte Reihe ("CSPO").
-    Eine Achse ohne jede Auswahl (leeres Dropdown, siehe :data:`KEINE_AUSWAHL`)
-    schraenkt nicht ein und verzweigt nicht (ein stellvertretender neutraler Eintrag
-    genuegt) - sind dagegen **alle drei** Achsen (Identitaet, Format, Dauer) leer, gibt
-    es keine einzige Reihe (leeres Diagramm), statt automatisch auf die Gesamtzahl
-    zurueckzufallen.
+    Eine Achse ohne jede Auswahl (vollstaendig abgewaehltes Dropdown, siehe
+    :func:`_liste_aus_kommagetrennt`) schraenkt nicht ein und verzweigt nicht (ein
+    stellvertretender neutraler Eintrag genuegt) - sind dagegen **alle drei** Achsen
+    (Identitaet, Format, Dauer) leer, gibt es keine einzige Reihe (leeres Diagramm),
+    statt automatisch auf die Gesamtzahl zurueckzufallen.
     """
     identitaeten = _identitaeten(verlauf, schulung_filter)
     formate = _slice_werte(format_filter)
@@ -1433,12 +1474,13 @@ def _schulung_gruppen(
 async def schulungen(
     request: Request,
     ab_jahr: AbJahr = None,
-    schulung_filter: SchulungFilter = (ALLE_SCHULUNGEN,),
-    format_filter: FormatFilter = (ALLE,),
-    dauer_filter: DauerFilter = (ALLE,),
-    jahr_filter: JahrFilter = (ALLE_JAHRE,),
+    schulung_filter: SchulungFilter = ALLE_SCHULUNGEN,
+    format_filter: FormatFilter = ALLE,
+    dauer_filter: DauerFilter = ALLE,
+    jahr_filter: JahrFilter = ALLE_JAHRE,
     ansicht: Ansicht = STANDARD_ANSICHT,
-    trendlinien_werte: TrendlinienWerte = ("an",),
+    zeitraum: SchulungenZeitraum = STANDARD_SCHULUNGEN_ZEITRAUM,
+    trendlinien_werte: OptionaleTrendlinienWerte = None,
 ) -> HTMLResponse:
     """Deckt sich mit notebooks/03_schulungsanmeldungen.ipynb: der Anmeldungsverlauf.
 
@@ -1449,26 +1491,59 @@ async def schulungen(
 
     Die Filter-Dropdowns (Mehrfachauswahl) darueber, was der Anmeldungsverlauf zeigt,
     kombinieren sich zu Reihen im Diagramm (siehe :func:`_anmeldungsreihen`): Format
-    und Dauer kreuzen sich mit der Schulungen-Auswahl und miteinander. Ein
-    vollstaendig abgewaehltes Dropdown wird ueber :data:`KEINE_AUSWAHL` erkennbar - erst
-    :func:`_ohne_sentinel` macht daraus wieder eine echte leere Auswahl statt des
-    Query-Defaults. ``trendlinien_werte`` traegt den Checkbox-Zustand ueber ein
-    verstecktes Begleitfeld (siehe Docstring von :data:`TrendlinienWerte`).
+    und Dauer kreuzen sich mit der Schulungen-Auswahl und miteinander. Jede Auswahl
+    steht als ein kommagetrennter String im Query-String (siehe Docstring von
+    :data:`SchulungFilter`) - :func:`_liste_aus_kommagetrennt` zerlegt ihn wieder in
+    ein Tupel, eine leere Zeichenkette wird dabei zu einer echten leeren Auswahl statt
+    des Query-Defaults. ``trendlinien_werte`` traegt den Checkbox-Zustand ueber ein
+    verstecktes Begleitfeld (siehe Docstring von :data:`TrendlinienWerte`); ``None``
+    (Parameter ganz fehlt, siehe Template) bedeutet "vom Benutzenden unberuehrt" -
+    dann entscheidet :data:`STANDARD_TRENDLINIEN_MAX_LINIEN` anhand der tatsaechlich
+    gezeichneten Linienanzahl ueber den Standard (an bei wenigen, aus bei vielen
+    Linien), statt fest "an" zu sein. Eine explizite Auswahl (auch wenn sie zufaellig
+    mit diesem dynamischen Standard uebereinstimmt) bleibt davon unberuehrt.
 
-    ``jahr_filter`` und ``ansicht`` wirken - anders als die uebrigen Filter und ``ab_jahr``
-    - nur auf das Diagramm, nicht auf die Schulungsdetails-Tabelle darunter: erst
-    engt ``jahr_filter`` (nur bei mehr als einem Jahr im Zeitraum ueberhaupt angezeigt,
-    siehe :data:`zeige_jahr_filter` im Template) die im Diagramm gezeigten Jahre ein
-    (:meth:`~umsatzprognose.domaene.anmeldung.Anmeldungsverlauf.nur_jahre`), dann
-    entscheidet ``ansicht`` (nur bei danach weiterhin mehr als einem Jahr angezeigt),
-    ob das Diagramm einen durchgehenden Zeitraum (:func:`diagramme.
-    anmeldungsverlauf_reihen`) oder einen Jahresvergleich auf gemeinsamer
-    Januar-Dezember-Achse zeigt (:func:`diagramme.anmeldungsverlauf_jahresvergleich`).
+    ``ansicht`` steht immer sichtbar oberhalb des einklappbaren Filterbereichs -
+    unabhaengig von der Datenlage, damit der Umschalter nicht mal da ist und mal
+    nicht -, zusammen mit genau einem der beiden folgenden Dropdowns (Template:
+    ``ansicht == "jahresvergleich"`` entscheidet, welches erscheint): bei
+    ``ansicht="jahresvergleich"`` ``ab_jahr`` (der gewaehlte Beginn), sonst
+    ``zeitraum`` (die Rueckblick-Laenge der "zeitverlauf"-Ansicht, siehe unten). Der
+    jeweils nicht angezeigte Wert wandert als verstecktes Feld mit ins Formular
+    (siehe Template) - sonst ginge er beim Hin- und Herschalten verloren, weil ein
+    Formular beim Absenden nur die gerade sichtbaren Felder mitschickt. Beide sind
+    reine Anzeige-Umschalter wie ``ansicht`` selbst, keine Auswahl-Filter im Sinne
+    von ``jahr_filter``/``schulung_filter``/``format_filter``/``dauer_filter``.
+
+    ``jahr_filter``, ``ansicht`` und ``zeitraum`` wirken - anders als die uebrigen
+    Filter und ``ab_jahr`` - nur auf das Diagramm, nicht auf die Schulungsdetails-
+    Tabelle darunter. Ohne explizite Jahr-Auswahl zeigt das Diagramm in der
+    "zeitverlauf"-Ansicht dabei standardmaessig ein rollierendes Fenster (die letzten
+    ``zeitraum`` abgeschlossenen Monate plus der laufende, Standard
+    :data:`STANDARD_SCHULUNGEN_ZEITRAUM`, plus :data:`~umsatzprognose.domaene.
+    anmeldung.STANDARD_MONATE_VORSCHAU` bereits terminierte kommende Monate, siehe
+    :meth:`~umsatzprognose.domaene.anmeldung.Anmeldungsverlauf.letzte`) statt des
+    gesamten geladenen Zeitraums (``zeitraum="alle"``) - beides bewusst auf dem vollen
+    geladenen Verlauf, nicht auf ``verlauf_ab_jahr``: ``ab_jahr`` ist in dieser Ansicht
+    gar nicht sichtbar/waehlbar (siehe Template), ein dynamischer Standard wie 2026 ab
+    Juni (:func:`_standard_anzeige_ab_jahr`) wuerde sonst frueherer Monate unsichtbar
+    aus dem Rueckblick herausschneiden. Die Tabelle bleibt von alldem unberuehrt.
+    Waehlt man ueber ``jahr_filter`` (nur bei mehr als einem Jahr im ``ab_jahr``-
+    gefilterten Zeitraum ueberhaupt angezeigt, siehe :data:`zeige_jahr_filter` im
+    Template) gezielt einzelne Jahre, ersetzt das jedes rollierende Fenster durch die
+    vollen gewaehlten Jahre (:meth:`~umsatzprognose.domaene.anmeldung.
+    Anmeldungsverlauf.nur_jahre`, diesmal wieder bezogen auf ``verlauf_ab_jahr``);
+    dasselbe gilt fuer ``ansicht="jahresvergleich"`` - ein Kalenderjahresvergleich auf
+    gemeinsamer Januar-Dezember-Achse braucht die vollen Jahre, kein monatsweiser
+    Ausschnitt (:func:`diagramme.anmeldungsverlauf_jahresvergleich` statt
+    :func:`diagramme.anmeldungsverlauf_reihen`); ``zeitraum`` bleibt dabei ohne
+    Wirkung. Bei nur einem Jahr im Zeitraum liefert das lediglich eine einzelne Linie
+    statt eines echten Vergleichs - der Umschalter bleibt trotzdem anwaehlbar.
     """
-    schulung_filter = _ohne_sentinel(schulung_filter)
-    format_filter = _ohne_sentinel(format_filter)
-    dauer_filter = _ohne_sentinel(dauer_filter)
-    jahr_filter = _ohne_sentinel(jahr_filter)
+    schulung_ausgewaehlt = _liste_aus_kommagetrennt(schulung_filter)
+    format_ausgewaehlt = _liste_aus_kommagetrennt(format_filter)
+    dauer_ausgewaehlt = _liste_aus_kommagetrennt(dauer_filter)
+    jahr_ausgewaehlt = _liste_aus_kommagetrennt(jahr_filter)
     standardwerte = {"ab_jahr": str(_standard_anzeige_ab_jahr())}
     ergebnis = _bereit_oder_ladeseite(
         request,
@@ -1494,33 +1569,54 @@ async def schulungen(
 
     jahre_vorhanden = sorted({jahr for jahr, _monat in verlauf_ab_jahr.monate}, reverse=True)
     zeige_jahr_filter = len(jahre_vorhanden) > 1
-    jahre_auswahl = {int(wert) for wert in jahr_filter if wert != ALLE_JAHRE}
-    verlauf_diagramm = (
-        verlauf_ab_jahr.nur_jahre(jahre_auswahl)
-        if jahre_auswahl and ALLE_JAHRE not in jahr_filter
-        else verlauf_ab_jahr
+
+    jahre_auswahl = {int(wert) for wert in jahr_ausgewaehlt if wert != ALLE_JAHRE}
+    explizite_jahresauswahl = bool(jahre_auswahl) and ALLE_JAHRE not in jahr_ausgewaehlt
+    verlauf_jahresauswahl = (
+        verlauf_ab_jahr.nur_jahre(jahre_auswahl) if explizite_jahresauswahl else verlauf_ab_jahr
     )
+
+    zeige_ab_jahr = ansicht == "jahresvergleich"
+    if explizite_jahresauswahl or zeige_ab_jahr:
+        verlauf_diagramm = verlauf_jahresauswahl
+    elif zeitraum == "alle":
+        # Bewusst der volle geladene Verlauf, nicht verlauf_ab_jahr: "ab_jahr" ist in
+        # der "zeitverlauf"-Ansicht gar nicht sichtbar/waehlbar (siehe Template), ein
+        # dynamischer Standard wie 2026 ab Juni (_standard_anzeige_ab_jahr()) wuerde
+        # sonst frueherer Monate unsichtbar aus dem Rueckblick herausschneiden, obwohl
+        # "zeitraum" sie eigentlich zeigen soll.
+        verlauf_diagramm = verlauf
+    else:
+        verlauf_diagramm = verlauf.letzte(
+            monate=int(zeitraum),
+            monate_voraus=STANDARD_MONATE_VORSCHAU,
+            stichtag=heute,
+        )
     monate_diagramm = verlauf_diagramm.monate
     jahre_diagramm = sorted({jahr for jahr, _monat in monate_diagramm})
-    zeige_ansicht_umschalter = len(jahre_diagramm) > 1
 
-    trendlinien = "an" in trendlinien_werte
     reihen = _anmeldungsreihen(
         verlauf_diagramm,
-        schulung_filter=schulung_filter,
-        format_filter=format_filter,
-        dauer_filter=dauer_filter,
+        schulung_filter=schulung_ausgewaehlt,
+        format_filter=format_ausgewaehlt,
+        dauer_filter=dauer_ausgewaehlt,
+    )
+    linien_anzahl = len(reihen) * len(jahre_diagramm) if zeige_ab_jahr else len(reihen)
+    trendlinien_standardwert = "an" if linien_anzahl <= STANDARD_TRENDLINIEN_MAX_LINIEN else "aus"
+    trendlinien = (
+        "an" in trendlinien_werte
+        if trendlinien_werte is not None
+        else trendlinien_standardwert == "an"
     )
     filter_abweichend = (
-        list(schulung_filter) != [ALLE_SCHULUNGEN]
-        or list(format_filter) != [ALLE]
-        or list(dauer_filter) != [ALLE]
-        or list(jahr_filter) != [ALLE_JAHRE]
-        or ansicht != STANDARD_ANSICHT
-        or not trendlinien
+        list(schulung_ausgewaehlt) != [ALLE_SCHULUNGEN]
+        or list(format_ausgewaehlt) != [ALLE]
+        or list(dauer_ausgewaehlt) != [ALLE]
+        or list(jahr_ausgewaehlt) != [ALLE_JAHRE]
+        or trendlinien != (trendlinien_standardwert == "an")
     )
 
-    if ansicht == "jahresvergleich" and zeige_ansicht_umschalter:
+    if zeige_ab_jahr:
         anmeldungsverlauf_figur = diagramme.anmeldungsverlauf_jahresvergleich(
             reihen, jahre_diagramm, mit_trend=trendlinien, laufender_monat=laufender_monat
         )
@@ -1560,21 +1656,27 @@ async def schulungen(
         ab_jahr=jahr,
         ab_jahr_optionen=tuple(range(STANDARD_AB_JAHR, heute.year + 1)),
         anmeldungsverlauf=_figur_html(anmeldungsverlauf_figur, mit_plotlyjs=True),
-        schulung_filter=schulung_filter,
+        schulung_filter=schulung_ausgewaehlt,
         schulung_alle_schulungen=ALLE_SCHULUNGEN,
         schulung_gruppen=_schulung_gruppen(verlauf_ab_jahr, kategorien),
-        format_filter=format_filter,
+        format_filter=format_ausgewaehlt,
         format_optionen=[ALLE, *sorted(verlauf_ab_jahr.formate, key=str.lower)],
-        dauer_filter=dauer_filter,
+        dauer_filter=dauer_ausgewaehlt,
         dauer_optionen=[ALLE, *sorted(verlauf_ab_jahr.dauern, key=str.lower)],
         zeige_jahr_filter=zeige_jahr_filter,
-        jahr_filter=jahr_filter,
+        jahr_filter=jahr_ausgewaehlt,
         jahr_optionen=[ALLE_JAHRE, *(str(jahr) for jahr in jahre_vorhanden)],
-        zeige_ansicht_umschalter=zeige_ansicht_umschalter,
         ansicht=ansicht,
         ansicht_optionen=ANSICHT_OPTIONEN,
         ansicht_beschriftungen=ANSICHT_BESCHRIFTUNGEN,
+        ansicht_standardwert=STANDARD_ANSICHT,
+        zeige_ab_jahr=zeige_ab_jahr,
+        ab_jahr_standardwert=standardwerte["ab_jahr"],
+        zeitraum=zeitraum,
+        zeitraum_optionen=SCHULUNGEN_ZEITRAUM_OPTIONEN,
+        zeitraum_standardwert=STANDARD_SCHULUNGEN_ZEITRAUM,
         trendlinien=trendlinien,
+        trendlinien_standardwert=trendlinien_standardwert,
         filter_abweichend=filter_abweichend,
         filter_zuruecksetzen_query=_anfrage_query(
             request,

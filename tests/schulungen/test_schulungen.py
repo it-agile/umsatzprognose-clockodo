@@ -132,7 +132,9 @@ def test_zeilen_zu_anmeldungen_findet_spalten_ueber_die_kopfzeile() -> None:
         ],
     ]
     anmeldungen = _zeilen_zu_anmeldungen(zeilen)
-    assert [(a.jahr, a.monat, a.schulungstyp, a.teilnehmerzahl, a.format) for a in anmeldungen] == [
+    assert [
+        (a.jahr, a.monat, a.schulungstyp, a.teilnehmendenzahl, a.format) for a in anmeldungen
+    ] == [
         (2026, 10, "Scrum Master", 12, "Präsenz"),
     ]
 
@@ -145,7 +147,7 @@ def test_zeilen_zu_anmeldungen_nimmt_die_zuletzt_stehende_tn_zahl_spalte() -> No
         ["Kurs A", "2026", "10", "", "1", "0,00 €", "", "9", "10", "1", "90%", "Präsenz"],
     ]
     [anmeldung] = _zeilen_zu_anmeldungen(zeilen)
-    assert anmeldung.teilnehmerzahl == 9
+    assert anmeldung.teilnehmendenzahl == 9
 
 
 def test_zeilen_zu_anmeldungen_liest_datum_spalte() -> None:
@@ -232,7 +234,7 @@ def test_zeilen_zu_anmeldungen_ueberspringt_zeilen_ohne_jahr_oder_monat() -> Non
     assert _zeilen_zu_anmeldungen(zeilen) == []
 
 
-def test_zeilen_zu_anmeldungen_leere_teilnehmerzahl_zaehlt_als_null() -> None:
+def test_zeilen_zu_anmeldungen_leere_teilnehmendenzahl_zaehlt_als_null() -> None:
     """Eine leere Zelle in der TN-Zahl-Spalte steht fuer 0 Anmeldungen, nicht fuer eine
     fehlende Zeile - sonst wuerde ein Schulungstyp mit ausschliesslich leeren TN-Zahl-
     Zellen in diesem Zeitraum unbemerkt ganz aus dem Anmeldungsverlauf verschwinden."""
@@ -241,7 +243,7 @@ def test_zeilen_zu_anmeldungen_leere_teilnehmerzahl_zaehlt_als_null() -> None:
         ["Kurs A", "2026", "10", "", "", "0,00 €", "", "", "", "", "", ""],
     ]
     [anmeldung] = _zeilen_zu_anmeldungen(zeilen)
-    assert (anmeldung.jahr, anmeldung.monat, anmeldung.teilnehmerzahl) == (2026, 10, 0)
+    assert (anmeldung.jahr, anmeldung.monat, anmeldung.teilnehmendenzahl) == (2026, 10, 0)
 
 
 def test_zeilen_zu_anmeldungen_findet_jahr_spalte_trotz_vertipptem_kopfzeilentext() -> None:
@@ -261,7 +263,7 @@ def test_zeilen_zu_anmeldungen_findet_jahr_spalte_trotz_vertipptem_kopfzeilentex
         anmeldung.jahr,
         anmeldung.monat,
         anmeldung.schulungstyp,
-        anmeldung.teilnehmerzahl,
+        anmeldung.teilnehmendenzahl,
         anmeldung.format,
     ) == (2024, 10, "Scrum Master", 12, "Online")
 
@@ -283,7 +285,7 @@ def test_zeilen_zu_anmeldungen_findet_kopfzeile_hinter_einer_vorausgehenden_zeil
         ["Kurs A", "2026", "10", "", "1", "0,00 €", "", "9", "10", "1", "90%", "Präsenz"],
     ]
     [anmeldung] = _zeilen_zu_anmeldungen(zeilen)
-    assert (anmeldung.jahr, anmeldung.monat, anmeldung.teilnehmerzahl) == (2026, 10, 9)
+    assert (anmeldung.jahr, anmeldung.monat, anmeldung.teilnehmendenzahl) == (2026, 10, 9)
 
 
 def test_anmeldungsverlauf_laden_fuehrt_mehrere_jahre_zusammen() -> None:

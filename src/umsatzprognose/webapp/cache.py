@@ -66,7 +66,7 @@ from umsatzprognose.domaene import (
     bewertungen,
 )
 from umsatzprognose.schulungen import SchulungenRepository
-from umsatzprognose.util import Monat
+from umsatzprognose.util import Monat, aus_ordnung, ordnung
 
 TTL_ENV = "WEBAPP_CACHE_TTL_SEKUNDEN"
 STANDARD_TTL_SEKUNDEN = 60 * 60
@@ -250,10 +250,26 @@ class AnmeldungsverlaufCache:
     Zeitraums; :meth:`~umsatzprognose.domaene.anmeldung.Anmeldungsverlauf.ab_jahr`
     filtert dafuer nur noch in-memory, ohne die Google-Sheets-Dateien der bereits
     geladenen Jahre erneut zu lesen.
+
+    ``monate_voraus`` (Standard 0, deckt sich mit dem bisherigen Verhalten) laedt
+    zusaetzlich das/die Folgejahr(e) mit, falls das rollierende Standardfenster der
+    Route (siehe ``webapp.app.schulungen``,
+    :data:`~umsatzprognose.domaene.anmeldung.STANDARD_MONATE_VORSCHAU`) ueber den
+    Jahreswechsel hinaus in bereits terminierte kommende Monate hineinreicht - ein
+    noch nicht angelegtes Tabellenblatt fuer ein zukuenftiges Jahr erzeugt dabei nur
+    einen ``Hinweis`` statt eines Fehlers (siehe
+    :meth:`~umsatzprognose.schulungen.schulungen.SchulungenRepository.anmeldungsverlauf_laden`).
     """
 
-    def __init__(self, *, ab_jahr: int, ttl_sekunden: int | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        ab_jahr: int,
+        monate_voraus: int = 0,
+        ttl_sekunden: int | None = None,
+    ) -> None:
         self._ab_jahr = ab_jahr
+        self._monate_voraus = monate_voraus
         self._cache = _TTLCache[None, Anmeldungsverlauf](ttl_sekunden=ttl_sekunden)
 
     def bereit(self) -> Anmeldungsverlauf | None:
@@ -267,7 +283,9 @@ class AnmeldungsverlaufCache:
 
     def anstossen(self) -> None:
         async def laden(fortschritt: Fortschritt) -> Anmeldungsverlauf:
-            jahre = range(self._ab_jahr, datetime.datetime.now(tz=datetime.UTC).date().year + 1)
+            heute = datetime.datetime.now(tz=datetime.UTC).date()
+            bis_jahr = aus_ordnung(ordnung(heute.year, heute.month) + self._monate_voraus)[0]
+            jahre = range(self._ab_jahr, bis_jahr + 1)
             # anmeldungsverlauf_laden() ist ein einzelner synchroner Aufruf (siehe
             # Moduldocstring von umsatzprognose.schulungen.schulungen) - kein eigener
             # fortschritt-Parameter noetig, ein Vorher/Nachher-Bericht wie bei der

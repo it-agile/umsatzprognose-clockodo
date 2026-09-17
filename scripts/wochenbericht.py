@@ -65,6 +65,10 @@ import humanize
 import plotly.io as pio
 from slack_sdk import WebClient
 
+from _anmeldungsverlauf import STANDARD_ANSICHT, STANDARD_MONATE_RUECKBLICK, STANDARD_MONATE_VORAUS
+from _anmeldungsverlauf import anmeldungsverlauf_fenster as _anmeldungsverlauf_fenster
+from _anmeldungsverlauf import anmeldungsverlauf_figur as _anmeldungsverlauf_figur
+from _anmeldungsverlauf import anmeldungsverlauf_jahre as _anmeldungsverlauf_jahre
 from _fortschritt import (
     Mehrzeilenanzeige,
     dashboard_melden_bauen,
@@ -159,12 +163,6 @@ STANDARD_HORIZONT_MONATE = 3
 # "D..."-Teil der URL), nicht die eigene Mitglieds-ID ("U...").
 _CHANNEL_ID_MUSTER = re.compile(r"^[CGDZ][A-Z0-9]{8,}$")
 
-# Deckt sich mit "monate_fenster"/"ab_jahr" in notebooks/03_schulungsanmeldungen.ipynb -
-# derselbe Betrachtungszeitraum für den Anmeldungsverlauf, hier ohne eigenes Secret,
-# weil nicht angefragt.
-ANMELDUNGEN_AB_JAHR = 2022
-ANMELDUNGEN_MONATE_FENSTER = 13
-
 
 async def _daten_laden_async(
     *,
@@ -191,9 +189,16 @@ async def _daten_laden_async(
         namen.append("Anmeldungsverlauf")
     anzeige = Mehrzeilenanzeige(namen)
 
-    anmeldungsverlauf_jahre = (
-        list(range(ANMELDUNGEN_AB_JAHR, stichtag.year + 1)) if mit_anmeldungsverlauf else []
-    )
+    anmeldungsverlauf_jahre: list[int] = []
+    if mit_anmeldungsverlauf:
+        anmeldungsverlauf_jahre = _anmeldungsverlauf_jahre(
+            stichtag=stichtag,
+            ansicht=STANDARD_ANSICHT,
+            zeitraum_alle=False,
+            monate_rueckblick=STANDARD_MONATE_RUECKBLICK,
+            monate_voraus=STANDARD_MONATE_VORAUS,
+            ab_jahr=None,
+        )
 
     async def _dashboard_laden() -> Dashboard:
         melden = dashboard_melden_bauen(anzeige)
@@ -234,7 +239,15 @@ async def _daten_laden_async(
             fortschritt=_melden,
         )
         dauer = timedelta(seconds=time.perf_counter() - start)
-        fenster = anmeldungsverlauf.letzte(monate=ANMELDUNGEN_MONATE_FENSTER, stichtag=stichtag)
+        fenster = _anmeldungsverlauf_fenster(
+            anmeldungsverlauf,
+            stichtag=stichtag,
+            ansicht=STANDARD_ANSICHT,
+            zeitraum_alle=False,
+            monate_rueckblick=STANDARD_MONATE_RUECKBLICK,
+            monate_voraus=STANDARD_MONATE_VORAUS,
+            ab_jahr=None,
+        )
         anzeige.aktualisieren(
             "Anmeldungsverlauf",
             f"{len(fenster.anmeldungen)} Anmeldungen aus {len(fenster.monate)} Monaten geladen "
@@ -371,7 +384,7 @@ def diagrammtitel_und_figuren(
         ),
         (
             "Schulungsteilnehmende je Monat",
-            diagramme.anmeldungsverlauf(anmeldungsverlauf_fenster),
+            _anmeldungsverlauf_figur(anmeldungsverlauf_fenster, stichtag=dashboard.stichtag),
         ),
     ]
 

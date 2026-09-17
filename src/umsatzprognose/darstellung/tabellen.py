@@ -226,7 +226,7 @@ def anteil_fakturierbarer_arbeit_tabelle(
 
 
 def anmeldungstabelle(verlauf: Anmeldungsverlauf, kategorien: Kategorisierung) -> pd.DataFrame:
-    """Teilnehmerzahl je Kategorie und Monat, mit einer Summenspalte je Kategorie und
+    """Teilnehmendenzahl je Kategorie und Monat, mit einer Summenspalte je Kategorie und
     einer abschliessenden Gesamt-Zeile je Monat - der Drilldown hinter der Gesamtzahl
     aus :func:`~umsatzprognose.darstellung.diagramme.anmeldungsverlauf`, fuer die
     statische Notebook-Ansicht (``notebooks/03_schulungsanmeldungen.ipynb``). Die

@@ -4,7 +4,12 @@
     uv run python scripts/diagramme_exportieren.py --format html              # alle, als HTML
     uv run python scripts/diagramme_exportieren.py --diagramm umsatzverlauf --diagramm kennzahlen
     uv run python scripts/diagramme_exportieren.py -o export --horizont-monate 1
-    uv run python scripts/diagramme_exportieren.py --diagramm anmeldungsverlauf --monate-fenster 6
+    uv run python scripts/diagramme_exportieren.py --diagramm anmeldungsverlauf \
+        --monate-rueckblick 6
+    uv run python scripts/diagramme_exportieren.py --diagramm anmeldungsverlauf \
+        --zeitraum 24 --schulung-filter CSPO --format-filter Online --trendlinien aus
+    uv run python scripts/diagramme_exportieren.py --diagramm anmeldungsverlauf \
+        --ansicht jahresvergleich --ab-jahr 2023
     uv run python scripts/diagramme_exportieren.py --diagramm umsatztabelle
     uv run python scripts/diagramme_exportieren.py \
         --diagramm anteil-fakturierbarer-arbeit-verteilung \
@@ -54,7 +59,7 @@ import plotly.io as pio
 from anyio import Path as aioPath
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Sequence
 
     import pandas as pd
     import plotly.graph_objects as go
@@ -62,6 +67,19 @@ if TYPE_CHECKING:
     from umsatzprognose.domaene import FakturierbareArbeitZiehung
     from umsatzprognose.domaene.anmeldung import Anmeldungsverlauf
 
+from _anmeldungsverlauf import (
+    ALLE,
+    ALLE_SCHULUNGEN,
+    ANSICHT_OPTIONEN,
+    STANDARD_ANSICHT,
+    STANDARD_MONATE_RUECKBLICK,
+    STANDARD_MONATE_VORAUS,
+    STANDARD_TRENDLINIEN_MAX_LINIEN,
+    ZEITRAUM_OPTIONEN,
+)
+from _anmeldungsverlauf import anmeldungsverlauf_fenster as _anmeldungsverlauf_fenster
+from _anmeldungsverlauf import anmeldungsverlauf_figur as _anmeldungsverlauf_figur
+from _anmeldungsverlauf import anmeldungsverlauf_jahre as _anmeldungsverlauf_jahre
 from _fortschritt import (
     Mehrzeilenanzeige,
     dashboard_melden_bauen,
@@ -73,11 +91,9 @@ from umsatzprognose.clockodo import gleichzeitig, synchron
 from umsatzprognose.darstellung import diagramme, tabellen
 from umsatzprognose.domaene import GaussFakturierbareArbeit, WeibullFakturierbareArbeit
 from umsatzprognose.schulungen import SchulungenRepository, kategorien_automatisch
-from umsatzprognose.util import aus_ordnung, ordnung
 
 STANDARD_FORMAT = "png"
 FORMATE = ("png", "svg", "html")
-STANDARD_MONATE_FENSTER = 13  # wie notebooks/03_schulungsanmeldungen.ipynb
 
 DIAGRAMM_ANMELDUNGSVERLAUF = "anmeldungsverlauf"
 DIAGRAMM_ANMELDUNGSTABELLE = "anmeldungstabelle"
@@ -174,13 +190,96 @@ def _argumente(argv: list[str]) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
-        "--monate-fenster",
+        "--monate-rueckblick",
         type=int,
-        default=STANDARD_MONATE_FENSTER,
+        default=STANDARD_MONATE_RUECKBLICK,
         help=(
-            "Betrachtungszeitraum in Monaten bis zum Stichtag für "
+            "Anzahl abgeschlossener Monate vor dem Stichtag (zzgl. des Stichtagsmonats "
+            f"selbst) für '{DIAGRAMM_ANMELDUNGSVERLAUF}' und "
+            f"'{DIAGRAMM_ANMELDUNGSTABELLE}' (Standard: {STANDARD_MONATE_RUECKBLICK})."
+        ),
+    )
+    parser.add_argument(
+        "--monate-voraus",
+        type=int,
+        default=STANDARD_MONATE_VORAUS,
+        help=(
+            "Zusätzliche, bereits terminierte kommende Monate nach dem Stichtag für "
             f"'{DIAGRAMM_ANMELDUNGSVERLAUF}' und '{DIAGRAMM_ANMELDUNGSTABELLE}' "
-            f"(Standard: {STANDARD_MONATE_FENSTER})."
+            f"(Standard: {STANDARD_MONATE_VORAUS})."
+        ),
+    )
+    parser.add_argument(
+        "--ansicht",
+        choices=ANSICHT_OPTIONEN,
+        default=STANDARD_ANSICHT,
+        help=(
+            f"Ansicht für '{DIAGRAMM_ANMELDUNGSVERLAUF}', wie der gleichnamige "
+            f"Umschalter in der Webapp (Standard: {STANDARD_ANSICHT})."
+        ),
+    )
+    parser.add_argument(
+        "--zeitraum",
+        choices=ZEITRAUM_OPTIONEN,
+        default=None,
+        help=(
+            f"Rückblick-Länge für '{DIAGRAMM_ANMELDUNGSVERLAUF}' in der Ansicht "
+            "'zeitverlauf', wie das gleichnamige Dropdown in der Webapp - hat bei "
+            "Angabe Vorrang vor --monate-rueckblick, 'alle' zeigt den gesamten "
+            "geladenen Zeitraum ungefenstert. Ohne Ansicht 'jahresvergleich' "
+            "wirkungslos."
+        ),
+    )
+    parser.add_argument(
+        "--ab-jahr",
+        type=int,
+        default=None,
+        help=(
+            f"Erstes Jahr für '{DIAGRAMM_ANMELDUNGSVERLAUF}' in der Ansicht "
+            "'jahresvergleich', wie 'Anmeldungen ab Jahr' in der Webapp (Standard: "
+            "wie dort dynamisch anhand des Stichtags berechnet). Ohne Ansicht "
+            "'zeitverlauf' wirkungslos."
+        ),
+    )
+    parser.add_argument(
+        "--schulung-filter",
+        action="append",
+        dest="schulung_filter",
+        metavar="NAME",
+        help=(
+            f"Nur diese Schulung(en) (Basisname wie 'CSPO') in '{DIAGRAMM_ANMELDUNGSVERLAUF}' "
+            "zeigen (mehrfach angebbar, wie das gleichnamige Dropdown in der Webapp). "
+            f"Ohne Angabe: '{ALLE_SCHULUNGEN}'."
+        ),
+    )
+    parser.add_argument(
+        "--format-filter",
+        action="append",
+        dest="format_filter",
+        metavar="WERT",
+        help=(
+            f"Nur dieses Format (z. B. 'Präsenz'/'Online') in '{DIAGRAMM_ANMELDUNGSVERLAUF}' "
+            f"zeigen (mehrfach angebbar). Ohne Angabe: '{ALLE}'."
+        ),
+    )
+    parser.add_argument(
+        "--dauer-filter",
+        action="append",
+        dest="dauer_filter",
+        metavar="WERT",
+        help=(
+            f"Nur diese Dauer (z. B. '2-tägig') in '{DIAGRAMM_ANMELDUNGSVERLAUF}' zeigen "
+            f"(mehrfach angebbar). Ohne Angabe: '{ALLE}'."
+        ),
+    )
+    parser.add_argument(
+        "--trendlinien",
+        choices=("an", "aus"),
+        default=None,
+        help=(
+            f"Trendlinien in '{DIAGRAMM_ANMELDUNGSVERLAUF}' ein-/ausschalten. Ohne "
+            "Angabe: wie in der Webapp dynamisch anhand der gezeichneten Linienanzahl "
+            f"('an' bei hoechstens {STANDARD_TRENDLINIEN_MAX_LINIEN}, sonst 'aus')."
         ),
     )
     parser.add_argument(
@@ -309,9 +408,13 @@ async def _daten_laden_async(
     *,
     mit_dashboard: bool,
     mit_anmeldungsverlauf: bool,
-    stichtag: date | None,
+    stichtag: date,
     horizont_monate: int,
-    monate_fenster: int,
+    ansicht: str,
+    zeitraum_alle: bool,
+    monate_rueckblick: int,
+    monate_voraus: int,
+    ab_jahr: int | None,
     args: argparse.Namespace,
 ) -> tuple[Dashboard | None, Anmeldungsverlauf | None]:
     """Laedt Dashboard und Anmeldungsverlauf gleichzeitig statt nacheinander, wenn
@@ -323,13 +426,24 @@ async def _daten_laden_async(
     (siehe :class:`Mehrzeilenanzeige`), ersetzt am Ende durch die fertige
     Statuszeile - unabhaengig davon, in welcher Reihenfolge sie tatsaechlich fertig
     werden.
+
+    ``ansicht="jahresvergleich"`` laedt ab ``ab_jahr`` (bzw. dessen dynamischem
+    Standard, siehe :func:`_standard_anzeige_ab_jahr`) statt ueber das rollierende
+    Fenster aus ``monate_rueckblick``/``zeitraum_alle`` - deckt sich mit
+    ``verlauf_ab_jahr`` in webapp/app.py.
     """
-    aufgeloester_stichtag = stichtag or datetime.datetime.now(tz=datetime.UTC).date()
-    anmeldungsverlauf_jahre: list[int] = []
-    if mit_anmeldungsverlauf:
-        ende = ordnung(aufgeloester_stichtag.year, aufgeloester_stichtag.month)
-        start_jahr = aus_ordnung(ende - (monate_fenster - 1))[0]
-        anmeldungsverlauf_jahre = list(range(start_jahr, aufgeloester_stichtag.year + 1))
+    anmeldungsverlauf_jahre = (
+        _anmeldungsverlauf_jahre(
+            stichtag=stichtag,
+            ansicht=ansicht,
+            zeitraum_alle=zeitraum_alle,
+            monate_rueckblick=monate_rueckblick,
+            monate_voraus=monate_voraus,
+            ab_jahr=ab_jahr,
+        )
+        if mit_anmeldungsverlauf
+        else []
+    )
 
     namen = []
     if mit_dashboard:
@@ -385,7 +499,15 @@ async def _daten_laden_async(
             fortschritt=_melden,
         )
         dauer = timedelta(seconds=time.perf_counter() - start)
-        fenster = verlauf.letzte(monate=monate_fenster, stichtag=aufgeloester_stichtag)
+        fenster = _anmeldungsverlauf_fenster(
+            verlauf,
+            stichtag=stichtag,
+            ansicht=ansicht,
+            zeitraum_alle=zeitraum_alle,
+            monate_rueckblick=monate_rueckblick,
+            monate_voraus=monate_voraus,
+            ab_jahr=ab_jahr,
+        )
         anzeige.aktualisieren(
             "Anmeldungsverlauf",
             f"{len(fenster.anmeldungen)} Anmeldungen aus {len(fenster.monate)} Monaten geladen "
@@ -405,7 +527,13 @@ def _figuren(
     *,
     dashboard: Dashboard | None,
     anmeldungsverlauf_fenster: Anmeldungsverlauf | None,
+    stichtag: date,
     ausgabeformat: str,
+    ansicht: str,
+    schulung_filter: Sequence[str],
+    format_filter: Sequence[str],
+    dauer_filter: Sequence[str],
+    trendlinien_werte: str | None,
     anteil_fakturierbar_minimum: float = 0.0,
     anteil_fakturierbar_maximum: float = 1.0,
 ) -> dict[str, go.Figure]:
@@ -427,6 +555,13 @@ def _figuren(
     ``MIT_AUSREISSER_BEREICH_FAEHIG`` (aktuell nur die Verteilungsgrafik) - zusaetzlich
     zu, nicht anstelle von ``mit_beschriftung``: die Verteilungsgrafik steht in beiden
     Mengen (``MIT_BESCHRIFTUNG_FAEHIG`` und ``MIT_AUSREISSER_BEREICH_FAEHIG``).
+
+    ``ansicht``/``schulung_filter``/``format_filter``/``dauer_filter``/
+    ``trendlinien_werte`` gelten nur fuer ``anmeldungsverlauf`` und decken sich mit den
+    gleichnamigen Reglern/Filtern auf /schulungen (siehe Moduldocstring) - die
+    Anmeldungstabelle bleibt davon unberuehrt, wie dort die Schulungsdetails-Tabelle.
+    ``trendlinien_werte=None`` bedeutet wie in der Webapp "nicht explizit gewaehlt":
+    dann entscheidet die Linienanzahl (siehe :data:`STANDARD_TRENDLINIEN_MAX_LINIEN`).
     """
     figuren: dict[str, go.Figure] = {}
     mit_beschriftung = ausgabeformat != "html"
@@ -446,8 +581,14 @@ def _figuren(
 
     if anmeldungsverlauf_fenster is not None:
         if DIAGRAMM_ANMELDUNGSVERLAUF in namen:
-            figuren[DIAGRAMM_ANMELDUNGSVERLAUF] = diagramme.anmeldungsverlauf(
+            figuren[DIAGRAMM_ANMELDUNGSVERLAUF] = _anmeldungsverlauf_figur(
                 anmeldungsverlauf_fenster,
+                stichtag=stichtag,
+                ansicht=ansicht,
+                schulung_filter=schulung_filter,
+                format_filter=format_filter,
+                dauer_filter=dauer_filter,
+                trendlinien_werte=trendlinien_werte,
             )
         if DIAGRAMM_ANMELDUNGSTABELLE in namen:
             figuren[DIAGRAMM_ANMELDUNGSTABELLE] = diagramme.tabelle_als_grafik(
@@ -554,13 +695,28 @@ def main(argv: list[str]) -> int:
     mit_anmeldungsverlauf = any(
         name in (DIAGRAMM_ANMELDUNGSVERLAUF, DIAGRAMM_ANMELDUNGSTABELLE) for name in namen
     )
+    stichtag = args.stichtag or datetime.datetime.now(tz=datetime.UTC).date()
+    # --zeitraum hat bei Angabe Vorrang vor --monate-rueckblick (siehe dortige Hilfe).
+    zeitraum_alle = args.zeitraum == "alle"
+    monate_rueckblick = (
+        int(args.zeitraum)
+        if args.zeitraum is not None and not zeitraum_alle
+        else args.monate_rueckblick
+    )
+    schulung_filter = args.schulung_filter or [ALLE_SCHULUNGEN]
+    format_filter = args.format_filter or [ALLE]
+    dauer_filter = args.dauer_filter or [ALLE]
     dashboard, anmeldungsverlauf_fenster = synchron(
         _daten_laden_async(
             mit_dashboard=mit_dashboard,
             mit_anmeldungsverlauf=mit_anmeldungsverlauf,
-            stichtag=args.stichtag,
+            stichtag=stichtag,
             horizont_monate=args.horizont_monate,
-            monate_fenster=args.monate_fenster,
+            ansicht=args.ansicht,
+            zeitraum_alle=zeitraum_alle,
+            monate_rueckblick=monate_rueckblick,
+            monate_voraus=args.monate_voraus,
+            ab_jahr=args.ab_jahr,
             args=args,
         ),
     )
@@ -568,7 +724,13 @@ def main(argv: list[str]) -> int:
         namen,
         dashboard=dashboard,
         anmeldungsverlauf_fenster=anmeldungsverlauf_fenster,
+        stichtag=stichtag,
         ausgabeformat=args.format,
+        ansicht=args.ansicht,
+        schulung_filter=schulung_filter,
+        format_filter=format_filter,
+        dauer_filter=dauer_filter,
+        trendlinien_werte=args.trendlinien,
         anteil_fakturierbar_minimum=args.anteil_fakturierbar_minimum,
         anteil_fakturierbar_maximum=args.anteil_fakturierbar_maximum,
     )

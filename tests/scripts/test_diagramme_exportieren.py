@@ -21,6 +21,7 @@ if TYPE_CHECKING:
     from umsatzprognose import Dashboard
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent / "scripts"))
+import _anmeldungsverlauf as anmeldungsverlauf
 import diagramme_exportieren as script
 
 
@@ -32,7 +33,8 @@ def test_argumente_defaults():
     assert args.diagramme is None
     assert args.stichtag is None
     assert args.horizont_monate == 3
-    assert args.monate_fenster == script.STANDARD_MONATE_FENSTER
+    assert args.monate_rueckblick == anmeldungsverlauf.STANDARD_MONATE_RUECKBLICK
+    assert args.monate_voraus == anmeldungsverlauf.STANDARD_MONATE_VORAUS
 
 
 def test_argumente_diagramm_ist_mehrfach_angebbar():
@@ -77,7 +79,13 @@ def test_figuren_exportiert_tabellen_ueber_tabelle_als_grafik(monkeypatch):
         ["umsatztabelle"],
         dashboard=cast("Dashboard", object()),
         anmeldungsverlauf_fenster=None,
+        stichtag=date(2026, 9, 1),
         ausgabeformat="png",
+        ansicht=anmeldungsverlauf.STANDARD_ANSICHT,
+        schulung_filter=[anmeldungsverlauf.ALLE_SCHULUNGEN],
+        format_filter=[anmeldungsverlauf.ALLE],
+        dauer_filter=[anmeldungsverlauf.ALLE],
+        trendlinien_werte=None,
     )
 
     assert isinstance(figuren["umsatztabelle"], go.Figure)
@@ -94,7 +102,13 @@ def test_figuren_baut_verlauf_und_tabelle_aus_demselben_fenster(monkeypatch):
         [script.DIAGRAMM_ANMELDUNGSVERLAUF, script.DIAGRAMM_ANMELDUNGSTABELLE],
         dashboard=None,
         anmeldungsverlauf_fenster=fenster,
+        stichtag=date(2026, 9, 1),
         ausgabeformat="png",
+        ansicht=anmeldungsverlauf.STANDARD_ANSICHT,
+        schulung_filter=[anmeldungsverlauf.ALLE_SCHULUNGEN],
+        format_filter=[anmeldungsverlauf.ALLE],
+        dauer_filter=[anmeldungsverlauf.ALLE],
+        trendlinien_werte=None,
     )
 
     assert isinstance(figuren[script.DIAGRAMM_ANMELDUNGSVERLAUF], go.Figure)
@@ -148,7 +162,11 @@ def test_daten_laden_async_laedt_dashboard_und_anmeldungsverlauf_gleichzeitig(mo
             mit_anmeldungsverlauf=True,
             stichtag=date(2026, 9, 1),
             horizont_monate=3,
-            monate_fenster=6,
+            ansicht=anmeldungsverlauf.STANDARD_ANSICHT,
+            zeitraum_alle=False,
+            monate_rueckblick=6,
+            monate_voraus=3,
+            ab_jahr=None,
             args=script._argumente([]),
         ),
     )
@@ -177,7 +195,11 @@ def test_daten_laden_async_ueberspringt_anmeldungsverlauf_wenn_nicht_angefordert
             mit_anmeldungsverlauf=False,
             stichtag=date(2026, 9, 1),
             horizont_monate=3,
-            monate_fenster=6,
+            ansicht=anmeldungsverlauf.STANDARD_ANSICHT,
+            zeitraum_alle=False,
+            monate_rueckblick=6,
+            monate_voraus=3,
+            ab_jahr=None,
             args=script._argumente([]),
         ),
     )

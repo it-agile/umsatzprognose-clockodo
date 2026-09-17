@@ -38,7 +38,7 @@ Repository bewusst vom Fail-fast in :mod:`umsatzprognose.clockodo` (dort meldet
 ``ClockodoError`` unaufgefangen).
 
 Daneben liest :meth:`SchulungenRepository.anmeldungsverlauf_laden` aus demselben
-Tabellenblatt eine zweite, unabhaengige Sicht: die Teilnehmerzahl je Schulungstyp und
+Tabellenblatt eine zweite, unabhaengige Sicht: die Teilnehmendenzahl je Schulungstyp und
 Monat statt des Umsatzes, siehe Moduldocstring von
 :mod:`umsatzprognose.domaene.anmeldung`. Die Kopfzeile traegt die Spalte ``TN Zahl``
 zweimal - einmal als Gesamtsumme direkt vor ``Umsatz gesamt``, einmal
@@ -97,7 +97,7 @@ SPALTE_JAHR = "Jahr"
 SPALTE_MONAT = "Monat"
 SPALTE_UMSATZ = "Umsatz gesamt"
 SPALTE_SCHULUNGSTYP = "Schulung"
-SPALTE_TEILNEHMERZAHL = "TN Zahl"
+SPALTE_TEILNEHMENDENZAHL = "TN Zahl"
 SPALTE_FORMAT = "Präsenz/Online"
 SPALTE_DATUM = "Datum"
 
@@ -188,12 +188,12 @@ def _zeilen_zu_terminen(zeilen: list[list[str]]) -> list[Schulungstermin]:
 
 
 def _zeilen_zu_anmeldungen(zeilen: list[list[str]]) -> list[Anmeldung]:
-    """Wie :func:`_zeilen_zu_terminen`, aber Teilnehmerzahl je Schulungstyp statt Umsatz."""
+    """Wie :func:`_zeilen_zu_terminen`, aber Teilnehmendenzahl je Schulungstyp statt Umsatz."""
     if not zeilen:
         return []
     kopf_zeile, index = kopfzeile_finden(
         zeilen,
-        {SPALTE_MONAT, SPALTE_SCHULUNGSTYP, SPALTE_TEILNEHMERZAHL},
+        {SPALTE_MONAT, SPALTE_SCHULUNGSTYP, SPALTE_TEILNEHMENDENZAHL},
     )
     jahr_spalte = _jahr_spalte_ermitteln(index)
     # Anders als Monat/Schulungstyp/TN-Zahl keine Pflichtspalte fuer die Kopfzeilen-
@@ -216,14 +216,14 @@ def _zeilen_zu_anmeldungen(zeilen: list[list[str]]) -> list[Anmeldung]:
         # sonst wuerde ein Schulungstyp mit ausschliesslich leeren TN-Zahl-Zellen in
         # diesem Zeitraum unbemerkt ganz aus verlauf.schulungstypen verschwinden statt
         # mit 0 aufzutauchen.
-        teilnehmerzahl_text = zelle(zeile, index, SPALTE_TEILNEHMERZAHL).strip()
+        teilnehmendenzahl_text = zelle(zeile, index, SPALTE_TEILNEHMENDENZAHL).strip()
         anmeldungen.append(
             Anmeldung(
                 jahr=int(jahr_text),
                 monat=int(monat_text),
                 schulungstyp=zelle(zeile, index, SPALTE_SCHULUNGSTYP).strip() or "Unbekannt",
-                teilnehmerzahl=int(float(teilnehmerzahl_text.replace(",", ".")))
-                if teilnehmerzahl_text
+                teilnehmendenzahl=int(float(teilnehmendenzahl_text.replace(",", ".")))
+                if teilnehmendenzahl_text
                 else 0,
                 format=zelle(zeile, index, SPALTE_FORMAT).strip() if hat_format else "",
                 datum=zelle(zeile, index, SPALTE_DATUM).strip() if hat_datum else "",
@@ -282,7 +282,7 @@ class SchulungenRepository:
         *,
         fortschritt: Fortschritt | None = None,
     ) -> Anmeldungsverlauf:
-        """Teilnehmerzahl je Schulungstyp und Monat, ueber die angegebenen Jahre hinweg.
+        """Teilnehmendenzahl je Schulungstyp und Monat, ueber die angegebenen Jahre hinweg.
 
         Anders als :meth:`laden` nicht auf den Prognosehorizont beschraenkt, siehe
         Moduldocstring von :mod:`umsatzprognose.domaene.anmeldung`.

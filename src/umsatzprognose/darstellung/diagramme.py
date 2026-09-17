@@ -1459,8 +1459,13 @@ def _linearer_trend(werte: Sequence[float]) -> list[float]:
     return [achsenabschnitt + steigung * x for x in range(n)]
 
 
-def anmeldungsverlauf(verlauf: Anmeldungsverlauf, *, hoehe: int = 420) -> go.Figure:
-    """Teilnehmerzahl oeffentlicher Schulungen je Monat, insgesamt - eine Linie mit
+def anmeldungsverlauf(
+    verlauf: Anmeldungsverlauf,
+    *,
+    laufender_monat: Monat | None = None,
+    hoehe: int = 420,
+) -> go.Figure:
+    """Teilnehmendenzahl oeffentlicher Schulungen je Monat, insgesamt - eine Linie mit
     Datenpunkten, dazu eine lineare Trendlinie (Ausgleichsgerade), siehe
     :func:`_linearer_trend`.
 
@@ -1471,13 +1476,19 @@ def anmeldungsverlauf(verlauf: Anmeldungsverlauf, *, hoehe: int = 420) -> go.Fig
     eigener Drilldown als Tabelle, siehe
     :func:`~umsatzprognose.darstellung.tabellen.anmeldungstabelle`.
 
-    Anders als :func:`umsatzverlauf` keine Umsatzgroesse, sondern die Teilnehmerzahl aus
+    Anders als :func:`umsatzverlauf` keine Umsatzgroesse, sondern die Teilnehmendenzahl aus
     der Spalte ``TN Zahl`` (siehe Moduldocstring von
     :mod:`umsatzprognose.domaene.anmeldung`). ``verlauf`` liefert bereits den
     gewuenschten Betrachtungszeitraum (etwa ueber
     :meth:`~umsatzprognose.domaene.anmeldung.Anmeldungsverlauf.letzte` fuer ein
-    konfigurierbares Fenster wie die letzten 13 Monate) - diese Funktion zeigt ihn
-    unveraendert, ohne selbst ein Zeitfenster anzuwenden.
+    rollierendes Fenster wie die letzten 12 plus 3 kommende Monate) - diese Funktion
+    zeigt ihn unveraendert, ohne selbst ein Zeitfenster anzuwenden.
+
+    ``laufender_monat`` hebt wie bei :func:`anmeldungsverlauf_reihen` Monate ab
+    (einschliesslich) dem aktuellen Kalendermonat als noch nicht abgeschlossen ab
+    (gedaempft, gepunktet statt durchgezogen) - anders als bereits vergangene
+    Schulungen koennen diese noch neue Anmeldungen bekommen. Ohne Angabe bleibt die
+    gesamte Linie durchgezogen.
 
     Anders als die uebrigen Diagrammfunktionen bewusst ohne ``mit_beschriftung``: eine
     einzelne Zahl am Ende der Linie hilft bei so wenigen Monaten kaum weiter, der
@@ -1486,8 +1497,8 @@ def anmeldungsverlauf(verlauf: Anmeldungsverlauf, *, hoehe: int = 420) -> go.Fig
     """
     monate = verlauf.monate
     fig = figur(
-        "Anmeldungen je Monat",
-        untertitel="Teilnehmerzahl öffentlicher Schulungen, mit Trend",
+        "Schulungsteilnehmende je Monat",
+        untertitel="Teilnehmendenzahl öffentlicher Schulungen, mit Trend",
         hoehe=hoehe,
     )
     if not monate:
@@ -1502,14 +1513,34 @@ def anmeldungsverlauf(verlauf: Anmeldungsverlauf, *, hoehe: int = 420) -> go.Fig
     je_monat = verlauf.je_monat()
     gesamt = [je_monat.get(m, 0) for m in monate]
 
-    fig.add_scatter(
-        x=beschriftungen,
-        y=gesamt,
-        mode="lines+markers",
-        name="Anmeldungen",
-        line={"color": TINTE, "width": 2},
-        marker={"size": 6, "color": TINTE},
+    grenze = (
+        next((i for i, monat in enumerate(monate) if monat >= laufender_monat), len(monate))
+        if laufender_monat is not None
+        else len(monate)
     )
+    if grenze > 0:
+        fig.add_scatter(
+            x=beschriftungen[:grenze],
+            y=gesamt[:grenze],
+            mode="lines+markers",
+            name="Anmeldungen",
+            legendgroup="Anmeldungen",
+            line={"color": TINTE, "width": 2},
+            marker={"size": 6, "color": TINTE},
+        )
+    if grenze < len(beschriftungen):
+        start = max(grenze - 1, 0)
+        fig.add_scatter(
+            x=beschriftungen[start:],
+            y=gesamt[start:],
+            mode="lines+markers",
+            name="Anmeldungen",
+            legendgroup="Anmeldungen",
+            showlegend=grenze == 0,
+            opacity=PROGNOSE_DECKKRAFT,
+            line={"color": TINTE, "width": 2, "dash": "dot"},
+            marker={"size": 6, "color": TINTE, "opacity": PROGNOSE_DECKKRAFT},
+        )
     fig.add_scatter(
         x=beschriftungen,
         y=_linearer_trend(gesamt),
@@ -1564,8 +1595,9 @@ def anmeldungsverlauf_reihen(
     bleibt die gesamte Linie durchgezogen.
     """
     fig = figur(
-        "Anmeldungen je Monat",
-        untertitel="Teilnehmerzahl öffentlicher Schulungen" + (", mit Trend" if mit_trend else ""),
+        "Schulungsteilnehmende je Monat",
+        untertitel="Teilnehmendenzahl öffentlicher Schulungen"
+        + (", mit Trend" if mit_trend else ""),
         hoehe=hoehe,
     )
     if not monate or not reihen:
@@ -1673,8 +1705,8 @@ def anmeldungsverlauf_jahresvergleich(
     Monatswerte, in derselben Farbe, ohne eigenen Legendeneintrag.
     """
     fig = figur(
-        "Anmeldungen je Monat",
-        untertitel="Teilnehmerzahl öffentlicher Schulungen, Jahresvergleich",
+        "Schulungsteilnehmende je Monat",
+        untertitel="Teilnehmendenzahl öffentlicher Schulungen, Jahresvergleich",
         hoehe=hoehe,
     )
     if not jahre or not reihen:

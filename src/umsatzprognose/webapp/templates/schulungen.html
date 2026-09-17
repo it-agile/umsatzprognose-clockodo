@@ -5,14 +5,18 @@
     <details class="filter-dropdown">
         <summary title="{{ ausgewaehlt | join(', ') }}">{{ ausgewaehlt | join(", ") if ausgewaehlt else "–" }}</summary>
         <div class="filter-optionen">
-            <input type="hidden" name="{{ feldname }}" value="__keine_auswahl__" form="schulungen-form">
+            {# Das versteckte Feld traegt die tatsaechlich abgeschickte, kommagetrennte
+               Auswahl - schulungenFormBereinigen() haelt seinen Wert bei jedem Absenden
+               aktuell und deaktiviert es im Standardzustand ganz, damit unveraenderte
+               Filter nicht unnoetig in der URL auftauchen. Die Kontrollkaestchen selbst
+               tragen deshalb kein name-Attribut, nur data-feld zur Gruppierung. #}
+            <input type="hidden" name="{{ feldname }}" value="{{ ausgewaehlt | join(',') }}" form="schulungen-form">
             {% for option in optionen %}
             <label>
                 <input
                     type="checkbox"
-                    name="{{ feldname }}"
+                    data-feld="{{ feldname }}"
                     value="{{ option }}"
-                    form="schulungen-form"
                     data-standard="{{ 'true' if option == standardwert else 'false' }}"
                     {{ "checked" if option in ausgewaehlt }}
                 >
@@ -30,14 +34,13 @@
     <details class="filter-dropdown">
         <summary title="{{ ausgewaehlt | join(', ') }}">{{ ausgewaehlt | join(", ") if ausgewaehlt else "–" }}</summary>
         <div class="filter-optionen">
-            <input type="hidden" name="jahr_filter" value="__keine_auswahl__" form="schulungen-form">
+            <input type="hidden" name="jahr_filter" value="{{ ausgewaehlt | join(',') }}" form="schulungen-form">
             {% for option in optionen %}
             <label>
                 <input
                     type="checkbox"
-                    name="jahr_filter"
+                    data-feld="jahr_filter"
                     value="{{ option }}"
-                    form="schulungen-form"
                     class="{{ 'jahr-filter-alle' if loop.first else 'jahr-filter-einzeln' }}"
                     onclick="{{ 'jahrFilterAlleUmschalten(this)' if loop.first else 'jahrFilterEinzelnUmschalten(this)' }}"
                     data-standard="true"
@@ -59,13 +62,12 @@
     <details class="filter-dropdown">
         <summary title="{{ ausgewaehlt | join(', ') }}">{{ ausgewaehlt | join(", ") if ausgewaehlt else "–" }}</summary>
         <div class="filter-optionen">
-            <input type="hidden" name="schulung_filter" value="__keine_auswahl__" form="schulungen-form">
+            <input type="hidden" name="schulung_filter" value="{{ ausgewaehlt | join(',') }}" form="schulungen-form">
             <label>
                 <input
                     type="checkbox"
-                    name="schulung_filter"
+                    data-feld="schulung_filter"
                     value="{{ alle_schulungen }}"
-                    form="schulungen-form"
                     id="schulung-filter-alle"
                     data-standard="true"
                     {{ "checked" if alle_schulungen in ausgewaehlt }}
@@ -84,9 +86,8 @@
             <label>
                 <input
                     type="checkbox"
-                    name="schulung_filter"
+                    data-feld="schulung_filter"
                     value="{{ name }}"
-                    form="schulungen-form"
                     data-standard="false"
                     {{ "checked" if name in ausgewaehlt }}
                 >
@@ -123,37 +124,62 @@
 {% endmacro %}
 {% block inhalt %}
 <form method="get" class="parameter" id="schulungen-form" onsubmit="schulungenFormBereinigen()">
+    <label>Ansicht
+        <select name="ansicht" data-standardwert="{{ ansicht_standardwert }}" onchange="this.form.requestSubmit()">
+            {% for wert in ansicht_optionen %}
+            <option value="{{ wert }}" {{ "selected" if wert == ansicht }}>{{ ansicht_beschriftungen[wert] }}</option>
+            {% endfor %}
+        </select>
+    </label>
+    {% if zeige_ab_jahr %}
+    {# zeitraum als verstecktes Feld mitschleppen, obwohl gerade nicht angezeigt -
+       sonst ginge der zuletzt gewaehlte Wert beim Wechsel zurueck zu "Zeitverlauf"
+       verloren (das Formular enthaelt zum Absendezeitpunkt nur die gerade
+       sichtbaren Felder). Umgekehrt unten ab_jahr, aus demselben Grund. #}
+    <input type="hidden" name="zeitraum" value="{{ zeitraum }}" data-standardwert="{{ zeitraum_standardwert }}">
     <label>Anmeldungen ab Jahr
-        <select name="ab_jahr" onchange="this.form.requestSubmit()">
+        <select name="ab_jahr" data-standardwert="{{ ab_jahr_standardwert }}" onchange="this.form.requestSubmit()">
             {% for jahr in ab_jahr_optionen %}
             <option value="{{ jahr }}" {{ "selected" if jahr == ab_jahr }}>{{ jahr }}</option>
             {% endfor %}
         </select>
     </label>
+    {% else %}
+    <input type="hidden" name="ab_jahr" value="{{ ab_jahr }}" data-standardwert="{{ ab_jahr_standardwert }}">
+    <label>Zeitraum
+        <select name="zeitraum" data-standardwert="{{ zeitraum_standardwert }}" onchange="this.form.requestSubmit()">
+            {% for wert in zeitraum_optionen %}
+            <option value="{{ wert }}" {{ "selected" if wert == zeitraum }}>{{ "Alle" if wert == "alle" else wert ~ " Monate" }}</option>
+            {% endfor %}
+        </select>
+    </label>
+    {% endif %}
 </form>
 <details class="regler-abschnitt" {{ "open" if filter_abweichend }}>
     <summary>Filter für Schulungen</summary>
     <div class="filter-spalten">
-        {% if zeige_ansicht_umschalter %}
-        <div class="filter-spalte">
-            <span class="filter-beschriftung">Ansicht</span>
-            <select name="ansicht" form="schulungen-form" onchange="this.form.requestSubmit()">
-                {% for wert in ansicht_optionen %}
-                <option value="{{ wert }}" {{ "selected" if wert == ansicht }}>{{ ansicht_beschriftungen[wert] }}</option>
-                {% endfor %}
-            </select>
-        </div>
-        {% endif %}
         <div class="filter-spalte">
             <span class="filter-beschriftung">Trendlinien</span>
             <label class="filter-checkbox">
-                <input type="hidden" name="trendlinien_werte" value="aus" form="schulungen-form">
+                {# Verstecktes Feld traegt den "aus"-Zustand, den ein unmarkiertes
+                   Kontrollkaestchen selbst nicht senden kann - wird aber deaktiviert,
+                   sobald das Kaestchen angehakt ist, damit nicht beide Werte
+                   gleichzeitig abgeschickt werden (siehe onchange unten). #}
+                <input
+                    type="hidden"
+                    name="trendlinien_werte"
+                    value="aus"
+                    form="schulungen-form"
+                    data-standardwert="{{ trendlinien_standardwert }}"
+                    {{ "disabled" if trendlinien }}
+                >
                 <input
                     type="checkbox"
                     name="trendlinien_werte"
                     value="an"
                     form="schulungen-form"
-                    onchange="this.form.requestSubmit()"
+                    data-standardwert="{{ trendlinien_standardwert }}"
+                    onchange="this.previousElementSibling.disabled = this.checked; this.form.requestSubmit()"
                     {{ "checked" if trendlinien }}
                 >
                 anzeigen
@@ -161,7 +187,10 @@
         </div>
     </div>
     <div class="filter-spalten regler-trenner">
-        {% if zeige_jahr_filter %}
+        {% if zeige_jahr_filter and zeige_ab_jahr %}
+        {# Nur beim Jahresvergleich sinnvoll - der Zeitverlauf zeigt ohnehin einen
+           durchgehenden, ueber "Zeitraum"/"ab_jahr" gesteuerten Ausschnitt statt
+           einzeln waehlbarer Kalenderjahre. #}
         {{ jahr_dropdown(jahr_optionen, jahr_filter) }}
         {% endif %}
         {{ schulung_dropdown(schulung_alle_schulungen, schulung_gruppen, schulung_filter) }}
@@ -233,7 +262,7 @@
     // wendet das (wie jede andere Aenderung an den Kontrollkaestchen) tatsaechlich an.
     function schulungFilterZuruecksetzen(knopf) {
         var optionen = knopf.closest(".filter-optionen");
-        optionen.querySelectorAll('input[type="checkbox"][name="schulung_filter"]').forEach(
+        optionen.querySelectorAll('input[type="checkbox"][data-feld="schulung_filter"]').forEach(
             function (kontrollkaestchen) {
                 kontrollkaestchen.checked = kontrollkaestchen.id === "schulung-filter-alle";
             },
@@ -261,38 +290,50 @@
         });
     }
 
-    // Vor dem Absenden je Mehrfachauswahl-Filter (Jahre/Schulungen/Format/Dauer)
-    // pruefen, ob der aktuelle Zustand exakt dem Standard entspricht (siehe
-    // data-standard-Attribut je Kontrollkaestchen in den obigen Makros - "true" markiert
-    // die Kontrollkaestchen, die im Standardzustand angehakt sein sollen, "false" die
-    // uebrigen). Trifft das zu, werden alle Kontrollkaestchen dieses Filters (inklusive
-    // seines versteckten Sentinel-Begleitfelds, siehe KEINE_AUSWAHL in app.py) vor dem
-    // Absenden deaktiviert - ein deaktiviertes Feld wird nicht mitgesendet, FastAPI
-    // faellt dann von selbst auf denselben Standardwert zurueck. Ohne das wuerde jede
-    // Anfrage unveraendert saemtliche Standard-Kontrollkaestchen als Query-Parameter
-    // mitschleppen (inklusive "__keine_auswahl__"), auch wenn der Filter gar nicht
-    // angeruehrt wurde - bei "Jahre" zusaetzlich jedes einzelne Jahr, weil "Alle Jahre"
-    // sie alle mit anhakt (siehe jahrFilterAlleUmschalten() oben).
+    // Vor dem Absenden je Mehrfachauswahl-Filter (Jahre/Schulungen/Format/Dauer) das
+    // eine versteckte Feld (siehe data-feld je Kontrollkaestchen in den obigen Makros)
+    // auf die kommagetrennte Liste der angehakten Werte bringen - die Kontrollkaestchen
+    // selbst tragen kein name-Attribut, senden also nichts von sich aus. Entspricht der
+    // aktuelle Zustand exakt dem Standard (siehe data-standard-Attribut - "true" markiert
+    // die im Standardzustand angehakten Kontrollkaestchen, "false" die uebrigen), wird das
+    // versteckte Feld stattdessen deaktiviert: ein deaktiviertes Feld wird nicht
+    // mitgesendet, FastAPI faellt dann von selbst auf denselben Standardwert zurueck -
+    // ohne das wuerde jede Anfrage unveraendert saemtliche Standardfilter als
+    // Query-Parameter mitschleppen, auch wenn gar nichts angeruehrt wurde.
     function schulungenFormBereinigen() {
-        var namen = new Set();
-        document.querySelectorAll('.filter-optionen input[type="checkbox"]').forEach(
+        var gruppen = {};
+        document.querySelectorAll(".filter-optionen input[type=\"checkbox\"]").forEach(
             function (kontrollkaestchen) {
-                namen.add(kontrollkaestchen.name);
+                var feld = kontrollkaestchen.dataset.feld;
+                (gruppen[feld] = gruppen[feld] || []).push(kontrollkaestchen);
             },
         );
-        namen.forEach(function (name) {
-            var kontrollkaestchen = document.querySelectorAll(
-                '.filter-optionen input[type="checkbox"][name="' + name + '"]',
-            );
-            var istStandard = Array.prototype.every.call(kontrollkaestchen, function (kb) {
+        Object.keys(gruppen).forEach(function (feld) {
+            var kontrollkaestchen = gruppen[feld];
+            var verstecktesFeld = document.querySelector('input[type="hidden"][name="' + feld + '"]');
+            var istStandard = kontrollkaestchen.every(function (kb) {
                 return kb.checked === (kb.dataset.standard === "true");
             });
+            verstecktesFeld.disabled = istStandard;
+            verstecktesFeld.value = kontrollkaestchen
+                .filter(function (kb) { return kb.checked; })
+                .map(function (kb) { return kb.value; })
+                .join(",");
+        });
+
+        // Einzelwert-Regler (Ansicht/Ab-Jahr/Zeitraum/Trendlinien) auf ihrem
+        // Standardwert deaktivieren, damit sie nicht unnoetig in der URL auftauchen -
+        // wirkt sich nur auf dieses eine Absenden aus, die Seite wird ohnehin komplett
+        // neu geladen. Fuer die Trendlinien-Checkbox zaehlt dabei ihr angehaktes value
+        // ("an"), nicht der statische value-Attributwert, der unabhaengig vom
+        // Ankreuzzustand immer "an" waere.
+        document.querySelectorAll("[data-standardwert]").forEach(function (feld) {
+            var istStandard =
+                feld.type === "checkbox"
+                    ? feld.checked && feld.value === feld.dataset.standardwert
+                    : feld.value === feld.dataset.standardwert;
             if (istStandard) {
-                document.querySelectorAll('input[name="' + name + '"]').forEach(
-                    function (feld) {
-                        feld.disabled = true;
-                    },
-                );
+                feld.disabled = true;
             }
         });
     }

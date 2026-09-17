@@ -75,8 +75,21 @@ class _FakeAnmeldungsverlauf:
     anmeldungen: tuple[object, ...] = ()
     monate: tuple[object, ...] = ()
 
-    def letzte(self, *, monate: int, stichtag: date) -> _FakeAnmeldungsverlauf:
+    def letzte(
+        self, *, monate: int, monate_voraus: int = 0, stichtag: date
+    ) -> _FakeAnmeldungsverlauf:
         return self
+
+    def je_monat_gefiltert(
+        self,
+        *,
+        kategorien: object = None,
+        kategorie: str | None = None,
+        basisname: str | None = None,
+        format_wert: str | None = None,
+        dauer_wert: str | None = None,
+    ) -> dict:
+        return {}
 
 
 def _als_anmeldungsverlauf(fake: _FakeAnmeldungsverlauf) -> Anmeldungsverlauf:
@@ -101,7 +114,7 @@ class _FakeSchulungenRepository:
 
 
 def test_diagrammtitel_und_figuren_liefert_alle_vier_diagramme_in_reihenfolge(monkeypatch):
-    monkeypatch.setattr(diagramme, "anmeldungsverlauf", lambda *a, **kw: go.Figure())
+    monkeypatch.setattr(diagramme, "anmeldungsverlauf_reihen", lambda *a, **kw: go.Figure())
 
     ergebnis = wochenbericht.diagrammtitel_und_figuren(
         _FakeDashboard(),
@@ -152,7 +165,7 @@ def test_posten_haengt_alle_vier_bilder_an_einen_einzigen_post(monkeypatch, tmp_
     """Ein einzelner ``files_upload_v2``-Aufruf traegt alle vier Bilder gemeinsam an
     einer Nachricht (``file_uploads``), statt je Bild eine eigene Unternachricht zu
     erzeugen (siehe Moduldocstring)."""
-    monkeypatch.setattr(diagramme, "anmeldungsverlauf", lambda *a, **kw: go.Figure())
+    monkeypatch.setattr(diagramme, "anmeldungsverlauf_reihen", lambda *a, **kw: go.Figure())
     monkeypatch.setattr(wochenbericht.pio, "write_images", lambda **kw: None)  # type: ignore[attr-defined]
 
     dashboard = _FakeDashboard()
@@ -333,7 +346,7 @@ def test_kontext_text_nennt_kapazitaetsengpass_wenn_vorhanden():
 
 
 def test_diagramm_erlaeuterungen_deckt_alle_diagrammtitel_ab(monkeypatch):
-    monkeypatch.setattr(diagramme, "anmeldungsverlauf", lambda *a, **kw: go.Figure())
+    monkeypatch.setattr(diagramme, "anmeldungsverlauf_reihen", lambda *a, **kw: go.Figure())
 
     titel = {
         titel

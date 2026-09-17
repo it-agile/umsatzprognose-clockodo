@@ -30,7 +30,7 @@ from .umsatzhistorie import betrag_je_monat, hinweise_mit_fehlenden_monaten
 class Schulungstermin:
     """Ein Termin einer oeffentlichen Schulung - nur die fuer die Prognose relevanten Felder.
 
-    Teilnehmerzahlen, Rabattstufen, Trainer- und Praesenz/Online-Angaben sowie der
+    Teilnehmendenzahlen, Rabattstufen, Trainer- und Praesenz/Online-Angaben sowie der
     Bemerkungsfreitext (u. a. ein moeglicher Stornogrund) sind nicht Teil des Modells.
     """
 

@@ -12,7 +12,7 @@ Pflegequalität der Quelle selbst.
 
 - Keine Monte-Carlo-Simulation, keine Bandbreite/Konfidenzniveaus für
   Schulungsumsatz – der Wert wird deterministisch aus der Quelle übernommen.
-- Keine Auswertung von Teilnehmerzahlen, Rabattstufen, Trainer- oder
+- Keine Auswertung von Teilnehmendenzahlen, Rabattstufen, Trainer- oder
   Präsenz/Online-Angaben – nur die Spalte `Umsatz gesamt`.
 - Keine automatische Storno-Erkennung. Abgesagte Termine stehen nur als Freitext in
   `Bemerkungen`; das Feld wird nicht geparst. Ein abgesagter Termin mit `Umsatz gesamt
@@ -137,10 +137,10 @@ Google-Sheets-Infrastruktur in `google_sheets/` (`GoogleSheetsConfig`,
 `schulungen._jahr_spalte_ermitteln()` für die `Jahr`-Spalte (4) decken sowohl
 `_zeilen_zu_terminen()` als auch `_zeilen_zu_anmeldungen()` (Abschnitt 9) ab.
 
-## 9. Zusatzauswertung: Anmeldungsverlauf (Teilnehmerzahl)
+## 9. Zusatzauswertung: Anmeldungsverlauf (Teilnehmendenzahl)
 
 Eine zweite, von der Umsatzprognose unabhängige Auswertung derselben Quelle (Abschnitt
-3): nicht der Umsatz, sondern die **Teilnehmerzahl je Schulungstyp und Monat** - Grundlage
+3): nicht der Umsatz, sondern die **Teilnehmendenzahl je Schulungstyp und Monat** - Grundlage
 für den intern bekannten Verlauf "Anmeldungen bleiben auf niedrigem Niveau". Diese
 Auswertung hebt die Nicht-Ziele aus Abschnitt 2 nicht auf; sie ergänzt sie um einen
 eigenständigen, rein diagnostischen Blick auf dieselbe Tabelle, ohne dass Umsatz,
@@ -158,9 +158,9 @@ Restvolumen, Abrufquote oder Kapazitätsdeckel davon berührt werden.
   Wert. Gelesen wird die **zuletzt (am weitesten rechts) stehende** Spalte dieses Namens.
 - **Zeitfenster:** anders als Abschnitt 5.2 **nicht auf den Prognosehorizont
   beschränkt**, sondern über mehrere zurückliegende Kalenderjahre (Aufruf mit einer
-  Jahresliste). Eine Teilnehmerzahl ist kein Umsatz und dupliziert daher nichts aus
+  Jahresliste). Eine Teilnehmendenzahl ist kein Umsatz und dupliziert daher nichts aus
   Clockodo - das Doppelzählungsrisiko aus Abschnitt 5.2 entfällt hier.
-- **Aggregation:** Summe der Teilnehmerzahl je Monat (die Gesamtzahl, primäre
+- **Aggregation:** Summe der Teilnehmendenzahl je Monat (die Gesamtzahl, primäre
   Ansicht im Diagramm), sowie je Monat **und** Kategorie mit einer Summenspalte je
   Monat (der Drilldown als Tabelle, siehe unten). Eine Kategorisierung als eigene
   Linie **im Diagramm** gibt es bewusst nicht mehr - eine von Hand gepflegte Zuordnung

@@ -34,7 +34,7 @@ def test_monate_liefert_chronologische_duplikatfreie_liste() -> None:
     assert verlauf.monate == ((2026, 9), (2026, 10))
 
 
-def test_schulungstypen_sortiert_nach_absteigender_gesamtteilnehmerzahl() -> None:
+def test_schulungstypen_sortiert_nach_absteigender_gesamtteilnehmendenzahl() -> None:
     verlauf = Anmeldungsverlauf(
         anmeldungen=(
             Anmeldung(2026, 9, "Requirements Engineering", 2),
@@ -244,8 +244,8 @@ def test_gliederung_je_kategorie_format_und_dauer_gemeinsam() -> None:
 
 def test_gliederung_je_kategorie_sortiert_basisnamen_alphabetisch_nicht_nach_anmeldezahl() -> None:
     """Im Tabellen-Drilldown soll man einen bekannten Namen alphabetisch
-    wiederfinden - hier bewusst mit gegenlaeufiger Teilnehmerzahl, damit ein
-    Ruecksprung auf absteigende Teilnehmerzahl auffiele."""
+    wiederfinden - hier bewusst mit gegenlaeufiger Teilnehmendenzahl, damit ein
+    Ruecksprung auf absteigende Teilnehmendenzahl auffiele."""
     kategorien = {"Scrum": ["Zertifizierung 2-tägig", "Auffrischung 2-tägig"]}
     verlauf = Anmeldungsverlauf(
         anmeldungen=(
@@ -384,18 +384,56 @@ def test_gliederung_je_kategorie_enthaelt_alle_kategorien_auch_ohne_anmeldung() 
     assert ergebnis[KATEGORIE_SONSTIGE] == ()
 
 
-def test_letzte_beschraenkt_auf_die_angegebene_monatsanzahl_bis_zum_stichtag() -> None:
+def test_letzte_umfasst_die_angegebenen_abgeschlossenen_monate_plus_den_laufenden() -> None:
+    """ "monate=N" liefert N VOR dem Stichtagsmonat abgeschlossene Kalendermonate plus
+    den Stichtagsmonat selbst (N+1 Monate insgesamt) - der laufende Monat zaehlt nicht
+    zu den "abgeschlossenen" N Monaten mit."""
+    verlauf = Anmeldungsverlauf(
+        anmeldungen=(
+            Anmeldung(2025, 9, "KSD", 0),  # zu frueh, ausserhalb des Fensters
+            Anmeldung(2026, 7, "KSD", 1),
+            Anmeldung(2026, 8, "KSD", 2),
+            Anmeldung(2026, 9, "KSD", 3),
+        ),
+    )
+    fenster = verlauf.letzte(monate=2, stichtag=date(2026, 9, 15))
+    assert fenster.monate == ((2026, 7), (2026, 8), (2026, 9))
+    assert fenster.je_monat() == {(2026, 7): 1, (2026, 8): 2, (2026, 9): 3}
+
+
+def test_letzte_zwoelf_monate_deckt_denselben_monat_im_vorjahr_ab() -> None:
+    """Die konkrete Erwartung aus der Praxis: "12 Monate" im Zeitverlauf-Dropdown der
+    Webapp zeigt bei einem Stichtag im September den September des Vorjahres bis zum
+    laufenden September, nicht erst ab Oktober des Vorjahres."""
     verlauf = Anmeldungsverlauf(
         anmeldungen=(
             Anmeldung(2025, 8, "KSD", 1),
             Anmeldung(2025, 9, "KSD", 2),
-            Anmeldung(2026, 8, "KSD", 3),
-            Anmeldung(2026, 9, "KSD", 4),
+            Anmeldung(2026, 9, "KSD", 3),
         ),
     )
-    fenster = verlauf.letzte(monate=2, stichtag=date(2026, 9, 15))
-    assert fenster.monate == ((2026, 8), (2026, 9))
-    assert fenster.je_monat() == {(2026, 8): 3, (2026, 9): 4}
+    fenster = verlauf.letzte(monate=12, stichtag=date(2026, 9, 15))
+    assert (2025, 8) not in fenster.monate
+    assert (2025, 9) in fenster.monate
+    assert (2026, 9) in fenster.monate
+
+
+def test_letzte_mit_monate_voraus_erweitert_das_fenster_in_die_zukunft() -> None:
+    """``monate_voraus`` erweitert das Fenster ueber den Stichtagsmonat hinaus um
+    weitere, bereits terminierte kommende Kalendermonate - kombiniert mit ``monate``
+    ergibt sich das volle rollierende Fenster (abgeschlossene Monate + laufender +
+    kommende)."""
+    verlauf = Anmeldungsverlauf(
+        anmeldungen=(
+            Anmeldung(2026, 8, "KSD", 1),
+            Anmeldung(2026, 9, "KSD", 2),
+            Anmeldung(2026, 10, "KSD", 3),
+            Anmeldung(2026, 12, "KSD", 4),
+            Anmeldung(2027, 1, "KSD", 5),  # ausserhalb, zu weit in der Zukunft
+        ),
+    )
+    fenster = verlauf.letzte(monate=1, monate_voraus=3, stichtag=date(2026, 9, 15))
+    assert fenster.monate == ((2026, 8), (2026, 9), (2026, 10), (2026, 12))
 
 
 def test_letzte_verlangt_monate_als_keyword() -> None:
@@ -464,7 +502,7 @@ def test_nur_jahre_behaelt_abbildungshinweise() -> None:
     assert gefiltert.abbildungshinweise == (hinweis,)
 
 
-def test_formate_sortiert_nach_absteigender_gesamtteilnehmerzahl_und_ohne_leere() -> None:
+def test_formate_sortiert_nach_absteigender_gesamtteilnehmendenzahl_und_ohne_leere() -> None:
     verlauf = Anmeldungsverlauf(
         anmeldungen=(
             Anmeldung(2026, 9, "CSPO 2-tägig", 2, format="Online"),
@@ -486,7 +524,7 @@ def test_je_monat_und_format_beschraenkt_auf_ein_format() -> None:
     assert verlauf.je_monat_und_format("Präsenz") == {(2026, 9): 5, (2026, 10): 3}
 
 
-def test_dauern_sortiert_nach_absteigender_gesamtteilnehmerzahl_und_ohne_unsuffigierte() -> None:
+def test_dauern_sortiert_nach_absteigender_gesamtteilnehmendenzahl_und_ohne_unsuffigierte() -> None:
     verlauf = Anmeldungsverlauf(
         anmeldungen=(
             Anmeldung(2026, 9, "CSPO 2-tägig", 2),
@@ -549,7 +587,7 @@ def test_je_monat_gefiltert_kategorie_ohne_kategorien_wirft_fehler() -> None:
         verlauf.je_monat_gefiltert(kategorie="Scrum")
 
 
-def test_schulungstypen_je_kategorie_gruppiert_nach_absteigender_gesamtteilnehmerzahl() -> None:
+def test_schulungstypen_je_kategorie_gruppiert_nach_absteigender_gesamtteilnehmendenzahl() -> None:
     verlauf = Anmeldungsverlauf(
         anmeldungen=(
             Anmeldung(2026, 9, "CSM 2-tägig", 2),

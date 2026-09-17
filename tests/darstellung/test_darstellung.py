@@ -1510,7 +1510,7 @@ def test_hinweistabelle_kuerzt_lange_id_listen():
     assert zeile["Projekte"].endswith("…")
 
 
-def test_anmeldungstabelle_zeigt_teilnehmerzahl_je_kategorie_und_monat_mit_summe_und_gesamtzeile():
+def test_anmeldungstabelle_zeigt_teilnehmendenzahl_je_kategorie_und_monat_mit_summenzeile():
     """Eine Kategorie je Zeile, Monate als Spalten (siehe Docstring von
     tabellen.anmeldungstabelle) - transponiert gegenueber einer frueheren Fassung mit
     einem Monat je Zeile, damit die Kategorien in der Webapp aufklappbar werden

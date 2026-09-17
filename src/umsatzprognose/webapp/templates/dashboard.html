@@ -40,10 +40,14 @@
    genau dieser historischen Verteilung; siehe "Simulations-Parameter" oben,
    um stattdessen einen Pauschalwert oder eine Weibull-/Gauss-Verteilung zu wählen.</p>
 <label>
-    <input type="hidden" name="interne_arbeit_trend_werte" value="aus" form="dashboard-form">
+    {# Verstecktes Feld traegt den "aus"-Zustand, den ein unmarkiertes Kontrollkaestchen
+       selbst nicht senden kann - wird aber deaktiviert, sobald das Kaestchen angehakt
+       ist, damit nicht beide Werte gleichzeitig abgeschickt werden (siehe onchange). #}
+    <input type="hidden" name="interne_arbeit_trend_werte" value="aus" form="dashboard-form"
+           {{ "disabled" if interne_arbeit_trend }}>
     <input type="checkbox" name="interne_arbeit_trend_werte" value="an" form="dashboard-form"
            {{ "checked" if interne_arbeit_trend }}
-           onchange="this.form.submit()">
+           onchange="this.previousElementSibling.disabled = this.checked; this.form.submit()">
     Trendlinie anzeigen
 </label>
 {{ anteil_fakturierbarer_arbeit | safe }}
