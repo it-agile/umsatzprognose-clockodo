@@ -807,8 +807,8 @@ def _jahreslinien[T: (Decimal, float)](
                 x=beschriftungen[start:neues_ende],
                 y=[float(v) for v in y[start:neues_ende]],
                 mode="lines+markers",
-                line={"color": farbe, "width": 2, "dash": dash},
-                marker={"size": 6, "opacity": deckkraft},
+                line={"color": farbe, "width": 3, "dash": dash},
+                marker={"size": 7, "opacity": deckkraft},
                 opacity=deckkraft,
                 customdata=[[formatieren(wert)] for wert in y[start:neues_ende]],
                 hovertemplate=f"<b>{jahr} %{{x}}</b><br>%{{customdata[0]}}{hinweis}<extra></extra>",
@@ -874,7 +874,7 @@ def _endpunkte_beschriften[T: (Decimal, float)](
                 showarrow=False,
                 xanchor="left",
                 yshift=8,
-                font={"color": farbe, "size": 11},
+                font={"color": farbe, "size": 13},
             )
 
 

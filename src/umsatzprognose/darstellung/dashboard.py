@@ -120,6 +120,24 @@ def _mit_kostenabdeckung(
     return tuple(m for m in monate if m.jahr in abgedeckte_jahre)
 
 
+def _jahre_begrenzen(
+    monate: Sequence[Monatsumsatz],
+    stichtagsjahr: int,
+    max_jahre: int | None,
+) -> tuple[Monatsumsatz, ...]:
+    """Behaelt nur die juengsten ``max_jahre`` Kalenderjahre absteigend vom
+    Stichtagsjahr (``stichtagsjahr``, ``stichtagsjahr - 1``, ...). ``max_jahre=None``
+    laesst ``monate`` unveraendert - der Standard fuer Jahresvergleiche
+    (:meth:`~Dashboard.gewinn_verlust_je_jahr`, :meth:`~Dashboard.umsatzrendite_kumuliert`)
+    ist die gesamte geladene Historie; Aufrufer wie ``scripts/diagramme_exportieren.py``
+    und ``scripts/wochenbericht.py`` begrenzen bewusst enger, damit der Kalenderjahr-
+    vergleich nicht mit jedem weiteren geladenen Jahr unuebersichtlicher wird."""
+    if max_jahre is None:
+        return tuple(monate)
+    fruehestes_jahr = stichtagsjahr - max_jahre + 1
+    return tuple(m for m in monate if m.jahr >= fruehestes_jahr)
+
+
 def _aktive_mitarbeiter(bestand: Bestand) -> dict[int, Mitarbeiter]:
     """Aktive Personen nach ID - Grundlage fuer den Auslastungs-Abruf."""
     return {m.id: m for m in bestand.mitarbeiter if m.aktiv}
@@ -691,7 +709,9 @@ class Dashboard:
             mit_beschriftung=mit_beschriftung,
         )
 
-    def gewinn_verlust_je_jahr(self, *, mit_beschriftung: bool = False) -> go.Figure:
+    def gewinn_verlust_je_jahr(
+        self, *, max_jahre: int | None = None, mit_beschriftung: bool = False
+    ) -> go.Figure:
         """Fuer jedes Kalenderjahr der geladenen Historie eine eigene Linie je Monat.
 
         Nutzt bewusst die gesamte geladene Historie statt eines Fensters wie
@@ -700,10 +720,14 @@ class Dashboard:
         aufsummiert (siehe :meth:`umsatzrendite_kumuliert` fuer die kumulierte Sicht).
         Ein Jahr ganz ohne Kostenerfassung faellt heraus, siehe
         :func:`_mit_kostenabdeckung`. Mit Vorausschau fuer den Prognosehorizont am
-        juengsten Jahr, wie :meth:`gewinn_verlust_monatlich`. ``mit_beschriftung``
-        siehe :meth:`umsatzverlauf`.
+        juengsten Jahr, wie :meth:`gewinn_verlust_monatlich`. ``max_jahre`` begrenzt
+        (sofern gesetzt) auf die juengsten ``max_jahre`` Kalenderjahre absteigend vom
+        Stichtagsjahr, siehe :func:`_jahre_begrenzen`. ``mit_beschriftung`` siehe
+        :meth:`umsatzverlauf`.
         """
-        letzte_monate, kosten, verbrauch_laufender_monat = self._jahreshistorie_mit_kosten()
+        letzte_monate, kosten, verbrauch_laufender_monat = self._jahreshistorie_mit_kosten(
+            max_jahre=max_jahre
+        )
         return diagramme.gewinn_verlust_je_jahr(
             letzte_monate,
             kosten,
@@ -714,7 +738,9 @@ class Dashboard:
             mit_beschriftung=mit_beschriftung,
         )
 
-    def umsatzrendite_kumuliert(self, *, mit_beschriftung: bool = False) -> go.Figure:
+    def umsatzrendite_kumuliert(
+        self, *, max_jahre: int | None = None, mit_beschriftung: bool = False
+    ) -> go.Figure:
         """Fuer jedes Kalenderjahr die kumulierte Umsatzrendite (Gewinn/Umsatz) je Monat.
 
         Nutzt wie :meth:`gewinn_verlust_je_jahr` die gesamte geladene Historie, nicht
@@ -722,9 +748,12 @@ class Dashboard:
         (siehe :func:`_mit_kostenabdeckung`) - dort waere die Rendite sonst ueberall
         100 %, ohne dass ueberhaupt Kosten vorlaegen. Siehe
         :func:`~umsatzprognose.darstellung.diagramme.umsatzrendite_kumuliert` fuer die
-        genaue Berechnung. ``mit_beschriftung`` siehe :meth:`umsatzverlauf`.
+        genaue Berechnung. ``max_jahre`` siehe :meth:`gewinn_verlust_je_jahr`.
+        ``mit_beschriftung`` siehe :meth:`umsatzverlauf`.
         """
-        letzte_monate, kosten, verbrauch_laufender_monat = self._jahreshistorie_mit_kosten()
+        letzte_monate, kosten, verbrauch_laufender_monat = self._jahreshistorie_mit_kosten(
+            max_jahre=max_jahre
+        )
         return diagramme.umsatzrendite_kumuliert(
             letzte_monate,
             kosten,
@@ -736,14 +765,17 @@ class Dashboard:
         )
 
     def _jahreshistorie_mit_kosten(
-        self,
+        self, *, max_jahre: int | None = None
     ) -> tuple[tuple[Monatsumsatz, ...], list[Decimal], Monatsumsatz | None]:
         """Gemeinsamer Kern von :meth:`gewinn_verlust_je_jahr` und
         :meth:`umsatzrendite_kumuliert`: die gesamte geladene Historie, um ein Jahr
-        ganz ohne Kostenerfassung bereinigt (siehe :func:`_mit_kostenabdeckung`), samt
-        der dazugehoerigen Kosten und des Verbrauchs im laufenden Monat."""
+        ganz ohne Kostenerfassung bereinigt (siehe :func:`_mit_kostenabdeckung`) und
+        optional auf die juengsten ``max_jahre`` Kalenderjahre begrenzt (siehe
+        :func:`_jahre_begrenzen`), samt der dazugehoerigen Kosten und des Verbrauchs im
+        laufenden Monat."""
         historie = self._historie(anzahl=None)
         letzte_monate = _mit_kostenabdeckung(historie.abgeschlossene(), self.kostenplan)
+        letzte_monate = _jahre_begrenzen(letzte_monate, self.stichtag.year, max_jahre)
         kosten = self.kostenplan.kosten_je_monat([m.schluessel for m in letzte_monate])
         return letzte_monate, kosten, historie.laufender
 

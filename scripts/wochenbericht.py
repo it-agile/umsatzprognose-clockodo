@@ -146,7 +146,9 @@ class _Dashboardauszug(Protocol):
     def kostenplan(self) -> _Summenquelle: ...
 
     def umsatzverlauf(self, *, mit_beschriftung: bool = False) -> go.Figure: ...
-    def umsatzrendite_kumuliert(self, *, mit_beschriftung: bool = False) -> go.Figure: ...
+    def umsatzrendite_kumuliert(
+        self, *, max_jahre: int | None = None, mit_beschriftung: bool = False
+    ) -> go.Figure: ...
     def umsatztabelle(self) -> pd.DataFrame: ...
 
 
@@ -155,6 +157,11 @@ SLACK_TOKEN_VAR = "SLACK_BOT_TOKEN"
 HORIZONT_MONATE_VAR = "WOCHENBERICHT_HORIZONT_MONATE"
 
 STANDARD_HORIZONT_MONATE = 3
+# Begrenzung fuer den Kalenderjahresvergleich (siehe diagrammtitel_und_figuren) - ohne
+# sie zeigt "Kumulierte Umsatzrendite je Jahr" jedes geladene Jahr als eigene Linie und
+# wird mit wachsender Historie unuebersichtlich, anders als in Notebooks/Webapp (dort
+# bewusst die gesamte Historie).
+STANDARD_JAHRESVERGLEICH_JAHRE = 3
 
 # Slacks Datei-Upload-Endpunkt (anders als chat.postMessage, das eine Nutzer-ID beim
 # DM-Versand selbst zur Conversation-ID aufloest) verlangt bereits eine echte
@@ -380,7 +387,9 @@ def diagrammtitel_und_figuren(
         ),
         (
             "Kumulierte Umsatzrendite je Jahr",
-            dashboard.umsatzrendite_kumuliert(mit_beschriftung=True),
+            dashboard.umsatzrendite_kumuliert(
+                max_jahre=STANDARD_JAHRESVERGLEICH_JAHRE, mit_beschriftung=True
+            ),
         ),
         (
             "Schulungsteilnehmende je Monat",

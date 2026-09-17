@@ -11,6 +11,8 @@
     uv run python scripts/diagramme_exportieren.py --diagramm anmeldungsverlauf \
         --ansicht jahresvergleich --ab-jahr 2023
     uv run python scripts/diagramme_exportieren.py --diagramm umsatztabelle
+    uv run python scripts/diagramme_exportieren.py --diagramm gewinn-verlust-je-jahr \
+        --jahresvergleich-jahre alle
     uv run python scripts/diagramme_exportieren.py \
         --diagramm anteil-fakturierbarer-arbeit-verteilung \
         --anteil-fakturierbar-minimum 0.1 --anteil-fakturierbar-maximum 0.9
@@ -142,6 +144,16 @@ MIT_BESCHRIFTUNG_FAEHIG = {
 # bzw. oberen Ende gezielt aus der Anzeige aus, wie die beiden Regler in der Webapp.
 MIT_AUSREISSER_BEREICH_FAEHIG = {"anteil-fakturierbarer-arbeit-verteilung"}
 
+# Diese beiden Kalenderjahresvergleiche (Dashboard.gewinn_verlust_je_jahr()/
+# .umsatzrendite_kumuliert()) zeigen sonst jedes geladene Jahr als eigene Linie - mit
+# wachsender Historie wird das unuebersichtlich. Anders als in der Webapp (dort bewusst
+# die gesamte Historie, siehe deren Aufrufe in webapp/app.py) begrenzt der Export
+# standardmaessig auf die juengsten STANDARD_JAHRESVERGLEICH_JAHRE Kalenderjahre,
+# uebersteuerbar per --jahresvergleich-jahre (siehe _jahresvergleich_jahre_typ()).
+JAHRESVERGLEICH_FAEHIG = {"gewinn-verlust-je-jahr", "umsatzrendite-kumuliert"}
+STANDARD_JAHRESVERGLEICH_JAHRE = 3
+JAHRESVERGLEICH_JAHRE_ALLE = "alle"
+
 ALLE_DIAGRAMME = sorted(
     {
         *DIAGRAMME_DASHBOARD,
@@ -150,6 +162,20 @@ ALLE_DIAGRAMME = sorted(
         DIAGRAMM_ANMELDUNGSTABELLE,
     },
 )
+
+
+def _jahresvergleich_jahre_typ(wert: str) -> str:
+    """``argparse``-Typ für ``--jahresvergleich-jahre``: entweder
+    :data:`JAHRESVERGLEICH_JAHRE_ALLE` oder eine positive Ganzzahl als String - die
+    Umwandlung in ``int | None`` passiert erst in :func:`main`, analog zu
+    ``--zeitraum``/``zeitraum_alle``."""
+    if wert == JAHRESVERGLEICH_JAHRE_ALLE:
+        return wert
+    if not wert.isdigit() or int(wert) < 1:
+        raise argparse.ArgumentTypeError(
+            f"muss '{JAHRESVERGLEICH_JAHRE_ALLE}' oder eine positive Ganzzahl sein",
+        )
+    return wert
 
 
 def _argumente(argv: list[str]) -> argparse.Namespace:
@@ -187,6 +213,17 @@ def _argumente(argv: list[str]) -> argparse.Namespace:
         help=(
             "Prognosehorizont in Monaten für die Simulation "
             "(Standard: 3, nur für Dashboard-Diagramme)."
+        ),
+    )
+    parser.add_argument(
+        "--jahresvergleich-jahre",
+        type=_jahresvergleich_jahre_typ,
+        default=str(STANDARD_JAHRESVERGLEICH_JAHRE),
+        help=(
+            "Anzahl der juengsten Kalenderjahre absteigend vom Stichtagsjahr für "
+            "'gewinn-verlust-je-jahr'/'umsatzrendite-kumuliert', oder "
+            f"'{JAHRESVERGLEICH_JAHRE_ALLE}' für die gesamte geladene Historie "
+            f"(Standard: {STANDARD_JAHRESVERGLEICH_JAHRE})."
         ),
     )
     parser.add_argument(
@@ -536,6 +573,7 @@ def _figuren(
     trendlinien_werte: str | None,
     anteil_fakturierbar_minimum: float = 0.0,
     anteil_fakturierbar_maximum: float = 1.0,
+    max_jahre: int | None = STANDARD_JAHRESVERGLEICH_JAHRE,
 ) -> dict[str, go.Figure]:
     """Je angefordertem Namen die fertige Figur, aus bereits geladenen Daten.
 
@@ -556,6 +594,10 @@ def _figuren(
     zu, nicht anstelle von ``mit_beschriftung``: die Verteilungsgrafik steht in beiden
     Mengen (``MIT_BESCHRIFTUNG_FAEHIG`` und ``MIT_AUSREISSER_BEREICH_FAEHIG``).
 
+    ``JAHRESVERGLEICH_FAEHIG`` (die beiden Kalenderjahresvergleiche) bekommen zusaetzlich
+    ``max_jahre`` (Standard :data:`STANDARD_JAHRESVERGLEICH_JAHRE`, per
+    ``--jahresvergleich-jahre`` uebersteuerbar, ``None`` fuer die gesamte Historie).
+
     ``ansicht``/``schulung_filter``/``format_filter``/``dauer_filter``/
     ``trendlinien_werte`` gelten nur fuer ``anmeldungsverlauf`` und decken sich mit den
     gleichnamigen Reglern/Filtern auf /schulungen (siehe Moduldocstring) - die
@@ -574,6 +616,8 @@ def _figuren(
             if name in MIT_AUSREISSER_BEREICH_FAEHIG:
                 kwargs["minimum"] = anteil_fakturierbar_minimum
                 kwargs["maximum"] = anteil_fakturierbar_maximum
+            if name in JAHRESVERGLEICH_FAEHIG:
+                kwargs["max_jahre"] = max_jahre
             figuren[name] = DIAGRAMME_DASHBOARD[name](dashboard, **kwargs)
         for name in (name for name in namen if name in TABELLEN_DASHBOARD):
             methode, titel = TABELLEN_DASHBOARD[name]
@@ -703,6 +747,11 @@ def main(argv: list[str]) -> int:
         if args.zeitraum is not None and not zeitraum_alle
         else args.monate_rueckblick
     )
+    max_jahre = (
+        None
+        if args.jahresvergleich_jahre == JAHRESVERGLEICH_JAHRE_ALLE
+        else int(args.jahresvergleich_jahre)
+    )
     schulung_filter = args.schulung_filter or [ALLE_SCHULUNGEN]
     format_filter = args.format_filter or [ALLE]
     dauer_filter = args.dauer_filter or [ALLE]
@@ -733,6 +782,7 @@ def main(argv: list[str]) -> int:
         trendlinien_werte=args.trendlinien,
         anteil_fakturierbar_minimum=args.anteil_fakturierbar_minimum,
         anteil_fakturierbar_maximum=args.anteil_fakturierbar_maximum,
+        max_jahre=max_jahre,
     )
     # Die Leerzeile trennt die (auf stderr geschriebene) Ladeanzeige sichtbar von den
     # nachfolgenden Export-Balken.

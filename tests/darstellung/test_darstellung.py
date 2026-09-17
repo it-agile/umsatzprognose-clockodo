@@ -1746,6 +1746,41 @@ def test_dashboard_umsatzrendite_kumuliert_laesst_jahr_ganz_ohne_kostenerfassung
     assert [spur.name for spur in fig.data] == ["2026"]
 
 
+def test_dashboard_gewinn_verlust_je_jahr_max_jahre_begrenzt_auf_juengste_jahre():
+    historie = Umsatzhistorie(
+        stichtag=STICHTAG,  # STICHTAG: 24.08.2026
+        monate=(
+            Monatsumsatz(2023, 7, Decimal("10000.0")),
+            Monatsumsatz(2024, 7, Decimal("10000.0")),
+            Monatsumsatz(2025, 7, Decimal("10000.0")),
+            Monatsumsatz(2026, 7, Decimal("10000.0")),
+        ),
+    )
+    bestand = Bestand(stichtag=STICHTAG, umsatzhistorie=historie)
+    dashboard = Dashboard(bestand, SCHULUNGSPLAN, KOSTENPLAN)  # KOSTENPLAN: keine Posten
+
+    fig = dashboard.gewinn_verlust_je_jahr(max_jahre=3)
+    # Juengste drei Kalenderjahre absteigend vom Stichtagsjahr (2026): 2024-2026, nicht 2023.
+    assert [spur.name for spur in fig.data] == ["2024", "2025", "2026"]
+
+
+def test_dashboard_umsatzrendite_kumuliert_max_jahre_begrenzt_auf_juengste_jahre():
+    historie = Umsatzhistorie(
+        stichtag=STICHTAG,
+        monate=(
+            Monatsumsatz(2023, 7, Decimal("10000.0")),
+            Monatsumsatz(2024, 7, Decimal("10000.0")),
+            Monatsumsatz(2025, 7, Decimal("10000.0")),
+            Monatsumsatz(2026, 7, Decimal("10000.0")),
+        ),
+    )
+    bestand = Bestand(stichtag=STICHTAG, umsatzhistorie=historie)
+    dashboard = Dashboard(bestand, SCHULUNGSPLAN, KOSTENPLAN)
+
+    fig = dashboard.umsatzrendite_kumuliert(max_jahre=3)
+    assert [spur.name for spur in fig.data] == ["2024", "2025", "2026"]
+
+
 def test_dashboard_gewinn_verlust_je_jahr_ohne_jede_kostenquelle_zeigt_trotzdem_alles():
     historie = Umsatzhistorie(
         stichtag=STICHTAG,

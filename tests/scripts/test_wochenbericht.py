@@ -64,7 +64,9 @@ class _FakeDashboard:
     def umsatzverlauf(self, *, mit_beschriftung: bool = False) -> go.Figure:
         return go.Figure()
 
-    def umsatzrendite_kumuliert(self, *, mit_beschriftung: bool = False) -> go.Figure:
+    def umsatzrendite_kumuliert(
+        self, *, max_jahre: int | None = None, mit_beschriftung: bool = False
+    ) -> go.Figure:
         return go.Figure()
 
     def umsatztabelle(self) -> pd.DataFrame:
