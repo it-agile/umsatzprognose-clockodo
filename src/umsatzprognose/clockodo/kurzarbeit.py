@@ -289,10 +289,14 @@ _colab_secret = partial(colab_secret, fehlerklasse=MissingRollenzuordnungError)
 def kurzarbeit_aktiv(*, use_dotenv: bool = True) -> bool:
     """Ob der Baustein Kurzarbeitsbereitschaft ueberhaupt aktiv ist.
 
-    Steuert, ob Webapp-Seite/-Navigation, Diagramm-/Tabellen-Export und Wochenbericht
-    ueberhaupt etwas zu Kurzarbeit zeigen. Ungesetzt oder "aus" bleibt der Baustein an
-    allen drei Stellen vollstaendig unsichtbar - kein Nebenprodukt eines fehlenden
-    Zugangsdatums, sondern ein bewusster Schalter (:data:`KURZARBEIT_AKTIV_VAR`).
+    Steuert, ob Webapp-Seite/-Navigation ueberhaupt etwas zu Kurzarbeit zeigen (siehe
+    ``_KURZARBEIT_AKTIV`` in ``webapp/app.py``) - der einzige Konsument, der dieses Flag
+    tatsaechlich abfragt. Ungesetzt oder "aus" bleibt der Baustein dort vollstaendig
+    unsichtbar - kein Nebenprodukt eines fehlenden Zugangsdatums, sondern ein bewusster
+    Schalter (:data:`KURZARBEIT_AKTIV_VAR`). ``scripts/wochenbericht.py`` zeigt
+    unabhaengig vom Flag nie etwas zu Kurzarbeit (siehe dortiger Moduldocstring: die
+    Rohdaten werden dort bewusst gar nicht erst geholt); ``scripts/
+    diagramme_exportieren.py`` kennt den Baustein gar nicht erst.
 
     Laedt lokal eine ``.env`` (wie ``ClockodoCredentials.aus_umgebung()``/
     ``rollenzuordnung_aus_umgebung()``) - ohne das haette eine dort gesetzte Variable
