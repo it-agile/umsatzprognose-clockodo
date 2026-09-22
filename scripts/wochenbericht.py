@@ -11,9 +11,10 @@ aus_umgebung()`` bzw. ``GoogleSheetsConfig.aus_umgebung()``) - in der Action als
 Secrets, siehe .github/workflows/wochenbericht.yml.
 
 Ein einziger Post ("Wochenbericht Zahlen, Daten, Fakten") trägt eine bewusst schlanke
-Auswahl von vier Diagrammen/Tabellen als Bilder (siehe ``DIAGRAMM_ERLAEUTERUNGEN``),
-einschließlich der Umsatztabelle als gerendertes Bild statt als Text - ein Ausschnitt
-der Ansichten aus notebooks/01_dashboard.ipynb, notebooks/00_datencheck.ipynb und
+Auswahl von Diagrammen/Tabellen als Bilder (siehe ``DIAGRAMM_ERLAEUTERUNGEN``),
+einschließlich der Umsatztabelle und der Projekttabelle als gerendertes Bild statt als
+Text - ein Ausschnitt der Ansichten aus notebooks/01_dashboard.ipynb,
+notebooks/00_datencheck.ipynb, notebooks/02_technik_pruefung.ipynb und
 notebooks/03_schulungsanmeldungen.ipynb. Ein einzelner Slack-API-Aufruf
 (``files_upload_v2`` mit ``file_uploads``) hängt dabei alle Bilder gemeinsam an
 dieselbe Nachricht, statt je Bild eine eigene Unternachricht zu erzeugen.
@@ -28,7 +29,7 @@ Nachlesen des Textes vor einem echten Post.
 Die beiden voneinander unabhängigen Datenquellen (Dashboard, Anmeldungsverlauf) laden
 dabei gleichzeitig statt nacheinander - wie ``Dashboard.laden_async`` intern schon
 seine vier Bestandteile gleichzeitig lädt. Kurzarbeit-Rohdaten werden bewusst nicht
-geholt: der Bericht enthält seit der Abspeckung auf vier Diagramme/Tabellen (siehe
+geholt: der Bericht enthält seit der Abspeckung auf eine schlanke Auswahl (siehe
 ``DIAGRAMM_ERLAEUTERUNGEN``) keinen Kurzarbeit-Inhalt mehr. Jede Quelle trägt ihren
 Ladefortschritt in einer eigenen Zeile vor (siehe ``Mehrzeilenanzeige``), ersetzt am
 Ende durch die fertige Statuszeile - sowohl mit als auch ohne ``--nur-text``, und
@@ -78,6 +79,7 @@ from _fortschritt import (
 from umsatzprognose import Dashboard, SchulungenRepository
 from umsatzprognose.clockodo import gleichzeitig, synchron
 from umsatzprognose.darstellung import diagramme
+from umsatzprognose.darstellung.dashboard import STANDARD_TOP
 from umsatzprognose.domaene.umsatzhistorie import MONATSNAMEN
 from umsatzprognose.domaene.zahlen import euro, prozent
 
@@ -149,7 +151,9 @@ class _Dashboardauszug(Protocol):
     def umsatzrendite_kumuliert(
         self, *, max_jahre: int | None = None, mit_beschriftung: bool = False
     ) -> go.Figure: ...
+    def kapazitaet_je_projekt(self, top: int = STANDARD_TOP) -> go.Figure: ...
     def umsatztabelle(self) -> pd.DataFrame: ...
+    def projekttabelle(self, top: int | None = None) -> pd.DataFrame: ...
 
 
 SLACK_CHANNEL_VAR = "SLACK_CHANNEL_ID"
@@ -271,8 +275,8 @@ async def _daten_laden_async(
 
 # Eine Zeile Kontext je Grafik (Kollegen-Feedback: "etwas mehr Kontext als nur die
 # Grafiken") - dieselben Titel wie in diagrammtitel_und_figuren(), hier als
-# Bildunterschriften im Post statt nur als Bild-Titel im Slack-Anhang. Bewusst nur
-# diese vier (Kollegen-Feedback: der Bericht sollte schlanker sein als die volle
+# Bildunterschriften im Post statt nur als Bild-Titel im Slack-Anhang. Bewusst eine
+# schlanke Auswahl (Kollegen-Feedback: der Bericht sollte schlanker sein als die volle
 # Diagrammauswahl der Notebooks) - Reihenfolge hier bestimmt die Reihenfolge im Post.
 DIAGRAMM_ERLAEUTERUNGEN: dict[str, str] = {
     "Umsatz je Monat": (
@@ -281,6 +285,13 @@ DIAGRAMM_ERLAEUTERUNGEN: dict[str, str] = {
     ),
     "Umsatztabelle": "Dieselben Monatswerte aus dem Umsatzverlauf als Tabelle.",
     "Kumulierte Umsatzrendite je Jahr": "Gewinn in Prozent des Umsatzes, kumuliert über das Jahr.",
+    "Simulierte Kapazität je Projekt": (
+        "Über den Prognosehorizont verbrauchte Personenkapazität je Projekt, Median "
+        "über alle simulierten Läufe."
+    ),
+    "Projekttabelle": (
+        "Auftragsvolumen, Verbrauch und offenes Restvolumen je Projekt im Prognose-Scope."
+    ),
     "Schulungsteilnehmende je Monat": (
         "Teilnehmendenzahlen öffentlicher Schulungen je Monat, insgesamt."
     ),
@@ -290,7 +301,7 @@ DIAGRAMM_ERLAEUTERUNGEN: dict[str, str] = {
 # diagrammtitel_und_figuren) - fuer die Export-Zusammenfassung, die Diagramme und
 # Tabellen getrennt zaehlt, analog zu
 # scripts/diagramme_exportieren.py::_export_zusammenfassung().
-TABELLEN_TITEL = {"Umsatztabelle"}
+TABELLEN_TITEL = {"Umsatztabelle", "Projekttabelle"}
 
 
 def kontext_text(dashboard: _Dashboardauszug) -> str:
@@ -390,6 +401,11 @@ def diagrammtitel_und_figuren(
             dashboard.umsatzrendite_kumuliert(
                 max_jahre=STANDARD_JAHRESVERGLEICH_JAHRE, mit_beschriftung=True
             ),
+        ),
+        ("Simulierte Kapazität je Projekt", dashboard.kapazitaet_je_projekt()),
+        (
+            "Projekttabelle",
+            diagramme.tabelle_als_grafik("Projekttabelle", dashboard.projekttabelle()),
         ),
         (
             "Schulungsteilnehmende je Monat",

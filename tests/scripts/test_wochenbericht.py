@@ -69,8 +69,14 @@ class _FakeDashboard:
     ) -> go.Figure:
         return go.Figure()
 
+    def kapazitaet_je_projekt(self, top: int = 15) -> go.Figure:
+        return go.Figure()
+
     def umsatztabelle(self) -> pd.DataFrame:
         return pd.DataFrame({"Monat": ["September 2026"], "Umsatz": ["1.000,00 €"]})
+
+    def projekttabelle(self, top: int | None = None) -> pd.DataFrame:
+        return pd.DataFrame({"Projekt": ["Beispielprojekt"], "Offen": ["1.000,00 €"]})
 
 
 class _FakeAnmeldungsverlauf:
@@ -115,7 +121,7 @@ class _FakeSchulungenRepository:
         return _FakeAnmeldungsverlauf()
 
 
-def test_diagrammtitel_und_figuren_liefert_alle_vier_diagramme_in_reihenfolge(monkeypatch):
+def test_diagrammtitel_und_figuren_liefert_alle_diagramme_in_reihenfolge(monkeypatch):
     monkeypatch.setattr(diagramme, "anmeldungsverlauf_reihen", lambda *a, **kw: go.Figure())
 
     ergebnis = wochenbericht.diagrammtitel_und_figuren(
@@ -127,6 +133,8 @@ def test_diagrammtitel_und_figuren_liefert_alle_vier_diagramme_in_reihenfolge(mo
         "Umsatz je Monat",
         "Umsatztabelle",
         "Kumulierte Umsatzrendite je Jahr",
+        "Simulierte Kapazität je Projekt",
+        "Projekttabelle",
         "Schulungsteilnehmende je Monat",
     ]
     assert all(isinstance(figur, go.Figure) for _titel, figur in ergebnis)
@@ -163,8 +171,8 @@ class _FakeSlackClient:
         self.aufrufe.append(kwargs)
 
 
-def test_posten_haengt_alle_vier_bilder_an_einen_einzigen_post(monkeypatch, tmp_path):
-    """Ein einzelner ``files_upload_v2``-Aufruf traegt alle vier Bilder gemeinsam an
+def test_posten_haengt_alle_bilder_an_einen_einzigen_post(monkeypatch, tmp_path):
+    """Ein einzelner ``files_upload_v2``-Aufruf traegt alle Bilder gemeinsam an
     einer Nachricht (``file_uploads``), statt je Bild eine eigene Unternachricht zu
     erzeugen (siehe Moduldocstring)."""
     monkeypatch.setattr(diagramme, "anmeldungsverlauf_reihen", lambda *a, **kw: go.Figure())
@@ -398,7 +406,7 @@ def test_daten_laden_async_laedt_beide_quellen_gleichzeitig(monkeypatch):
     nicht direkt wartbar waere. Liefen Dashboard und Anmeldungsverlauf nacheinander
     statt gleichzeitig, dauerte der Aufruf mindestens ``2 * sleep`` statt nur knapp
     ``sleep``. Keine Kurzarbeit-Rohdaten mehr: der Bericht zeigt seit der Abspeckung
-    auf vier Diagramme/Tabellen keinen Kurzarbeit-Inhalt mehr (siehe
+    auf eine schlanke Auswahl keinen Kurzarbeit-Inhalt mehr (siehe
     ``DIAGRAMM_ERLAEUTERUNGEN``)."""
     sleep = 0.2
 
