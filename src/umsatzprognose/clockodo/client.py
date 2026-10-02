@@ -446,7 +446,11 @@ class ClockodoClient:
         self.timeout = timeout
         self._transport = transport
 
-    async def get(self, path: str, params: Mapping[str, Any] | None = None) -> Any:
+    async def get(
+        self,
+        path: str,
+        params: Mapping[str, Any] | None = None,
+    ) -> dict[str, object]:
         """Ein GET gegen die API. Wirft bei HTTP-Fehlern einen :class:`ClockodoError`.
 
         Ein 429 (Ratenbegrenzung, siehe :data:`RATE_LIMIT_STATUS`) oder ein 504
@@ -483,7 +487,12 @@ class ClockodoClient:
             raise ClockodoError(
                 f"{response.status_code} fuer {response.request.url}\n{response.text[:1000]}",
             )
-        return response.json()
+        daten = response.json()
+        if not isinstance(daten, dict):
+            raise ClockodoError(
+                f"Antwort von {response.request.url} ist kein JSON-Objekt: {response.text[:1000]}",
+            )
+        return daten
 
     async def get_paged(
         self,
@@ -502,9 +511,9 @@ class ClockodoClient:
             geladen wurde.
         """
         erste = await self.get(path, {**(params or {}), "page": 1})
-        paging = erste.get("paging") or {}
+        paging = cast("dict[str, Any]", erste.get("paging") or {})
         seiten = int(paging.get("count_pages") or 1)
-        alle = list(erste["data"])
+        alle = list(cast("list[dict[str, Any]]", erste["data"]))
         if seiten <= 1:
             return alle, paging
 
@@ -512,8 +521,8 @@ class ClockodoClient:
             *(self.get(path, {**(params or {}), "page": seite}) for seite in range(2, seiten + 1)),
         )
         for payload in weitere:
-            alle.extend(payload["data"])
-            paging = payload.get("paging") or paging
+            alle.extend(cast("list[dict[str, Any]]", payload["data"]))
+            paging = cast("dict[str, Any]", payload.get("paging") or paging)
         return alle, paging
 
     async def projects(self) -> tuple[list[ProjectV4], dict[str, Any]]:

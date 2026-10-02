@@ -200,6 +200,13 @@ def test_fehler_traegt_den_antwortkoerper():
     assert "Unknown group option" in str(fehler.value)
 
 
+def test_get_wirft_clockodoerror_wenn_die_antwort_kein_json_objekt_ist():
+    client, _ = client_mit(lambda _: httpx2.Response(200, json=[{"id": 1}]))
+
+    with pytest.raises(ClockodoError, match="kein JSON-Objekt"):
+        synchron(client.projects())
+
+
 async def _ohne_wartezeit(*_args, **_kwargs) -> None:
     """Ersetzt ``asyncio.sleep`` in den Ratenbegrenzungs-Tests - sie sollen die echte
     Wartezeit nicht abwarten muessen."""

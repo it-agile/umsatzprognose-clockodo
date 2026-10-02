@@ -36,7 +36,6 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from functools import partial
-from typing import Any
 
 from dotenv import load_dotenv
 
@@ -88,7 +87,7 @@ class GoogleSheetsConfig:
         return cls(jahre_zu_dateien=_jahre_zu_dateien(_colab_secret(SHEET_ID_VAR)))
 
 
-def json_geladen(roh: str, var_name: str) -> Any:
+def json_geladen(roh: str, var_name: str) -> object:
     """Parst ``roh`` als JSON, sonst :class:`MissingCredentialsError` mit ``var_name``.
 
     Gemeinsame Grundlage der JSON-Umgebungsvariablen dieses Bausteins

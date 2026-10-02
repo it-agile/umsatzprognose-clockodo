@@ -136,17 +136,16 @@ def kategorien_aus_colab_secrets() -> Kategorisierung:
 
 def _kategorien_aus_json(roh: str) -> Kategorisierung:
     wert = json_geladen(roh, KATEGORIEN_VAR)
-    ungueltig = not isinstance(wert, dict) or not all(
+    if isinstance(wert, dict) and all(
         isinstance(kategorie, str)
         and isinstance(typen, list)
         and all(isinstance(typ, str) for typ in typen)
         for kategorie, typen in wert.items()
+    ):
+        return wert
+    raise MissingCredentialsError(
+        f"{KATEGORIEN_VAR} muss ein JSON-Objekt Kategorie -> Liste von Schulungstypen sein.",
     )
-    if ungueltig:
-        raise MissingCredentialsError(
-            f"{KATEGORIEN_VAR} muss ein JSON-Objekt Kategorie -> Liste von Schulungstypen sein.",
-        )
-    return wert
 
 
 def _jahr_spalte_ermitteln(index: dict[str, int]) -> int:

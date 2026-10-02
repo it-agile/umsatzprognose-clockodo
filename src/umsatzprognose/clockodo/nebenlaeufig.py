@@ -96,7 +96,7 @@ async def gleichzeitig(*coroutinen: Coroutine[Any, Any, Any]) -> list[Any]:
     """
     sperre = asyncio.Semaphore(MAX_GLEICHZEITIG)
 
-    async def begrenzt(coro: Coroutine[Any, Any, Any]) -> Any:
+    async def begrenzt[T](coro: Coroutine[Any, Any, T]) -> T:
         async with sperre:
             return await coro
 

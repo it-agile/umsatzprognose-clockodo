@@ -137,7 +137,7 @@ select = [
     "PLW", "PT", "PTH", "PYI", "Q", "RET", "RSE", "RUF", "SIM", "SLF", "SLOT", "TC", "TID", "UP",
     "W", "YTT",
 ]  # fmt: skip
-ignore = ["ANN401", "COM812", "PLC0415", "PLR0913", "PLR0917", "PLR2004"]
+ignore = ["COM812", "PLC0415", "PLR0913", "PLR0917", "PLR2004"]
 fixable = [
     "B", "C", "COM", "E", "F", "FA", "FAST", "FLY", "I", "ICN", "ISC", "NPY",
     "PD", "PERF", "PIE", "PT", "Q", "RET", "RSE", "SIM", "TC", "TID", "UP",
