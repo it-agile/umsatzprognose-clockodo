@@ -24,8 +24,8 @@ uv sync --extra bericht && uv run python scripts/diagramme_exportieren.py   # Di
 ```
 
 `tox` läuft über `uvx`, ist keine Projektabhängigkeit (`[tool.tox]` in `pyproject.toml`).
-`env_list` (`py312`, `py313`, `py314`, `coverage`, `ruff`, `mypy`, `mypy-notebooks`) läuft
-bei `uvx tox` ohne weitere Angabe; `jupyter`, `web`, `ty` nur mit `-e <name>`.
+`env_list` (`py312`, `py313`, `py314`, `coverage`, `ruff`, `mypy`, `mypy-notebooks`, `ty`)
+läuft bei `uvx tox` ohne weitere Angabe; `jupyter`, `web` nur mit `-e <name>`.
 
 Werkzeugkonfiguration (ruff, mypy, ty, pytest, coverage, tox) steht zentral in
 `pyproject.toml` (`[tool.*]`), nicht in eigenen Dateien – außer ein Werkzeug unterstützt

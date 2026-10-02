@@ -72,7 +72,7 @@ build-backend = "hatchling.build"
 packages = ["src/umsatzprognose"]
 
 [tool.tox]
-env_list = [ "py312", "py313", "py314", "coverage", "ruff", "mypy", "mypy-notebooks" ]
+env_list = [ "py312", "py313", "py314", "coverage", "ruff", "mypy", "mypy-notebooks", "ty" ]
 use_develop = true
 
 [tool.tox.env_run_base]
@@ -109,7 +109,6 @@ commands = [[ "nbqa", "mypy", { replace = "posargs", default = ["notebooks"], ex
 [tool.tox.env.ty]
 extras = [ "ty", "dev", "bericht", "web", "notebook" ]
 allowlist_externals = [ "ty" ]
-ignore_outcome = true
 commands = [[ "ty", "check", { replace = "posargs", default = ["src", "tests", "scripts", "notebooks"], extend = true } ]]
 
 [tool.tox.env.py315]
@@ -133,12 +132,12 @@ src = ["src", "tests", "notebooks", "scripts"]
 
 [tool.ruff.lint]
 select = [
-    "A", "ARG", "ASYNC", "B", "C4", "C90", "COM", "DTZ", "E", "F", "FA", "FAST", "FBT", "FIX",
+    "A", "ANN", "ARG", "ASYNC", "B", "C4", "C90", "COM", "DTZ", "E", "F", "FA", "FAST", "FBT", "FIX",
     "FLY", "I", "ICN", "INP", "ISC", "N", "NPY", "PD", "PERF", "PGH", "PIE", "PLC", "PLE", "PLR",
     "PLW", "PT", "PTH", "PYI", "Q", "RET", "RSE", "RUF", "SIM", "SLF", "SLOT", "TC", "TID", "UP",
     "W", "YTT",
 ]  # fmt: skip
-ignore = ["COM812", "PLC0415", "PLR0913", "PLR0917", "PLR2004"]
+ignore = ["ANN401", "COM812", "PLC0415", "PLR0913", "PLR0917", "PLR2004"]
 fixable = [
     "B", "C", "COM", "E", "F", "FA", "FAST", "FLY", "I", "ICN", "ISC", "NPY",
     "PD", "PERF", "PIE", "PT", "Q", "RET", "RSE", "SIM", "TC", "TID", "UP",
@@ -152,10 +151,10 @@ mccabe.max-complexity = 10
 allowed-confusables = ["σ", "μ", "λ"]
 
 [tool.ruff.lint.per-file-ignores]
-"*.ipynb" = ["E402"]
-"notebooks/setup.py" = ["PLW0603"]
-"scripts/*" = ["INP"]
-"tests/*" = ["ARG", "SLF001"]
+"*.ipynb" = ["ANN", "E402"]
+"notebooks/setup.py" = ["ANN", "PLW0603"]
+"scripts/*" = ["ANN", "INP"]
+"tests/*" = ["ANN", "ARG", "SLF001"]
 
 [tool.ruff.format]
 docstring-code-format = true
