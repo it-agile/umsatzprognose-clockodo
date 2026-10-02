@@ -81,6 +81,16 @@ class Prognose(Protocol):
         """
         ...
 
+    def ohne_budget(self) -> list[Decimal]:
+        """Median des Umsatzes der Projekte ohne Budget je Horizontmonat.
+
+        Der Anteil von :meth:`monatswerte` (Niveau 50 %), der auf Projekte ohne Budget
+        entfaellt (siehe :mod:`umsatzprognose.domaene.ohne_budget`); 0 je Monat, wenn
+        das Modell aus war. Der Median einer Teilmenge, nicht die Differenz zweier
+        Mediane: beide Zahlen summieren sich nicht exakt zum Gesamtmedian.
+        """
+        ...
+
 
 @dataclass(frozen=True, slots=True)
 class NochKeinePrognose:
@@ -120,3 +130,6 @@ class NochKeinePrognose:
 
     def kapazitaet_je_projekt(self) -> dict[int, float]:
         return {}
+
+    def ohne_budget(self) -> list[Decimal]:
+        return []

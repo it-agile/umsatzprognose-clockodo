@@ -23,7 +23,7 @@ import plotly.graph_objects as go
 import pytest
 
 from umsatzprognose.darstellung import diagramme
-from umsatzprognose.domaene import NochKeinePrognose, Prognose
+from umsatzprognose.domaene import NochKeinePrognose, OhneBudgetModell, Prognose
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -264,6 +264,9 @@ class _FakePrognose:
     def kapazitaet_je_projekt(self) -> dict[int, float]:
         return {}
 
+    def ohne_budget(self) -> list[Decimal]:
+        return []
+
 
 def test_kontext_text_ohne_prognose_liefert_deren_begruendung():
     dashboard = _FakeDashboard()
@@ -395,8 +398,16 @@ def test_argumente_mit_nur_text_flag(monkeypatch):
 
 
 class _FakeGeladenesDashboard:
-    async def simuliere_async(self, *, monate: int, fortschritt: Fortschritt | None = None) -> None:
-        pass
+    ohne_budget: object = "nicht aufgerufen"
+
+    async def simuliere_async(
+        self,
+        *,
+        monate: int,
+        ohne_budget: object = None,
+        fortschritt: Fortschritt | None = None,
+    ) -> None:
+        self.ohne_budget = ohne_budget
 
 
 def test_daten_laden_async_laedt_beide_quellen_gleichzeitig(monkeypatch):
@@ -489,3 +500,33 @@ def test_daten_laden_async_ueberspringt_anmeldungsverlauf_wenn_nicht_gebraucht(m
     )
 
     assert anmeldungsverlauf_fenster is None
+
+
+def test_daten_laden_async_simuliert_mit_dem_modell_aus_der_umgebung(monkeypatch):
+    """In der Action kommt ``OHNE_BUDGET_MODELL`` als Secret ueber ``env:`` an (siehe
+    .github/workflows/wochenbericht.yml) - der Bericht simuliert damit wie die Webapp."""
+    modell = OhneBudgetModell(schulung=("Kurs",))
+    geladen = _FakeGeladenesDashboard()
+
+    class _FakeDashboardKlasse:
+        @staticmethod
+        async def laden_async(
+            *,
+            stichtag: date,
+            horizont_monate: int,
+            fortschritt: Fortschritt | None = None,
+        ) -> _FakeGeladenesDashboard:
+            return geladen
+
+    monkeypatch.setattr(wochenbericht, "Dashboard", _FakeDashboardKlasse)
+    monkeypatch.setattr(wochenbericht, "ohne_budget_modell_automatisch", lambda: modell)
+
+    asyncio.run(
+        wochenbericht._daten_laden_async(
+            stichtag=date(2026, 9, 1),
+            horizont_monate=3,
+            mit_anmeldungsverlauf=False,
+        ),
+    )
+
+    assert geladen.ohne_budget is modell

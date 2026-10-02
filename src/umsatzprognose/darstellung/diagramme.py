@@ -523,8 +523,10 @@ def _horizont_gesamtumsatz(
     *,
     verbrauch_laufender_monat: Monatsumsatz | None = None,
     schulungsplan: Schulungsplan | None = None,
+    niveau: float = 0.50,
 ) -> dict[tuple[int, int], Decimal]:
-    """Gesamtumsatz je Horizontmonat - bereits Realisiertes/Gebuchtes plus Median-Prognose.
+    """Gesamtumsatz je Horizontmonat - bereits Realisiertes/Gebuchtes plus Prognose auf
+    einem Konfidenzniveau (Standard: Median).
 
     Reine Berechnung ohne Zeichnen, im Unterschied zu :func:`_prognosehorizont`, die
     dieselbe Zahl als Nebenprodukt des Balkenaufbaus zurueckgibt - fuer Aufrufer wie
@@ -533,20 +535,24 @@ def _horizont_gesamtumsatz(
 
     Der erste Horizontmonat ist der laufende: er addiert das vor dem Stichtag bereits
     realisierte ``verbrauch_laufender_monat`` zum simulierten Rest-des-Monats-Umsatz.
-    Fuer die folgenden Monate deckt der Median bereits den vollen Monat ab - das Modell
+    Fuer die folgenden Monate deckt der Wert bereits den vollen Monat ab - das Modell
     rechnet einen bereits gebuchten Betrag als Untergrenze ein
     (``Monatsumsatz = max(simulierter Umsatz, bereits gebuchter Umsatz)``, siehe
     :mod:`umsatzprognose.domaene.simulation`); nur ``schulungsplan`` kommt additiv fuer
     jeden Monat hinzu, weil er ausserhalb der Simulation steht.
+
+    ``niveau`` waehlt eines der :data:`~umsatzprognose.domaene.prognose.KONFIDENZNIVEAUS`
+    (Standard 0.50, der Median) - :func:`_rendite_fehlerbalken` ruft dieselbe Funktion
+    zusaetzlich mit 0.85/0.95 auf, fuer die Fehlerbalken der kumulierten Umsatzrendite.
     """
     horizont = prognose.horizontmonate()
     if not horizont:
         return {}
-    median = prognose.monatswerte()[0.50]
+    monatswerte = prognose.monatswerte()[niveau]
     schulung = _schulung_je_monat(schulungsplan, horizont)
     basis0 = verbrauch_laufender_monat.umsatz if verbrauch_laufender_monat else Decimal("0")
-    gesamt = [basis0 + median[0] + schulung[0]] + [
-        m + s for m, s in zip(median[1:], schulung[1:], strict=True)
+    gesamt = [basis0 + monatswerte[0] + schulung[0]] + [
+        m + s for m, s in zip(monatswerte[1:], schulung[1:], strict=True)
     ]
     return dict(zip(horizont, gesamt, strict=True))
 
@@ -594,6 +600,10 @@ def _prognosehorizont(
         g + s for g, s in zip(gebucht[1:], schulung[1:], strict=True)
     ]
     prognostiziert = [median[0]] + [m - g for m, g in zip(median[1:], gebucht[1:], strict=True)]
+    ohne_budget = prognose.ohne_budget()
+    ohne_budget_zeile = (
+        "<br>Davon Projekte ohne Budget: %{customdata[2]}" if any(ohne_budget) else ""
+    )
 
     if any(schulung):
         fig.add_bar(
@@ -627,10 +637,17 @@ def _prognosehorizont(
         base=[float(s) for s in sockel],
         offsetgroup="umsatz",
         marker={"color": SERIE_HELL, "opacity": PROGNOSE_DECKKRAFT},
-        customdata=list(zip([euro(m) for m in median], [euro(p) for p in p85], strict=True)),
+        customdata=list(
+            zip(
+                [euro(m) for m in median],
+                [euro(p) for p in p85],
+                [euro(o) for o in ohne_budget or [Decimal("0")] * len(median)],
+                strict=True,
+            )
+        ),
         hovertemplate=(
             "<b>%{x}</b><br>Erwartet (Median): %{customdata[0]}<br>"
-            "85%-Niveau: %{customdata[1]}<extra></extra>"
+            f"85%-Niveau: %{{customdata[1]}}{ohne_budget_zeile}<extra></extra>"
         ),
         # Direkt an diesem Balken statt an einer eigenen Spur, damit die Fehlerbalken
         # dessen ``offsetgroup="umsatz"`` erben und ueber dem Umsatzbalken sitzen, statt
@@ -1002,6 +1019,106 @@ def gewinn_verlust_je_jahr(
     return fig
 
 
+def _kumulierte_rendite(punkte: list[tuple[int, Decimal, Decimal, float]]) -> list[float]:
+    """Kumulierte Umsatzrendite (Gewinn/Umsatz) je Punkt einer Jahreslinie - Year-to-Date-
+    Marge, siehe :func:`umsatzrendite_kumuliert`. Eine reine Verhaeltniszahl und keine
+    Geldgroesse, deshalb bewusst in ``float`` gerechnet, wie die uebrigen Quoten der
+    Domaene. Ein Punkt ganz ohne kumulierten Umsatz (weder Ist noch Vorausschau) zeigt
+    0 % statt eines Fehlers.
+    """
+    kumulierter_umsatz = kumuliertes_ergebnis = 0.0
+    werte = []
+    for _monat, monatsumsatz, monatsergebnis, _deck in punkte:
+        kumulierter_umsatz += float(monatsumsatz)
+        kumuliertes_ergebnis += float(monatsergebnis)
+        anteil = kumuliertes_ergebnis / kumulierter_umsatz if kumulierter_umsatz else 0.0
+        werte.append(anteil * 100)
+    return werte
+
+
+def _rendite_fehlerbalken(
+    fig: go.Figure,
+    jahre: dict[int, list[tuple[int, Decimal, Decimal, float]]],
+    *,
+    monate: Sequence[Monatsumsatz],
+    kosten: Sequence[Decimal],
+    prognose: Prognose,
+    horizont_kosten: Sequence[Decimal],
+    schulungsplan: Schulungsplan | None,
+    verbrauch_laufender_monat: Monatsumsatz | None,
+    deckkraft: Sequence[float],
+) -> None:
+    """Haengt an jeden prognostizierten Punkt (Vorlaeufig wie Prognose, siehe
+    :data:`_LINIENABSCHNITTE`) einer Jahreslinie in :func:`umsatzrendite_kumuliert` einen
+    eigenen Fehlerbalken bis zum 95%-Konfidenzniveau der kumulierten Rendite an -
+    dieselbe Konvention wie :func:`_prognosehorizont` (Median als eigentlicher
+    Linienpunkt, Fehlerbalken nur abwaerts bis zum 95%-Niveau, das 85%-Niveau zusaetzlich
+    im Hovertext). Ein eigener Fehlerbalken je Monat statt einer durchgehenden
+    Bandflaeche, weil die Rendite kumuliert (Year-to-Date) ist: die Bandbreite an einem
+    Monat haengt von der gesamten bis dahin gezogenen Zufallsfolge ab, nicht von einer
+    fuer sich stehenden Verteilung je Monat.
+
+    Berechnet die kumulierte Rendite fuer 85 %/95 % genau wie :func:`_kumulierte_rendite`
+    fuer den Median, nur mit ``niveau=0.85``/``0.95`` in :func:`_horizont_gesamtumsatz`
+    statt des Medians - die Historie (und damit der jeweilige Startpunkt der Kumulierung)
+    bleibt fuer alle drei Niveaus gleich, nur der Prognosehorizont unterscheidet sich.
+    """
+    if not prognose.vorhanden or not prognose.horizontmonate():
+        return
+
+    def _umsatz_ergebnis(niveau: float) -> tuple[list[Decimal], list[Decimal]]:
+        umsatz = [m.umsatz for m in monate]
+        ergebnis = [u - k for u, k in zip(umsatz, kosten, strict=True)]
+        horizont = prognose.horizontmonate()
+        gesamtumsatz = _horizont_gesamtumsatz(
+            prognose,
+            verbrauch_laufender_monat=verbrauch_laufender_monat,
+            schulungsplan=schulungsplan,
+            niveau=niveau,
+        )
+        horizont_umsatz = [gesamtumsatz[schluessel] for schluessel in horizont]
+        umsatz += horizont_umsatz
+        ergebnis += [u - k for u, k in zip(horizont_umsatz, horizont_kosten, strict=True)]
+        return umsatz, ergebnis
+
+    jahre_85 = _je_jahr(monate, prognose, *_umsatz_ergebnis(0.85), deckkraft)
+    jahre_95 = _je_jahr(monate, prognose, *_umsatz_ergebnis(0.95), deckkraft)
+
+    for jahr in sorted(jahre):
+        punkte = jahre[jahr]
+        prognose_indizes = [i for i, (*_rest, deck) in enumerate(punkte) if deck != 1.0]
+        if not prognose_indizes:
+            continue
+        beschriftungen = [MONATSNAMEN[monat - 1] for monat, *_rest in punkte]
+        median = _kumulierte_rendite(punkte)
+        p85 = _kumulierte_rendite(jahre_85[jahr])
+        p95 = _kumulierte_rendite(jahre_95[jahr])
+        fig.add_scatter(
+            x=[beschriftungen[i] for i in prognose_indizes],
+            y=[median[i] for i in prognose_indizes],
+            mode="markers",
+            marker={"size": 5, "color": TINTE_GEDAEMPFT},
+            error_y={
+                "type": "data",
+                "symmetric": False,
+                "array": [0.0] * len(prognose_indizes),
+                "arrayminus": [max(0.0, median[i] - p95[i]) for i in prognose_indizes],
+                "color": TINTE_GEDAEMPFT,
+                "thickness": 1.5,
+                "width": 4,
+            },
+            customdata=[[prozent(p85[i] / 100, nachkommastellen=1)] for i in prognose_indizes],
+            hovertemplate="<b>%{x}</b><br>85%-Niveau: %{customdata[0]}<extra></extra>",
+            # Gleicher Name wie die zugehoerige Jahreslinie statt ein eigener - so
+            # gruppiert :func:`_deckkraft_abschluss`s Legende diese Spur nicht als
+            # zusaetzlichen, unbenannten Eintrag (siehe deren Filter auf den Jahresnamen
+            # in den Tests).
+            name=str(jahr),
+            legendgroup=str(jahr),
+            showlegend=False,
+        )
+
+
 def umsatzrendite_kumuliert(
     monate: Sequence[Monatsumsatz],
     kosten: Sequence[Decimal],
@@ -1012,6 +1129,7 @@ def umsatzrendite_kumuliert(
     verbrauch_laufender_monat: Monatsumsatz | None = None,
     hoehe: int = 380,
     mit_beschriftung: bool = False,
+    mit_fehlerbalken: bool = True,
 ) -> go.Figure:
     """Fuer jedes Kalenderjahr die kumulierte Umsatzrendite (Gewinn/Umsatz) je Monat.
 
@@ -1023,6 +1141,11 @@ def umsatzrendite_kumuliert(
     :func:`gewinn_verlust_je_jahr`, dort auch die uebrigen Parameter erklaert. Ein
     Monat ganz ohne Umsatz (weder Ist noch Vorausschau) zeigt 0 % statt eines Fehlers.
     ``mit_beschriftung`` siehe :func:`umsatzverlauf`.
+
+    ``mit_fehlerbalken`` (Standard an) zeigt fuer jeden prognostizierten Monat einen
+    eigenen, kumuliert fortgeschriebenen Fehlerbalken (siehe :func:`_rendite_fehlerbalken`)
+    - abschaltbar ueber ``--umsatzrendite-fehlerbalken aus`` in
+    ``scripts/diagramme_exportieren.py`` bzw. den gleichnamigen Schalter in der Webapp.
     """
     _beschriftungen, umsatz, ergebnis, deckkraft = _historie_und_horizont_werte(
         monate,
@@ -1034,25 +1157,25 @@ def umsatzrendite_kumuliert(
     )
     jahre = _je_jahr(monate, prognose, umsatz, ergebnis, deckkraft)
 
-    def rendite_je_monat(punkte: list[tuple[int, Decimal, Decimal, float]]) -> list[float]:
-        # Eine reine Verhaeltniszahl (Gewinn/Umsatz) und keine Geldgroesse - deshalb ab
-        # hier bewusst in ``float`` gerechnet, wie die uebrigen Quoten der Domaene.
-        kumulierter_umsatz = kumuliertes_ergebnis = 0.0
-        werte = []
-        for _monat, monatsumsatz, monatsergebnis, _deck in punkte:
-            kumulierter_umsatz += float(monatsumsatz)
-            kumuliertes_ergebnis += float(monatsergebnis)
-            anteil = kumuliertes_ergebnis / kumulierter_umsatz if kumulierter_umsatz else 0.0
-            werte.append(anteil * 100)
-        return werte
-
     def prozentformat(prozentpunkte: float) -> str:
         return prozent(prozentpunkte / 100, nachkommastellen=1)
 
     fig = figur("Kumulierte Umsatzrendite je Jahr", hoehe=hoehe)
-    letzte_punkte = _jahreslinien(fig, jahre, werte=rendite_je_monat, formatieren=prozentformat)
+    letzte_punkte = _jahreslinien(fig, jahre, werte=_kumulierte_rendite, formatieren=prozentformat)
     if mit_beschriftung:
         _endpunkte_beschriften(fig, letzte_punkte, prozentformat)
+    if mit_fehlerbalken:
+        _rendite_fehlerbalken(
+            fig,
+            jahre,
+            monate=monate,
+            kosten=kosten,
+            prognose=prognose,
+            horizont_kosten=horizont_kosten,
+            schulungsplan=schulungsplan,
+            verbrauch_laufender_monat=verbrauch_laufender_monat,
+            deckkraft=deckkraft,
+        )
     fig.add_hline(y=0, line={"color": ACHSE, "width": 1})
     _deckkraft_abschluss(fig, deckkraft)
     fig.update_yaxes(tickformat=",.1f", ticksuffix=" %")

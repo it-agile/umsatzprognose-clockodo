@@ -13,6 +13,8 @@
     uv run python scripts/diagramme_exportieren.py --diagramm umsatztabelle
     uv run python scripts/diagramme_exportieren.py --diagramm gewinn-verlust-je-jahr \
         --jahresvergleich-jahre alle
+    uv run python scripts/diagramme_exportieren.py --diagramm umsatzrendite-kumuliert \
+        --umsatzrendite-fehlerbalken aus
     uv run python scripts/diagramme_exportieren.py \
         --diagramm anteil-fakturierbarer-arbeit-verteilung \
         --anteil-fakturierbar-minimum 0.1 --anteil-fakturierbar-maximum 0.9
@@ -89,7 +91,7 @@ from _fortschritt import (
     relativer_pfad,
 )
 from umsatzprognose import Dashboard
-from umsatzprognose.clockodo import gleichzeitig, synchron
+from umsatzprognose.clockodo import gleichzeitig, ohne_budget_modell_automatisch, synchron
 from umsatzprognose.darstellung import diagramme, tabellen
 from umsatzprognose.domaene import GaussFakturierbareArbeit, WeibullFakturierbareArbeit
 from umsatzprognose.schulungen import SchulungenRepository, kategorien_automatisch
@@ -153,6 +155,12 @@ MIT_AUSREISSER_BEREICH_FAEHIG = {"anteil-fakturierbarer-arbeit-verteilung"}
 JAHRESVERGLEICH_FAEHIG = {"gewinn-verlust-je-jahr", "umsatzrendite-kumuliert"}
 STANDARD_JAHRESVERGLEICH_JAHRE = 3
 JAHRESVERGLEICH_JAHRE_ALLE = "alle"
+
+# Nur "umsatzrendite-kumuliert" kennt Fehlerbalken (siehe Dashboard.
+# umsatzrendite_kumuliert()) - je prognostiziertem Monat ein eigener, kumuliert
+# fortgeschriebener Fehlerbalken bis zum 95%-Konfidenzniveau, standardmaessig an, wie in
+# der Webapp, uebersteuerbar per --umsatzrendite-fehlerbalken.
+FEHLERBALKEN_FAEHIG = {"umsatzrendite-kumuliert"}
 
 ALLE_DIAGRAMME = sorted(
     {
@@ -320,6 +328,16 @@ def _argumente(argv: list[str]) -> argparse.Namespace:
             "'gewinn-verlust-je-jahr'/'umsatzrendite-kumuliert', oder "
             f"'{JAHRESVERGLEICH_JAHRE_ALLE}' für die gesamte geladene Historie "
             f"(Standard: {STANDARD_JAHRESVERGLEICH_JAHRE})."
+        ),
+    )
+    jahresvergleich(
+        "--umsatzrendite-fehlerbalken",
+        choices=("an", "aus"),
+        default="an",
+        help=(
+            "Fehlerbalken (85%%/95%%-Konfidenzniveau) an jedem prognostizierten Monat in "
+            "'umsatzrendite-kumuliert' ein-/ausschalten, wie der gleichnamige Schalter "
+            "in der Webapp (Standard: an)."
         ),
     )
 
@@ -642,6 +660,7 @@ async def _daten_laden_async(
             monate=horizont_monate,
             anteil_fakturierbar=anteil_fakturierbar,
             fakturierbare_arbeit_ziehung=ziehung,
+            ohne_budget=ohne_budget_modell_automatisch(),
             fortschritt=melden,
         )
         return dashboard
@@ -697,6 +716,32 @@ async def _daten_laden_async(
     return dashboard, anmeldungsverlauf_fenster
 
 
+def _dashboard_diagramm_kwargs(
+    name: str,
+    *,
+    mit_beschriftung: bool,
+    anteil_fakturierbar_minimum: float,
+    anteil_fakturierbar_maximum: float,
+    max_jahre: int | None,
+    mit_fehlerbalken: bool,
+) -> dict[str, object]:
+    """Zusaetzliche Schluesselwortargumente fuer eine einzelne ``DIAGRAMME_DASHBOARD``-
+    Methode, abhaengig davon, in welchen der Faehigkeits-Mengen (``MIT_BESCHRIFTUNG_FAEHIG``
+    & Co.) ``name`` steht - ausgelagert aus :func:`_figuren`, um deren Verzweigungstiefe
+    klein zu halten (siehe dort fuer die Bedeutung der einzelnen Parameter)."""
+    kwargs: dict[str, object] = {}
+    if name in MIT_BESCHRIFTUNG_FAEHIG:
+        kwargs["mit_beschriftung"] = mit_beschriftung
+    if name in MIT_AUSREISSER_BEREICH_FAEHIG:
+        kwargs["minimum"] = anteil_fakturierbar_minimum
+        kwargs["maximum"] = anteil_fakturierbar_maximum
+    if name in JAHRESVERGLEICH_FAEHIG:
+        kwargs["max_jahre"] = max_jahre
+    if name in FEHLERBALKEN_FAEHIG:
+        kwargs["mit_fehlerbalken"] = mit_fehlerbalken
+    return kwargs
+
+
 def _figuren(
     namen: list[str],
     *,
@@ -712,6 +757,7 @@ def _figuren(
     anteil_fakturierbar_minimum: float = 0.0,
     anteil_fakturierbar_maximum: float = 1.0,
     max_jahre: int | None = STANDARD_JAHRESVERGLEICH_JAHRE,
+    mit_fehlerbalken: bool = True,
 ) -> dict[str, go.Figure]:
     """Je angefordertem Namen die fertige Figur, aus bereits geladenen Daten.
 
@@ -736,6 +782,9 @@ def _figuren(
     ``max_jahre`` (Standard :data:`STANDARD_JAHRESVERGLEICH_JAHRE`, per
     ``--jahresvergleich-jahre`` uebersteuerbar, ``None`` fuer die gesamte Historie).
 
+    ``FEHLERBALKEN_FAEHIG`` (nur ``umsatzrendite-kumuliert``) bekommt zusaetzlich
+    ``mit_fehlerbalken`` (Standard an, per ``--umsatzrendite-fehlerbalken`` abschaltbar).
+
     ``ansicht``/``schulung_filter``/``format_filter``/``dauer_filter``/
     ``trendlinien_werte`` gelten nur fuer ``anmeldungsverlauf`` und decken sich mit den
     gleichnamigen Reglern/Filtern auf /schulungen (siehe Moduldocstring) - die
@@ -748,14 +797,14 @@ def _figuren(
 
     if dashboard is not None:
         for name in (name for name in namen if name in DIAGRAMME_DASHBOARD):
-            kwargs: dict[str, object] = {}
-            if name in MIT_BESCHRIFTUNG_FAEHIG:
-                kwargs["mit_beschriftung"] = mit_beschriftung
-            if name in MIT_AUSREISSER_BEREICH_FAEHIG:
-                kwargs["minimum"] = anteil_fakturierbar_minimum
-                kwargs["maximum"] = anteil_fakturierbar_maximum
-            if name in JAHRESVERGLEICH_FAEHIG:
-                kwargs["max_jahre"] = max_jahre
+            kwargs = _dashboard_diagramm_kwargs(
+                name,
+                mit_beschriftung=mit_beschriftung,
+                anteil_fakturierbar_minimum=anteil_fakturierbar_minimum,
+                anteil_fakturierbar_maximum=anteil_fakturierbar_maximum,
+                max_jahre=max_jahre,
+                mit_fehlerbalken=mit_fehlerbalken,
+            )
             figuren[name] = DIAGRAMME_DASHBOARD[name](dashboard, **kwargs)
         for name in (name for name in namen if name in TABELLEN_DASHBOARD):
             methode, titel = TABELLEN_DASHBOARD[name]
@@ -921,6 +970,7 @@ def main(argv: list[str]) -> int:
         anteil_fakturierbar_minimum=args.anteil_fakturierbar_minimum,
         anteil_fakturierbar_maximum=args.anteil_fakturierbar_maximum,
         max_jahre=max_jahre,
+        mit_fehlerbalken=args.umsatzrendite_fehlerbalken == "an",
     )
     # Die Leerzeile trennt die (auf stderr geschriebene) Ladeanzeige sichtbar von den
     # nachfolgenden Export-Balken.

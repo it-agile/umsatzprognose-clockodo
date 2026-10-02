@@ -17,7 +17,13 @@ import pytest
 
 from umsatzprognose.clockodo import KurzarbeitRepository
 from umsatzprognose.darstellung import Dashboard
-from umsatzprognose.domaene import Anmeldungsverlauf, Personenmonat, Rollenzuordnung, Schwellenwerte
+from umsatzprognose.domaene import (
+    Anmeldungsverlauf,
+    OhneBudgetModell,
+    Personenmonat,
+    Rollenzuordnung,
+    Schwellenwerte,
+)
 from umsatzprognose.schulungen import SchulungenRepository
 from umsatzprognose.webapp import cache as webapp_cache
 from umsatzprognose.webapp.cache import (
@@ -36,9 +42,11 @@ class _FakeDashboard:
         self.horizont_monate = horizont_monate
         self.auslastung_monate = auslastung_monate
         self.simulierte_monate: int | None = None
+        self.ohne_budget: object = "nicht aufgerufen"
 
-    async def simuliere_async(self, *, monate: int, fortschritt=None) -> None:
+    async def simuliere_async(self, *, monate: int, ohne_budget=None, fortschritt=None) -> None:
         self.simulierte_monate = monate
+        self.ohne_budget = ohne_budget
         if fortschritt is not None:
             fortschritt(f"Simulation abgeschlossen: {monate} Monat(e)")
 
@@ -537,3 +545,16 @@ def test_kurzarbeit_cache_wechsel_der_schwellenwerte_loest_keinen_neuen_ladevorg
     # 90-%-Schwelle, oberhalb einer 10-%-Schwelle.
     assert milde[(2026, 8)].anzahl_kurzarbeitsfaehig == 1
     assert streng[(2026, 8)].anzahl_kurzarbeitsfaehig == 0
+
+
+def test_anstossen_simuliert_mit_dem_konfigurierten_ohne_budget_modell(ladezaehler):
+    _, fertig = ladezaehler
+    modell = OhneBudgetModell(schulung=("Kurs",))
+    cache = DashboardCache(ttl_sekunden=60, ohne_budget=modell)
+
+    async def ablauf():
+        cache.anstossen(horizont_monate=3, auslastung_monate=12)
+        await _bis_geladen(fertig)
+        return cache.bereit(horizont_monate=3, auslastung_monate=12)
+
+    assert asyncio.run(ablauf()).ohne_budget is modell

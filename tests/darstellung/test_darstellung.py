@@ -54,6 +54,7 @@ from umsatzprognose.domaene import (
     Kurzarbeitsbewertung,
     Mitarbeiter,
     Monatsumsatz,
+    MonteCarloPrognose,
     Projekt,
     Projektanteil,
     Schulungsplan,
@@ -742,6 +743,68 @@ def test_umsatzrendite_kumuliert_zeigt_datensicherheits_legende_mit_prognose():
         "Vorläufig": VORLAEUFIG_DECKKRAFT,
         "Prognose": PROGNOSE_DECKKRAFT,
     }
+
+
+def test_umsatzrendite_kumuliert_zeigt_fehlerbalken_fuer_prognostizierte_monate():
+    historie, prognose = _historie_und_prognose_mit_horizont()
+    monate = historie.abgeschlossene()
+    fig = diagramme.umsatzrendite_kumuliert(
+        monate,
+        [Decimal("40000.0")],
+        prognose=prognose,
+        horizont_kosten=[Decimal("15000.0"), Decimal("12000.0")],
+        verbrauch_laufender_monat=historie.laufender,
+    )
+    # Standardmaessig an (mit_fehlerbalken nicht angegeben) - eine eigene Spur (Punkt +
+    # Fehlerbalken) je Jahreslinie, nicht Teil der Linien-Spuren selbst (die zeichnen
+    # "lines+markers", die Fehlerbalken-Spur nur "markers").
+    fehlerbalken_spuren = [
+        spur for spur in fig.data if spur.mode == "markers" and spur.error_y.array is not None
+    ]
+    assert len(fehlerbalken_spuren) == 1
+    spur = fehlerbalken_spuren[0]
+    # August ist Ist, nicht prognostiziert - nur September (vorlaeufig) und Oktober
+    # (Prognose) bekommen einen Fehlerbalken.
+    assert list(spur.x) == ["Sep", "Okt"]
+    assert spur.error_y.symmetric is False
+    assert list(spur.error_y.array) == [0.0, 0.0]
+    assert all(wert >= 0.0 for wert in spur.error_y.arrayminus)
+    assert spur.showlegend is False
+
+
+def test_umsatzrendite_kumuliert_mit_fehlerbalken_false_zeigt_keine():
+    historie, prognose = _historie_und_prognose_mit_horizont()
+    monate = historie.abgeschlossene()
+    fig = diagramme.umsatzrendite_kumuliert(
+        monate,
+        [Decimal("40000.0")],
+        prognose=prognose,
+        horizont_kosten=[Decimal("15000.0"), Decimal("12000.0")],
+        verbrauch_laufender_monat=historie.laufender,
+        mit_fehlerbalken=False,
+    )
+    assert not any(spur.mode == "markers" and spur.error_y.array is not None for spur in fig.data)
+
+
+def test_umsatzrendite_kumuliert_ohne_prognose_zeigt_keine_fehlerbalken():
+    monate = [Monatsumsatz(2026, 7, Decimal("50000.0"))]
+    fig = diagramme.umsatzrendite_kumuliert(monate, [Decimal("40000.0")])
+    assert not any(spur.mode == "markers" and spur.error_y.array is not None for spur in fig.data)
+
+
+def test_kumulierte_rendite_year_to_date_marge():
+    punkte = [
+        (1, Decimal("100.0"), Decimal("20.0"), 1.0),
+        (2, Decimal("100.0"), Decimal("40.0"), 1.0),
+    ]
+    # Januar: 20/100 = 20 %. Februar kumuliert: (20+40)/(100+100) = 30 %, nicht die
+    # Summe der Einzelmonats-Prozentsaetze.
+    assert diagramme._kumulierte_rendite(punkte) == pytest.approx([20.0, 30.0])
+
+
+def test_kumulierte_rendite_ohne_umsatz_zeigt_null_prozent_statt_fehler():
+    punkte = [(1, Decimal("0.0"), Decimal("0.0"), 1.0)]
+    assert diagramme._kumulierte_rendite(punkte) == [0.0]
 
 
 def test_gewinn_verlust_je_jahr_ohne_prognose_zeigt_keine_datensicherheits_legende():
@@ -1779,6 +1842,29 @@ def test_dashboard_umsatzrendite_kumuliert_max_jahre_begrenzt_auf_juengste_jahre
     assert [spur.name for spur in fig.data] == ["2024", "2025", "2026"]
 
 
+def test_dashboard_umsatzrendite_kumuliert_reicht_mit_fehlerbalken_durch():
+    historie, prognose = _historie_und_prognose_mit_horizont()
+    bestand = Bestand(stichtag=historie.stichtag, umsatzhistorie=historie)
+    kostenplan = Kostenplan(
+        posten=(
+            Kostenposten(2026, 8, Decimal("40000.0")),
+            Kostenposten(2026, 9, Decimal("15000.0")),
+            Kostenposten(2026, 10, Decimal("12000.0")),
+        ),
+    )
+    dashboard = Dashboard(bestand, SCHULUNGSPLAN, kostenplan)
+    dashboard.prognose = prognose
+
+    assert any(
+        spur.mode == "markers" and spur.error_y.array is not None
+        for spur in dashboard.umsatzrendite_kumuliert().data
+    )
+    assert not any(
+        spur.mode == "markers" and spur.error_y.array is not None
+        for spur in dashboard.umsatzrendite_kumuliert(mit_fehlerbalken=False).data
+    )
+
+
 def test_dashboard_gewinn_verlust_je_jahr_ohne_jede_kostenquelle_zeigt_trotzdem_alles():
     historie = Umsatzhistorie(
         stichtag=STICHTAG,
@@ -2455,3 +2541,46 @@ def test_dashboard_laden_reicht_fortschritt_als_cache_fortschritt_durch(
     assert weiterleitung is not None
     weiterleitung("Projektanteile: aus dem Cache geladen (3 ms)")
     assert "Projektanteile: aus dem Cache geladen (3 ms)" in zeilen
+
+
+def _prognose_mit_ohne_budget(davon: tuple[str, ...]) -> MonteCarloPrognose:
+    median = (Decimal("10000"), Decimal("12000"))
+    return MonteCarloPrognose(
+        _horizontmonate=((2026, 8), (2026, 9)),
+        laeufe=10,
+        _monatswerte={0.95: median, 0.85: median, 0.50: median},
+        _summe={0.95: Decimal("22000"), 0.85: Decimal("22000"), 0.50: Decimal("22000")},
+        _gebucht=(Decimal("0"), Decimal("0")),
+        _kapazitaet_limitierend_anteil=0.0,
+        _kapazitaet_je_projekt={},
+        _ohne_budget=tuple(Decimal(d) for d in davon),
+    )
+
+
+def test_umsatztabelle_weist_den_anteil_ohne_budget_als_eigene_spalte_aus():
+    tabelle = tabellen.umsatztabelle(HISTORIE, _prognose_mit_ohne_budget(("2500", "3000")))
+
+    assert "Davon ohne Budget" in tabelle.columns
+    assert list(tabelle["Davon ohne Budget"])[-2:] == [euro(Decimal("2500")), euro(Decimal("3000"))]
+    assert tabelle["Davon ohne Budget"].iloc[0] == ""
+
+
+def test_umsatztabelle_blendet_die_spalte_ohne_budget_ohne_beitrag_aus():
+    tabelle = tabellen.umsatztabelle(HISTORIE, _prognose_mit_ohne_budget(("0", "0")))
+
+    assert "Davon ohne Budget" not in tabelle.columns
+
+
+def test_umsatzverlauf_nennt_den_anteil_ohne_budget_im_hover_der_prognose():
+    historie = Umsatzhistorie.zum_stichtag(
+        [Monatsumsatz(2026, 7, Decimal("9000"))], date(2026, 8, 15)
+    )
+
+    mit = diagramme.umsatzverlauf(historie, _prognose_mit_ohne_budget(("2500", "3000")))
+    ohne = diagramme.umsatzverlauf(historie, _prognose_mit_ohne_budget(("0", "0")))
+
+    def hover(fig):
+        return next(spur for spur in fig.data if spur.name == "Prognostiziert").hovertemplate
+
+    assert "Davon Projekte ohne Budget" in hover(mit)
+    assert "Davon Projekte ohne Budget" not in hover(ohne)

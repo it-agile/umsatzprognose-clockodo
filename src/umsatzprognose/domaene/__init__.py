@@ -30,6 +30,7 @@ from umsatzprognose.domaene.kurzarbeit import (
     bewertungen,
 )
 from umsatzprognose.domaene.mitarbeiter import Mitarbeiter, Wochenarbeitszeit
+from umsatzprognose.domaene.ohne_budget import OhneBudgetModell
 from umsatzprognose.domaene.prognose import KONFIDENZNIVEAUS, NochKeinePrognose, Prognose
 from umsatzprognose.domaene.projekt import (
     OHNE_BUDGET,
@@ -82,6 +83,7 @@ __all__ = [
     "Monatsumsatz",
     "MonteCarloPrognose",
     "NochKeinePrognose",
+    "OhneBudgetModell",
     "Personenmonat",
     "Prognose",
     "Projekt",

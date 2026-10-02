@@ -36,6 +36,7 @@ def test_argumente_defaults():
     assert args.monate_rueckblick == anmeldungsverlauf.STANDARD_MONATE_RUECKBLICK
     assert args.monate_voraus == anmeldungsverlauf.STANDARD_MONATE_VORAUS
     assert args.jahresvergleich_jahre == str(script.STANDARD_JAHRESVERGLEICH_JAHRE)
+    assert args.umsatzrendite_fehlerbalken == "an"
 
 
 def test_argumente_diagramm_ist_mehrfach_angebbar():
@@ -84,6 +85,10 @@ def test_jahresvergleich_faehig_ist_teilmenge_von_diagramme_dashboard():
     assert set(script.DIAGRAMME_DASHBOARD) >= script.JAHRESVERGLEICH_FAEHIG
 
 
+def test_fehlerbalken_faehig_ist_teilmenge_von_diagramme_dashboard():
+    assert set(script.DIAGRAMME_DASHBOARD) >= script.FEHLERBALKEN_FAEHIG
+
+
 def test_figuren_uebergibt_max_jahre_fuer_jahresvergleiche(monkeypatch):
     aufrufe: list[dict[str, object]] = []
 
@@ -111,6 +116,64 @@ def test_figuren_uebergibt_max_jahre_fuer_jahresvergleiche(monkeypatch):
     ]
 
 
+def test_figuren_uebergibt_mit_fehlerbalken_false_an_umsatzrendite_kumuliert(monkeypatch):
+    aufrufe: list[dict[str, object]] = []
+
+    def _spion(dashboard, **kwargs):
+        aufrufe.append(kwargs)
+        return go.Figure()
+
+    monkeypatch.setitem(script.DIAGRAMME_DASHBOARD, "umsatzrendite-kumuliert", _spion)
+
+    script._figuren(
+        ["umsatzrendite-kumuliert"],
+        dashboard=cast("Dashboard", object()),
+        anmeldungsverlauf_fenster=None,
+        stichtag=date(2026, 9, 1),
+        ausgabeformat="png",
+        ansicht=anmeldungsverlauf.STANDARD_ANSICHT,
+        schulung_filter=[anmeldungsverlauf.ALLE_SCHULUNGEN],
+        format_filter=[anmeldungsverlauf.ALLE],
+        dauer_filter=[anmeldungsverlauf.ALLE],
+        trendlinien_werte=None,
+        mit_fehlerbalken=False,
+    )
+
+    assert aufrufe == [
+        {
+            "mit_beschriftung": True,
+            "max_jahre": script.STANDARD_JAHRESVERGLEICH_JAHRE,
+            "mit_fehlerbalken": False,
+        },
+    ]
+
+
+def test_figuren_uebergibt_kein_mit_fehlerbalken_an_andere_diagramme(monkeypatch):
+    aufrufe: list[dict[str, object]] = []
+
+    def _spion(dashboard, **kwargs):
+        aufrufe.append(kwargs)
+        return go.Figure()
+
+    monkeypatch.setitem(script.DIAGRAMME_DASHBOARD, "gewinn-verlust-je-jahr", _spion)
+
+    script._figuren(
+        ["gewinn-verlust-je-jahr"],
+        dashboard=cast("Dashboard", object()),
+        anmeldungsverlauf_fenster=None,
+        stichtag=date(2026, 9, 1),
+        ausgabeformat="png",
+        ansicht=anmeldungsverlauf.STANDARD_ANSICHT,
+        schulung_filter=[anmeldungsverlauf.ALLE_SCHULUNGEN],
+        format_filter=[anmeldungsverlauf.ALLE],
+        dauer_filter=[anmeldungsverlauf.ALLE],
+        trendlinien_werte=None,
+        mit_fehlerbalken=False,
+    )
+
+    assert "mit_fehlerbalken" not in aufrufe[0]
+
+
 def test_figuren_max_jahre_none_erweitert_auf_gesamte_historie(monkeypatch):
     aufrufe: list[dict[str, object]] = []
 
@@ -134,7 +197,7 @@ def test_figuren_max_jahre_none_erweitert_auf_gesamte_historie(monkeypatch):
         max_jahre=None,
     )
 
-    assert aufrufe == [{"mit_beschriftung": True, "max_jahre": None}]
+    assert aufrufe == [{"mit_beschriftung": True, "max_jahre": None, "mit_fehlerbalken": True}]
 
 
 def test_tabellen_dashboard_werte_sind_methode_und_titel():
@@ -209,6 +272,7 @@ def test_daten_laden_async_laedt_dashboard_und_anmeldungsverlauf_gleichzeitig(mo
             monate,
             anteil_fakturierbar=None,
             fakturierbare_arbeit_ziehung=None,
+            ohne_budget=None,
             fortschritt=None,
         ):
             pass  # kein weiterer sleep - der Zeittest misst nur laden_async/anmeldungsverlauf_laden

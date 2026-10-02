@@ -25,6 +25,10 @@ from umsatzprognose.clockodo.kurzarbeit import (
 )
 from umsatzprognose.clockodo.mitarbeiter import MitarbeiterRepository
 from umsatzprognose.clockodo.nebenlaeufig import gleichzeitig, synchron
+from umsatzprognose.clockodo.ohne_budget import (
+    ohne_budget_modell_aus_umgebung,
+    ohne_budget_modell_automatisch,
+)
 from umsatzprognose.clockodo.projekte import ProjektRepository
 from umsatzprognose.clockodo.umsatz import UmsatzRepository
 from umsatzprognose.clockodo.verbrauchsverlauf import VerbrauchsverlaufRepository
@@ -46,6 +50,8 @@ __all__ = [
     "anzahl_ladeschritte",
     "gleichzeitig",
     "kurzarbeit_aktiv",
+    "ohne_budget_modell_aus_umgebung",
+    "ohne_budget_modell_automatisch",
     "rollenzuordnung_automatisch",
     "synchron",
 ]

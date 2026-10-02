@@ -103,6 +103,7 @@ if TYPE_CHECKING:
         Anmeldungsverlauf,
         FakturierbareArbeitZiehung,
         Kurzarbeitsbewertung,
+        OhneBudgetModell,
     )
     from umsatzprognose.domaene.anmeldung import Kategorisierung
     from umsatzprognose.util import Monat
@@ -110,7 +111,7 @@ if TYPE_CHECKING:
 from collections import Counter
 from collections.abc import Sequence
 from contextlib import asynccontextmanager, suppress
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from functools import partial
 
 import plotly
@@ -119,7 +120,7 @@ from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from umsatzprognose.clockodo import kurzarbeit_aktiv
+from umsatzprognose.clockodo import kurzarbeit_aktiv, ohne_budget_modell_aus_umgebung
 from umsatzprognose.darstellung import Dashboard, diagramme
 from umsatzprognose.domaene import (
     Anmeldungsknoten,
@@ -196,7 +197,50 @@ RestvolumenTop = Annotated[int, Query(ge=1)]
 # Freitext-Parameter fuer die beiden unten eingeklappten Konfigurationsabschnitte -
 # leer bleibt ohne Wirkung (siehe _verbrauchsplan_aus_text()/_ohne_budget_filter_aus_text()).
 Verbrauchsplan = Annotated[str, Query()]
-OhneBudgetFilter = Annotated[str, Query()]
+OhneBudgetFilter = Annotated[str | None, Query()]
+
+# Ob die Projekte ohne Budget in die Prognose eingehen (siehe domaene.ohne_budget) -
+# nur wirksam, wenn OHNE_BUDGET_MODELL konfiguriert ist (sonst gibt es den Regler
+# nicht). "an" ist der Standard und entspricht der gecachten Basissimulation; "aus"
+# loest wie die uebrigen Abweichungen eine transiente Neusimulation aus.
+OhneBudgetModusWert = Literal["an", "aus"]
+OhneBudgetModus = Annotated[OhneBudgetModusWert, Query()]
+STANDARD_OHNE_BUDGET_MODUS: OhneBudgetModusWert = "an"
+OHNE_BUDGET_MODUS_OPTIONEN = get_args(OhneBudgetModusWert)
+
+# Einmal beim Import gelesen (siehe umsatzprognose.clockodo.ohne_budget): ``None``, wenn
+# OHNE_BUDGET_MODELL nicht gesetzt ist - dann bleiben Projekte ohne Budget wie bisher aus
+# der Prognose heraus und der Regler dafuer wird nicht gezeigt. Steht vor den
+# Parametern unten, weil deren Standardwerte aus dem Modell stammen.
+_OHNE_BUDGET_MODELL = ohne_budget_modell_aus_umgebung()
+
+# Der Projektfilter "ohne Budget" (/dashboard) ist standardmaessig mit den Bausteinen aus
+# OHNE_BUDGET_MODELL vorbelegt (Ausschluss und Schulung, ein Baustein je Zeile) - rein
+# darstellend, die Simulation liest weiter das Modell selbst. Ein ausdruecklich leerer
+# Parameter ("?ohne_budget_filter=") hebt die Vorbelegung auf.
+
+
+def _standard_ohne_budget_filter() -> str:
+    """Die Bausteine aus dem Modell, ein Baustein je Zeile; leer ohne Modell."""
+    if _OHNE_BUDGET_MODELL is None:
+        return ""
+    bausteine = (*_OHNE_BUDGET_MODELL.ausschluss, *_OHNE_BUDGET_MODELL.schulung)
+    return "\n".join(dict.fromkeys(bausteine))
+
+
+STANDARD_OHNE_BUDGET_FILTER = _standard_ohne_budget_filter()
+
+# Laenge des Historienfensters fuer bedarfsbasierte Projekte ohne Budget (Monate). Ohne
+# Angabe gilt der Wert aus OHNE_BUDGET_MODELL; ein davon abweichender Wert loest wie die
+# uebrigen Simulationsparameter eine transiente Neusimulation aus.
+MAXIMALE_OHNE_BUDGET_HISTORIE_MONATE = 24
+OhneBudgetHistorieMonate = Annotated[
+    int | None, Query(ge=1, le=MAXIMALE_OHNE_BUDGET_HISTORIE_MONATE)
+]
+OHNE_BUDGET_MODUS_BESCHRIFTUNGEN: dict[OhneBudgetModusWert, str] = {
+    "an": "Mit Projekten ohne Budget",
+    "aus": "Ohne Projekte ohne Budget",
+}
 
 # Drei Simulationsverteilungen fuer den Anteil fakturierbarer Arbeit, waehlbar ueber
 # ein Dropdown statt eines einzelnen Reglers: "pauschal" (Standard, ein fester Wert
@@ -293,6 +337,13 @@ TrendlinienWerte = Annotated[Sequence[str], Query()]
 # gleichnamige Query-Parameter) sonst nicht mehr und liefert immer None.
 OptionaleTrendlinienWerte = Annotated[Sequence[str] | None, Query()]
 
+# Derselbe Checkbox-Mechanismus wie TrendlinienWerte oben, fuer den Fehlerbalken-
+# Schalter der kumulierten Umsatzrendite auf / (siehe Dashboard.umsatzrendite_kumuliert())
+# - ein eigener Typalias statt Wiederverwendung von TrendlinienWerte, weil die beiden
+# Schalter fachlich nichts miteinander zu tun haben. Standardwert ("an",): Fehlerbalken
+# sind wie im Diagramm selbst standardmaessig an.
+FehlerbalkenWerte = Annotated[Sequence[str], Query()]
+
 # Umschalter im Anmeldungsverlauf-Diagramm auf /schulungen, immer sichtbar (auch bei
 # nur einem Jahr im Zeitraum - ein Umschalter, der mal da ist und mal nicht, waere
 # verwirrender als eine wenig aussagekraeftige Jahresvergleich-Ansicht mit nur einer
@@ -351,14 +402,20 @@ _STANDARDWERTE_START: dict[str, str] = {
     "gewinn_verlust_monate": STANDARD_GEWINN_VERLUST_MONATE,
     "verbrauchsplan": "",
     "interne_arbeit_modus": STANDARD_INTERNE_ARBEIT_MODUS,
+    "ohne_budget_modus": STANDARD_OHNE_BUDGET_MODUS,
+    "umsatzrendite_fehlerbalken_werte": "an",
 }
 _STANDARDWERTE_DASHBOARD: dict[str, str] = {
     "horizont_monate": STANDARD_HORIZONT_MONATE,
     "laeufe": str(STANDARD_LAEUFE),
     "restvolumen_top": str(STANDARD_RESTVOLUMEN_TOP),
     "verbrauchsplan": "",
-    "ohne_budget_filter": "",
+    "ohne_budget_filter": STANDARD_OHNE_BUDGET_FILTER,
     "interne_arbeit_modus": STANDARD_INTERNE_ARBEIT_MODUS,
+    "ohne_budget_modus": STANDARD_OHNE_BUDGET_MODUS,
+    "interne_arbeit_trend_werte": "an",
+    "interne_arbeit_verteilung_min_prozent": str(STANDARD_INTERNE_ARBEIT_VERTEILUNG_MIN_PROZENT),
+    "interne_arbeit_verteilung_max_prozent": str(STANDARD_INTERNE_ARBEIT_VERTEILUNG_MAX_PROZENT),
 }
 
 # Je Modus die eigenen Parameter - Grundlage sowohl des jeweiligen "Parameter auf
@@ -418,7 +475,7 @@ _STANDARDWERTE_KURZARBEIT: dict[str, str] = {
     "quote_organisation_prozent": str(STANDARD_QUOTE_ORGANISATION_PROZENT),
 }
 
-_dashboard_cache = DashboardCache()
+_dashboard_cache = DashboardCache(ohne_budget=_OHNE_BUDGET_MODELL)
 _anmeldungsverlauf_cache = AnmeldungsverlaufCache(
     ab_jahr=STANDARD_AB_JAHR,
     monate_voraus=STANDARD_MONATE_VORSCHAU,
@@ -541,6 +598,38 @@ def _tabelle_html(tabelle: pd.DataFrame, *, zusatzklasse: str = "", element_id: 
     return f"{html}<style>{regeln}</style>"
 
 
+# Mehrzeilige Textfelder: der Browser sendet Zeilenumbrueche als \r\n, die Standardwerte
+# stehen mit \n - verglichen wird deshalb zeilenweise (siehe _ist_standardwert()).
+_TEXT_PARAMETER = frozenset({"verbrauchsplan", "ohne_budget_filter"})
+
+
+def _zeilen(text: str) -> list[str]:
+    return [zeile.strip() for zeile in text.splitlines() if zeile.strip()]
+
+
+def _dynamische_standardwerte(request: Request) -> dict[str, str]:
+    """Standardwerte, die erst zur Laufzeit feststehen: aus dem konfigurierten Modell
+    fuer Projekte ohne Budget bzw. (``request.state``, gesetzt in
+    :func:`_interne_arbeit_kontext`) aus der geladenen Historie."""
+    werte: dict[str, str] = {}
+    if _OHNE_BUDGET_MODELL is not None:
+        werte["ohne_budget_historie_monate"] = str(_OHNE_BUDGET_MODELL.historie_monate)
+        werte["ohne_budget_filter"] = _standard_ohne_budget_filter()
+    anteil = getattr(request.state, "anteil_fakturierbar_standard", None)
+    if anteil is not None:
+        werte["anteil_fakturierbar_prozent"] = anteil
+    return werte
+
+
+def _ist_standardwert(schluessel: str, wert: str, standardwerte: dict[str, str]) -> bool:
+    standard = standardwerte.get(schluessel)
+    if standard is None:
+        return False
+    if schluessel in _TEXT_PARAMETER:
+        return _zeilen(wert) == _zeilen(standard)
+    return wert == standard
+
+
 def _anfrage_query(
     request: Request,
     standardwerte: dict[str, str] | None = None,
@@ -550,14 +639,19 @@ def _anfrage_query(
     """Query-String der aktuellen Anfrage fuer Navigations- und Zuruecksetzen-Links.
 
     Ein Parameter faellt weg, wenn er in ``ohne`` steht oder seinem Standardwert
-    entspricht (``standardwerte``) - sonst wuerden beim Seitenwechsel bzw.
+    entspricht (``standardwerte`` plus die zur Laufzeit feststehenden, siehe
+    :func:`_dynamische_standardwerte`) - sonst wuerden beim Seitenwechsel bzw.
     Zuruecksetzen unveraendert auf dem Standard stehende Parameter mitgeschleppt,
-    statt die URL schlank zu halten.
+    statt die URL schlank zu halten. Jedes Absenden eines Formulars schickt alle seine
+    Felder mit, auch die unveraendert auf ihrem Standard stehenden.
     """
+    alle_standardwerte = (
+        {**standardwerte, **_dynamische_standardwerte(request)} if standardwerte else {}
+    )
     paare = [
         (schluessel, wert)
         for schluessel, wert in request.query_params.multi_items()
-        if schluessel not in ohne and (not standardwerte or standardwerte.get(schluessel) != wert)
+        if schluessel not in ohne and not _ist_standardwert(schluessel, wert, alle_standardwerte)
     ]
     return f"?{urlencode(paare)}" if paare else ""
 
@@ -832,6 +926,19 @@ def _interne_arbeit_regler_werte(
     )
 
 
+def _ohne_budget_modell(
+    modus: OhneBudgetModusWert, historie_monate: int | None
+) -> OhneBudgetModell | None:
+    """Das fuer diese Anfrage wirksame Modell fuer Projekte ohne Budget: ``None`` ohne
+    Konfiguration oder im Modus "aus", sonst das konfigurierte Modell, mit dem
+    angefragten Historienfenster, falls eines gesetzt ist."""
+    if _OHNE_BUDGET_MODELL is None or modus != "an":
+        return None
+    if historie_monate is None:
+        return _OHNE_BUDGET_MODELL
+    return replace(_OHNE_BUDGET_MODELL, historie_monate=historie_monate)
+
+
 def _interne_arbeit_kontext(
     request: Request,
     dashboard: Dashboard,
@@ -845,6 +952,8 @@ def _interne_arbeit_kontext(
     gauss_standardabweichung: float | None,
     horizont_monate: HorizontMonate,
     laeufe: int,
+    ohne_budget_modus: OhneBudgetModusWert = STANDARD_OHNE_BUDGET_MODUS,
+    ohne_budget_historie_monate: int | None = None,
 ) -> tuple[float | None, FakturierbareArbeitZiehung | None, dict[str, object]]:
     """Gemeinsamer Kern von ``uebersicht()``/``dashboard_seite()``: loest anhand von
     ``interne_arbeit_modus`` auf, welcher Anteil fakturierbarer Arbeit tatsaechlich zu
@@ -860,6 +969,10 @@ def _interne_arbeit_kontext(
         gauss_mittelwert_prozent=gauss_mittelwert_prozent,
         gauss_standardabweichung=gauss_standardabweichung,
     )
+    # Der historische Durchschnitt ist der Standardwert des Pauschal-Reglers - ein davon
+    # nicht abweichender, mitgesendeter Wert gehoert nicht in Links (siehe
+    # _dynamische_standardwerte()).
+    request.state.anteil_fakturierbar_standard = str(regler.historisch.pauschal_prozent)
     anteil_fakturierbar: float | None
     ziehung: FakturierbareArbeitZiehung | None
     if interne_arbeit_modus == "weibull":
@@ -882,6 +995,35 @@ def _interne_arbeit_kontext(
             or anteil_fakturierbar_prozent is not None
             or horizont_monate != STANDARD_HORIZONT_MONATE
             or laeufe != STANDARD_LAEUFE
+            or ohne_budget_modus != STANDARD_OHNE_BUDGET_MODUS
+            or _ohne_budget_modell(ohne_budget_modus, ohne_budget_historie_monate)
+            != _ohne_budget_modell(STANDARD_OHNE_BUDGET_MODUS, None)
+        ),
+        # None blendet den Regler aus (kein OHNE_BUDGET_MODELL konfiguriert).
+        "ohne_budget_modus": ohne_budget_modus if _OHNE_BUDGET_MODELL is not None else None,
+        "ohne_budget_historie_monate": (
+            ohne_budget_historie_monate
+            if ohne_budget_historie_monate is not None
+            else _OHNE_BUDGET_MODELL.historie_monate
+            if _OHNE_BUDGET_MODELL is not None
+            else None
+        ),
+        "ohne_budget_historie_standard": (
+            _OHNE_BUDGET_MODELL.historie_monate if _OHNE_BUDGET_MODELL is not None else None
+        ),
+        "ohne_budget_historie_maximum": MAXIMALE_OHNE_BUDGET_HISTORIE_MONATE,
+        "ohne_budget_historie_zuruecksetzen_query": _anfrage_query(
+            request, standardwerte, ohne=frozenset({"ohne_budget_historie_monate"})
+        ),
+        "ohne_budget_modus_optionen": OHNE_BUDGET_MODUS_OPTIONEN,
+        "ohne_budget_modus_beschriftungen": OHNE_BUDGET_MODUS_BESCHRIFTUNGEN,
+        # Wie stark der Regler den Bedarf der Projekte ohne Budget gegenueber "wie
+        # bisher" skaliert - nur im Modus "Pauschal" ein einzelner, anzeigbarer Faktor
+        # (bei Weibull/Gauss schwankt er je Lauf).
+        "ohne_budget_faktor": (
+            regler.aktuell.pauschal_prozent / regler.historisch.pauschal_prozent
+            if interne_arbeit_modus == "pauschal" and regler.historisch.pauschal_prozent
+            else None
         ),
         "interne_arbeit_abschlag_zuruecksetzen_query": _anfrage_query(
             request, standardwerte, ohne=_INTERNE_ARBEIT_PARAMETER
@@ -907,6 +1049,8 @@ async def _simuliertes_dashboard(
     laeufe: int,
     anteil_fakturierbar: float | None,
     interne_arbeit_ziehung: FakturierbareArbeitZiehung | None,
+    ohne_budget_modus: OhneBudgetModusWert = STANDARD_OHNE_BUDGET_MODUS,
+    ohne_budget_historie_monate: int | None = None,
 ) -> Dashboard:
     """Liefert bei gesetztem ``verbrauchsplan``/``laeufe``/``anteil_fakturierbar``/
     ``interne_arbeit_ziehung`` ein **transientes** ``Dashboard`` mit angewendeter
@@ -944,11 +1088,16 @@ async def _simuliertes_dashboard(
     des Caches.
     """
     werte = _verbrauchsplan_aus_text(verbrauchsplan)
+    # Das gecachte Basis-Dashboard wurde mit dem konfigurierten Modell simuliert (siehe
+    # DashboardCache); "aus" weicht davon ab - ohne konfiguriertes Modell gibt es keine
+    # Abweichung.
+    ohne_budget = _ohne_budget_modell(ohne_budget_modus, ohne_budget_historie_monate)
     if (
         not werte
         and anteil_fakturierbar is None
         and interne_arbeit_ziehung is None
         and laeufe == STANDARD_LAEUFE
+        and ohne_budget == _OHNE_BUDGET_MODELL
     ):
         return dashboard
     bestand = (
@@ -965,6 +1114,7 @@ async def _simuliertes_dashboard(
         laeufe=laeufe,
         anteil_fakturierbar=anteil_fakturierbar,
         fakturierbare_arbeit_ziehung=interne_arbeit_ziehung,
+        ohne_budget=ohne_budget,
     )
     return uebersteuert
 
@@ -977,6 +1127,8 @@ async def uebersicht(
     gewinn_verlust_monate: GewinnVerlustMonate = STANDARD_GEWINN_VERLUST_MONATE,
     verbrauchsplan: Verbrauchsplan = "",
     interne_arbeit_modus: InterneArbeitModus = STANDARD_INTERNE_ARBEIT_MODUS,
+    ohne_budget_modus: OhneBudgetModus = STANDARD_OHNE_BUDGET_MODUS,
+    ohne_budget_historie_monate: OhneBudgetHistorieMonate = None,
     anteil_fakturierbar_prozent: AnteilFakturierbarProzent = None,
     interne_arbeit_weibull_formparameter: InterneArbeitWeibullFormparameter = None,
     interne_arbeit_weibull_skalenparameter_prozent: (
@@ -984,8 +1136,10 @@ async def uebersicht(
     ) = None,
     interne_arbeit_gauss_mittelwert_prozent: InterneArbeitGaussMittelwertProzent = None,
     interne_arbeit_gauss_standardabweichung: InterneArbeitGaussStandardabweichung = None,
+    umsatzrendite_fehlerbalken_werte: FehlerbalkenWerte = ("an",),
 ) -> HTMLResponse:
     """Deckt sich mit notebooks/00_datencheck.ipynb: Gewinn/Verlust und Umsatzrendite."""
+    umsatzrendite_fehlerbalken = "an" in umsatzrendite_fehlerbalken_werte
     horizont_zahl = int(horizont_monate)
     ergebnis = _dashboard_oder_ladeseite(
         request,
@@ -1008,6 +1162,8 @@ async def uebersicht(
         gauss_standardabweichung=interne_arbeit_gauss_standardabweichung,
         horizont_monate=horizont_monate,
         laeufe=laeufe,
+        ohne_budget_modus=ohne_budget_modus,
+        ohne_budget_historie_monate=ohne_budget_historie_monate,
     )
     dashboard = await _simuliertes_dashboard(
         ergebnis,
@@ -1016,6 +1172,8 @@ async def uebersicht(
         laeufe=laeufe,
         anteil_fakturierbar=anteil_fakturierbar,
         interne_arbeit_ziehung=ziehung,
+        ohne_budget_modus=ohne_budget_modus,
+        ohne_budget_historie_monate=ohne_budget_historie_monate,
     )
 
     gewinn_verlust_zahl = None if gewinn_verlust_monate == "alle" else int(gewinn_verlust_monate)
@@ -1048,8 +1206,9 @@ async def uebersicht(
             mit_plotlyjs=True,
         ),
         gewinn_verlust_je_jahr=_figur_html(dashboard.gewinn_verlust_je_jahr(), mit_plotlyjs=False),
+        umsatzrendite_fehlerbalken=umsatzrendite_fehlerbalken,
         umsatzrendite_kumuliert=_figur_html(
-            dashboard.umsatzrendite_kumuliert(),
+            dashboard.umsatzrendite_kumuliert(mit_fehlerbalken=umsatzrendite_fehlerbalken),
             mit_plotlyjs=False,
         ),
     )
@@ -1062,8 +1221,10 @@ async def dashboard_seite(
     laeufe: Laeufe = STANDARD_LAEUFE,
     restvolumen_top: RestvolumenTop = STANDARD_RESTVOLUMEN_TOP,
     verbrauchsplan: Verbrauchsplan = "",
-    ohne_budget_filter: OhneBudgetFilter = "",
+    ohne_budget_filter: OhneBudgetFilter = None,
     interne_arbeit_modus: InterneArbeitModus = STANDARD_INTERNE_ARBEIT_MODUS,
+    ohne_budget_modus: OhneBudgetModus = STANDARD_OHNE_BUDGET_MODUS,
+    ohne_budget_historie_monate: OhneBudgetHistorieMonate = None,
     anteil_fakturierbar_prozent: AnteilFakturierbarProzent = None,
     interne_arbeit_weibull_formparameter: InterneArbeitWeibullFormparameter = None,
     interne_arbeit_weibull_skalenparameter_prozent: (
@@ -1080,6 +1241,8 @@ async def dashboard_seite(
     ),
 ) -> HTMLResponse:
     """Deckt sich mit notebooks/01_dashboard.ipynb: Umsatzverlauf und offenes Volumen."""
+    if ohne_budget_filter is None:
+        ohne_budget_filter = _standard_ohne_budget_filter()
     horizont_zahl = int(horizont_monate)
     ergebnis = _dashboard_oder_ladeseite(
         request,
@@ -1102,6 +1265,8 @@ async def dashboard_seite(
         gauss_standardabweichung=interne_arbeit_gauss_standardabweichung,
         horizont_monate=horizont_monate,
         laeufe=laeufe,
+        ohne_budget_modus=ohne_budget_modus,
+        ohne_budget_historie_monate=ohne_budget_historie_monate,
     )
     interne_arbeit_trend = "an" in interne_arbeit_trend_werte
     dashboard = await _simuliertes_dashboard(
@@ -1111,6 +1276,8 @@ async def dashboard_seite(
         laeufe=laeufe,
         anteil_fakturierbar=anteil_fakturierbar,
         interne_arbeit_ziehung=ziehung,
+        ohne_budget_modus=ohne_budget_modus,
+        ohne_budget_historie_monate=ohne_budget_historie_monate,
     )
     restvolumen_top_max = len(dashboard.bestand.ohne_budget())
     # Der Slider traegt max="{{ restvolumen_top_max }}", aber Query(ge=1) allein
@@ -1161,7 +1328,12 @@ async def dashboard_seite(
             ohne=frozenset({"verbrauchsplan"}),
         ),
         ohne_budget_filter=ohne_budget_filter,
-        ohne_budget_filter_abweichend=bool(ohne_budget_filter.strip()),
+        # Zeilenweise verglichen: Browser senden Textareas mit \r\n, der Standard
+        # steht mit \n.
+        ohne_budget_filter_abweichend=(
+            _ohne_budget_filter_aus_text(ohne_budget_filter)
+            != _ohne_budget_filter_aus_text(_standard_ohne_budget_filter())
+        ),
         ohne_budget_filter_zuruecksetzen_query=_anfrage_query(
             request,
             _STANDARDWERTE_DASHBOARD,

@@ -26,6 +26,7 @@ from umsatzprognose.domaene import (
     Kunde,
     Mitarbeiter,
     Monatsumsatz,
+    OhneBudgetModell,
     Projekt,
     Projektanteil,
     Verbrauchsverlauf,
@@ -555,3 +556,155 @@ def test_stichtagsmonat_zaehlt_keine_gebuchten_betraege_als_untergrenze():
     for werte in prognose.monatswerte().values():
         assert [float(w) for w in werte] == [pytest.approx(10000.0)]
     assert [float(g) for g in prognose.gebucht()] == [pytest.approx(0.0)]
+
+
+# --- Projekte ohne Budget (domaene.ohne_budget) -------------------------------------
+
+GROSSE_KAPAZITAET = Wochenarbeitszeit(
+    stunden_je_wochentag=(20.0, 20.0, 20.0, 20.0, 20.0, 0.0, 0.0),
+    gueltig_ab=date(2020, 1, 1),
+)
+FENSTER = [(2026, 3), (2026, 4), (2026, 5), (2026, 6), (2026, 7), (2026, 8)]
+
+
+def _bestand_mit_coaching(*, schulung_stunden: float = 0.0) -> Bestand:
+    """Ein Budgetprojekt (bei Quote 0.5 genau 4000 Euro / 80 h im Monat) und ein
+    Coaching ohne Budget, das in jedem Fenstermonat genau 1000 Euro (10 h) umsetzt."""
+    anna = mitarbeiter(1, "Anna", GROSSE_KAPAZITAET)
+    budget = Projekt(
+        id=1,
+        name="Projekt",
+        kunde=KUNDE,
+        aktiv=True,
+        budget=Gesamtbudget(betrag=Decimal("10000.0")),
+        verbrauchtes_volumen=Decimal("2000.0"),
+        verbrauchte_stunden=40.0,  # effektiver Stundensatz 50.0
+        anteile=(Projektanteil(anna, stunden=40.0),),
+    )
+    coaching = Projekt(
+        id=2,
+        name="Coaching",
+        kunde=KUNDE,
+        aktiv=True,
+        verbrauchtes_volumen=Decimal("6000.0"),
+        verbrauchte_stunden=60.0,  # Satz 100.0
+        anteile=(Projektanteil(anna, stunden=60.0),),
+    )
+    schulung = Projekt(
+        id=3,
+        name="Schulung",
+        kunde=KUNDE,
+        aktiv=True,
+        anteile=(Projektanteil(anna, stunden=1.0),),
+    )
+    verlaeufe = [
+        historie(0.5),
+        Verbrauchsverlauf.fuer(
+            coaching,
+            [Monatsumsatz(jahr, monat, Decimal("1000.0"), stunden=10.0) for jahr, monat in FENSTER],
+        ),
+    ]
+    if schulung_stunden:
+        verlaeufe.append(
+            Verbrauchsverlauf.fuer(
+                schulung,
+                [
+                    Monatsumsatz(jahr, monat, Decimal("0"), stunden=schulung_stunden)
+                    for jahr, monat in FENSTER
+                ],
+            ),
+        )
+    return Bestand(
+        stichtag=STICHTAG,
+        projekte=(budget, coaching, schulung),
+        mitarbeiter=(anna,),
+        verbrauchsverlaeufe=tuple(verlaeufe),
+    )
+
+
+def _monatswert(prognose) -> float:
+    return float(prognose.monatswerte()[0.5][0])
+
+
+def test_projekte_ohne_budget_fehlen_ohne_modell_in_der_prognose():
+    prognose = _bestand_mit_coaching().simulieren(
+        monate=1, laeufe=5, zufall=np.random.default_rng(1)
+    )
+
+    assert _monatswert(prognose) == pytest.approx(4000.0)
+
+
+def test_projekte_ohne_budget_tragen_ihren_historischen_bedarf_bei():
+    modell = OhneBudgetModell(schulung=("Schulung",), historie_monate=6)
+
+    prognose = _bestand_mit_coaching().simulieren(
+        monate=1, laeufe=5, zufall=np.random.default_rng(1), ohne_budget=modell
+    )
+
+    assert _monatswert(prognose) == pytest.approx(5000.0)
+    assert prognose.kapazitaet_je_projekt()[2] == pytest.approx(10.0)
+
+
+def test_ausgeschlossene_projekte_ohne_budget_tragen_nichts_bei():
+    modell = OhneBudgetModell(ausschluss=("Coaching",), schulung=("Schulung",))
+
+    prognose = _bestand_mit_coaching().simulieren(
+        monate=1, laeufe=5, zufall=np.random.default_rng(1), ohne_budget=modell
+    )
+
+    assert _monatswert(prognose) == pytest.approx(4000.0)
+
+
+@pytest.mark.parametrize(
+    ("abschlag", "referenz", "erwartet"),
+    [
+        (0.5, 0.5, 5000.0),  # angenommener Anteil wie bisher: Faktor 1
+        (0.5, 0.25, 6000.0),  # doppelt so viel Kundenzeit wie bisher: Faktor 2
+        (0.5, 1.0, 4500.0),  # halb so viel wie bisher: Faktor 0,5
+        (0.5, None, 5000.0),  # ohne Referenz keine Skalierung
+    ],
+)
+def test_anteil_fakturierbarer_arbeit_skaliert_den_bedarf_relativ_zur_referenz(
+    abschlag, referenz, erwartet
+):
+    modell = OhneBudgetModell(schulung=("Schulung",))
+
+    prognose = _bestand_mit_coaching().simulieren(
+        monate=1,
+        laeufe=5,
+        zufall=np.random.default_rng(1),
+        interne_arbeit_abschlag=abschlag,
+        ohne_budget=modell,
+        anteil_fakturierbar_referenz=referenz,
+    )
+
+    assert _monatswert(prognose) == pytest.approx(erwartet)
+
+
+def test_schulungsstunden_mindern_die_verfuegbare_kapazitaet():
+    """September 2026 hat 22 Arbeitstage = 440 h. Bedarf: 80 h Budgetprojekt + 10 h
+    Coaching. Ohne Schulung passt alles hinein; 400 h Schulung lassen nur 40 h uebrig."""
+    modell = OhneBudgetModell(schulung=("Schulung",))
+
+    frei = _bestand_mit_coaching().simulieren(
+        monate=1, laeufe=5, zufall=np.random.default_rng(1), ohne_budget=modell
+    )
+    belegt = _bestand_mit_coaching(schulung_stunden=400.0).simulieren(
+        monate=1, laeufe=5, zufall=np.random.default_rng(1), ohne_budget=modell
+    )
+
+    assert frei.kapazitaet_limitierend_anteil() == 0.0
+    assert belegt.kapazitaet_limitierend_anteil() == 1.0
+    assert _monatswert(belegt) < _monatswert(frei)
+
+
+def test_ohne_budget_weist_den_anteil_der_projekte_ohne_budget_je_monat_aus():
+    modell = OhneBudgetModell(schulung=("Schulung",))
+    b = _bestand_mit_coaching()
+
+    mit = b.simulieren(monate=2, laeufe=5, zufall=np.random.default_rng(1), ohne_budget=modell)
+    ohne = b.simulieren(monate=2, laeufe=5, zufall=np.random.default_rng(1))
+
+    # Monat 1 ist der ganze Monat (Stichtag am Monatsanfang), Monat 2 ebenso: 1000 Euro.
+    assert [float(w) for w in mit.ohne_budget()] == [pytest.approx(1000.0)] * 2
+    assert [float(w) for w in ohne.ohne_budget()] == [0.0, 0.0]

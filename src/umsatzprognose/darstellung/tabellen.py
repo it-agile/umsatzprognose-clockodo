@@ -17,6 +17,7 @@ if TYPE_CHECKING:
         FakturierbareArbeitBandbreite,
         Hinweis,
         Kostenplan,
+        Monatsumsatz,
         Prognose,
         Projekt,
         Schulungsplan,
@@ -45,11 +46,13 @@ def _ohne_index(tabelle: pd.DataFrame) -> pd.DataFrame:
 
 
 PROJEKTSPALTEN = ["Kunde", "Projekt", "Beauftragt", "Verbraucht", "Offen", "Budget überschritten"]
+OHNE_BUDGET_SPALTE = "Davon ohne Budget"
 UMSATZSPALTEN = [
     "Monat",
     "Abgerechnet",
     "Nicht abgerechnet",
     "Prognostiziert",
+    OHNE_BUDGET_SPALTE,
     "Schulungsanmeldungen",
     "Summe",
     "Kosten",
@@ -57,6 +60,7 @@ UMSATZSPALTEN = [
 ]
 HINWEISSPALTEN = ["Hinweis", "Betroffen", "Projekte"]
 PROJEKT_OHNE_BUDGET_SPALTEN = ["Projekt", "Grund"]
+UMSATZ_OHNE_BUDGET_SPALTEN = ["Monat", "Ohne Budget", "Gesamt", "Anteil", "Projekte"]
 
 
 def projekttabelle(projekte: Sequence[Projekt]) -> pd.DataFrame:
@@ -108,6 +112,7 @@ def umsatztabelle(
     denselben Monat anzuhaengen.
     """
     laufender = historie.laufender
+    zeige_ohne_budget = prognose.vorhanden and any(prognose.ohne_budget())
     kosten_historie = (
         kostenplan.kosten_je_monat([m.schluessel for m in historie.monate])
         if kostenplan is not None
@@ -123,6 +128,7 @@ def umsatztabelle(
             if laufender and monat.schluessel == laufender.schluessel
             else "",
             "Prognostiziert": "",
+            OHNE_BUDGET_SPALTE: "",
             "Schulungsanmeldungen": "",
             "Summe": euro(monat.umsatz),
             "Kosten": euro(kosten) if kosten is not None else "",
@@ -135,6 +141,7 @@ def umsatztabelle(
         horizont = prognose.horizontmonate()
         median = prognose.monatswerte()[0.50]
         gebucht = prognose.gebucht()
+        ohne_budget = prognose.ohne_budget()
         basis = laufender.umsatz if laufender else Decimal("0")
         schulung = (
             schulungsplan.umsatz_je_monat(horizont)
@@ -147,12 +154,13 @@ def umsatztabelle(
             else [None] * len(horizont)
         )
 
-        for (jahr, monat), wert, gebuchter_betrag, schulungsbetrag, kosten in zip(
+        for (jahr, monat), wert, gebuchter_betrag, schulungsbetrag, kosten, davon in zip(
             horizont,
             median,
             gebucht,
             schulung,
             kosten_horizont,
+            ohne_budget,
             strict=True,
         ):
             beschriftung = f"{MONATSNAMEN[monat - 1]} {jahr}"
@@ -161,6 +169,7 @@ def umsatztabelle(
                 zeilen[-1] = {
                     **zeilen[-1],
                     "Prognostiziert": euro(wert),
+                    OHNE_BUDGET_SPALTE: euro(davon) if davon else "",
                     "Schulungsanmeldungen": euro(schulungsbetrag) if schulungsbetrag else "",
                     "Summe": euro(summe_wert),
                     "Kosten": euro(kosten) if kosten is not None else "",
@@ -174,6 +183,7 @@ def umsatztabelle(
                         "Abgerechnet": "",
                         "Nicht abgerechnet": euro(gebuchter_betrag) if gebuchter_betrag else "",
                         "Prognostiziert": euro(wert - gebuchter_betrag),
+                        OHNE_BUDGET_SPALTE: euro(davon) if davon else "",
                         "Schulungsanmeldungen": euro(schulungsbetrag) if schulungsbetrag else "",
                         "Summe": euro(summe_wert),
                         "Kosten": euro(kosten) if kosten is not None else "",
@@ -181,7 +191,8 @@ def umsatztabelle(
                     },
                 )
 
-    return _ohne_index(pd.DataFrame(zeilen, columns=UMSATZSPALTEN))
+    spalten = [s for s in UMSATZSPALTEN if s != OHNE_BUDGET_SPALTE or zeige_ohne_budget]
+    return _ohne_index(pd.DataFrame(zeilen, columns=spalten))
 
 
 def hinweistabelle(hinweise: Sequence[Hinweis], *, max_anzahl_betroffen: int = 10) -> pd.DataFrame:
@@ -281,5 +292,32 @@ def projekte_ohne_budget(projekte: Iterable[tuple[str, str]]) -> pd.DataFrame:
         pd.DataFrame(
             [{"Projekt": name, "Grund": grund} for name, grund in projekte],
             columns=PROJEKT_OHNE_BUDGET_SPALTEN,
+        ),
+    )
+
+
+def umsatz_ohne_budget(zeilen: Iterable[tuple[Monatsumsatz, Monatsumsatz, int]]) -> pd.DataFrame:
+    """Umsatz aktiver Projekte ohne Budget je Monat, samt Anteil am Gesamtumsatz und
+    einer abschliessenden Zeile ``Gesamt`` (Summen, Anteil am Gesamtumsatz)."""
+    zeilen = list(zeilen)
+    ohne = sum((o.umsatz for o, _, _ in zeilen), Decimal(0))
+    gesamt = sum((g.umsatz for _, g, _ in zeilen), Decimal(0))
+
+    def zeile(monat: str, ohne_budget: Decimal, alle: Decimal, anzahl: object) -> dict[str, str]:
+        return {
+            "Monat": monat,
+            "Ohne Budget": euro(ohne_budget),
+            "Gesamt": euro(alle),
+            "Anteil": prozent(float(ohne_budget / alle)) if alle else "",
+            "Projekte": str(anzahl),
+        }
+
+    return _ohne_index(
+        pd.DataFrame(
+            [
+                *(zeile(g.beschriftung, o.umsatz, g.umsatz, anzahl) for o, g, anzahl in zeilen),
+                zeile("Summe", ohne, gesamt, ""),
+            ],
+            columns=UMSATZ_OHNE_BUDGET_SPALTEN,
         ),
     )

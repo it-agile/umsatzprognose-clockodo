@@ -28,6 +28,7 @@ if TYPE_CHECKING:
 
     from .kunde import Kunde
     from .mitarbeiter import Mitarbeiter
+    from .ohne_budget import OhneBudgetModell
     from .prognose import Prognose
     from .projekt import Projekt
     from .simulation import FakturierbareArbeitZiehung
@@ -41,6 +42,7 @@ from .abrufquote import Abrufquotenverteilung
 from .hinweis import Hinweis
 from .projekt import verwertbar
 from .simulation import simulieren
+from .umsatzhistorie import Monatsumsatz
 from .zahlen import euro
 
 
@@ -233,6 +235,8 @@ class Bestand:
         zufall: np.random.Generator | None = None,
         interne_arbeit_abschlag: float = 0.0,
         fakturierbare_arbeit_verteilung: FakturierbareArbeitZiehung | None = None,
+        ohne_budget: OhneBudgetModell | None = None,
+        anteil_fakturierbar_referenz: float | None = None,
     ) -> Prognose:
         """Die Monte-Carlo-Simulation.
 
@@ -254,6 +258,10 @@ class Bestand:
                 :mod:`umsatzprognose.domaene.auslastung`) - wer diese Verteilung
                 herleitet, ist der Aufrufer (siehe
                 :meth:`~umsatzprognose.darstellung.dashboard.Dashboard.simuliere`).
+            ohne_budget: siehe :func:`~umsatzprognose.domaene.simulation.simulieren`
+                und :mod:`umsatzprognose.domaene.ohne_budget`; default ``None``.
+            anteil_fakturierbar_referenz: siehe
+                :func:`~umsatzprognose.domaene.simulation.simulieren`; default ``None``.
         """
         return simulieren(
             self,
@@ -262,6 +270,8 @@ class Bestand:
             zufall=zufall,
             interne_arbeit_abschlag=interne_arbeit_abschlag,
             fakturierbare_arbeit_verteilung=fakturierbare_arbeit_verteilung,
+            ohne_budget=ohne_budget,
+            anteil_fakturierbar_referenz=anteil_fakturierbar_referenz,
         )
 
     def ohne_budget(self, *, projekt_filter: Iterable[str] | None = None) -> list[Projekt]:
@@ -270,6 +280,46 @@ class Bestand:
             p
             for p in self.aktive_projekte
             if not verwertbar(p.budget) and not any(f in p.bezeichnung for f in filter_)
+        ]
+
+    def umsatz_ohne_budget(
+        self, monate: int, *, projekt_filter: Iterable[str] | None = None
+    ) -> list[tuple[Monatsumsatz, Monatsumsatz, int]]:
+        """Rückblick: wie viel Umsatz entstand auf aktiven Projekten ohne Budget.
+
+        Je abgeschlossenem Monat (älteste zuerst) der Umsatz dieser Projekte (siehe
+        :meth:`ohne_budget`, samt ``projekt_filter``), der Gesamtumsatz aus der
+        Umsatzhistorie und die Anzahl der Projekte ohne Budget mit Buchung in dem Monat.
+        Grundlage für die Frage, ob sich ein eigenes Modell für diese Projekte lohnt:
+        Höhe und Stabilität ihres Anteils am Gesamtumsatz.
+
+        Raises:
+            ValueError: ohne Umsatzhistorie im Bestand.
+        """
+        if self.umsatzhistorie is None:
+            raise ValueError("Der Bestand enthält keine Umsatzhistorie.")
+        ids = {p.id for p in self.ohne_budget(projekt_filter=projekt_filter)}
+        gebucht = [
+            (monat, verlauf)
+            for verlauf in self.verbrauchsverlaeufe
+            if verlauf.projekt.id in ids
+            for monat in verlauf.monate
+            if monat.umsatz
+        ]
+        return [
+            (
+                Monatsumsatz(
+                    jahr=gesamt.jahr,
+                    monat=gesamt.monat,
+                    umsatz=sum(
+                        (m.umsatz for m, _ in gebucht if m.schluessel == gesamt.schluessel),
+                        Decimal("0"),
+                    ),
+                ),
+                gesamt,
+                sum(1 for m, _ in gebucht if m.schluessel == gesamt.schluessel),
+            )
+            for gesamt in self.umsatzhistorie.abgeschlossene(monate)
         ]
 
 

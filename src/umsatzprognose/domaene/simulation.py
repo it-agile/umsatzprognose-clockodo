@@ -54,6 +54,7 @@ if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
 
     from .bestand import Bestand
+    from .ohne_budget import OhneBudgetModell
     from .projekt import Projekt
 
 import math
@@ -236,6 +237,7 @@ class MonteCarloPrognose:
     _gebucht: tuple[Decimal, ...]
     _kapazitaet_limitierend_anteil: float
     _kapazitaet_je_projekt: Mapping[int, float]
+    _ohne_budget: tuple[Decimal, ...] = ()
 
     @property
     def vorhanden(self) -> bool:
@@ -265,6 +267,9 @@ class MonteCarloPrognose:
 
     def kapazitaet_je_projekt(self) -> dict[int, float]:
         return dict(self._kapazitaet_je_projekt)
+
+    def ohne_budget(self) -> list[Decimal]:
+        return list(self._ohne_budget) or [NULL_EURO] * len(self._horizontmonate)
 
 
 def _verbrauchsplan(
@@ -316,6 +321,14 @@ class _Aufbau:
     gebucht: np.ndarray
     hat_plan: np.ndarray
     plan_betrag: np.ndarray
+    # Projekte ohne Budget (siehe domaene.ohne_budget) stehen als letzte Spalten hinter
+    # den Budgetprojekten: ``anzahl_budget`` trennt beide, ``historie`` traegt je
+    # Projekt ohne Budget den Euro-Umsatz der Fenstermonate (Projekte x Monate),
+    # ``reserviert`` je Person die durch Schulungen belegten Monatsstunden (Spalten
+    # wie ``kapazitaet``).
+    anzahl_budget: int
+    historie: np.ndarray
+    reserviert: np.ndarray
 
 
 def _aufbauen(
@@ -324,9 +337,16 @@ def _aufbauen(
     monate: int,
     *,
     interne_arbeit_abschlag: float,
+    ohne_budget: OhneBudgetModell | None = None,
 ) -> _Aufbau:
     """Baut die laufunabhaengigen Arrays vor der Monte-Carlo-Schleife in
-    :func:`simulieren` (siehe Moduldocstring, Abschnitt Kapazitaeten)."""
+    :func:`simulieren` (siehe Moduldocstring, Abschnitt Kapazitaeten).
+
+    ``scope`` sind die Budgetprojekte; mit ``ohne_budget`` kommen die Projekte ohne
+    Budget als weitere Spalten hinzu (siehe :class:`_Aufbau`)."""
+    anzahl_budget = len(scope)
+    ohne = ohne_budget.projekte(bestand) if ohne_budget is not None else ()
+    scope = (*scope, *ohne)
     horizont = _horizontmonate(bestand.stichtag, monate)
     skalierung_monat1 = _anteil_verbleibender_arbeitstage(bestand.stichtag)
 
@@ -392,6 +412,12 @@ def _aufbauen(
             if betrag:
                 gebucht[j, i] = float(betrag)
 
+    historie = (
+        ohne_budget.umsatz_historie(bestand, ohne) if ohne_budget is not None else np.zeros((0, 0))
+    )
+    reservierte = ohne_budget.reservierte_stunden(bestand) if ohne_budget is not None else {}
+    reserviert = np.array([reservierte.get(mid, 0.0) for mid in mitarbeiter_ids])
+
     return _Aufbau(
         horizont=horizont,
         skalierung_monat1=skalierung_monat1,
@@ -405,6 +431,38 @@ def _aufbauen(
         gebucht=gebucht,
         hat_plan=hat_plan,
         plan_betrag=plan_betrag,
+        anzahl_budget=anzahl_budget,
+        historie=historie,
+        reserviert=reserviert,
+    )
+
+
+def _bedarf_ohne_budget(
+    aufbau: _Aufbau,
+    index: int,
+    *,
+    laeufe: int,
+    zufall: np.random.Generator,
+    skalierung: float,
+    angenommener_anteil: np.ndarray | float,
+    referenz: float | None,
+) -> np.ndarray:
+    """Euro-Bedarf der Projekte ohne Budget (Laeufe x Projekte) in einem Horizontmonat.
+
+    Je Lauf und Projekt ein zufaellig gezogener Monat des Historienfensters (Monate ohne
+    Buchung eingeschlossen), skaliert mit dem Verhaeltnis aus angenommenem und
+    historischem Anteil fakturierbarer Arbeit (``referenz``; fehlt er, bleibt der Bedarf
+    unskaliert). Kein Restvolumen, das ihn begrenzt - nur der Kapazitaetsdeckel in
+    :func:`simulieren`.
+    """
+    anzahl = aufbau.historie.shape[0]
+    faktor = np.asarray(angenommener_anteil) / referenz if referenz else np.ones(laeufe)
+    gezogen = zufall.integers(0, aufbau.historie.shape[1], size=(laeufe, anzahl))
+    bedarf = aufbau.historie[np.arange(anzahl), gezogen]
+    return np.where(
+        aufbau.traegt_bei[index, aufbau.anzahl_budget :],
+        bedarf * skalierung * np.reshape(faktor, (-1, 1)),
+        0.0,
     )
 
 
@@ -416,6 +474,7 @@ def _ergebnis(
     monatssummen: np.ndarray,
     kapazitaet_limitiert_je_lauf: np.ndarray,
     stunden_je_projekt: np.ndarray,
+    ohne_budget_summen: np.ndarray,
 ) -> MonteCarloPrognose:
     """Baut die :class:`MonteCarloPrognose` aus den Ergebnis-Arrays der Monte-Carlo-
     Schleife in :func:`simulieren`."""
@@ -442,6 +501,9 @@ def _ergebnis(
         _gebucht=gebucht_je_monat,
         _kapazitaet_limitierend_anteil=float(kapazitaet_limitiert_je_lauf.sum() / laeufe),
         _kapazitaet_je_projekt=kapazitaet_je_projekt,
+        _ohne_budget=tuple(_euro(np.quantile(je_lauf, 0.5)) for je_lauf in ohne_budget_summen)
+        if aufbau.historie.shape[0]
+        else (),
     )
 
 
@@ -453,6 +515,8 @@ def simulieren(
     zufall: np.random.Generator | None = None,
     interne_arbeit_abschlag: float = 0.0,
     fakturierbare_arbeit_verteilung: FakturierbareArbeitZiehung | None = None,
+    ohne_budget: OhneBudgetModell | None = None,
+    anteil_fakturierbar_referenz: float | None = None,
 ) -> Prognose:
     """Die Monte-Carlo-Simulation.
 
@@ -487,6 +551,18 @@ def simulieren(
             Abrufquote, hier auf den Kapazitaetsdeckel angewendet, statt eines
             einzelnen, ueber alle Laeufe gleichen Abschlags. ``None`` (Standard) laesst
             die Kapazitaet unveraendert bzw. beim reinen ``interne_arbeit_abschlag``.
+        ohne_budget: nimmt zusaetzlich die Projekte ohne Budget in die Prognose auf
+            (siehe :mod:`umsatzprognose.domaene.ohne_budget`): ihr Bedarf kommt aus der
+            eigenen Historie, wird mit dem Verhaeltnis aus angenommenem und
+            ``anteil_fakturierbar_referenz`` skaliert, und sie teilen sich den
+            Kapazitaetsdeckel mit den Budgetprojekten - abzueglich der Stunden, die
+            Schulungsprojekte belegen. ``None`` (Standard) laesst alles unveraendert.
+        anteil_fakturierbar_referenz: der historische Anteil fakturierbarer Arbeit
+            (0.0 bis 1.0), auf den sich "wie bisher" bezieht. Der angenommene Anteil
+            (``1 - interne_arbeit_abschlag`` bzw. der Mittelwert der Ziehung je Lauf)
+            geteilt durch diesen Wert skaliert den Bedarf der Projekte ohne Budget -
+            Faktor 1 heisst "interne Arbeit wie bisher". ``None`` oder 0 schaltet die
+            Skalierung ab (Faktor 1).
     """
     if monate < 1:
         raise ValueError(f"Der Horizont braucht mindestens einen Monat, nicht {monate}")
@@ -507,7 +583,15 @@ def simulieren(
         return NochKeinePrognose()
 
     zufall = zufall if zufall is not None else np.random.default_rng()
-    aufbau = _aufbauen(bestand, scope, monate, interne_arbeit_abschlag=interne_arbeit_abschlag)
+    aufbau = _aufbauen(
+        bestand,
+        scope,
+        monate,
+        interne_arbeit_abschlag=interne_arbeit_abschlag,
+        ohne_budget=ohne_budget,
+    )
+    scope = (*scope, *(ohne_budget.projekte(bestand) if ohne_budget is not None else ()))
+    anzahl_ohne_budget = len(scope) - aufbau.anzahl_budget
 
     # Lauf-Zustand: alle ``laeufe`` Restvolumen-Verlaeufe gleichzeitig als Array
     # (laeufe, Projekte im Scope) statt 10.000 Dictionaries.
@@ -515,6 +599,7 @@ def simulieren(
     monatssummen = np.zeros((len(aufbau.horizont), laeufe))
     kapazitaet_limitiert_je_lauf = np.zeros(laeufe, dtype=bool)
     stunden_je_projekt = np.zeros((laeufe, len(scope)))
+    ohne_budget_summen = np.zeros((len(aufbau.horizont), laeufe))
 
     for index, _monat in enumerate(aufbau.horizont):
         skalierung = aufbau.skalierung_monat1 if index == 0 else 1.0
@@ -534,15 +619,13 @@ def simulieren(
             np.where(aufbau.hat_plan, deterministisch, stochastisch),
             0.0,
         )
-        gewuenscht_stunden = np.where(aufbau.hat_satz, gewuenscht_euro / aufbau.saetze_sicher, 0.0)
-
         # Schritt 3 (Aufteilung) + Schritt 4 (Kapazitaetsdeckel je Person, ueber alle
         # ihre Projekte). Die Ruecktransformation von der Kuerzung je Person auf einen
         # Kuerzungsfaktor je Projekt geht ueber dieselbe Matrix, nur transponiert - so
         # bleibt der (Laeufe, Projekte, Personen)-Tensor, den eine dritte Achse
         # bräuchte, ungebaut (siehe Modul-Docstring).
-        bedarf_je_person = gewuenscht_stunden @ aufbau.anteil_matrix
         verfuegbar = aufbau.kapazitaet[index] * skalierung
+        gezogener_anteil_fakturierbar: np.ndarray | None = None
         if fakturierbare_arbeit_verteilung is not None:
             # Je Lauf und Person unabhaengig gezogen (wie die Abrufquote oben je Lauf
             # und Projekt) statt eines einzelnen, ueber alle Laeufe gleichen Anteils -
@@ -553,6 +636,29 @@ def simulieren(
                 zufall,
             )
             verfuegbar = verfuegbar * gezogener_anteil_fakturierbar
+        if aufbau.reserviert.any():
+            # Schulungsstunden sind fakturierbar und belegen die Person (siehe
+            # domaene.ohne_budget) - erst nach dem Anteil fakturierbarer Arbeit
+            # abgezogen, weil sie Teil dieses Anteils sind.
+            verfuegbar = np.maximum(0.0, verfuegbar - aufbau.reserviert * skalierung)
+
+        if anzahl_ohne_budget:
+            gewuenscht_euro[:, aufbau.anzahl_budget :] = _bedarf_ohne_budget(
+                aufbau,
+                index,
+                laeufe=laeufe,
+                zufall=zufall,
+                skalierung=skalierung,
+                angenommener_anteil=(
+                    gezogener_anteil_fakturierbar.mean(axis=1)
+                    if gezogener_anteil_fakturierbar is not None
+                    else 1.0 - interne_arbeit_abschlag
+                ),
+                referenz=anteil_fakturierbar_referenz,
+            )
+
+        gewuenscht_stunden = np.where(aufbau.hat_satz, gewuenscht_euro / aufbau.saetze_sicher, 0.0)
+        bedarf_je_person = gewuenscht_stunden @ aufbau.anteil_matrix
         ueberschritten = bedarf_je_person > verfuegbar
         bedarf_sicher = np.where(bedarf_je_person > 0, bedarf_je_person, 1.0)
         faktor_je_person = np.where(ueberschritten, verfuegbar / bedarf_sicher, 1.0)
@@ -567,6 +673,7 @@ def simulieren(
         tatsaechlich = np.maximum(geliefert, aufbau.gebucht[index])
         restvolumen = np.maximum(0.0, restvolumen - tatsaechlich)
         monatssummen[index] = tatsaechlich.sum(axis=1)
+        ohne_budget_summen[index] = tatsaechlich[:, aufbau.anzahl_budget :].sum(axis=1)
         # Aus ``tatsaechlich`` zurueckgerechnet statt ``gelieferte_stunden`` verwendet:
         # nur ``tatsaechlich`` kennt die Untergrenze aus bereits Gebuchtem
         # (``gebucht[index]`` oben), damit bleiben Euro- und Stunden-Sicht auf
@@ -580,4 +687,5 @@ def simulieren(
         monatssummen=monatssummen,
         kapazitaet_limitiert_je_lauf=kapazitaet_limitiert_je_lauf,
         stunden_je_projekt=stunden_je_projekt,
+        ohne_budget_summen=ohne_budget_summen,
     )

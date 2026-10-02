@@ -58,7 +58,7 @@
    als ein Anteil an "wie viel Kapazitaet ist fakturierbar"; Formparameter (k) und
    Standardabweichung (σ) bleiben dagegen Fliesskommazahlen (siehe app.py fuer die
    Begruendung je Parameter). #}
-{% macro interne_arbeit_regler_abschnitt(modus, modus_optionen, modus_beschriftungen, aktuell, historisch, abweichend, zuruecksetzen_url, pauschal_zuruecksetzen_url, weibull_zuruecksetzen_url, gauss_zuruecksetzen_url, horizont_monate, horizont_optionen, laeufe, laeufe_zuruecksetzen_url, form_id=none) %}
+{% macro interne_arbeit_regler_abschnitt(modus, modus_optionen, modus_beschriftungen, aktuell, historisch, abweichend, zuruecksetzen_url, pauschal_zuruecksetzen_url, weibull_zuruecksetzen_url, gauss_zuruecksetzen_url, horizont_monate, horizont_optionen, laeufe, laeufe_zuruecksetzen_url, ohne_budget_modus=none, ohne_budget_modus_optionen=none, ohne_budget_modus_beschriftungen=none, ohne_budget_faktor=none, ohne_budget_historie_monate=none, ohne_budget_historie_standard=none, ohne_budget_historie_maximum=24, ohne_budget_historie_zuruecksetzen_url=none, form_id=none) %}
 {% if modus == "pauschal" %}
 {% set verteilung_text = "Pauschal: " ~ aktuell.pauschal_prozent ~ " % fakturierbar" %}
 {% elif modus == "weibull" %}
@@ -88,6 +88,28 @@
         </label>
         <a class="zuruecksetzen" href="{{ laeufe_zuruecksetzen_url }}">Auf Standardwert zurücksetzen</a>
     </div>
+    {% if ohne_budget_modus %}
+    <div class="regler-gruppe regler-trenner">
+        <label>Projekte ohne Budget
+            <select name="ohne_budget_modus"{% if form_id %} form="{{ form_id }}"{% endif %} onchange="this.form.submit()">
+                {% for wert in ohne_budget_modus_optionen %}
+                <option value="{{ wert }}" {{ "selected" if wert == ohne_budget_modus }}>{{ ohne_budget_modus_beschriftungen[wert] }}</option>
+                {% endfor %}
+            </select>
+        </label>
+        {% if ohne_budget_modus == "an" and ohne_budget_historie_monate is not none %}
+        <label>Historie für Projekte ohne Budget (Konfiguration: {{ ohne_budget_historie_standard }} {{ "Monat" if ohne_budget_historie_standard == 1 else "Monate" }})
+            <input type="range" name="ohne_budget_historie_monate"{% if form_id %} form="{{ form_id }}"{% endif %}
+                   min="1" max="{{ ohne_budget_historie_maximum }}" step="1" value="{{ ohne_budget_historie_monate }}"
+                   oninput="this.nextElementSibling.textContent = this.value + (this.value == 1 ? ' Monat' : ' Monate')"
+                   onchange="this.form.submit()">
+            <output>{{ ohne_budget_historie_monate }} {{ "Monat" if ohne_budget_historie_monate == 1 else "Monate" }}</output>
+        </label>
+        <a class="zuruecksetzen" href="{{ ohne_budget_historie_zuruecksetzen_url }}">Auf Konfiguration zurücksetzen</a>
+        {% endif %}
+        <p>Laufende Projekte ohne Budget gehen mit ihrem eigenen Umsatzverlauf der letzten Monate in die Prognose ein. Ihr Bedarf wächst und sinkt mit dem Anteil fakturierbarer Arbeit unten relativ zum historischen Durchschnitt{% if ohne_budget_modus == "an" and ohne_budget_faktor is not none %} (aktuell das {{ ("%.2f"|format(ohne_budget_faktor))|replace(".", ",") }}-Fache von „wie bisher“){% endif %}. Gedeckelt wird weiterhin durch die verfügbare Kapazität, abzüglich der Stunden für Schulungen.</p>
+    </div>
+    {% endif %}
     <div class="regler-gruppe regler-trenner">
         <label>Verteilung
             <select name="interne_arbeit_modus"{% if form_id %} form="{{ form_id }}"{% endif %} onchange="this.form.submit()">

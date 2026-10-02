@@ -47,6 +47,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable, Hashable
 
+    from umsatzprognose.domaene import OhneBudgetModell
     from umsatzprognose.util import Fortschritt
 
 import humanize
@@ -204,8 +205,14 @@ class DashboardCache:
     """Haelt je angefragter (``horizont_monate``, ``auslastung_monate``)-Kombination
     ein geladenes ``Dashboard`` vor."""
 
-    def __init__(self, *, ttl_sekunden: int | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        ttl_sekunden: int | None = None,
+        ohne_budget: OhneBudgetModell | None = None,
+    ) -> None:
         self._cache = _TTLCache[tuple[int, int], Dashboard](ttl_sekunden=ttl_sekunden)
+        self._ohne_budget = ohne_budget
 
     def bereit(self, *, horizont_monate: int, auslastung_monate: int) -> Dashboard | None:
         return self._cache.bereit((horizont_monate, auslastung_monate))
@@ -234,7 +241,11 @@ class DashboardCache:
             # Simulation hier bereits standardmaessig aus der historischen Verteilung
             # (siehe Dashboard.simuliere) - _simuliertes_dashboard() in webapp/app.py
             # weicht davon nur bei einem manuell gesetzten Regler-Wert ab.
-            await dashboard.simuliere_async(monate=horizont_monate, fortschritt=melden)
+            await dashboard.simuliere_async(
+                monate=horizont_monate,
+                ohne_budget=self._ohne_budget,
+                fortschritt=melden,
+            )
             return dashboard
 
         self._cache.anstossen((horizont_monate, auslastung_monate), laden)

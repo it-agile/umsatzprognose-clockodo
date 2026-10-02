@@ -93,13 +93,15 @@ darf es importieren): Umgebungserkennung (`in_colab()`), Env-Variablen/Colab-Sec
   `bestand.py` (`Bestand`, das Aggregat), `simulation.py` (Rechenkern, siehe unten),
   `prognose.py` (`Prognose`-Protocol, `NochKeinePrognose`), `hinweis.py`, `zahlen.py`
   (deutsche Zahlformate ohne `locale`), `kurzarbeit.py`, `auslastung.py` – die drei
-  letzten additiv, siehe „Was das Modul fachlich tut".
+  letzten additiv, siehe „Was das Modul fachlich tut"; `ohne_budget.py`
+  (`OhneBudgetModell`, siehe „Projekte ohne Budget").
 - `clockodo/` – alles, was Clockodo weiß, weiß nur dieses Paket. `config.py`,
   `client.py` (`ClockodoClient`, `ClockodoError`), `nebenlaeufig.py` (`synchron`,
   `gleichzeitig`), `cache.py` (Verlaufscache, opt-in, siehe Kernregeln), je Endpunkt ein
   Repository (`kunden.py`, `mitarbeiter.py`, `projekte.py`, `umsatz.py`,
   `verbrauchsverlauf.py`, `bestand.py` – `BestandRepository` ist der eine Einstieg),
-  additiv `kurzarbeit.py`, `auslastung.py`.
+  additiv `kurzarbeit.py`, `auslastung.py`; `ohne_budget.py` liest die Konfiguration
+  `OHNE_BUDGET_MODELL` (Namensbausteine, keine Projektnamen im Repository).
 - `google_sheets/` – gemeinsamer Sheets-Zugriff für `schulungen/`+`kosten/`.
   `config.py`, `client.py` (OAuth-Client-ID statt Service-Account, kennt keinen
   bestimmten Reiter).
@@ -203,6 +205,14 @@ Zielmonat-Übersteuerung), `interne_arbeit_verteilung_min/max_prozent`.
 `verbrauchsplan`/`anteil_fakturierbar`/`laeufe` lösen bei Abweichung eine transiente
 Neusimulation aus (`_simuliertes_dashboard()`) statt das geteilte, gecachte `Dashboard`
 zu verändern.
+
+`umsatzrendite_kumuliert` (nur `/`) zeigt standardmäßig an jedem prognostizierten Monat
+einen eigenen, kumuliert fortgeschriebenen Fehlerbalken bis zum 95%-Konfidenzniveau
+(85%-Niveau zusätzlich im Hovertext) – abschaltbar über den Checkbox-Schalter
+`umsatzrendite_fehlerbalken_werte` (dasselbe Muster wie `interne_arbeit_trend_werte` auf
+`/dashboard`, siehe `TrendlinienWerte`/`FehlerbalkenWerte` in `app.py`) bzw. über
+`Dashboard.umsatzrendite_kumuliert(mit_fehlerbalken=…)` und, im Export,
+`--umsatzrendite-fehlerbalken aus` (`scripts/diagramme_exportieren.py`).
 
 Zwei Cache-Strategien (`webapp/cache.py`): `DashboardCache` hält je (`horizont_monate`,
 `auslastung_monate`)-Kombination einen eigenen Eintrag (lädt tatsächlich
@@ -318,6 +328,46 @@ Verteilung (Modus „Weibull"/„Gauss"). `Bestand.simulieren()` kennt diese Aut
 nicht (alte Standardwerte `0.0`/`None`) – lebt bewusst nur in `Dashboard.simuliere()`,
 das die Auslastungsmonate hält. In den Notebooks dieselbe Wahl über zwei Variablen vor
 „Simulation ausführen" statt eines Dropdowns.
+
+## Projekte ohne Budget
+
+Optional (`OHNE_BUDGET_MODELL`, siehe `.env.sample`; ungesetzt bleibt alles beim Alten und
+die Webapp zeigt keinen Regler). Aktive, nicht abgeschlossene Projekte ohne bezifferbares
+Budget (`domaene.ohne_budget.OhneBudgetModell.projekte()`) gehen in die Simulation ein,
+statt ganz aus ihr zu fallen:
+
+- **Bedarf aus der eigenen Historie.** Je Lauf/Monat/Projekt wird einer der letzten
+  `historie_monate` abgeschlossenen Monate gezogen (Monate ohne Buchung eingeschlossen) –
+  Häufigkeit und Höhe in einer Ziehung. Kein Restvolumen als Grenze; sie sind als
+  zusätzliche Spalten hinter den Budgetprojekten Teil derselben Matrix, teilen sich also
+  den Kapazitätsdeckel je Person.
+- **Regler = Anteil fakturierbarer Arbeit.** Der angenommene Anteil (`1 -
+  interne_arbeit_abschlag` bzw. Mittel der Ziehung je Lauf) geteilt durch
+  `anteil_fakturierbar_referenz` (historischer Durchschnitt) skaliert den Bedarf:
+  Faktor 1 = „interne Arbeit wie bisher". Dieselbe Mechanik wie Pauschal/Weibull/Gauss,
+  kein eigener Regler. `Dashboard.simuliere(ohne_budget=…)` setzt die Referenz;
+  `Bestand.simulieren()` kennt keine Automatik (Standard `None` = Modell aus).
+- **Ausschluss/Schulung.** `ausschluss`-Projekte werden nicht modelliert (z. B. interne
+  Projekte). `schulung`-Projekte erzeugen hier keinen Umsatz (steht im Schulungsplan), ihre
+  mittleren Monatsstunden je Person (`reservierte_stunden()`, Näherung: Gesamtanteil der
+  Person am Projekt) werden von der fakturierbaren Kapazität abgezogen.
+- **Warum dieses Modell, nicht „Restkapazität füllt sich auf".** Ein Konsistenztest
+  (Kapazität × historischer Anteil − Budgetprojekte − Schulungen gegen die tatsächlichen
+  Stunden ohne Budget) schwankte stark und wurde teils negativ; der tatsächliche Bedarf war
+  stabil. Die Differenz zweier großer Zahlen trägt nicht.
+- **Offen:** Projektstunden aus `/v2/entrygroups` liegen je Monat über den abrechenbaren
+  Stunden der Auslastung (Ursache ungeklärt); Reservierung nutzt den Gesamtanteil statt der
+  Fenstermonate.
+
+Webapp: Dropdown „Projekte ohne Budget" (`ohne_budget_modus`, `an`/`aus`, Standard `an`)
+und Schieberegler `ohne_budget_historie_monate` (1–24, Standard `historie_monate` aus der
+Konfiguration; nur im Modus `an`) im Abschnitt „Simulations-Parameter". Abweichungen
+(`aus`, anderes Fenster) lösen eine transiente Neusimulation aus (`dataclasses.replace`
+am Modell); das geteilte `DashboardCache` wird mit dem konfigurierten Modell simuliert.
+Der Projektfilter „ohne Budget" auf `/dashboard` ist mit den Bausteinen aus
+`ausschluss` und `schulung` vorbelegt (rein darstellend; ein ausdrücklich leerer
+`ohne_budget_filter` hebt das auf) – die Simulation liest weiter das Modell, nicht diesen
+Filter.
 
 ## Clockodo-API
 

@@ -16,7 +16,15 @@
         horizont_monate=horizont_monate,
         horizont_optionen=horizont_optionen,
         laeufe=laeufe,
-        laeufe_zuruecksetzen_url="/dashboard" ~ laeufe_zuruecksetzen_query
+        laeufe_zuruecksetzen_url="/dashboard" ~ laeufe_zuruecksetzen_query,
+        ohne_budget_modus=ohne_budget_modus,
+        ohne_budget_modus_optionen=ohne_budget_modus_optionen,
+        ohne_budget_modus_beschriftungen=ohne_budget_modus_beschriftungen,
+        ohne_budget_faktor=ohne_budget_faktor,
+        ohne_budget_historie_monate=ohne_budget_historie_monate,
+        ohne_budget_historie_standard=ohne_budget_historie_standard,
+        ohne_budget_historie_maximum=ohne_budget_historie_maximum,
+        ohne_budget_historie_zuruecksetzen_url="/dashboard" ~ ohne_budget_historie_zuruecksetzen_query
     ) }}
     {{ regler_abschnitt(
         "verbrauchsplan",

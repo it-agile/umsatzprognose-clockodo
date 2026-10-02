@@ -7,9 +7,13 @@ lassen - ``fastapi`` ist bewusst keine Basisabhaengigkeit (siehe Moduldocstring 
 
 from __future__ import annotations
 
+import datetime
+import re
 from datetime import date
 from decimal import Decimal
+from html import unescape
 from typing import cast
+from urllib.parse import parse_qsl
 
 import pandas as pd
 import pytest
@@ -28,6 +32,7 @@ from umsatzprognose.domaene import (
     Kurzarbeitsbewertung,
     Mitarbeiter,
     Monatsumsatz,
+    OhneBudgetModell,
     Projekt,
     Schulungsplan,
     Schulungstermin,
@@ -35,7 +40,9 @@ from umsatzprognose.domaene import (
     Umsatzhistorie,
     WeibullFakturierbareArbeit,
 )
+from umsatzprognose.domaene.umsatzhistorie import MONATSNAMEN
 from umsatzprognose.domaene.zahlen import euro
+from umsatzprognose.util.monat import aus_ordnung, ordnung
 
 fastapi = pytest.importorskip("fastapi")
 from fastapi.testclient import TestClient  # noqa: E402
@@ -210,6 +217,39 @@ def test_uebersicht_zeigt_interne_arbeit_regler_ohne_grafik_oder_tabelle():
     assert antwort.text.index("interne_arbeit_modus") < antwort.text.index(
         "Verbrauchsplan-Übersteuerung"
     )
+
+
+def test_uebersicht_zeigt_umsatzrendite_fehlerbalken_checkbox_startet_angehakt():
+    client = TestClient(app_modul.app)
+
+    antwort = client.get("/")
+
+    assert "checked" in _checkbox_markup(antwort.text, "umsatzrendite_fehlerbalken_werte")
+
+
+def test_uebersicht_umsatzrendite_fehlerbalken_ausgeschaltet_zeigt_unmarkierte_checkbox():
+    client = TestClient(app_modul.app)
+
+    antwort = client.get("/", params={"umsatzrendite_fehlerbalken_werte": "aus"})
+
+    assert "checked" not in _checkbox_markup(antwort.text, "umsatzrendite_fehlerbalken_werte")
+
+
+def test_uebersicht_reicht_umsatzrendite_fehlerbalken_an_dashboard_durch(monkeypatch):
+    aufrufe: list[bool | None] = []
+    original = Dashboard.umsatzrendite_kumuliert
+
+    def _tracking(self, *args, **kwargs):
+        aufrufe.append(kwargs.get("mit_fehlerbalken"))
+        return original(self, *args, **kwargs)
+
+    monkeypatch.setattr(Dashboard, "umsatzrendite_kumuliert", _tracking)
+    client = TestClient(app_modul.app)
+
+    client.get("/")
+    client.get("/", params={"umsatzrendite_fehlerbalken_werte": "aus"})
+
+    assert aufrufe == [True, False]
 
 
 def test_dashboard_seite_interne_arbeit_regler_steht_vor_verbrauchsplan():
@@ -1577,19 +1617,25 @@ def test_schulungen_zeitraum_ignoriert_ab_jahr(fake_caches):
     (_standard_anzeige_ab_jahr()) hat sonst frueherer Monate unsichtbar aus dem
     Rueckblick herausgeschnitten, obwohl "zeitraum" sie eigentlich zeigen sollte."""
     _, anmeldungsverlauf_cache, _ = fake_caches
+    # Relativ zum laufenden Monat statt fest verdrahtet, damit der Test nicht mit dem
+    # Kalender altert: 11 Monate zurueck liegt noch im rollierenden 12-Monats-Fenster,
+    # faellt aber (ab Januar) in ein frueheres Jahr als der laufende Monat.
+    heute = datetime.datetime.now(tz=datetime.UTC).date()
+    fruehere_ordnung = ordnung(heute.year, heute.month) - 11
+    fruehes_jahr, fruher_monat = aus_ordnung(fruehere_ordnung)
     anmeldungsverlauf_cache.ergebnis = Anmeldungsverlauf(
         anmeldungen=(
-            Anmeldung(2025, 9, "KSD", 3),
-            Anmeldung(2026, 9, "KSD", 5),
+            Anmeldung(fruehes_jahr, fruher_monat, "KSD", 3),
+            Anmeldung(heute.year, heute.month, "KSD", 5),
         )
     )
     client = TestClient(app_modul.app)
 
-    # ab_jahr=2026 wuerde verlauf_ab_jahr auf 2026 begrenzen - das rollierende Fenster
-    # (12 Monate: September Vorjahr bis September laufend) muss trotzdem Sep 2025 zeigen.
-    antwort = client.get("/schulungen?ab_jahr=2026")
+    # ab_jahr=<laufendes Jahr> wuerde verlauf_ab_jahr auf dieses Jahr begrenzen - das
+    # rollierende Fenster muss den frueheren Monat trotzdem zeigen.
+    antwort = client.get(f"/schulungen?ab_jahr={heute.year}")
 
-    assert "Sep 2025" in antwort.text
+    assert f"{MONATSNAMEN[fruher_monat - 1]} {fruehes_jahr}" in antwort.text
 
 
 def test_schulungen_zeitraum_alle_zeigt_den_gesamten_geladenen_zeitraum(fake_caches):
@@ -2684,3 +2730,241 @@ def test_kurzarbeit_zuruecksetzen_link_laesst_standard_zeitraum_weg():
     )
 
     assert 'href="/kurzarbeit">Schwellenwerte zurücksetzen' in antwort.text
+
+
+# --- Projekte ohne Budget (Regler "Projekte ohne Budget") --------------------------
+
+
+@pytest.mark.parametrize("pfad", ["/", "/dashboard"])
+def test_ohne_budget_regler_fehlt_ohne_konfiguriertes_modell(pfad, monkeypatch):
+    monkeypatch.setattr(app_modul, "_OHNE_BUDGET_MODELL", None)
+    client = TestClient(app_modul.app)
+
+    assert 'name="ohne_budget_modus"' not in client.get(pfad).text
+
+
+@pytest.mark.parametrize("pfad", ["/", "/dashboard"])
+def test_ohne_budget_regler_steht_mit_konfiguriertem_modell_im_simulations_parameter_abschnitt(
+    pfad, monkeypatch
+):
+    monkeypatch.setattr(app_modul, "_OHNE_BUDGET_MODELL", OhneBudgetModell(schulung=("Kurs",)))
+    client = TestClient(app_modul.app)
+
+    antwort = client.get(pfad)
+
+    assert (
+        antwort.text.index("Simulations-Parameter")
+        < antwort.text.index('name="ohne_budget_modus"')
+        < antwort.text.index("interne_arbeit_modus")
+    )
+    assert "Mit Projekten ohne Budget" in antwort.text
+
+
+@pytest.mark.parametrize("pfad", ["/", "/dashboard"])
+def test_ohne_budget_modus_aus_loest_neusimulation_ohne_modell_aus(pfad, monkeypatch):
+    modell = OhneBudgetModell(schulung=("Kurs",))
+    monkeypatch.setattr(app_modul, "_OHNE_BUDGET_MODELL", modell)
+    uebergeben: list[OhneBudgetModell | None] = []
+    original = Dashboard.simuliere
+
+    def aufzeichnend(self, **kwargs):
+        uebergeben.append(kwargs.get("ohne_budget"))
+        return original(self, **kwargs)
+
+    monkeypatch.setattr(Dashboard, "simuliere", aufzeichnend)
+    client = TestClient(app_modul.app)
+
+    standard = client.get(pfad)
+    aus = client.get(pfad, params={"ohne_budget_modus": "aus"})
+
+    assert standard.status_code == 200
+    assert aus.status_code == 200
+    # Standard ist das gecachte Basis-Dashboard (keine Neusimulation); "aus" simuliert
+    # transient neu, ohne das konfigurierte Modell.
+    assert uebergeben == [None]
+
+
+def test_ohne_budget_modus_ausserhalb_der_optionen_wird_zurueckgewiesen():
+    client = TestClient(app_modul.app)
+
+    assert client.get("/", params={"ohne_budget_modus": "vielleicht"}).status_code == 422
+
+
+MODELL_MIT_BAUSTEINEN = OhneBudgetModell(
+    ausschluss=("Interne Projekte", "Gemeinsam"),
+    schulung=("Gemeinsam", "Kurs"),
+    historie_monate=4,
+)
+
+
+def test_projektfilter_ohne_budget_ist_mit_den_bausteinen_des_modells_vorbelegt(monkeypatch):
+    monkeypatch.setattr(app_modul, "_OHNE_BUDGET_MODELL", MODELL_MIT_BAUSTEINEN)
+    client = TestClient(app_modul.app)
+
+    antwort = client.get("/dashboard")
+
+    # Ausschluss, dann Schulung, ohne doppelte Bausteine, je Zeile einer.
+    assert "Interne Projekte\nGemeinsam\nKurs</textarea>" in antwort.text
+
+
+def test_projektfilter_ohne_budget_ist_ohne_modell_leer(monkeypatch):
+    monkeypatch.setattr(app_modul, "_OHNE_BUDGET_MODELL", None)
+    client = TestClient(app_modul.app)
+
+    assert "></textarea>" in client.get("/dashboard").text
+
+
+def test_ausdruecklich_leerer_projektfilter_hebt_die_vorbelegung_auf(monkeypatch):
+    monkeypatch.setattr(app_modul, "_OHNE_BUDGET_MODELL", MODELL_MIT_BAUSTEINEN)
+    client = TestClient(app_modul.app)
+
+    antwort = client.get("/dashboard", params={"ohne_budget_filter": ""})
+
+    assert "Interne Projekte" not in antwort.text.split("<textarea", 1)[-1]
+
+
+def _projektfilter_details_tag(html: str) -> str:
+    """Das einleitende ``<details ...>`` direkt vor der Zusammenfassung des Filters."""
+    return (
+        html.split('Projektfilter "ohne Budget"', 1)[0].rsplit("<details", 1)[-1].split(">", 1)[0]
+    )
+
+
+def test_projektfilter_mit_zeilenumbruechen_des_browsers_gilt_nicht_als_abweichend(monkeypatch):
+    monkeypatch.setattr(app_modul, "_OHNE_BUDGET_MODELL", MODELL_MIT_BAUSTEINEN)
+    client = TestClient(app_modul.app)
+
+    standard = client.get(
+        "/dashboard", params={"ohne_budget_filter": "Interne Projekte\r\nGemeinsam\r\nKurs"}
+    )
+    anders = client.get("/dashboard", params={"ohne_budget_filter": "Etwas anderes"})
+
+    assert "open" not in _projektfilter_details_tag(standard.text)
+    assert "open" in _projektfilter_details_tag(anders.text)
+
+
+@pytest.mark.parametrize("pfad", ["/", "/dashboard"])
+def test_historienregler_zeigt_den_wert_aus_der_konfiguration(pfad, monkeypatch):
+    monkeypatch.setattr(app_modul, "_OHNE_BUDGET_MODELL", MODELL_MIT_BAUSTEINEN)
+    client = TestClient(app_modul.app)
+
+    antwort = client.get(pfad)
+
+    assert 'name="ohne_budget_historie_monate"' in antwort.text
+    assert 'min="1" max="24" step="1" value="4"' in antwort.text
+    assert "Konfiguration: 4 Monate" in antwort.text
+    assert (
+        antwort.text.index('name="ohne_budget_modus"')
+        < antwort.text.index('name="ohne_budget_historie_monate"')
+        < antwort.text.index("interne_arbeit_modus")
+    )
+
+
+@pytest.mark.parametrize("pfad", ["/", "/dashboard"])
+def test_historienregler_fehlt_ohne_modell_oder_im_modus_aus(pfad, monkeypatch):
+    client = TestClient(app_modul.app)
+
+    monkeypatch.setattr(app_modul, "_OHNE_BUDGET_MODELL", None)
+    assert 'name="ohne_budget_historie_monate"' not in client.get(pfad).text
+
+    monkeypatch.setattr(app_modul, "_OHNE_BUDGET_MODELL", MODELL_MIT_BAUSTEINEN)
+    aus = client.get(pfad, params={"ohne_budget_modus": "aus"})
+    assert 'name="ohne_budget_historie_monate"' not in aus.text
+
+
+@pytest.mark.parametrize("pfad", ["/", "/dashboard"])
+def test_historienregler_wertebereich_wird_geprueft(pfad, monkeypatch):
+    monkeypatch.setattr(app_modul, "_OHNE_BUDGET_MODELL", MODELL_MIT_BAUSTEINEN)
+    client = TestClient(app_modul.app)
+
+    assert client.get(pfad, params={"ohne_budget_historie_monate": 0}).status_code == 422
+    assert client.get(pfad, params={"ohne_budget_historie_monate": 25}).status_code == 422
+    assert client.get(pfad, params={"ohne_budget_historie_monate": 24}).status_code == 200
+
+
+@pytest.mark.parametrize("pfad", ["/", "/dashboard"])
+def test_abweichendes_historienfenster_simuliert_mit_angepasstem_modell(pfad, monkeypatch):
+    monkeypatch.setattr(app_modul, "_OHNE_BUDGET_MODELL", MODELL_MIT_BAUSTEINEN)
+    uebergeben: list[OhneBudgetModell | None] = []
+    original = Dashboard.simuliere
+
+    def aufzeichnend(self, **kwargs):
+        uebergeben.append(kwargs.get("ohne_budget"))
+        return original(self, **kwargs)
+
+    monkeypatch.setattr(Dashboard, "simuliere", aufzeichnend)
+    client = TestClient(app_modul.app)
+
+    client.get(pfad)  # Konfigurationswert: kein Neusimulieren
+    antwort = client.get(pfad, params={"ohne_budget_historie_monate": 9})
+
+    assert antwort.status_code == 200
+    angepasst = [m for m in uebergeben if m is not None]
+    assert [m.historie_monate for m in angepasst] == [9]
+    assert angepasst[0].ausschluss == MODELL_MIT_BAUSTEINEN.ausschluss
+
+
+def _query_der_links(html: str) -> set[str]:
+    """Alle Query-Strings der Links auf der Seite (ohne das fuehrende ``?``)."""
+    return {unescape(m.group(1)) for m in re.finditer(r'href="[^"?]*\?([^"]*)"', html)}
+
+
+# Wie ein Browser alle Felder beider Formulare unveraendert auf ihrem Standard absendet.
+_STANDARD_ABSENDUNG_START = {
+    "horizont_monate": "3",
+    "laeufe": "10000",
+    "gewinn_verlust_monate": "12",
+    "ohne_budget_modus": "an",
+    "ohne_budget_historie_monate": "4",
+    "interne_arbeit_modus": "pauschal",
+    "verbrauchsplan": "",
+    "umsatzrendite_fehlerbalken_werte": "an",
+}
+_STANDARD_ABSENDUNG_DASHBOARD = {
+    "horizont_monate": "3",
+    "laeufe": "10000",
+    "ohne_budget_modus": "an",
+    "ohne_budget_historie_monate": "4",
+    "interne_arbeit_modus": "pauschal",
+    "verbrauchsplan": "",
+    "ohne_budget_filter": "Interne Projekte\r\nGemeinsam\r\nKurs",
+    "interne_arbeit_trend_werte": "an",
+    "interne_arbeit_verteilung_min_prozent": "0",
+    "interne_arbeit_verteilung_max_prozent": "100",
+}
+
+
+@pytest.mark.parametrize(
+    ("pfad", "absendung"),
+    [("/", _STANDARD_ABSENDUNG_START), ("/dashboard", _STANDARD_ABSENDUNG_DASHBOARD)],
+)
+def test_links_enthalten_keine_unveraendert_auf_dem_standard_stehenden_parameter(
+    pfad, absendung, monkeypatch
+):
+    monkeypatch.setattr(app_modul, "_OHNE_BUDGET_MODELL", MODELL_MIT_BAUSTEINEN)
+    client = TestClient(app_modul.app)
+
+    html = client.get(pfad, params=absendung).text
+
+    assert _query_der_links(html) == set()
+
+
+@pytest.mark.parametrize(
+    ("pfad", "absendung", "abweichung"),
+    [
+        ("/", _STANDARD_ABSENDUNG_START, {"ohne_budget_historie_monate": "9"}),
+        ("/dashboard", _STANDARD_ABSENDUNG_DASHBOARD, {"ohne_budget_historie_monate": "9"}),
+        ("/dashboard", _STANDARD_ABSENDUNG_DASHBOARD, {"ohne_budget_filter": "Etwas anderes"}),
+        ("/dashboard", _STANDARD_ABSENDUNG_DASHBOARD, {"interne_arbeit_trend_werte": "aus"}),
+        ("/", _STANDARD_ABSENDUNG_START, {"umsatzrendite_fehlerbalken_werte": "aus"}),
+    ],
+)
+def test_links_behalten_nur_den_abweichenden_parameter(pfad, absendung, abweichung, monkeypatch):
+    monkeypatch.setattr(app_modul, "_OHNE_BUDGET_MODELL", MODELL_MIT_BAUSTEINEN)
+    client = TestClient(app_modul.app)
+
+    html = client.get(pfad, params={**absendung, **abweichung}).text
+
+    (schluessel,) = abweichung
+    for query in _query_der_links(html):
+        assert [name for name, _ in parse_qsl(query)] in ([schluessel], [])

@@ -37,6 +37,7 @@ if TYPE_CHECKING:
         Kostenplan,
         Mitarbeiter,
         Monatsumsatz,
+        OhneBudgetModell,
         Prognose,
         Schulungsplan,
         Umsatzhistorie,
@@ -578,6 +579,7 @@ class Dashboard:
         laeufe: int = 10_000,
         anteil_fakturierbar: float | None = None,
         fakturierbare_arbeit_ziehung: FakturierbareArbeitZiehung | None = None,
+        ohne_budget: OhneBudgetModell | None = None,
         fortschritt: Fortschritt | None = None,
     ) -> None:
         """Fuehrt die Monte-Carlo-Simulation aus und haelt das Ergebnis in
@@ -605,6 +607,13 @@ class Dashboard:
         Durchschnitts. ``None`` (Standard) laesst die Kapazitaet unveraendert durch
         diesen Parameter (nur ``anteil_fakturierbar`` wirkt dann).
 
+        ``ohne_budget``: nimmt zusaetzlich die Projekte ohne Budget in die Prognose auf
+        (siehe :mod:`umsatzprognose.domaene.ohne_budget`). Der oben aufgeloeste Anteil
+        fakturierbarer Arbeit skaliert ihren historischen Bedarf relativ zum
+        historischen Durchschnitt (:meth:`durchschnittlicher_anteil_fakturierbarer_arbeit`):
+        "wie bisher" aendert nichts, mehr Kundenzeit erhoeht ihn, mehr interne Arbeit
+        senkt ihn. ``None`` (Standard) laesst diese Projekte wie bisher aussen vor.
+
         ``fortschritt``, sofern angegeben, wird einmal nach Abschluss mit einer
         fertigen Statuszeile (Laeufe, Horizont, Dauer) aufgerufen - dieselbe Form wie
         beim Laden (siehe :meth:`laden_async`), aber nur ein einzelner Aufruf statt
@@ -615,8 +624,8 @@ class Dashboard:
         Verlaufscache-Zugriff genuegt, eine feingranulare Zwischenanzeige waere nur
         Anschein von Fortschritt ohne echten Informationsgewinn.
         """
+        durchschnitt = self.durchschnittlicher_anteil_fakturierbarer_arbeit()
         if anteil_fakturierbar is None and fakturierbare_arbeit_ziehung is None:
-            durchschnitt = self.durchschnittlicher_anteil_fakturierbarer_arbeit()
             anteil_fakturierbar = durchschnitt if durchschnitt is not None else 1.0
         abschlag = 1.0 - anteil_fakturierbar if anteil_fakturierbar is not None else 0.0
         with _Stoppuhr() as t:
@@ -625,6 +634,8 @@ class Dashboard:
                 laeufe=laeufe,
                 interne_arbeit_abschlag=abschlag,
                 fakturierbare_arbeit_verteilung=fakturierbare_arbeit_ziehung,
+                ohne_budget=ohne_budget,
+                anteil_fakturierbar_referenz=durchschnitt,
             )
         if fortschritt is not None:
             fortschritt(
@@ -639,6 +650,7 @@ class Dashboard:
         laeufe: int = 10_000,
         anteil_fakturierbar: float | None = None,
         fakturierbare_arbeit_ziehung: FakturierbareArbeitZiehung | None = None,
+        ohne_budget: OhneBudgetModell | None = None,
         fortschritt: Fortschritt | None = None,
     ) -> None:
         """Wie :meth:`simuliere`, aber nebenlaeufigkeitsfreundlich: die Monte-Carlo-Rechnung
@@ -662,6 +674,7 @@ class Dashboard:
                 laeufe=laeufe,
                 anteil_fakturierbar=anteil_fakturierbar,
                 fakturierbare_arbeit_ziehung=fakturierbare_arbeit_ziehung,
+                ohne_budget=ohne_budget,
                 fortschritt=fortschritt,
             )
 
@@ -739,7 +752,11 @@ class Dashboard:
         )
 
     def umsatzrendite_kumuliert(
-        self, *, max_jahre: int | None = None, mit_beschriftung: bool = False
+        self,
+        *,
+        max_jahre: int | None = None,
+        mit_beschriftung: bool = False,
+        mit_fehlerbalken: bool = True,
     ) -> go.Figure:
         """Fuer jedes Kalenderjahr die kumulierte Umsatzrendite (Gewinn/Umsatz) je Monat.
 
@@ -749,7 +766,8 @@ class Dashboard:
         100 %, ohne dass ueberhaupt Kosten vorlaegen. Siehe
         :func:`~umsatzprognose.darstellung.diagramme.umsatzrendite_kumuliert` fuer die
         genaue Berechnung. ``max_jahre`` siehe :meth:`gewinn_verlust_je_jahr`.
-        ``mit_beschriftung`` siehe :meth:`umsatzverlauf`.
+        ``mit_beschriftung`` siehe :meth:`umsatzverlauf`. ``mit_fehlerbalken`` (Standard
+        an) siehe :func:`~umsatzprognose.darstellung.diagramme.umsatzrendite_kumuliert`.
         """
         letzte_monate, kosten, verbrauch_laufender_monat = self._jahreshistorie_mit_kosten(
             max_jahre=max_jahre
@@ -762,6 +780,7 @@ class Dashboard:
             schulungsplan=self.schulungsplan,
             verbrauch_laufender_monat=verbrauch_laufender_monat,
             mit_beschriftung=mit_beschriftung,
+            mit_fehlerbalken=mit_fehlerbalken,
         )
 
     def _jahreshistorie_mit_kosten(
@@ -977,6 +996,15 @@ class Dashboard:
         if historie is None:
             raise ValueError("Der Bestand enthält keine Umsatzhistorie.")
         return historie.letzte(anzahl)
+
+    def umsatz_ohne_budget(
+        self, /, monate: int = STANDARD_HISTORIE_MONATE, projekt_filter: Sequence[str] | None = None
+    ) -> pd.DataFrame:
+        """Rückblick auf den Umsatz aktiver Projekte ohne Budget (siehe
+        :meth:`~umsatzprognose.domaene.bestand.Bestand.umsatz_ohne_budget`)."""
+        return tabellen.umsatz_ohne_budget(
+            self.bestand.umsatz_ohne_budget(monate, projekt_filter=projekt_filter)
+        )
 
     def projekte_ohne_budget(self, /, projekt_filter: Sequence[str] | None = None) -> pd.DataFrame:
         ohne_budget = self.bestand.ohne_budget(projekt_filter=projekt_filter)

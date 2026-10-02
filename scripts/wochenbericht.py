@@ -19,6 +19,10 @@ notebooks/03_schulungsanmeldungen.ipynb. Ein einzelner Slack-API-Aufruf
 (``files_upload_v2`` mit ``file_uploads``) hängt dabei alle Bilder gemeinsam an
 dieselbe Nachricht, statt je Bild eine eigene Unternachricht zu erzeugen.
 
+``OHNE_BUDGET_MODELL`` ist ebenfalls optional (Secret in der Action): gesetzt, gehen
+Projekte ohne Budget wie in der Webapp in die Prognose ein, siehe
+:mod:`umsatzprognose.clockodo.ohne_budget`.
+
 ``WOCHENBERICHT_HORIZONT_MONATE`` ist optional - ohne gesetztes Secret gilt derselbe
 Standardwert wie in den Notebooks (``Dashboard.laden``).
 
@@ -77,7 +81,7 @@ from _fortschritt import (
     relativer_pfad,
 )
 from umsatzprognose import Dashboard, SchulungenRepository
-from umsatzprognose.clockodo import gleichzeitig, synchron
+from umsatzprognose.clockodo import gleichzeitig, ohne_budget_modell_automatisch, synchron
 from umsatzprognose.darstellung import diagramme
 from umsatzprognose.darstellung.dashboard import STANDARD_TOP
 from umsatzprognose.domaene.umsatzhistorie import MONATSNAMEN
@@ -218,7 +222,11 @@ async def _daten_laden_async(
             horizont_monate=horizont_monate,
             fortschritt=melden,
         )
-        await dashboard.simuliere_async(monate=horizont_monate, fortschritt=melden)
+        await dashboard.simuliere_async(
+            monate=horizont_monate,
+            ohne_budget=ohne_budget_modell_automatisch(),
+            fortschritt=melden,
+        )
         return dashboard
 
     async def _anmeldungsverlauf_laden() -> Anmeldungsverlauf | None:

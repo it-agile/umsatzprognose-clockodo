@@ -11,8 +11,11 @@ from umsatzprognose.domaene import (
     Hinweis,
     Kunde,
     Mitarbeiter,
+    Monatsumsatz,
     Projekt,
     Projektanteil,
+    Umsatzhistorie,
+    Verbrauchsverlauf,
 )
 
 STICHTAG = date(2026, 8, 24)
@@ -182,3 +185,28 @@ def test_simulation_ohne_abrufquotenverteilung_liefert_noch_keine_prognose():
     assert not prognose.vorhanden
     assert "Abrufquote" in prognose.begruendung
     assert prognose.monatswerte() == {}
+
+
+def test_umsatz_ohne_budget_summiert_je_monat_und_beachtet_filter():
+    verlauf = Verbrauchsverlauf.fuer(
+        OHNE_BUDGET,
+        [Monatsumsatz(2026, 6, Decimal("1000")), Monatsumsatz(2026, 7, Decimal("500"))],
+    )
+    historie = Umsatzhistorie(
+        stichtag=STICHTAG,
+        monate=(
+            Monatsumsatz(2026, 6, Decimal("10000")),
+            Monatsumsatz(2026, 7, Decimal("20000")),
+            Monatsumsatz(2026, 8, Decimal("5000")),
+        ),
+    )
+    b = bestand(GROSS, OHNE_BUDGET, umsatzhistorie=historie, verbrauchsverlaeufe=(verlauf,))
+
+    zeilen = b.umsatz_ohne_budget(2)
+
+    assert [(o.umsatz, g.umsatz, n) for o, g, n in zeilen] == [
+        (Decimal("1000"), Decimal("10000"), 1),
+        (Decimal("500"), Decimal("20000"), 1),
+    ]
+    gefiltert = b.umsatz_ohne_budget(2, projekt_filter=["Schulungsprodukt"])
+    assert [(o.umsatz, n) for o, _, n in gefiltert] == [(Decimal("0"), 0), (Decimal("0"), 0)]
