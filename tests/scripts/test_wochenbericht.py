@@ -31,6 +31,7 @@ if TYPE_CHECKING:
     from slack_sdk import WebClient
 
     from umsatzprognose.clockodo import Fortschritt
+    from umsatzprognose.domaene import Kundenumsatz
     from umsatzprognose.domaene.anmeldung import Anmeldungsverlauf
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent / "scripts"))
@@ -265,6 +266,9 @@ class _FakePrognose:
         return {}
 
     def ohne_budget(self) -> list[Decimal]:
+        return []
+
+    def umsatz_je_kunde(self) -> list[Kundenumsatz]:
         return []
 
 

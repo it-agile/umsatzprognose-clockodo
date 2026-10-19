@@ -51,16 +51,21 @@ from umsatzprognose.domaene import (
     Kostenplan,
     Kostenposten,
     Kunde,
+    Kundenumsatz,
     Kurzarbeitsbewertung,
     Mitarbeiter,
     Monatsumsatz,
     MonteCarloPrognose,
+    NochKeinePrognose,
     Projekt,
     Projektanteil,
+    Projektumsatz,
     Schulungsplan,
     Schulungstermin,
     Schwellenwerte,
+    Umsatzanteil,
     Umsatzhistorie,
+    Umsatzspanne,
     Verbrauchsverlauf,
     Wochenarbeitszeit,
 )
@@ -2569,6 +2574,141 @@ def test_umsatztabelle_blendet_die_spalte_ohne_budget_ohne_beitrag_aus():
     tabelle = tabellen.umsatztabelle(HISTORIE, _prognose_mit_ohne_budget(("0", "0")))
 
     assert "Davon ohne Budget" not in tabelle.columns
+
+
+def _umsatzanteil(gebucht: tuple[str, str], *spannen: tuple[str, str, str]) -> Umsatzanteil:
+    """Zwei Horizontmonate: gebuchte Betraege und je Monat (Minimum, Mittelwert, Maximum)."""
+    return Umsatzanteil(
+        gebucht=tuple(Decimal(g) for g in gebucht),
+        simuliert=tuple(Umsatzspanne(*(Decimal(w) for w in s)) for s in spannen),
+    )
+
+
+def _prognose_je_kunde() -> MonteCarloPrognose:
+    """Gross GmbH mit drei Projekten (A und B simuliert, C nur mit einer kleinen Buchung),
+    Klein AG mit einem Projekt (simuliert und gebucht), ein Projekt ohne Kunden (nur
+    simuliert) und Nur gebucht AG (nur gebucht)."""
+    null = ("0", "0", "0")
+    gross_a = _umsatzanteil(("0", "0"), ("800", "1500", "2500"), ("10", "15", "20"))
+    gross_b = _umsatzanteil(("0", "0"), ("200", "500", "1000"), ("0", "5", "10"))
+    gross_c = _umsatzanteil(("50", "0"), null, null)
+    klein = _umsatzanteil(("0", "500"), ("100", "200", "300"), null)
+    intern = _umsatzanteil(("0", "0"), ("0", "1", "2"), null)
+    alt = _umsatzanteil(("300", "0"), null, null)
+    return MonteCarloPrognose(
+        _horizontmonate=((2026, 8), (2026, 9)),
+        laeufe=10,
+        _monatswerte={},
+        _summe={},
+        _gebucht=(Decimal("0"), Decimal("500")),
+        _kapazitaet_limitierend_anteil=0.0,
+        _kapazitaet_je_projekt={},
+        _umsatz_je_kunde=(
+            Kundenumsatz(
+                Kunde(id=1, name="Gross GmbH"),
+                _umsatzanteil(("50", "0"), ("1000", "2000", "3500"), ("10", "20", "30")),
+                (
+                    Projektumsatz("Projekt B", gross_b),
+                    Projektumsatz("Projekt C", gross_c),
+                    Projektumsatz("Projekt A", gross_a),
+                ),
+            ),
+            Kundenumsatz(
+                Kunde(id=2, name="Klein AG"),
+                klein,
+                (Projektumsatz("Einzelprojekt", klein),),
+            ),
+            Kundenumsatz(None, intern, (Projektumsatz("Intern", intern),)),
+            Kundenumsatz(
+                Kunde(id=3, name="Nur gebucht AG"),
+                alt,
+                (Projektumsatz("Altprojekt", alt),),
+            ),
+        ),
+    )
+
+
+def test_simuliert_je_kunde_zeigt_spanne_und_mittelwert_groesster_kunde_zuerst():
+    tabelle = tabellen.simuliert_je_kunde(_prognose_je_kunde())
+
+    august = tabellen.monatsbeschriftung((2026, 8))
+    september = tabellen.monatsbeschriftung((2026, 9))
+    assert tabelle.namensspalte == "Kunde"
+    assert tabelle.spalten == (august, september)
+    hauptzeilen = [z for z in tabelle.zeilen if z.tiefe == 0]
+    assert [z.name for z in hauptzeilen] == [
+        "Gross GmbH",
+        "Klein AG (Einzelprojekt)",
+        f"{tabellen.OHNE_KUNDE} (Intern)",
+    ]
+    assert hauptzeilen[0].zellen[0] == (
+        f"{euro(Decimal('1000'), nachkommastellen=0)} - "
+        f"{euro(Decimal('3500'), nachkommastellen=0)} "
+        f"({euro(Decimal('2000'), nachkommastellen=0)})"
+    )
+    # Ein Monat ohne jeden simulierten Umsatz bleibt leer statt "0 - 0 (0)".
+    assert hauptzeilen[1].zellen[1] == ""
+
+
+def test_je_kunde_klappt_nur_bei_mehreren_projekten_auf_groesstes_projekt_zuerst():
+    tabelle = tabellen.simuliert_je_kunde(_prognose_je_kunde())
+
+    gross, projekt_a, projekt_b, klein, intern = tabelle.zeilen
+    assert gross.hat_kinder
+    assert gross.kinder_ids == (projekt_a.id, projekt_b.id)
+    # Projekt A hat den groesseren Mittelwert, steht trotz umgekehrter Eingabe oben.
+    assert (projekt_a.name, projekt_b.name) == ("Projekt A", "Projekt B")
+    assert (projekt_a.tiefe, projekt_b.tiefe) == (1, 1)
+    assert not klein.hat_kinder
+    assert not intern.hat_kinder
+    assert len({z.id for z in tabelle.zeilen}) == len(tabelle.zeilen)
+
+
+def test_gebucht_je_kunde_zeigt_betraege_und_summe_nur_fuer_kunden_mit_buchung():
+    tabelle = tabellen.gebucht_je_kunde(_prognose_je_kunde())
+
+    august = tabellen.monatsbeschriftung((2026, 8))
+    september = tabellen.monatsbeschriftung((2026, 9))
+    assert tabelle.spalten == (august, september, "Summe")
+    klein = next(z for z in tabelle.zeilen if z.name.startswith("Klein AG"))
+    assert klein.zellen == (
+        "",
+        euro(Decimal("500"), nachkommastellen=0),
+        euro(Decimal("500"), nachkommastellen=0),
+    )
+    # Der groesste gebuchte Betrag steht oben, auch wenn er nicht der groesste simulierte ist.
+    assert tabelle.zeilen[0] == klein
+
+
+def test_gebucht_je_kunde_laesst_kunden_und_projekte_ohne_buchung_weg():
+    tabelle = tabellen.gebucht_je_kunde(_prognose_je_kunde())
+
+    # Intern hat nur simulierten Umsatz, Projekt A/B von Gross GmbH haben nichts gebucht:
+    # uebrig bleibt Projekt C, das dann in Klammern am Kunden steht statt aufzuklappen.
+    assert [z.name for z in tabelle.zeilen] == [
+        "Klein AG (Einzelprojekt)",
+        "Nur gebucht AG (Altprojekt)",
+        "Gross GmbH (Projekt C)",
+    ]
+    assert not any(z.hat_kinder for z in tabelle.zeilen)
+
+
+def test_simuliert_je_kunde_laesst_kunden_und_projekte_ohne_simulation_weg():
+    tabelle = tabellen.simuliert_je_kunde(_prognose_je_kunde())
+
+    namen = [z.name for z in tabelle.zeilen]
+    # Nur gebucht AG hat nichts simuliert, Projekt C von Gross GmbH ebenfalls nicht.
+    assert not any("Nur gebucht" in name for name in namen)
+    assert "Projekt C" not in namen
+
+
+def test_tabellen_je_kunde_ohne_prognose_sind_leer():
+    for tabelle in (
+        tabellen.simuliert_je_kunde(NochKeinePrognose()),
+        tabellen.gebucht_je_kunde(NochKeinePrognose()),
+    ):
+        assert tabelle.zeilen == ()
+        assert tabelle.namensspalte == "Kunde"
 
 
 def test_umsatzverlauf_nennt_den_anteil_ohne_budget_im_hover_der_prognose():

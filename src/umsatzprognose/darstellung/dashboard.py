@@ -946,6 +946,16 @@ class Dashboard:
             self.kostenplan,
         )
 
+    def gebucht_je_kunde(self) -> tabellen.Aufklapptabelle:
+        """Der bereits gebuchte Umsatz im Prognosehorizont, auf Kunden und deren Projekte
+        aufgeteilt."""
+        return tabellen.gebucht_je_kunde(self.prognose)
+
+    def simuliert_je_kunde(self) -> tabellen.Aufklapptabelle:
+        """Der zusaetzlich simulierte Umsatz im Prognosehorizont je Kunde und Projekt, als
+        Spanne mit Mittelwert."""
+        return tabellen.simuliert_je_kunde(self.prognose)
+
     def projekttabelle(self, top: int | None = None) -> pd.DataFrame:
         """Die Projekte der Prognose, groesstes offenes Volumen zuerst."""
         projekte = self.bestand.im_prognose_scope

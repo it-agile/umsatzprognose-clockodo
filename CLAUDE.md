@@ -206,6 +206,18 @@ Zielmonat-Übersteuerung), `interne_arbeit_verteilung_min/max_prozent`.
 Neusimulation aus (`_simuliertes_dashboard()`) statt das geteilte, gecachte `Dashboard`
 zu verändern.
 
+Unter der Monatstabelle auf `/dashboard` zwei Aufklappbereiche („Gebucht je Kunde“,
+„Simuliert je Kunde“; `<details>`, kein Tooltip). Darin je Kunde eine Zeile, die bei mehreren
+Projekten diese als Unterzeilen aufklappt (`tabellen.Aufklapptabelle`, Template
+`_aufklapptabelle.html`, JS `kategorieZeileUmschalten()` in `basis.html` – geteilt mit dem
+Kategorie-Drilldown auf `/schulungen`). Datenquelle ist `Prognose.umsatz_je_kunde()`
+(`Kundenumsatz` → `Projektumsatz` → `Umsatzanteil`: gebuchter Betrag fest, simuliert als
+`Umsatzspanne` mit 5-%-/95-%-Quantil als Minimum/Maximum plus Mittelwert, nur der
+Zusatzumsatz über das Gebuchte hinaus). Die Simulation verdichtet je Monat gleich in der
+Schleife (`_spannen_je_monat()`), statt ein (Monate, Läufe, Projekte/Kunden)-Array zu halten.
+Mittelwerte addieren sich über Projekte und Kunden exakt zum Monat, Minimum/Maximum nicht –
+bewusst kein Median.
+
 `umsatzrendite_kumuliert` (nur `/`) zeigt standardmäßig an jedem prognostizierten Monat
 einen eigenen, kumuliert fortgeschriebenen Fehlerbalken bis zum 95%-Konfidenzniveau
 (85%-Niveau zusätzlich im Hovertext) – abschaltbar über den Checkbox-Schalter

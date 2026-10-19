@@ -370,6 +370,38 @@
         {% block inhalt %}{% endblock %}
     </main>
     <script>
+        // Blendet die direkten Kinder einer Zeile ein/aus, statt je Zeile ein
+        // verschachteltes Aufklapp-Element zu nutzen (siehe Docstring von
+        // app._knoten_flach) - eine echte Tabelle
+        // berechnet ihre Spaltenbreiten unabhaengig vom Auf-/Zuklappen korrekt. Geteilt
+        // vom Kategorie-Drilldown auf /schulungen und den Aufklapptabellen je Kunde auf
+        // /dashboard (siehe _aufklapptabelle.html).
+        function kategorieZeileUmschalten(knopf) {
+            var zeile = knopf.closest("tr");
+            var tiefe = Number(zeile.dataset.tiefe);
+            var wirdGeoeffnet = knopf.getAttribute("aria-expanded") !== "true";
+            knopf.setAttribute("aria-expanded", wirdGeoeffnet ? "true" : "false");
+            knopf.querySelector(".kategorie-pfeil").textContent = wirdGeoeffnet ? "▾" : "▸";
+
+            var naechste = zeile.nextElementSibling;
+            while (naechste && Number(naechste.dataset.tiefe) > tiefe) {
+                if (!wirdGeoeffnet) {
+                    // Zuklappen: die gesamte Unterstruktur verstecken und ihren
+                    // Aufklapp-Zustand zuruecksetzen, damit sie beim naechsten Aufklappen
+                    // wieder eingeklappt beginnt.
+                    naechste.style.display = "none";
+                    var innererKnopf = naechste.querySelector(".kategorie-knopf");
+                    if (innererKnopf) {
+                        innererKnopf.setAttribute("aria-expanded", "false");
+                        innererKnopf.querySelector(".kategorie-pfeil").textContent = "▸";
+                    }
+                } else if (Number(naechste.dataset.tiefe) === tiefe + 1) {
+                    naechste.style.display = "";
+                }
+                naechste = naechste.nextElementSibling;
+            }
+        }
+
         // Aktualisiert Fuellbalken und Text des Doppel-Schiebereglers (siehe CSS oben)
         // bei jeder Bewegung eines der beiden Boeppel - reine Anzeige, das Absenden
         // selbst loest weiterhin onchange auf den einzelnen <input>-Elementen aus.

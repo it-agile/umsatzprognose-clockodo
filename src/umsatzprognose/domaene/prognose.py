@@ -22,10 +22,64 @@ from typing import TYPE_CHECKING, Protocol
 if TYPE_CHECKING:
     from decimal import Decimal
 
+    from .kunde import Kunde
+
 from dataclasses import dataclass
 
 # die Bandbreite wird auf diesen Niveaus ausgewiesen.
 KONFIDENZNIVEAUS = (0.95, 0.85, 0.50)
+
+
+@dataclass(frozen=True, slots=True)
+class Umsatzspanne:
+    """Zusaetzlich simulierter Umsatz in einem Horizontmonat.
+
+    "Zusaetzlich" heisst: ueber den bereits gebuchten Betrag hinaus (siehe
+    :class:`Umsatzanteil`). ``minimum``/``maximum`` sind das 5-%- bzw. 95-%-Quantil
+    ueber alle Laeufe (die Grenzen des 95-%-Konfidenzbands, nicht die absoluten
+    Extreme), ``mittelwert`` der Mittelwert ueber alle Laeufe. Anders als ein Median
+    addieren sich die Mittelwerte der Projekte eines Kunden und die der Kunden
+    exakt zum Mittelwert des Monats.
+    """
+
+    minimum: Decimal
+    mittelwert: Decimal
+    maximum: Decimal
+
+
+@dataclass(frozen=True, slots=True)
+class Umsatzanteil:
+    """Der Anteil eines Projekts oder Kunden an der Prognose, je Horizontmonat.
+
+    Beide Tupel haben die Reihenfolge von :meth:`Prognose.horizontmonate`. ``gebucht``
+    ist der bereits gebuchte Betrag (steht fest, ohne Spanne), ``simuliert`` der
+    zusaetzlich simulierte Umsatz.
+    """
+
+    gebucht: tuple[Decimal, ...]
+    simuliert: tuple[Umsatzspanne, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class Projektumsatz:
+    """Ein Projekt und sein :class:`Umsatzanteil`. ``name`` ist der Projektname ohne den
+    Kunden - der steht in :class:`Kundenumsatz`."""
+
+    name: str
+    anteil: Umsatzanteil
+
+
+@dataclass(frozen=True, slots=True)
+class Kundenumsatz:
+    """Ein Kunde, sein :class:`Umsatzanteil` und die Projekte, aus denen er sich ergibt.
+
+    ``kunde`` ist ``None`` fuer Projekte ohne Kunden. ``projekte`` enthaelt nur
+    Projekte mit gebuchtem oder simuliertem Umsatz im Horizont.
+    """
+
+    kunde: Kunde | None
+    anteil: Umsatzanteil
+    projekte: tuple[Projektumsatz, ...]
 
 
 class Prognose(Protocol):
@@ -91,6 +145,17 @@ class Prognose(Protocol):
         """
         ...
 
+    def umsatz_je_kunde(self) -> list[Kundenumsatz]:
+        """Je Kunde der gebuchte und der zusaetzlich simulierte Umsatz je Horizontmonat,
+        aufgeschluesselt nach den Projekten des Kunden.
+
+        Die gebuchten Betraege summieren sich je Monat auf :meth:`gebucht`, die
+        Mittelwerte der simulierten Spannen auf den Mittelwert des Monats minus
+        :meth:`gebucht`. Kunden und Projekte ohne gebuchten oder simulierten Umsatz im
+        Horizont fehlen. Schulungsanmeldungen sind kein Teil der Simulation.
+        """
+        ...
+
 
 @dataclass(frozen=True, slots=True)
 class NochKeinePrognose:
@@ -132,4 +197,7 @@ class NochKeinePrognose:
         return {}
 
     def ohne_budget(self) -> list[Decimal]:
+        return []
+
+    def umsatz_je_kunde(self) -> list[Kundenumsatz]:
         return []

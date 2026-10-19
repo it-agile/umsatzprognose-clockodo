@@ -10,21 +10,25 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable, Sequence
+    from collections.abc import Callable, Iterable, Sequence
 
     from umsatzprognose.domaene import (
         Anmeldungsverlauf,
         FakturierbareArbeitBandbreite,
         Hinweis,
         Kostenplan,
+        Kunde,
         Monatsumsatz,
         Prognose,
         Projekt,
         Schulungsplan,
+        Umsatzanteil,
         Umsatzhistorie,
+        Umsatzspanne,
     )
     from umsatzprognose.domaene.anmeldung import Kategorisierung
 
+from dataclasses import dataclass
 from decimal import Decimal
 
 import pandas as pd
@@ -61,6 +65,8 @@ UMSATZSPALTEN = [
 HINWEISSPALTEN = ["Hinweis", "Betroffen", "Projekte"]
 PROJEKT_OHNE_BUDGET_SPALTEN = ["Projekt", "Grund"]
 UMSATZ_OHNE_BUDGET_SPALTEN = ["Monat", "Ohne Budget", "Gesamt", "Anteil", "Projekte"]
+KUNDE_SPALTE = "Kunde"
+OHNE_KUNDE = "Ohne Kunde"
 
 
 def projekttabelle(projekte: Sequence[Projekt]) -> pd.DataFrame:
@@ -293,6 +299,148 @@ def projekte_ohne_budget(projekte: Iterable[tuple[str, str]]) -> pd.DataFrame:
             [{"Projekt": name, "Grund": grund} for name, grund in projekte],
             columns=PROJEKT_OHNE_BUDGET_SPALTEN,
         ),
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class Aufklappzeile:
+    """Eine Zeile einer :class:`Aufklapptabelle`.
+
+    ``tiefe`` ist 0 fuer die Hauptzeile (hier ein Kunde) und 1 fuer eine Unterzeile
+    (ein Projekt); ``kinder_ids`` nennt die Ids der unmittelbaren Unterzeilen, leer bei
+    einer Zeile ohne Unterzeilen. ``zellen`` stehen schon formatiert unter den
+    Spalten der Tabelle, ohne die erste (Namens-)Spalte.
+    """
+
+    id: str
+    name: str
+    tiefe: int
+    zellen: tuple[str, ...]
+    kinder_ids: tuple[str, ...] = ()
+
+    @property
+    def hat_kinder(self) -> bool:
+        return bool(self.kinder_ids)
+
+
+@dataclass(frozen=True, slots=True)
+class Aufklapptabelle:
+    """Eine Tabelle, deren Hauptzeilen ihre Unterzeilen auf- und zuklappen.
+
+    ``spalten`` sind die Kopfzeilen **nach** der Namensspalte, ``zeilen`` in
+    Darstellungsreihenfolge (jede Hauptzeile unmittelbar vor ihren Unterzeilen).
+    """
+
+    namensspalte: str
+    spalten: tuple[str, ...]
+    zeilen: tuple[Aufklappzeile, ...]
+
+
+def _kundenname(kunde: Kunde | None) -> str:
+    return str(kunde) if kunde else OHNE_KUNDE
+
+
+def _gebucht_zellen(anteil: Umsatzanteil) -> tuple[str, ...]:
+    """Je Monat der gebuchte Betrag (leer bei 0), dahinter die Summe ueber den Horizont."""
+    return (
+        *(euro(betrag, nachkommastellen=0) if betrag else "" for betrag in anteil.gebucht),
+        euro(sum(anteil.gebucht, Decimal(0)), nachkommastellen=0),
+    )
+
+
+def _simuliert_zellen(anteil: Umsatzanteil) -> tuple[str, ...]:
+    """Je Monat ``Minimum - Maximum (Mittelwert)``, leer ohne simulierten Umsatz."""
+    return tuple(
+        f"{euro(spanne.minimum, nachkommastellen=0)} - "
+        f"{euro(spanne.maximum, nachkommastellen=0)} "
+        f"({euro(spanne.mittelwert, nachkommastellen=0)})"
+        if _hat_simuliert(spanne)
+        else ""
+        for spanne in anteil.simuliert
+    )
+
+
+def _hat_simuliert(spanne: Umsatzspanne) -> bool:
+    return bool(spanne.maximum or spanne.mittelwert)
+
+
+def _aufklapptabelle(
+    prognose: Prognose,
+    *,
+    praefix: str,
+    hat_wert: Callable[[Umsatzanteil], bool],
+    gewicht: Callable[[Umsatzanteil], Decimal],
+    zellen: Callable[[Umsatzanteil], tuple[str, ...]],
+    zusatzspalten: tuple[str, ...] = (),
+) -> Aufklapptabelle:
+    """Je Kunde eine Zeile, groesster ``gewicht`` zuerst, mit einer Unterzeile je Projekt,
+    wenn der Kunde mehrere Projekte hat.
+
+    Nur Kunden und Projekte, fuer die ``hat_wert`` zutrifft, kommen vor - ein Kunde ohne
+    Wert in genau dieser Tabelle (etwa ohne Buchung in der Gebucht-Tabelle) fehlt dort
+    ganz, ebenso ein Projekt ohne eigenen Wert unter seinem Kunden. Hat ein Kunde danach
+    nur ein Projekt, klappt nichts auf: das Projekt steht stattdessen in Klammern hinter
+    dem Kundennamen.
+    """
+    zeilen: list[Aufklappzeile] = []
+    kunden = sorted(
+        (k for k in prognose.umsatz_je_kunde() if hat_wert(k.anteil)),
+        key=lambda k: (-gewicht(k.anteil), _kundenname(k.kunde)),
+    )
+    for i, kunde in enumerate(kunden):
+        kunde_id = f"{praefix}-{i}"
+        projekte = sorted(
+            (p for p in kunde.projekte if hat_wert(p.anteil)),
+            key=lambda p: (-gewicht(p.anteil), p.name),
+        )
+        mehrere = len(projekte) > 1
+        kinder = [f"{kunde_id}-{j}" for j in range(len(projekte))] if mehrere else []
+        name = _kundenname(kunde.kunde)
+        if len(projekte) == 1:
+            name = f"{name} ({projekte[0].name})"
+        zeilen.append(
+            Aufklappzeile(kunde_id, name, 0, zellen(kunde.anteil), tuple(kinder)),
+        )
+        if mehrere:
+            zeilen.extend(
+                Aufklappzeile(kind_id, projekt.name, 1, zellen(projekt.anteil))
+                for kind_id, projekt in zip(kinder, projekte, strict=True)
+            )
+    monate = tuple(monatsbeschriftung(m) for m in prognose.horizontmonate())
+    return Aufklapptabelle(KUNDE_SPALTE, (*monate, *zusatzspalten), tuple(zeilen))
+
+
+def gebucht_je_kunde(prognose: Prognose) -> Aufklapptabelle:
+    """Bereits gebuchter Umsatz je Kunde und Prognosemonat, groesster Betrag zuerst.
+
+    Die Aufteilung der Spalte "Nicht abgerechnet" der Monatstabelle im Prognosehorizont
+    auf Kunden und ihre Projekte (siehe :meth:`~umsatzprognose.domaene.Prognose.
+    umsatz_je_kunde`); die letzte Spalte summiert den ganzen Horizont. Ohne Prognose eine
+    Tabelle ohne Zeilen.
+    """
+    return _aufklapptabelle(
+        prognose,
+        praefix="gebucht",
+        hat_wert=lambda anteil: any(anteil.gebucht),
+        gewicht=lambda anteil: sum(anteil.gebucht, Decimal(0)),
+        zellen=_gebucht_zellen,
+        zusatzspalten=("Summe",),
+    )
+
+
+def simuliert_je_kunde(prognose: Prognose) -> Aufklapptabelle:
+    """Zusaetzlich simulierter Umsatz je Kunde und Prognosemonat, groesster zuerst.
+
+    Jede Zelle zeigt ``Minimum - Maximum (Mittelwert)`` (siehe
+    :class:`~umsatzprognose.domaene.prognose.Umsatzspanne`), sortiert nach der Summe der
+    Mittelwerte ueber den Horizont. Ohne Prognose eine Tabelle ohne Zeilen.
+    """
+    return _aufklapptabelle(
+        prognose,
+        praefix="simuliert",
+        hat_wert=lambda anteil: any(_hat_simuliert(s) for s in anteil.simuliert),
+        gewicht=lambda anteil: sum((s.mittelwert for s in anteil.simuliert), Decimal(0)),
+        zellen=_simuliert_zellen,
     )
 
 

@@ -1,0 +1,37 @@
+{# Eine Tabelle, deren Hauptzeilen ihre Unterzeilen auf- und zuklappen (siehe
+   tabellen.Aufklapptabelle). Dieselben CSS-Klassen und dieselbe Umschaltfunktion
+   (kategorieZeileUmschalten, in basis.html) wie der Kategorie-Drilldown auf
+   /schulungen - echte <tr>-Zeilen, die nur per style.display ein- und ausgeblendet
+   werden, damit die Spaltenbreiten ueber alle Zeilen gleich bleiben. #}
+{% macro aufklapptabelle(tabelle, mit_summenspalte=False) %}
+<table class="tabelle spaltenraster{{ ' spalte-zusammenfassung' if mit_summenspalte }} tabelle-fixierte-erste-spalte">
+    <thead>
+        <tr>
+            <th scope="col"><span class="kategorie-pfeil-platzhalter"></span>{{ tabelle.namensspalte }}</th>
+            {% for spalte in tabelle.spalten %}
+            <th scope="col">{{ spalte }}</th>
+            {% endfor %}
+        </tr>
+    </thead>
+    <tbody>
+        {% for zeile in tabelle.zeilen %}
+        <tr id="{{ zeile.id }}" data-tiefe="{{ zeile.tiefe }}"{% if zeile.tiefe > 0 %} style="display: none"{% endif %}>
+            <td class="kategorie-tiefe-{{ zeile.tiefe }}">{% if zeile.hat_kinder -%}
+                <button
+                    type="button"
+                    class="kategorie-knopf"
+                    aria-expanded="false"
+                    aria-controls="{{ zeile.kinder_ids | join(' ') }}"
+                    onclick="kategorieZeileUmschalten(this)"
+                ><span class="kategorie-pfeil">▸</span>{{ zeile.name }}</button>
+                {%- else -%}
+                <span class="kategorie-pfeil-platzhalter"></span>{{ zeile.name }}
+                {%- endif %}</td>
+            {% for zelle in zeile.zellen %}
+            <td>{{ zelle }}</td>
+            {% endfor %}
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endmacro %}

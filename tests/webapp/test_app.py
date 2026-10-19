@@ -19,6 +19,7 @@ import pandas as pd
 import pytest
 
 from umsatzprognose.darstellung import Dashboard
+from umsatzprognose.darstellung.tabellen import Aufklapptabelle, Aufklappzeile
 from umsatzprognose.domaene import (
     Anmeldung,
     Anmeldungsknoten,
@@ -498,6 +499,41 @@ def test_dashboard_seite_zeigt_umsatzverlauf_und_tabelle():
     assert antwort.status_code == 200
     assert "Gewinn" in antwort.text
     assert "plotly" in antwort.text.lower()
+
+
+def test_dashboard_seite_hat_aufklappbereiche_fuer_gebucht_und_simuliert_je_kunde():
+    client = TestClient(app_modul.app)
+
+    antwort = client.get("/dashboard")
+
+    assert antwort.status_code == 200
+    assert "<summary>Gebucht je Kunde</summary>" in antwort.text
+    assert "<summary>Simuliert je Kunde</summary>" in antwort.text
+
+
+def test_aufklapptabelle_rendert_knopf_nur_fuer_zeilen_mit_unterzeilen_und_versteckt_diese():
+    tabelle = Aufklapptabelle(
+        namensspalte="Kunde",
+        spalten=("Aug 2026", "Summe"),
+        zeilen=(
+            Aufklappzeile("t-0", "Gross GmbH", 0, ("100 EUR", "100 EUR"), ("t-0-0", "t-0-1")),
+            Aufklappzeile("t-0-0", "Projekt A", 1, ("60 EUR", "60 EUR")),
+            Aufklappzeile("t-0-1", "Projekt B", 1, ("40 EUR", "40 EUR")),
+            Aufklappzeile("t-1", "Klein AG (Einzelprojekt)", 0, ("5 EUR", "5 EUR")),
+        ),
+    )
+
+    html = app_modul._templates.env.from_string(
+        '{% from "_aufklapptabelle.html" import aufklapptabelle %}'
+        "{{ aufklapptabelle(tabelle, mit_summenspalte=True) }}",
+    ).render(tabelle=tabelle)
+
+    assert html.count("kategorie-knopf") == 1
+    assert 'aria-controls="t-0-0 t-0-1"' in html
+    assert 'id="t-0-0" data-tiefe="1" style="display: none"' in html
+    assert 'id="t-1" data-tiefe="0">' in html
+    assert "spalte-zusammenfassung" in html
+    assert html.count('<th scope="col">') == 3
 
 
 def test_dashboard_seite_restvolumen_top_slider_steuert_die_grafik():

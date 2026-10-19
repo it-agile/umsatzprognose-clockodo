@@ -93,7 +93,7 @@ from typing import TYPE_CHECKING, Annotated, Literal, get_args
 from urllib.parse import urlencode
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator, Callable, Mapping
+    from collections.abc import AsyncGenerator, Callable, Mapping
     from datetime import date
 
     import pandas as pd
@@ -489,7 +489,7 @@ _KURZARBEIT_AKTIV = kurzarbeit_aktiv()
 
 
 @asynccontextmanager
-async def _vorladen(_app: FastAPI) -> AsyncIterator[None]:
+async def _vorladen(_app: FastAPI) -> AsyncGenerator[None]:
     """Stoesst das Laden der Standardkombination schon beim Start an, ohne zu warten.
 
     Nicht blockierend (siehe Moduldocstring) - der Server nimmt sofort Anfragen an;
@@ -1314,6 +1314,8 @@ async def dashboard_seite(
             zusatzklasse="spaltenraster",
             element_id="tabelle-monat",
         ),
+        gebucht_je_kunde=dashboard.gebucht_je_kunde(),
+        simuliert_je_kunde=dashboard.simuliert_je_kunde(),
         restvolumen_top=restvolumen_top,
         restvolumen_top_max=restvolumen_top_max,
         restvolumen_je_projekt=_figur_html(

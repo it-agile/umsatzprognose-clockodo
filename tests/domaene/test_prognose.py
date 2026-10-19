@@ -21,6 +21,7 @@ def test_noch_keine_prognose_liefert_konstante_leerwerte():
     assert prognose.summe() == {}
     assert prognose.kapazitaet_limitierend_anteil() == 0.0
     assert prognose.kapazitaet_je_projekt() == {}
+    assert prognose.umsatz_je_kunde() == []
 
 
 def test_noch_keine_prognose_traegt_eine_eigene_begruendung():

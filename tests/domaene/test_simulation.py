@@ -490,6 +490,145 @@ def test_bereits_gebuchter_betrag_ist_die_untergrenze_in_kuenftigen_monaten():
     assert [float(g) for g in prognose.gebucht()] == [pytest.approx(0.0), pytest.approx(20000.0)]
 
 
+def _projekt_fuer_kunde(identifier: int, kunde: Kunde | None, anna: Mitarbeiter) -> Projekt:
+    """Restvolumen 8000 bei Satz 50 - wie in ``test_einfacher_lauf_ohne_kapazitaetsdeckel``."""
+    return Projekt(
+        id=identifier,
+        name=f"Projekt {identifier}",
+        kunde=kunde,
+        aktiv=True,
+        budget=Gesamtbudget(betrag=Decimal("10000.0")),
+        verbrauchtes_volumen=Decimal("2000.0"),
+        verbrauchte_stunden=40.0,
+        anteile=(Projektanteil(anna, stunden=40.0),),
+    )
+
+
+def test_simuliert_je_kunde_fasst_projekte_eines_kunden_zusammen_und_summiert_zum_monat():
+    anna = mitarbeiter(1, "Anna")
+    kunde_a = Kunde(id=1, name="A")
+    kunde_b = Kunde(id=2, name="B")
+    b = Bestand(
+        stichtag=STICHTAG,
+        projekte=(
+            _projekt_fuer_kunde(1, kunde_a, anna),
+            _projekt_fuer_kunde(2, kunde_a, anna),
+            _projekt_fuer_kunde(3, kunde_b, anna),
+            _projekt_fuer_kunde(4, None, anna),
+        ),
+        mitarbeiter=(anna,),
+        verbrauchsverlaeufe=(historie(0.5),),
+    )
+
+    prognose = b.simulieren(monate=1, laeufe=20, zufall=np.random.default_rng(1))
+
+    je_kunde = {k.kunde: k for k in prognose.umsatz_je_kunde()}
+    # Quote 0.5 auf Restvolumen 8000 -> 4000 Euro je Projekt, ohne jede Streuung.
+    erwartet = {kunde_a: 8000.0, kunde_b: 4000.0, None: 4000.0}
+    assert je_kunde.keys() == erwartet.keys()
+    for kunde, betrag in erwartet.items():
+        (spanne,) = je_kunde[kunde].anteil.simuliert
+        assert float(spanne.minimum) == pytest.approx(betrag)
+        assert float(spanne.mittelwert) == pytest.approx(betrag)
+        assert float(spanne.maximum) == pytest.approx(betrag)
+        assert [float(g) for g in je_kunde[kunde].anteil.gebucht] == [pytest.approx(0.0)]
+    summe = sum(float(k.anteil.simuliert[0].mittelwert) for k in je_kunde.values())
+    assert summe == pytest.approx(float(prognose.monatswerte()[0.50][0]))
+
+
+def test_umsatz_je_kunde_schluesselt_auf_die_projekte_des_kunden_auf():
+    anna = mitarbeiter(1, "Anna")
+    kunde_a = Kunde(id=1, name="A")
+    projekt_1 = _projekt_fuer_kunde(1, kunde_a, anna)
+    projekt_2 = _projekt_fuer_kunde(2, kunde_a, anna)
+    projekt_3 = _projekt_fuer_kunde(3, Kunde(id=2, name="B"), anna)
+    b = Bestand(
+        stichtag=STICHTAG,
+        projekte=(projekt_1, projekt_2, projekt_3),
+        mitarbeiter=(anna,),
+        verbrauchsverlaeufe=(historie(0.5),),
+    )
+
+    prognose = b.simulieren(monate=1, laeufe=20, zufall=np.random.default_rng(1))
+
+    je_kunde = {k.kunde: k for k in prognose.umsatz_je_kunde()}
+    assert [p.name for p in je_kunde[kunde_a].projekte] == [projekt_1.name, projekt_2.name]
+    for projekt in je_kunde[kunde_a].projekte:
+        assert float(projekt.anteil.simuliert[0].mittelwert) == pytest.approx(4000.0)
+    # Die Projekte eines Kunden summieren sich auf dessen Wert.
+    assert sum(
+        float(p.anteil.simuliert[0].mittelwert) for p in je_kunde[kunde_a].projekte
+    ) == pytest.approx(float(je_kunde[kunde_a].anteil.simuliert[0].mittelwert))
+
+
+def test_gebucht_je_kunde_trennt_gebuchtes_vom_zusaetzlich_simulierten():
+    anna = mitarbeiter(1, "Anna")
+    kunde = Kunde(id=1, name="A")
+    projekt = Projekt(
+        id=1,
+        name="Mit Vorabbuchung",
+        kunde=kunde,
+        aktiv=True,
+        budget=Gesamtbudget(betrag=Decimal("100500.0")),
+        verbrauchtes_volumen=Decimal("500.0"),
+        verbrauchte_stunden=10.0,
+        anteile=(Projektanteil(anna, stunden=10.0),),
+    )
+    verlauf_projekt = Verbrauchsverlauf.fuer(
+        projekt,
+        [Monatsumsatz(jahr=2026, monat=10, umsatz=Decimal("20000.0"), stunden=400.0)],
+    )
+    b = Bestand(
+        stichtag=STICHTAG,
+        projekte=(projekt,),
+        mitarbeiter=(anna,),
+        verbrauchsverlaeufe=(historie(0.1), verlauf_projekt),
+    )
+
+    prognose = b.simulieren(monate=2, laeufe=3, zufall=np.random.default_rng(6))
+
+    # Oktober: gebucht 20000 ist die Untergrenze, simuliert waere nur 9000 -> kein
+    # Zusatzumsatz. September: nichts gebucht, 10000 simuliert.
+    (umsatz,) = prognose.umsatz_je_kunde()
+    assert umsatz.kunde == kunde
+    assert [float(x) for x in umsatz.anteil.gebucht] == [
+        pytest.approx(0.0),
+        pytest.approx(20000.0),
+    ]
+    assert [float(s.mittelwert) for s in umsatz.anteil.simuliert] == [
+        pytest.approx(10000.0),
+        pytest.approx(0.0),
+    ]
+    # Dasselbe gilt fuer das einzige Projekt des Kunden.
+    (projekt_umsatz,) = umsatz.projekte
+    assert projekt_umsatz.anteil == umsatz.anteil
+
+
+def test_simuliert_je_kunde_laesst_kunden_ohne_umsatz_weg():
+    anna = mitarbeiter(1, "Anna")
+    kunde = Kunde(id=1, name="A")
+    erschoepft = Projekt(
+        id=2,
+        name="Verbraucht",
+        kunde=Kunde(id=2, name="B"),
+        aktiv=True,
+        budget=Gesamtbudget(betrag=Decimal("2000.0")),
+        verbrauchtes_volumen=Decimal("2000.0"),
+        verbrauchte_stunden=40.0,
+        anteile=(Projektanteil(anna, stunden=40.0),),
+    )
+    b = Bestand(
+        stichtag=STICHTAG,
+        projekte=(_projekt_fuer_kunde(1, kunde, anna), erschoepft),
+        mitarbeiter=(anna,),
+        verbrauchsverlaeufe=(historie(0.5),),
+    )
+
+    prognose = b.simulieren(monate=1, laeufe=5, zufall=np.random.default_rng(3))
+
+    assert [k.kunde for k in prognose.umsatz_je_kunde()] == [kunde]
+
+
 def test_verbrauchsplan_verteilt_restvolumen_linear_bis_zielmonat_unabhaengig_vom_zufall():
     """``verbrauchsplan_zielmonat`` ersetzt die gezogene Abrufquote durch einen
     deterministischen, gleichmaessig verteilten Verbrauch bis zu diesem Monat - anders

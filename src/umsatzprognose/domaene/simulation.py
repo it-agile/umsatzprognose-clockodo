@@ -54,6 +54,7 @@ if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
 
     from .bestand import Bestand
+    from .kunde import Kunde
     from .ohne_budget import OhneBudgetModell
     from .projekt import Projekt
 
@@ -68,9 +69,22 @@ import numpy as np
 
 from umsatzprognose.util import Monat, monatsfolge, ordnung
 
-from .prognose import KONFIDENZNIVEAUS, NochKeinePrognose, Prognose
+from .prognose import (
+    KONFIDENZNIVEAUS,
+    Kundenumsatz,
+    NochKeinePrognose,
+    Prognose,
+    Projektumsatz,
+    Umsatzanteil,
+    Umsatzspanne,
+)
 
 NULL_EURO = Decimal("0")
+
+# Grenzen der Umsatzspanne je Kunde: die Raender des breitesten ausgewiesenen
+# Konfidenzbands (siehe Umsatzspanne).
+_SPANNE_UNTEN = 1.0 - KONFIDENZNIVEAUS[0]
+_SPANNE_OBEN = KONFIDENZNIVEAUS[0]
 
 
 class FakturierbareArbeitZiehung(Protocol):
@@ -238,6 +252,7 @@ class MonteCarloPrognose:
     _kapazitaet_limitierend_anteil: float
     _kapazitaet_je_projekt: Mapping[int, float]
     _ohne_budget: tuple[Decimal, ...] = ()
+    _umsatz_je_kunde: tuple[Kundenumsatz, ...] = ()
 
     @property
     def vorhanden(self) -> bool:
@@ -270,6 +285,9 @@ class MonteCarloPrognose:
 
     def ohne_budget(self) -> list[Decimal]:
         return list(self._ohne_budget) or [NULL_EURO] * len(self._horizontmonate)
+
+    def umsatz_je_kunde(self) -> list[Kundenumsatz]:
+        return list(self._umsatz_je_kunde)
 
 
 def _verbrauchsplan(
@@ -329,6 +347,12 @@ class _Aufbau:
     anzahl_budget: int
     historie: np.ndarray
     reserviert: np.ndarray
+    # Zuordnung Projekt -> Kunde fuer ``umsatz_je_kunde``:
+    # ``kunden`` sind die vorkommenden Kunden (``None`` = Projekte ohne Kunden) in
+    # fester Reihenfolge, ``kunden_matrix`` hat die Form (Projekte, Kunden) mit 1.0 an
+    # der Zuordnung.
+    kunden: tuple[Kunde | None, ...]
+    kunden_matrix: np.ndarray
 
 
 def _aufbauen(
@@ -418,6 +442,12 @@ def _aufbauen(
     reservierte = ohne_budget.reservierte_stunden(bestand) if ohne_budget is not None else {}
     reserviert = np.array([reservierte.get(mid, 0.0) for mid in mitarbeiter_ids])
 
+    kunden = tuple(dict.fromkeys(p.kunde for p in scope))
+    kunden_index = {kunde: i for i, kunde in enumerate(kunden)}
+    kunden_matrix = np.zeros((len(scope), len(kunden)))
+    for i, p in enumerate(scope):
+        kunden_matrix[i, kunden_index[p.kunde]] = 1.0
+
     return _Aufbau(
         horizont=horizont,
         skalierung_monat1=skalierung_monat1,
@@ -434,6 +464,8 @@ def _aufbauen(
         anzahl_budget=anzahl_budget,
         historie=historie,
         reserviert=reserviert,
+        kunden=kunden,
+        kunden_matrix=kunden_matrix,
     )
 
 
@@ -466,6 +498,82 @@ def _bedarf_ohne_budget(
     )
 
 
+def _spannen(zusatz: np.ndarray) -> np.ndarray:
+    """Minimum, Mittelwert und Maximum je Spalte von ``zusatz`` (Laeufe, n), Form
+    ``(3, n)``."""
+    return np.stack(
+        [
+            np.quantile(zusatz, _SPANNE_UNTEN, axis=0),
+            zusatz.mean(axis=0),
+            np.quantile(zusatz, _SPANNE_OBEN, axis=0),
+        ],
+    )
+
+
+def _spannen_je_monat(
+    tatsaechlich: np.ndarray,
+    gebucht: np.ndarray,
+    kunden_matrix: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Die Spannen des zusaetzlich simulierten Umsatzes eines Horizontmonats, je
+    Projekt (Form ``(3, Projekte)``) und je Kunde (``(3, Kunden)``).
+
+    ``tatsaechlich`` hat die Form (Laeufe, Projekte), ``gebucht`` (Projekte,). Der
+    gebuchte Betrag ist die Untergrenze von ``tatsaechlich`` (siehe :func:`simulieren`)
+    und wird je Lauf abgezogen; ein Kunde ist je Lauf die Summe seiner Projekte, erst
+    danach wird ueber die Laeufe verdichtet. Die (Laeufe, Kunden)-Matrix lebt nur kurz,
+    es entsteht kein (Monate, Laeufe, Kunden)-Array.
+    """
+    zusatz = np.maximum(tatsaechlich - gebucht, 0.0)
+    return _spannen(zusatz), _spannen(zusatz @ kunden_matrix)
+
+
+def _umsatzanteil(gebucht: np.ndarray, spannen: np.ndarray) -> Umsatzanteil | None:
+    """Der Anteil aus ``gebucht`` (Monate,) und ``spannen`` (Monate, 3); ``None``, wenn
+    im ganzen Horizont weder etwas gebucht noch etwas simuliert wird."""
+    if not (gebucht.any() or spannen[:, 2].any()):
+        return None
+    return Umsatzanteil(
+        gebucht=tuple(_euro(betrag) for betrag in gebucht),
+        simuliert=tuple(
+            Umsatzspanne(minimum=_euro(s[0]), mittelwert=_euro(s[1]), maximum=_euro(s[2]))
+            for s in spannen
+        ),
+    )
+
+
+def _kundenumsaetze(
+    aufbau: _Aufbau,
+    scope: tuple[Projekt, ...],
+    spannen: list[tuple[np.ndarray, np.ndarray]],
+) -> tuple[Kundenumsatz, ...]:
+    """Der Umsatz je Kunde mit seinen Projekten aus den Spannen je Horizontmonat (siehe
+    :func:`_spannen_je_monat`); Kunden und Projekte ohne jeden Betrag fallen weg."""
+    projekt_spannen = np.stack([je_projekt for je_projekt, _ in spannen])  # (Monate, 3, Projekte)
+    kunden_spannen = np.stack([je_kunde for _, je_kunde in spannen])  # (Monate, 3, Kunden)
+    gebucht_kunden = aufbau.gebucht @ aufbau.kunden_matrix  # (Monate, Kunden)
+    projekte = {
+        i: Projektumsatz(p.name or f"Projekt {p.id}", anteil)
+        for i, p in enumerate(scope)
+        if (anteil := _umsatzanteil(aufbau.gebucht[:, i], projekt_spannen[:, :, i])) is not None
+    }
+    anteile = [
+        _umsatzanteil(gebucht_kunden[:, j], kunden_spannen[:, :, j])
+        for j in range(len(aufbau.kunden))
+    ]
+    return tuple(
+        Kundenumsatz(
+            kunde=kunde,
+            anteil=anteil,
+            projekte=tuple(
+                projekte[i] for i, p in enumerate(scope) if p.kunde == kunde and i in projekte
+            ),
+        )
+        for kunde, anteil in zip(aufbau.kunden, anteile, strict=True)
+        if anteil is not None
+    )
+
+
 def _ergebnis(
     aufbau: _Aufbau,
     scope: tuple[Projekt, ...],
@@ -475,6 +583,7 @@ def _ergebnis(
     kapazitaet_limitiert_je_lauf: np.ndarray,
     stunden_je_projekt: np.ndarray,
     ohne_budget_summen: np.ndarray,
+    spannen: list[tuple[np.ndarray, np.ndarray]],
 ) -> MonteCarloPrognose:
     """Baut die :class:`MonteCarloPrognose` aus den Ergebnis-Arrays der Monte-Carlo-
     Schleife in :func:`simulieren`."""
@@ -504,6 +613,7 @@ def _ergebnis(
         _ohne_budget=tuple(_euro(np.quantile(je_lauf, 0.5)) for je_lauf in ohne_budget_summen)
         if aufbau.historie.shape[0]
         else (),
+        _umsatz_je_kunde=_kundenumsaetze(aufbau, scope, spannen),
     )
 
 
@@ -600,6 +710,7 @@ def simulieren(
     kapazitaet_limitiert_je_lauf = np.zeros(laeufe, dtype=bool)
     stunden_je_projekt = np.zeros((laeufe, len(scope)))
     ohne_budget_summen = np.zeros((len(aufbau.horizont), laeufe))
+    spannen: list[tuple[np.ndarray, np.ndarray]] = []
 
     for index, _monat in enumerate(aufbau.horizont):
         skalierung = aufbau.skalierung_monat1 if index == 0 else 1.0
@@ -674,6 +785,9 @@ def simulieren(
         restvolumen = np.maximum(0.0, restvolumen - tatsaechlich)
         monatssummen[index] = tatsaechlich.sum(axis=1)
         ohne_budget_summen[index] = tatsaechlich[:, aufbau.anzahl_budget :].sum(axis=1)
+        spannen.append(
+            _spannen_je_monat(tatsaechlich, aufbau.gebucht[index], aufbau.kunden_matrix),
+        )
         # Aus ``tatsaechlich`` zurueckgerechnet statt ``gelieferte_stunden`` verwendet:
         # nur ``tatsaechlich`` kennt die Untergrenze aus bereits Gebuchtem
         # (``gebucht[index]`` oben), damit bleiben Euro- und Stunden-Sicht auf
@@ -688,4 +802,5 @@ def simulieren(
         kapazitaet_limitiert_je_lauf=kapazitaet_limitiert_je_lauf,
         stunden_je_projekt=stunden_je_projekt,
         ohne_budget_summen=ohne_budget_summen,
+        spannen=spannen,
     )

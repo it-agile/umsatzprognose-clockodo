@@ -31,7 +31,15 @@ from umsatzprognose.domaene.kurzarbeit import (
 )
 from umsatzprognose.domaene.mitarbeiter import Mitarbeiter, Wochenarbeitszeit
 from umsatzprognose.domaene.ohne_budget import OhneBudgetModell
-from umsatzprognose.domaene.prognose import KONFIDENZNIVEAUS, NochKeinePrognose, Prognose
+from umsatzprognose.domaene.prognose import (
+    KONFIDENZNIVEAUS,
+    Kundenumsatz,
+    NochKeinePrognose,
+    Prognose,
+    Projektumsatz,
+    Umsatzanteil,
+    Umsatzspanne,
+)
 from umsatzprognose.domaene.projekt import (
     OHNE_BUDGET,
     Budget,
@@ -78,6 +86,7 @@ __all__ = [
     "Kostenplan",
     "Kostenposten",
     "Kunde",
+    "Kundenumsatz",
     "Kurzarbeitsbewertung",
     "Mitarbeiter",
     "Monatsumsatz",
@@ -88,13 +97,16 @@ __all__ = [
     "Prognose",
     "Projekt",
     "Projektanteil",
+    "Projektumsatz",
     "Rollenzuordnung",
     "Schulungsplan",
     "Schulungstermin",
     "Schwellenwerte",
     "StundenBudget",
     "TeilprojektBudget",
+    "Umsatzanteil",
     "Umsatzhistorie",
+    "Umsatzspanne",
     "Verbrauchsverlauf",
     "WeibullFakturierbareArbeit",
     "Wochenarbeitszeit",

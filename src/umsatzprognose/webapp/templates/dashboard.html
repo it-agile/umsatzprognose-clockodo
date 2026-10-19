@@ -1,5 +1,6 @@
 {% extends "basis.html" %}
 {% from "_regler.html" import regler_abschnitt, interne_arbeit_regler_abschnitt, doppel_regler %}
+{% from "_aufklapptabelle.html" import aufklapptabelle %}
 {% block inhalt %}
 <form method="get" class="parameter" id="dashboard-form">
     {{ interne_arbeit_regler_abschnitt(
@@ -40,6 +41,28 @@
 {{ umsatzverlauf | safe }}
 <h2>Monatstabelle</h2>
 <div class="tabelle-wrapper tabelle-fixierte-kopfzeile">{{ umsatztabelle | safe }}</div>
+
+<details>
+    <summary>Gebucht je Kunde</summary>
+    <p>Bereits in Clockodo gebuchter Umsatz der Prognosemonate (Spalte „Nicht abgerechnet“
+       der Monatstabelle), nach Kunde aufgeteilt. Der Betrag steht fest und hat keine
+       Bandbreite.</p>
+    <div class="tabelle-wrapper tabelle-fixierte-kopfzeile">
+        {{ aufklapptabelle(gebucht_je_kunde, mit_summenspalte=True) }}
+    </div>
+</details>
+<details>
+    <summary>Simuliert je Kunde</summary>
+    <p>Zusätzlich zum Gebuchten simulierter Umsatz der Prognosemonate (Spalte
+       „Prognostiziert“ der Monatstabelle), nach Kunde aufgeteilt. Jede Zelle zeigt
+       Minimum - Maximum und in Klammern den Mittelwert über alle Simulationsläufe;
+       Minimum und Maximum sind das 5-%- bzw. 95-%-Quantil. Die Mittelwerte aller
+       Kunden ergeben zusammen den Mittelwert der Simulation, Minimum und Maximum
+       addieren sich dagegen nicht.</p>
+    <div class="tabelle-wrapper tabelle-fixierte-kopfzeile">
+        {{ aufklapptabelle(simuliert_je_kunde) }}
+    </div>
+</details>
 
 <h2>Anteil fakturierbarer Arbeit</h2>
 <p>Minimum, Durchschnitt und Maximum je Monat über alle Personen mit gebuchter Zeit
