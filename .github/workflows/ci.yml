@@ -19,7 +19,7 @@ concurrency:
 # Python-Version mit. "--with tox-uv" lädt den Plugin (in pyproject.toml unter
 # [tool.tox].requires geführt) mit in dieselbe uvx-Umgebung und schaltet dadurch tox auf
 # uvs eigene Python-Verwaltung um (uv-venv-runner), die fehlende Versionen (hier py313,
-# py314) bei Bedarf selbst herunterlädt - kein separates actions/setup-python nötig.
+# py314, py315) bei Bedarf selbst herunterlädt - kein separates actions/setup-python nötig.
 jobs:
   ruff:
     name: ruff
@@ -62,8 +62,8 @@ jobs:
       - run: uvx --with tox-uv tox -e ty
 
   # Je Python-Version ein eigener Job statt eines gemeinsamen Matrix-Laufs mit
-  # gemeinsamem Ergebnis - ein Fehlschlag unter py314 blockiert nicht die Sichtbarkeit
-  # der Ergebnisse unter py312/py313, siehe fail-fast: false.
+  # gemeinsamem Ergebnis - ein Fehlschlag unter py315 blockiert nicht die Sichtbarkeit
+  # der Ergebnisse unter py312 bis py314, siehe fail-fast: false.
   test:
     name: pytest (${{ matrix.env }})
     runs-on: ubuntu-latest
@@ -76,7 +76,7 @@ jobs:
       - uses: astral-sh/setup-uv@v10.1.0
       - run: uvx --with tox-uv tox -e ${{ matrix.env }}
 
-  # Coverage ist nur aussagekräftig, wenn die Tests unter allen drei Python-Versionen
+  # Coverage ist nur aussagekräftig, wenn die Tests unter allen vier Python-Versionen
   # schon ohne Coverage-Instrumentierung grün sind - deshalb erst nach "test".
   coverage:
     name: coverage

@@ -41,6 +41,8 @@ dev = [
     "umsatzprognose-clockodo[kaleido]",
     "umsatzprognose-clockodo[pytest]",
     "umsatzprognose-clockodo[ruff]",
+    "umsatzprognose-clockodo[mypy]",
+    "umsatzprognose-clockodo[ty]",
 ]
 bericht = [
     "umsatzprognose-clockodo[kaleido]",
@@ -74,16 +76,17 @@ packages = ["src/umsatzprognose"]
 
 [tool.tox]
 requires = [ "tox>=4.60", "tox-uv>=1.36" ]
-env_list = [ "py312", "py313", "py314", "py315", "coverage", "ruff", "mypy", "mypy-notebooks", "ty" ]
+env_list = [ "ruff", "ty", "mypy", "mypy-notebooks", "py312", "py313", "py314", "py315", "coverage" ]
 use_develop = true
 
 [tool.tox.env_run_base]
-extras = [ "dev", "bericht" ]
+extras = [ "dev", "bericht", "web" ]
 allowlist_externals = [ "pytest" ]
 commands = [["pytest", { replace = "posargs", default = [], extend = true }]]
 
 [tool.tox.env.coverage]
-extras = [ "coverage", "ruff", "web", "bericht" ]
+base_python = [ "py313" ]
+extras = [ { replace = "ref", of = ["tool", "tox", "env_run_base", "extras"], extend = true }, "coverage" ]
 allowlist_externals = [ "coverage" ]
 commands = [
     ["coverage", "erase"],
@@ -109,14 +112,9 @@ allowlist_externals = [ "nbqa" ]
 commands = [[ "nbqa", "mypy", { replace = "posargs", default = ["notebooks"], extend = true }]]
 
 [tool.tox.env.ty]
-extras = [ "ty", "dev", "bericht", "web", "notebook" ]
+extras = [ { replace = "ref", of = ["tool", "tox", "env_run_base", "extras"], extend = true }, "notebook" ]
 allowlist_externals = [ "ty" ]
 commands = [[ "ty", "check", { replace = "posargs", default = ["src", "tests", "scripts", "notebooks"], extend = true } ]]
-
-[tool.tox.env.py315]
-extras = [ "dev", "bericht" ]
-allowlist_externals = [ "pytest" ]
-commands = [["pytest", { replace = "posargs", default = [], extend = true }]]
 
 [tool.tox.env.jupyter]
 extras = [ "notebook" ]

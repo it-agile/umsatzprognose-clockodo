@@ -73,7 +73,7 @@ uv run ruff check .            # Lint
 uv run ruff format .           # Formatierung
 uv run jupyter lab             # Notebooks lokal
 just check                     # lokaler Gesamtlauf mit Python 3.13: Tests, ruff, mypy, ty (`just` listet alle Rezepte)
-uvx tox                        # Tests unter Python 3.12-3.14 + Coverage + Lint, ein Kommando (Matrix: sonst nur CI)
+uvx tox                        # Tests unter Python 3.12-3.15 + Coverage + Lint, ein Kommando (Matrix: sonst nur CI)
 uvx tox -e jupyter             # Notebooks starten (wie uv run jupyter lab, mit --autoreload)
 uvx tox -r -e jupyter -- execute notebooks/01_dashboard.ipynb --output tmp.ipynb # Notebook ausführen und Output in tmp.ipynb schreiben
 uv sync --extra bericht && uv run python scripts/diagramme_exportieren.py     # Dashboard-Diagramme als PNG exportieren (--help für Optionen)

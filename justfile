@@ -6,7 +6,7 @@ default:
     @just --list
 
 # Lokaler Gesamtlauf mit nur einer Python-Version (Projektstandard 3.13): Tests, ruff,
-# mypy, ty. Die Python-Matrix 3.12-3.14 läuft nur in GitHub Actions (siehe `matrix`).
+# mypy, ty. Die Python-Matrix 3.12-3.15 läuft nur in GitHub Actions (siehe `matrix`).
 check:
     uvx tox -e py313,ruff,mypy,mypy-notebooks,ty
 
