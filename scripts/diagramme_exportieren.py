@@ -51,7 +51,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-import datetime
+import datetime as dt
 import sys
 import time
 from datetime import date, timedelta
@@ -926,7 +926,7 @@ def main(argv: list[str]) -> int:
     mit_anmeldungsverlauf = any(
         name in (DIAGRAMM_ANMELDUNGSVERLAUF, DIAGRAMM_ANMELDUNGSTABELLE) for name in namen
     )
-    stichtag = args.stichtag or datetime.datetime.now(tz=datetime.UTC).date()
+    stichtag = args.stichtag or dt.datetime.now(tz=dt.UTC).date()
     # --zeitraum hat bei Angabe Vorrang vor --monate-rueckblick (siehe dortige Hilfe).
     zeitraum_alle = args.zeitraum == "alle"
     monate_rueckblick = (

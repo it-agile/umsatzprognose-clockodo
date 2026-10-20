@@ -12,7 +12,7 @@ Selbstverstaendlichkeit ist.
 from __future__ import annotations
 
 import asyncio
-import datetime
+import datetime as dt
 import time
 from dataclasses import dataclass
 from datetime import timedelta
@@ -433,7 +433,7 @@ class Dashboard:
         # gemeldeten Dauern englisch, nur die spaeter im Aufrufer-Thread gebauten
         # Berichte (ladebericht(), bestandsbericht()) deutsch.
         humanize.i18n.activate("de_DE")
-        stichtag = stichtag or datetime.datetime.now(tz=datetime.UTC).date()
+        stichtag = stichtag or dt.datetime.now(tz=dt.UTC).date()
         kosten_repo = KostenRepository.mit_automatischen_zugangsdaten()
         abgeschlossene_monate = _abgeschlossene_monate(
             stichtag,

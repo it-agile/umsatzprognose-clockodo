@@ -76,7 +76,7 @@ if TYPE_CHECKING:
     from .fortschritt import Fortschritt
 
 import asyncio
-import datetime
+import datetime as dt
 import random
 from calendar import monthrange
 from datetime import date
@@ -373,7 +373,7 @@ def verbrauch_bis(stichtag: date | None = None) -> str:
     Nicht zu verwechseln mit :func:`monatsende`, das die Umsatzhistorie zieht: dort ist
     der laufende Kalendermonat der Balken, hier der Schnitt zwischen Ist und Prognose.
     """
-    return f"{(stichtag or datetime.datetime.now(tz=datetime.UTC).date()).isoformat()}T23:59:59Z"
+    return f"{(stichtag or dt.datetime.now(tz=dt.UTC).date()).isoformat()}T23:59:59Z"
 
 
 def monatsende(tag: date | None = None) -> str:
@@ -383,7 +383,7 @@ def monatsende(tag: date | None = None) -> str:
     Buchung in den laufenden Balken gehoert; dass der Monat unvollstaendig ist, fuehrt
     die Historie getrennt.
     """
-    tag = tag or datetime.datetime.now(tz=datetime.UTC).date()
+    tag = tag or dt.datetime.now(tz=dt.UTC).date()
     letzter = monthrange(tag.year, tag.month)[1]
     return f"{tag.year:04d}-{tag.month:02d}-{letzter:02d}T23:59:59Z"
 

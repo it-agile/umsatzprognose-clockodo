@@ -20,7 +20,7 @@ if TYPE_CHECKING:
     from .client import EntryGroupV2
     from .fortschritt import Fortschritt
 
-import datetime
+import datetime as dt
 from datetime import date
 
 from umsatzprognose.domaene import Bestand
@@ -118,7 +118,7 @@ class BestandRepository:
                 Zweig fertig ist - nicht erst, wenn alle fuenf fertig sind (siehe
                 :func:`~.nebenlaeufig.mit_meldung`).
         """
-        stichtag = stichtag or datetime.datetime.now(tz=datetime.UTC).date()
+        stichtag = stichtag or dt.datetime.now(tz=dt.UTC).date()
         personen = MitarbeiterRepository(self._client)
         # Der Horizont beginnt im Stichtagsjahr und kann bis ins naechste reichen;
         # /v4/absences und /v2/usersNonbusinessDays filtern beide nur nach

@@ -87,7 +87,7 @@ beobachtet ``--reload`` sonst das gesamte Arbeitsverzeichnis, einschliesslich z.
 
 from __future__ import annotations
 
-import datetime
+import datetime as dt
 from pathlib import Path
 from typing import TYPE_CHECKING, Annotated, Literal, get_args
 from urllib.parse import urlencode
@@ -447,7 +447,7 @@ def _standard_anzeige_ab_jahr(*, heute: date | None = None) -> int:
     einen sinnvollen Blick auf den Anmeldungsverlauf. Nie vor :data:`STANDARD_AB_JAHR`,
     weiter zurueck ist ohnehin nichts geladen.
     """
-    heute = heute or datetime.datetime.now(tz=datetime.UTC).date()
+    heute = heute or dt.datetime.now(tz=dt.UTC).date()
     jahr = heute.year if heute.month >= STANDARD_ANZEIGE_MINDESTMONAT else heute.year - 1
     return max(jahr, STANDARD_AB_JAHR)
 
@@ -1734,7 +1734,7 @@ async def schulungen(
         return ergebnis
     verlauf = ergebnis
 
-    heute = datetime.datetime.now(tz=datetime.UTC).date()
+    heute = dt.datetime.now(tz=dt.UTC).date()
     laufender_monat: Monat = (heute.year, heute.month)
 
     jahr = ab_jahr if ab_jahr is not None else _standard_anzeige_ab_jahr()
@@ -1975,7 +1975,7 @@ async def kurzarbeit(
         request,
         seite="kurzarbeit",
         name="kurzarbeit.html",
-        stichtag=datetime.datetime.now(tz=datetime.UTC).date(),
+        stichtag=dt.datetime.now(tz=dt.UTC).date(),
         standardwerte=_STANDARDWERTE_KURZARBEIT,
         anzahl_monate=anzahl_monate,
         anzahl_monate_optionen=KURZARBEIT_MONATE_OPTIONEN,

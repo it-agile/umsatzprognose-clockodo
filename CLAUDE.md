@@ -17,13 +17,16 @@ uv run pytest <pfad>::<test>          # ein Test
 uv run ruff check .                   # Lint
 uv run ruff format .                  # Formatierung
 uv run jupyter lab                    # Notebooks lokal
-uvx tox                               # Tests Py 3.12-3.14 + Coverage + Lint in einem Kommando
+just check                            # lokaler Gesamtlauf, nur Py 3.13: Tests, ruff, mypy, ty (`just` listet alle Rezepte)
+uvx tox                               # Tests Py 3.12-3.14 + Coverage + Lint in einem Kommando (Matrix praktisch nur in der CI)
 uvx tox -e jupyter                    # Notebooks mit --autoreload
 uvx tox -e web                        # Web-Frontend lokal (siehe „Web-Frontend")
 uv sync --extra bericht && uv run python scripts/diagramme_exportieren.py   # Diagramme als PNG
 ```
 
-`tox` läuft über `uvx`, ist keine Projektabhängigkeit (`[tool.tox]` in `pyproject.toml`).
+`tox` läuft über `uvx`, ist keine Projektabhängigkeit (`[tool.tox]` in `pyproject.toml`;
+`tox`/`tox-uv` stehen dort unter `requires`, nicht in `[build-system]`, und werden von
+`uvx tox` selbst nachgeladen). Das `justfile` ist nur eine dünne Hülle um `uvx tox`.
 `env_list` (`py312`, `py313`, `py314`, `coverage`, `ruff`, `mypy`, `mypy-notebooks`, `ty`)
 läuft bei `uvx tox` ohne weitere Angabe; `jupyter`, `web` nur mit `-e <name>`.
 

@@ -65,7 +65,7 @@ if TYPE_CHECKING:
     from umsatzprognose.domaene.anmeldung import Kategorisierung
     from umsatzprognose.util import Fortschritt
 
-import datetime
+import datetime as dt
 from functools import partial
 
 from dotenv import load_dotenv
@@ -253,7 +253,7 @@ class SchulungenRepository:
         Ein fehlendes oder nicht lesbares Jahr wird nicht zum Fehler, siehe
         Moduldocstring.
         """
-        stichtag = stichtag or datetime.datetime.now(tz=datetime.UTC).date()
+        stichtag = stichtag or dt.datetime.now(tz=dt.UTC).date()
 
         termine, meldungen = jahre_laden(
             self._client,

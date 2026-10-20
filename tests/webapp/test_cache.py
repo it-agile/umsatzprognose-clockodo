@@ -10,7 +10,7 @@ warten darauf ueber ein ``asyncio.Event``, statt eine feste Zeit zu schlafen.
 from __future__ import annotations
 
 import asyncio
-import datetime
+import datetime as dt
 import time
 
 import pytest
@@ -33,7 +33,7 @@ from umsatzprognose.webapp.cache import (
     standard_ttl_sekunden,
 )
 
-STICHTAG = datetime.date(2026, 8, 24)
+STICHTAG = dt.date(2026, 8, 24)
 
 
 class _FakeDashboard:
@@ -308,7 +308,7 @@ def test_anmeldungsverlauf_cache_laedt_ab_dem_konstruktor_jahr(anmeldungsverlauf
 
     verlauf = asyncio.run(ablauf())
     assert list(aufrufe[0]) == list(
-        range(2022, datetime.datetime.now(tz=datetime.UTC).date().year + 1)
+        range(2022, dt.datetime.now(tz=dt.UTC).date().year + 1)
     )
     assert verlauf is not None
 

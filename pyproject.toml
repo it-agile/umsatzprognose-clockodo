@@ -13,6 +13,7 @@ dependencies = [
     "humanize>=4.11",
     "numpy>=2.0,<2.3; python_version<='3.13'",
     "numpy>=2.3; python_version>'3.13'",
+    "orjson>=3.10",
     "pandas>=2.2",
     "plotly>=5",
     "python-dotenv>=1.0",
@@ -65,14 +66,15 @@ ty = [
 ]
 
 [build-system]
-requires = [ "hatchling>=1.32", "tox>=4.60", "tox-uv>=1.36" ]
+requires = [ "hatchling>=1.32" ]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/umsatzprognose"]
 
 [tool.tox]
-env_list = [ "py312", "py313", "py314", "coverage", "ruff", "mypy", "mypy-notebooks", "ty" ]
+requires = [ "tox>=4.60", "tox-uv>=1.36" ]
+env_list = [ "py312", "py313", "py314", "py315", "coverage", "ruff", "mypy", "mypy-notebooks", "ty" ]
 use_develop = true
 
 [tool.tox.env_run_base]

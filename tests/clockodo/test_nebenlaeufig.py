@@ -8,7 +8,7 @@ vergeblich - der Test schlaegt mit einem Timeout fehl statt haengenzubleiben.
 from __future__ import annotations
 
 import asyncio
-import datetime
+import datetime as dt
 
 import httpx2
 import pytest
@@ -24,7 +24,7 @@ TIMEOUT = 5.0
 # Fester Stichtag statt datetime.datetime.now(tz=datetime.UTC).date(): der Dreimonatshorizont ab ihm
 # bleibt im selben Jahr, damit die Anzahl der Abwesenheits-Abrufe (einer je Jahr im Horizont) nicht
 # vom Tag der Testausfuehrung abhaengt.
-STICHTAG = datetime.date(2026, 8, 24)
+STICHTAG = dt.date(2026, 8, 24)
 
 ERWARTETE_ABRUFE = 9
 """Kunden, Personen, Sollzeiten, Abwesenheiten, Feiertage, Projekte, Verbrauch,

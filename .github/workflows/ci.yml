@@ -16,9 +16,9 @@ concurrency:
 
 # "uvx tox" allein läuft mit tox' eingebautem virtualenv-Runner, der nur bereits auf
 # dem Runner vorhandene Interpreter findet - ubuntu-latest bringt aber nur eine
-# Python-Version mit. "--with tox-uv" lädt den in pyproject.toml als Build-Abhängigkeit
-# geführten Plugin mit in dieselbe uvx-Umgebung und schaltet dadurch tox auf uvs
-# eigene Python-Verwaltung um (uv-venv-runner), die fehlende Versionen (hier py313,
+# Python-Version mit. "--with tox-uv" lädt den Plugin (in pyproject.toml unter
+# [tool.tox].requires geführt) mit in dieselbe uvx-Umgebung und schaltet dadurch tox auf
+# uvs eigene Python-Verwaltung um (uv-venv-runner), die fehlende Versionen (hier py313,
 # py314) bei Bedarf selbst herunterlädt - kein separates actions/setup-python nötig.
 jobs:
   ruff:
@@ -70,7 +70,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        env: [py312, py313, py314]
+        env: [py312, py313, py314, py315]
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v10.1.0

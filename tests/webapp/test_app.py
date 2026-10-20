@@ -7,7 +7,7 @@ lassen - ``fastapi`` ist bewusst keine Basisabhaengigkeit (siehe Moduldocstring 
 
 from __future__ import annotations
 
-import datetime
+import datetime as dt
 import re
 from datetime import date
 from decimal import Decimal
@@ -1656,7 +1656,7 @@ def test_schulungen_zeitraum_ignoriert_ab_jahr(fake_caches):
     # Relativ zum laufenden Monat statt fest verdrahtet, damit der Test nicht mit dem
     # Kalender altert: 11 Monate zurueck liegt noch im rollierenden 12-Monats-Fenster,
     # faellt aber (ab Januar) in ein frueheres Jahr als der laufende Monat.
-    heute = datetime.datetime.now(tz=datetime.UTC).date()
+    heute = dt.datetime.now(tz=dt.UTC).date()
     fruehere_ordnung = ordnung(heute.year, heute.month) - 11
     fruehes_jahr, fruher_monat = aus_ordnung(fruehere_ordnung)
     anmeldungsverlauf_cache.ergebnis = Anmeldungsverlauf(

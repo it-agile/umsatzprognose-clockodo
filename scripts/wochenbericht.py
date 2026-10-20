@@ -46,7 +46,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-import datetime
+import datetime as dt
 import os
 import re
 import tempfile
@@ -544,7 +544,7 @@ def main() -> None:
     argumente = _argumente()
 
     horizont_monate = _optionale_ganzzahl(HORIZONT_MONATE_VAR, STANDARD_HORIZONT_MONATE)
-    stichtag = datetime.datetime.now(tz=datetime.UTC).date()
+    stichtag = dt.datetime.now(tz=dt.UTC).date()
 
     dashboard, anmeldungsverlauf_fenster = synchron(
         _daten_laden_async(

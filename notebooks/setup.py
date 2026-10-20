@@ -4,7 +4,7 @@ Kein Teil des installierten Pakets: das Colab-`pip install` in den Notebooks mus
 zuerst laufen, sonst waere `umsatzprognose` beim Import dieses Moduls noch nicht da.
 """
 
-import datetime
+import datetime as dt
 import html
 import threading
 import time
@@ -201,7 +201,7 @@ def dashboard(
             # ohne eigene Zeile bewusst verworfen, siehe scripts/wochenbericht.py.
 
         _dashboard = Dashboard.laden(
-            stichtag=datetime.datetime.now(tz=datetime.UTC).date()
+            stichtag=dt.datetime.now(tz=dt.UTC).date()
             if stichtag is None
             else stichtag,
             horizont_monate=horizont_monate,
@@ -273,7 +273,7 @@ def anmeldungsverlauf(*, ab_jahr: int = 2022) -> Anmeldungsverlauf:
     """
     global _anmeldungsverlauf, _anmeldungsverlauf_dauer
     start = time.perf_counter()
-    jahre = list(range(ab_jahr, datetime.datetime.now(tz=datetime.UTC).date().year + 1))
+    jahre = list(range(ab_jahr, dt.datetime.now(tz=dt.UTC).date().year + 1))
     anzeige = _Mehrzeilenanzeige(["Anmeldungsverlauf"])
     neu_geladen = _anmeldungsverlauf is None
 
@@ -333,7 +333,7 @@ def kurzarbeit_rohdaten(
     """
     global _kurzarbeit_rohdaten, _kurzarbeit_rohdaten_dauer
     stichtag_aufgeloest = (
-        datetime.datetime.now(tz=datetime.UTC).date() if stichtag is None else stichtag
+        dt.datetime.now(tz=dt.UTC).date() if stichtag is None else stichtag
     )
     start = time.perf_counter()
     gesamt = anzahl_ladeschritte(stichtag_aufgeloest, anzahl_monate)

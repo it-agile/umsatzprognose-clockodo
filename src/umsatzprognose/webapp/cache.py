@@ -37,7 +37,7 @@ reine Verschwendung.
 from __future__ import annotations
 
 import asyncio
-import datetime
+import datetime as dt
 import os
 import time
 from contextlib import suppress
@@ -227,7 +227,7 @@ class DashboardCache:
         async def laden(fortschritt: Fortschritt) -> Dashboard:
             melden = _nur_abschluesse(fortschritt)
             dashboard = await Dashboard.laden_async(
-                stichtag=datetime.datetime.now(tz=datetime.UTC).date(),
+                stichtag=dt.datetime.now(tz=dt.UTC).date(),
                 horizont_monate=horizont_monate,
                 auslastung_monate=auslastung_monate,
                 fortschritt=melden,
@@ -294,7 +294,7 @@ class AnmeldungsverlaufCache:
 
     def anstossen(self) -> None:
         async def laden(fortschritt: Fortschritt) -> Anmeldungsverlauf:
-            heute = datetime.datetime.now(tz=datetime.UTC).date()
+            heute = dt.datetime.now(tz=dt.UTC).date()
             bis_jahr = aus_ordnung(ordnung(heute.year, heute.month) + self._monate_voraus)[0]
             jahre = range(self._ab_jahr, bis_jahr + 1)
             # anmeldungsverlauf_laden() ist ein einzelner synchroner Aufruf (siehe
@@ -385,7 +385,7 @@ class KurzarbeitCache:
             # die eine synthetisierte Statuszeile danach, wortgleich zu dort.
             start = time.perf_counter()
             rohdaten = await KurzarbeitRepository.mit_automatischen_zugangsdaten().laden_async(
-                stichtag=datetime.datetime.now(tz=datetime.UTC).date(),
+                stichtag=dt.datetime.now(tz=dt.UTC).date(),
                 anzahl_monate=self._maximale_monate,
             )
             rollenzuordnung = rollenzuordnung_automatisch()

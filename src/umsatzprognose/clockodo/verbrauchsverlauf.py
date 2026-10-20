@@ -47,7 +47,7 @@ if TYPE_CHECKING:
     from .client import ClockodoClient, EntryGroupV2
     from .fortschritt import Fortschritt
 
-import datetime
+import datetime as dt
 
 from umsatzprognose.domaene import Verbrauchsverlauf
 
@@ -168,7 +168,7 @@ async def rohdaten(
     return await client.entrygroups_je_projekt_und_monat(
         time_since=time_since,
         time_until=horizontende(
-            stichtag or datetime.datetime.now(tz=datetime.UTC).date(), horizont_monate
+            stichtag or dt.datetime.now(tz=dt.UTC).date(), horizont_monate
         ),
         cache_cutoff_monate=cache_cutoff_monate,
         cache_fortschritt=cache_fortschritt,
