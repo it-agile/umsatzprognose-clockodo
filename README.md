@@ -48,6 +48,34 @@ einen Browser-Tab zum Anmelden. Für den Baustein Kurzarbeitsbereitschaft zusät
 `KURZARBEIT_ROLLENZUORDNUNG` eintragen (siehe `.env.sample`) – eine personenbezogene
 Angabe, die deshalb in keiner Datei dieses Repositories steht.
 
+### Google-OAuth-Client-ID anlegen
+
+Gebraucht nur lokal und für den Wochenbericht (`GOOGLE_OAUTH_CLIENT_JSON`); in Colab
+übernimmt `google.colab.auth` die Anmeldung. Einmalig in der
+[Google-Cloud-Konsole](https://console.cloud.google.com/):
+
+1. Ein Projekt auswählen oder neu anlegen.
+2. Unter „APIs & Dienste“ → „Bibliothek“ die **Google Sheets API** aktivieren
+   ([direkt](https://console.cloud.google.com/apis/library/sheets.googleapis.com)).
+3. Unter „Google Auth Platform“ (früher „OAuth-Zustimmungsbildschirm“) den
+   Zustimmungsbildschirm einrichten: App-Name und Support-E-Mail angeben, als
+   Zielgruppe „Intern“ wählen, sofern das Konto zu einer Google-Workspace-Organisation
+   gehört – sonst „Extern“ und das eigene Google-Konto als Testnutzer eintragen. Der
+   Code fordert nur den Bereich `spreadsheets.readonly` an
+   ([direkt](https://console.cloud.google.com/auth/overview)).
+4. Unter „Clients“ (bzw. „Anmeldedaten“ → „Anmeldedaten erstellen“ → „OAuth-Client-ID“)
+   einen Client vom Anwendungstyp **Desktopanwendung** anlegen und die JSON-Datei
+   herunterladen ([direkt](https://console.cloud.google.com/auth/clients)).
+5. Den Dateiinhalt einzeilig als `GOOGLE_OAUTH_CLIENT_JSON` in `.env` eintragen, z. B.
+   über `uv run python -m json.tool --compact client_secret_….json`. Die Datei selbst
+   nicht ins Repository legen.
+
+Beim ersten Aufruf öffnet sich ein Browser-Tab zum Anmelden; das Konto braucht
+Lesezugriff auf die eingetragenen Sheets. Das Token landet danach in
+`.google_oauth_token.json` (gitignored). Steht eine externe App auf „Testing“, läuft
+das Refresh-Token nach 7 Tagen ab – für den Wochenbericht oder das Web-Frontend die
+App auf „In production“ veröffentlichen (siehe unten).
+
 ## Nutzung
 
 ```python
