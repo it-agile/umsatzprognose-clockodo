@@ -19,16 +19,13 @@ zurueck, deren Zellen sich ueberwiegend als deutscher Monatsname parsen lassen (
 :func:`_monat_parsen`) - inhaltsbasiert statt positionsbasiert, aus demselben Grund wie
 bei der Kopfzeile selbst.
 
-``Gesamtkosten`` (die Kostenpauschale), ``Allgemeinkosten`` (deren geschaetzter Anteil
-darin) und ``Kostenerfassung`` (die mit Zeitverzug aus den ``AB {Monat}``-Reitern
-nachgezogenen tatsaechlichen Allgemeinkosten) stehen, wie ``Umsatz gesamt`` bei den
-Schulungsanmeldungen, im deutschen Zahlenformat mit Euro-Zeichen und werden mit
-derselben :func:`~umsatzprognose.domaene.zahlen.euro_parsen` geparst.
-``Kostenerfassung`` ist keine Pflichtspalte und je Monat oft noch leer - erst
-:attr:`~umsatzprognose.domaene.kosten.Kostenposten.kosten` entscheidet, ob und wie sie
-den Allgemeinkosten-Anteil der Pauschale ersetzt (siehe dort). ``Allgemeinkosten``
-selbst ist Pflichtspalte, weil sie fuer diese Ersetzung gebraucht wird, sobald eine
-Erfassung vorliegt.
+``Gesamtkosten`` steht, wie ``Umsatz gesamt`` bei den Schulungsanmeldungen, im
+deutschen Zahlenformat mit Euro-Zeichen und wird mit derselben
+:func:`~umsatzprognose.domaene.zahlen.euro_parsen` geparst; der Betrag wird unveraendert
+uebernommen. Die Controllerin tauscht die Formel je Monat um, sobald die Kosten gesichert
+sind. Ob ein Monat noch auf der Pauschale beruht, erkennt :func:`_entspricht_pauschale`
+per Wertvergleich: ``Gesamtkosten`` gleich ``Gehälter`` + ``Spesen`` +
+``Allgemeinkosten``. Fehlt eine dieser Spalten, gilt der Monat nicht als Pauschale.
 
 **Anders als bei den Schulungsanmeldungen gelten die Kosten auch fuer bereits
 vergangene Monate** (siehe Moduldocstring von :mod:`umsatzprognose.domaene.kosten`) -
@@ -51,7 +48,9 @@ if TYPE_CHECKING:
 
     from umsatzprognose.util import Fortschritt, Monat
 
-from umsatzprognose.domaene import Erfasst, Geschaetzt, Hinweis, Kostenplan, Kostenposten
+from decimal import Decimal
+
+from umsatzprognose.domaene import Hinweis, Kostenplan, Kostenposten
 from umsatzprognose.domaene.zahlen import euro_parsen
 from umsatzprognose.google_sheets import (
     GoogleSheetsClient,
@@ -69,7 +68,9 @@ KOSTEN_BEREICH_VORLAGE = "Kosten {jahr}!1:20"
 SPALTE_MONAT = "Monat"
 SPALTE_GESAMTKOSTEN = "Gesamtkosten"
 SPALTE_ALLGEMEINKOSTEN = "Allgemeinkosten"
-SPALTE_KOSTENERFASSUNG = "Kostenerfassung"
+SPALTE_GEHAELTER = "Gehälter"
+SPALTE_SPESEN = "Spesen"
+PAUSCHALE_SPALTEN = (SPALTE_GEHAELTER, SPALTE_SPESEN, SPALTE_ALLGEMEINKOSTEN)
 
 MONATSNAMEN_LANG = (
     "Januar", "Februar", "März", "April", "Mai", "Juni",
@@ -111,13 +112,20 @@ def _monat_spalte_ermitteln(zeilen: list[list[str]], index: dict[str, int]) -> i
     return beste_spalte
 
 
+def _entspricht_pauschale(zeile: list[str], index: dict[str, int], kosten: Decimal) -> bool:
+    """Gesamtkosten == Gehaelter + Spesen + Allgemeinkosten; ohne diese Spalten ``False``."""
+    if not all(name in index for name in PAUSCHALE_SPALTEN):
+        return False
+    return kosten == sum(
+        (euro_parsen(zelle(zeile, index, name)) for name in PAUSCHALE_SPALTEN), Decimal(0)
+    )
+
+
 def _zeilen_zu_posten(zeilen: list[list[str]], jahr: int) -> list[Kostenposten]:
     if not zeilen:
         return []
     kopf_zeile, index = kopfzeile_finden(zeilen, {SPALTE_GESAMTKOSTEN, SPALTE_ALLGEMEINKOSTEN})
     monat_spalte = _monat_spalte_ermitteln(zeilen[kopf_zeile:], index)
-
-    hat_erfassung = SPALTE_KOSTENERFASSUNG in index
 
     posten = []
     for zeile in zeilen[kopf_zeile + 1 :]:
@@ -127,16 +135,13 @@ def _zeilen_zu_posten(zeilen: list[list[str]], jahr: int) -> list[Kostenposten]:
         monat = _monat_parsen(monat_text)
         if monat is None:
             continue
-        erfassung_text = (
-            zelle(zeile, index, SPALTE_KOSTENERFASSUNG).strip() if hat_erfassung else ""
-        )
+        kosten = euro_parsen(zelle(zeile, index, SPALTE_GESAMTKOSTEN))
         posten.append(
             Kostenposten(
                 jahr=jahr,
                 monat=monat,
-                pauschale=euro_parsen(zelle(zeile, index, SPALTE_GESAMTKOSTEN)),
-                allgemeinkosten=euro_parsen(zelle(zeile, index, SPALTE_ALLGEMEINKOSTEN)),
-                erfassung=Erfasst(euro_parsen(erfassung_text)) if erfassung_text else Geschaetzt(),
+                kosten=kosten,
+                entspricht_pauschale=_entspricht_pauschale(zeile, index, kosten),
             ),
         )
     return posten

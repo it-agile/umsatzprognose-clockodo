@@ -11,11 +11,17 @@ Vergangenheitsmonate. :class:`Kostenplan` filtert deshalb, anders als
 :class:`~umsatzprognose.domaene.schulung.Schulungsplan`, nicht nach einem Stichtag -
 welche Monate gebraucht werden, entscheidet allein der Aufrufer ueber die an
 :meth:`Kostenplan.kosten_je_monat` uebergebenen Monate.
+
+**Gesichert oder Pauschale:** Die Quelle traegt die Kostenpauschale, bis die Kosten eines
+Monats gesichert sind, und stellt den Betrag dann um. Ob ein einzelner Monat noch der
+Pauschale entspricht, sagt :attr:`Kostenposten.entspricht_pauschale`; welche Monate als
+gesichert gelten, entscheidet :meth:`Kostenplan.kostenstatus_je_monat` rueckwaertsblickend
+(siehe dort).
 """
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, assert_never
+from typing import TYPE_CHECKING, Literal
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -29,54 +35,22 @@ from decimal import Decimal
 
 from .umsatzhistorie import betrag_je_monat, hinweise_mit_fehlenden_monaten
 
-
-@dataclass(frozen=True, slots=True)
-class Geschaetzt:
-    """Noch keine Erfassung nachgezogen - die Pauschale gilt unveraendert."""
-
-
-@dataclass(frozen=True, slots=True)
-class Erfasst:
-    """Die tatsaechlich erfassten Allgemeinkosten, aus den ``AB {Monat}``-Reitern."""
-
-    betrag: Decimal
-
-
-# Ob fuer einen Kostenposten schon eine Erfassung vorliegt oder nur die Pauschale
-# gilt - eine geschlossene Menge zweier Faelle, kein optionaler Betrag: ein
-# bewusst erfasster Wert von 0 ist ein vorliegender Wert, keine fehlende Erfassung.
-Kostenerfassung = Geschaetzt | Erfasst
+Kostenstatus = Literal["gesichert", "pauschale", "unbekannt"]
 
 
 @dataclass(frozen=True, slots=True)
 class Kostenposten:
     """Die Kosten eines Kalendermonats laut Kostenplanungstabelle.
 
-    ``pauschale`` ist die von Anfang an geplante Kostenpauschale (Gehälter + Spesen +
-    Allgemeinkosten, meist), ``allgemeinkosten`` deren Allgemeinkosten-Anteil, den die
-    Erfassung ersetzt, und ``erfassung`` die tatsächliche Erfassung der
-    Allgemeinkosten - anfangs :class:`Geschaetzt`, weil die Erfassung erst mit
-    Zeitverzug aus den ``AB {Monat}``-Reitern nachgezogen wird. Sobald
-    :class:`Erfasst`, ersetzt ihr Betrag ausschliesslich den Allgemeinkosten-Anteil
-    der Pauschale; Gehälter und Spesen bleiben unveraendert Teil der Pauschale.
+    ``kosten`` ist der Betrag, wie ihn die Quelle ausweist. ``entspricht_pauschale``
+    sagt, ob dieser Betrag noch der ursprünglich geplanten Kostenpauschale gleicht - dann
+    steht der Monat in der Quelle noch nicht auf gesicherten Kosten.
     """
 
     jahr: int
     monat: int
-    pauschale: Decimal
-    allgemeinkosten: Decimal = Decimal("0")
-    erfassung: Kostenerfassung = field(default_factory=Geschaetzt)
-
-    @property
-    def kosten(self) -> Decimal:
-        """Pauschale, mit erfassten Allgemeinkosten statt der geschaetzten, sobald vorhanden."""
-        match self.erfassung:
-            case Geschaetzt():
-                return self.pauschale
-            case Erfasst(betrag=betrag):
-                return self.pauschale - self.allgemeinkosten + betrag
-            case _:
-                assert_never(self.erfassung)
+    kosten: Decimal
+    entspricht_pauschale: bool = False
 
     @property
     def schluessel(self) -> Monat:
@@ -103,12 +77,28 @@ class Kostenplan:
     def summe(self, monate: Sequence[Monat]) -> Decimal:
         return sum(self.kosten_je_monat(monate), Decimal("0"))
 
-    def hat_erfassung_je_monat(self, monate: Sequence[Monat]) -> list[bool]:
-        """Ob fuer den Monat eine tatsaechliche Kostenerfassung vorliegt statt nur
-        der geschaetzten Pauschale - Grundlage fuer die Darstellung (siehe
-        :mod:`umsatzprognose.darstellung.diagramme`)."""
-        erfasst = {p.schluessel for p in self.posten if isinstance(p.erfassung, Erfasst)}
-        return [monat in erfasst for monat in monate]
+    def kostenstatus_je_monat(self, monate: Sequence[Monat]) -> list[Kostenstatus]:
+        """Je Monat, ob seine Kosten gesichert sind, noch auf der Pauschale beruhen oder
+        unbekannt sind (kein Posten) - Grundlage fuer die Darstellung.
+
+        Rueckwaertsblickend: die Pauschale-Monate bilden nur den Block am Ende. Der
+        letzte Monat, dessen Betrag nicht mehr der Pauschale entspricht, und alle Monate
+        davor gelten als gesichert - auch aeltere Monate, deren Betrag in der Quelle nie
+        umgestellt wurde. Gibt es keinen solchen Monat, beruht jeder Monat mit Posten
+        auf der Pauschale.
+        """
+        grenze = max(
+            (p.schluessel for p in self.posten if not p.entspricht_pauschale), default=None
+        )
+        vorhanden = {p.schluessel for p in self.posten}
+        return [
+            "unbekannt"
+            if monat not in vorhanden
+            else "gesichert"
+            if grenze is not None and monat <= grenze
+            else "pauschale"
+            for monat in monate
+        ]
 
     def hinweise(self, monate: Sequence[Monat]) -> tuple[Hinweis, ...]:
         """Befunde aus der Abbildung, plus fehlende Monate.

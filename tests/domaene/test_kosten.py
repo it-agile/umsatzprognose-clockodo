@@ -5,36 +5,7 @@ from __future__ import annotations
 from decimal import Decimal
 
 from umsatzprognose.domaene import Hinweis
-from umsatzprognose.domaene.kosten import Erfasst, Kostenplan, Kostenposten
-
-
-def test_kostenposten_kosten_faellt_ohne_erfassung_auf_die_pauschale_zurueck() -> None:
-    posten = Kostenposten(2026, 1, pauschale=Decimal("1000.0"))
-    assert posten.kosten == Decimal("1000.0")
-
-
-def test_kostenposten_kosten_ersetzt_nur_den_allgemeinkosten_anteil() -> None:
-    """Gehälter und Spesen aus der Pauschale bleiben unberührt von der Erfassung."""
-    posten = Kostenposten(
-        2026,
-        1,
-        pauschale=Decimal("1000.0"),
-        allgemeinkosten=Decimal("200.0"),
-        erfassung=Erfasst(Decimal("350.0")),
-    )
-    assert posten.kosten == Decimal("1150.0")  # 1000 - 200 + 350
-
-
-def test_kostenposten_kosten_akzeptiert_eine_erfassung_von_null() -> None:
-    """Eine bewusst erfasste 0 ist ein vorliegender Wert, keine fehlende Erfassung."""
-    posten = Kostenposten(
-        2026,
-        1,
-        pauschale=Decimal("1000.0"),
-        allgemeinkosten=Decimal("200.0"),
-        erfassung=Erfasst(Decimal("0")),
-    )
-    assert posten.kosten == Decimal("800.0")  # 1000 - 200 + 0
+from umsatzprognose.domaene.kosten import Kostenplan, Kostenposten
 
 
 def test_kosten_je_monat_summiert_je_monat() -> None:
@@ -62,20 +33,33 @@ def test_kosten_je_monat_gilt_auch_fuer_vergangene_monate() -> None:
     assert plan.kosten_je_monat([(2025, 1)]) == [Decimal("500.0")]
 
 
-def test_hat_erfassung_je_monat_unterscheidet_erfasst_von_pauschale() -> None:
+def test_kostenstatus_je_monat_gilt_rueckwaertsblickend_ab_dem_letzten_nicht_pauschalen_monat() -> (
+    None
+):
     plan = Kostenplan(
         posten=(
-            Kostenposten(
-                2026,
-                1,
-                pauschale=Decimal("1000.0"),
-                allgemeinkosten=Decimal("200.0"),
-                erfassung=Erfasst(Decimal("150.0")),
-            ),
-            Kostenposten(2026, 2, pauschale=Decimal("1500.0")),
+            Kostenposten(2026, 1, Decimal("1000.0"), entspricht_pauschale=True),
+            Kostenposten(2026, 2, Decimal("1100.0")),
+            Kostenposten(2026, 3, Decimal("1200.0"), entspricht_pauschale=True),
+            Kostenposten(2026, 4, Decimal("1300.0")),
+            Kostenposten(2026, 5, Decimal("1400.0"), entspricht_pauschale=True),
         ),
     )
-    assert plan.hat_erfassung_je_monat([(2026, 1), (2026, 2), (2026, 3)]) == [True, False, False]
+    monate = [(2025, 12), (2026, 1), (2026, 2), (2026, 3), (2026, 4), (2026, 5), (2026, 6)]
+    assert plan.kostenstatus_je_monat(monate) == [
+        "unbekannt",
+        "gesichert",
+        "gesichert",
+        "gesichert",
+        "gesichert",
+        "pauschale",
+        "unbekannt",
+    ]
+
+
+def test_kostenstatus_je_monat_ohne_nicht_pauschalen_monat_ist_alles_pauschale() -> None:
+    plan = Kostenplan(posten=(Kostenposten(2026, 1, Decimal("1000.0"), entspricht_pauschale=True),))
+    assert plan.kostenstatus_je_monat([(2026, 1)]) == ["pauschale"]
 
 
 def test_summe_addiert_die_uebergebenen_monate() -> None:

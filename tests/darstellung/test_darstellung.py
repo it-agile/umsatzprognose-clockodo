@@ -43,7 +43,6 @@ from umsatzprognose.domaene import (
     Anmeldungsverlauf,
     Auslastungsmonat,
     Bestand,
-    Erfasst,
     FakturierbareArbeitBandbreite,
     GaussFakturierbareArbeit,
     Gesamtbudget,
@@ -1221,9 +1220,9 @@ def test_umsatzverlauf_mit_kostenplan_zeigt_balken_fuer_historie_und_horizont():
     historie, prognose = _historie_und_prognose_mit_horizont()
     kostenplan = Kostenplan(
         posten=(
-            Kostenposten(2026, 8, Decimal("40000.0")),
-            Kostenposten(2026, 9, Decimal("15000.0")),
-            Kostenposten(2026, 10, Decimal("12000.0")),
+            Kostenposten(2026, 8, Decimal("40000.0"), entspricht_pauschale=True),
+            Kostenposten(2026, 9, Decimal("15000.0"), entspricht_pauschale=True),
+            Kostenposten(2026, 10, Decimal("12000.0"), entspricht_pauschale=True),
         ),
     )
 
@@ -1232,7 +1231,7 @@ def test_umsatzverlauf_mit_kostenplan_zeigt_balken_fuer_historie_und_horizont():
     assert kosten_spur.type == "bar"
     assert list(kosten_spur.x) == ["Aug 2026", "Sep 2026", "Okt 2026"]
     assert list(kosten_spur.y) == [40000.0, 15000.0, 12000.0]
-    # Keiner der Posten hat eine Kostenerfassung -> ueberall die helle Pauschale-Farbe.
+    # Alle Posten entsprechen der Pauschale -> ueberall die helle Farbe.
     assert list(kosten_spur.marker.color) == [KOSTEN_HELL, KOSTEN_HELL, KOSTEN_HELL]
 
     median = prognose.monatswerte()[0.50]
@@ -1259,29 +1258,27 @@ def test_umsatzverlauf_mit_kostenplan_zeigt_balken_fuer_historie_und_horizont():
     }
 
 
-def test_umsatzverlauf_mit_kostenerfassung_zeigt_satteres_rot_und_eigene_legende():
+def test_umsatzverlauf_mit_gesicherten_kosten_zeigt_satteres_rot_und_eigene_legende():
     historie, prognose = _historie_und_prognose_mit_horizont()
     kostenplan = Kostenplan(
         posten=(
             Kostenposten(
                 2026,
                 8,
-                pauschale=Decimal("40000.0"),
-                allgemeinkosten=Decimal("10000.0"),
-                erfassung=Erfasst(Decimal("12000.0")),
+                kosten=Decimal("40000.0"),
             ),
-            Kostenposten(2026, 9, Decimal("15000.0")),
-            Kostenposten(2026, 10, Decimal("12000.0")),
+            Kostenposten(2026, 9, Decimal("15000.0"), entspricht_pauschale=True),
+            Kostenposten(2026, 10, Decimal("12000.0"), entspricht_pauschale=True),
         ),
     )
 
     fig = diagramme.umsatzverlauf(historie, prognose, None, kostenplan)
     kosten_spur = next(s for s in fig.data if s.name == "Kosten")
-    # Nur der August hat eine Kostenerfassung -> satte Farbe nur dort, sonst hell.
+    # Nur der August ist gesichert -> satte Farbe nur dort, sonst hell.
     assert list(kosten_spur.marker.color) == [KOSTEN, KOSTEN_HELL, KOSTEN_HELL]
 
     legende = {spur.name for spur in fig.data if spur.showlegend}
-    assert "Kosten (erfasst)" in legende
+    assert "Kosten (gesichert)" in legende
     assert "Kosten (Pauschale)" in legende
 
 
@@ -1349,6 +1346,25 @@ def test_umsatztabelle_mit_kostenplan_ergaenzt_kosten_und_gewinn_fuer_historie_u
     erwartete_okt_summe = prognose.monatswerte()[0.50][1]
     assert okt["Kosten"] == euro(Decimal("12000.0"))
     assert okt["Gewinn"] == euro(erwartete_okt_summe - Decimal("12000.0"))
+
+
+def test_umsatztabelle_kennzeichnet_pauschale_kosten_mit_zusatz():
+    historie, prognose = _historie_und_prognose_mit_horizont()
+    kostenplan = Kostenplan(
+        posten=(
+            Kostenposten(2026, 8, Decimal("40000.0")),
+            Kostenposten(2026, 9, Decimal("15000.0"), entspricht_pauschale=True),
+            Kostenposten(2026, 10, Decimal("12000.0"), entspricht_pauschale=True),
+        ),
+    )
+
+    tabelle = tabellen.umsatztabelle(historie, prognose, None, kostenplan)
+
+    assert list(tabelle["Kosten"].iloc[:3]) == [
+        euro(Decimal("40000.0")),
+        f"(Pauschale) {euro(Decimal('15000.0'))}",
+        f"(Pauschale) {euro(Decimal('12000.0'))}",
+    ]
 
 
 def test_umsatztabelle_ohne_kostenplan_laesst_spalten_leer():

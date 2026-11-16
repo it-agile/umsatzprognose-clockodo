@@ -31,7 +31,7 @@ in einer externen Planungstabelle bereits fest.
 
 | Zweck | Zugriff | Relevanter Bereich |
 |---|---|---|
-| Gesamtkosten je Monat | Google Sheets API (dieselben Zugangsdaten wie Schulungsanmeldungen, siehe `spec-schulungsanmeldungen.md` Abschnitt 5.3), Tabellenblatt `Kosten {jahr}` | Zeilen `1:20`, ohne festen Zeilen- oder Spaltenbereich; Spalten `Monat`, `Gesamtkosten`, `Allgemeinkosten` und `Kostenerfassung` |
+| Gesamtkosten je Monat | Google Sheets API (dieselben Zugangsdaten wie Schulungsanmeldungen, siehe `spec-schulungsanmeldungen.md` Abschnitt 5.3), Tabellenblatt `Kosten {jahr}` | Zeilen `1:20`, ohne festen Zeilen- oder Spaltenbereich; Spalten `Monat`, `Gesamtkosten`, `Allgemeinkosten`, `Gehälter` und `Spesen` |
 
 - Weder Kopfzeile noch Spaltenlage stimmen jahrgangsweise verlässlich überein
   (verifiziert am Jahrgang 2022, wo der eigentlichen Monatsübersicht im selben
@@ -47,41 +47,33 @@ in einer externen Planungstabelle bereits fest.
   Jahrgang beschriftet diese Spalte in der Kopfzeile; ohne eine Spalte namens `Monat`
   gilt stattdessen die Spalte, deren Zellen sich überwiegend als deutscher Monatsname
   erkennen lassen – inhalts- statt positionsbasiert, aus demselben Grund wie oben.
-- `Gesamtkosten` (die Kostenpauschale, meist Gehälter + Spesen + Allgemeinkosten),
-  `Allgemeinkosten` (deren geschätzter Anteil daran) und `Kostenerfassung` (die
-  tatsächlichen Allgemeinkosten, händisch mit Zeitverzug aus den `AB {Monat}`-Reitern
-  nachgetragen) stehen im selben deutschen Zahlenformat mit Euro-Zeichen wie `Umsatz
-  gesamt` bei den Schulungsanmeldungen und werden mit derselben Logik geparst
-  (`domaene.zahlen.euro_parsen()`).
-- `Kostenerfassung` ist keine Pflichtspalte: fehlt sie im Tabellenblatt eines Jahrgangs
-  oder ist die Zelle für einen Monat (noch) leer, gilt dafür ausschließlich die
-  Pauschale aus `Gesamtkosten` – siehe 5.1. `Allgemeinkosten` dagegen ist Pflichtspalte,
-  weil sie für die Ersetzung in 5.1 gebraucht wird, sobald eine Erfassung vorliegt.
+- `Gesamtkosten` steht im selben deutschen Zahlenformat mit Euro-Zeichen wie `Umsatz
+  gesamt` bei den Schulungsanmeldungen und wird mit derselben Logik geparst
+  (`domaene.zahlen.euro_parsen()`). Der Betrag wird unverändert übernommen; die
+  Controllerin tauscht die Formel je Monat um, sobald die Kosten gesichert sind.
+- `Gehälter`, `Spesen` und `Allgemeinkosten` dienen nur der Erkennung der Pauschale
+  (siehe 5.1). Fehlt eine dieser Spalten im Tabellenblatt eines Jahrgangs, gilt der
+  Monat nicht als Pauschale. `Allgemeinkosten` bleibt Pflichtspalte für die
+  Kopfzeilensuche.
 
 ## 5. Modell
 
-### 5.1 Aggregation je Monat
-
-`Kostenerfassung` enthält nur den tatsächlichen Allgemeinkosten-Anteil, nicht die
-gesamten Ist-Kosten des Monats – Gehälter und Spesen sind in der Pauschale bereits
-korrekt und unabhängig von der Erfassung. Liegt eine Erfassung vor, ersetzt sie deshalb
-nur den geschätzten Allgemeinkosten-Anteil innerhalb der Pauschale, nicht die Pauschale
-als Ganzes:
+### 5.1 Aggregation je Monat und Status gesichert/Pauschale
 
 ```
-Kosten(Jahr, Monat) = Gesamtkosten - Allgemeinkosten + Kostenerfassung,
-                       falls für den Monat eine Kostenerfassung eingetragen ist;
-                       sonst Gesamtkosten (Kostenpauschale)
-                       - jeweils der Zeile mit passendem Monat im Tabellenblatt
-                       Kosten {Jahr}
+Kosten(Jahr, Monat) = Gesamtkosten der Zeile mit passendem Monat im Tabellenblatt
+                      Kosten {Jahr}, unverändert
 ```
 
-Die Kostenpauschale steht von Anfang an fest; die tatsächlichen Allgemeinkosten aus
-`Kostenerfassung` werden mit Zeitverzug aus den monatlichen Ausgabenbuch-Reitern
-(`AB {Monat}`) nachgezogen und ersetzen den Allgemeinkosten-Anteil der Pauschale,
-sobald sie vorliegen. Ein bewusst eingetragener Wert von 0 € gilt als vorliegende
-Erfassung, nicht als fehlender Wert – unterschieden wird über das Vorhandensein eines
-Eintrags in der Zelle, nicht über den Betrag.
+Je Monat gilt `entspricht_pauschale`, wenn `Gesamtkosten` = `Gehälter` + `Spesen` +
+`Allgemeinkosten` (Wertvergleich). Welche Monate als gesichert gelten, entscheidet
+`Kostenplan.kostenstatus_je_monat()` **rückwärtsblickend**: der letzte Monat, dessen
+Betrag nicht mehr der Pauschale entspricht, und alle Monate davor sind „gesichert“; alle
+späteren Monate mit Posten sind „Pauschale“, Monate ohne Posten „unbekannt“.
+
+Darstellung: in der Monatstabelle trägt die Kosten-Zelle eines Pauschale-Monats den
+Vorsatz „(Pauschale)“ vor dem Betrag, gesicherte Monate zeigen nur den Betrag; im Diagramm unterscheidet
+die Sättigung des Kostenbalkens (satt = gesichert, hell = Pauschale).
 
 ### 5.2 Zeitfenster – Unterschied zu den Schulungsanmeldungen
 

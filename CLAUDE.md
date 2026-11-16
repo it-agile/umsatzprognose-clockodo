@@ -278,6 +278,9 @@ Additiv daneben:
   Sheets-Datei, eigenes Tabellenblatt. Gilt anders als Schulungsanmeldungen auch für
   vergangene Monate (Clockodo liefert keine Ist-Kosten). `Gewinn` wird nur in der
   Darstellungsschicht gebildet (Umsatz minus Kosten), kein eigenes Domänenobjekt.
+  `Gesamtkosten` wird unverändert übernommen; „gesichert“ vs. „Pauschale“ je Monat über
+  Wertvergleich (Gesamtkosten = Gehälter + Spesen + Allgemeinkosten) und Rückwärtsregel
+  (`Kostenplan.kostenstatus_je_monat()`), in der Tabelle mit Vorsatz „(Pauschale)“ vor dem Betrag.
 - **Kurzarbeitsbereitschaft** (`domaene.kurzarbeit`, `spec/spec-kurzarbeit.md`):
   komplett losgelöst, Kapazitäts-/Personalsignal statt Umsatz/Kosten – prüft
   rückblickend je Monat, ob die Organisation Kurzarbeit-Voraussetzungen erfüllt hätte

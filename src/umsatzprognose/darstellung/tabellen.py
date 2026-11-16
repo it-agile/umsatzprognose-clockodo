@@ -89,6 +89,13 @@ def projekttabelle(projekte: Sequence[Projekt]) -> pd.DataFrame:
     )
 
 
+def _kostentext(kosten: Decimal | None, status: str) -> str:
+    """Kosten als Euro-Text, bei noch nicht gesicherten Kosten mit Vorsatz "(Pauschale)"."""
+    if kosten is None:
+        return ""
+    return f"(Pauschale) {euro(kosten)}" if status == "pauschale" else euro(kosten)
+
+
 def umsatztabelle(
     historie: Umsatzhistorie,
     prognose: Prognose = _KEINE_PROGNOSE,
@@ -111,7 +118,8 @@ def umsatztabelle(
     Mit ``kostenplan`` kommen **Kosten** und **Gewinn** (Summe minus Kosten) dazu -
     anders als die Schulungsanmeldungen fuer **jeden** Monat, auch die Historie: die
     Kostenprognose gilt laut Quelle auch fuer bereits vergangene Monate, siehe
-    Moduldocstring von :mod:`umsatzprognose.domaene.kosten`.
+    Moduldocstring von :mod:`umsatzprognose.domaene.kosten`. Monate, deren Kosten noch auf
+    der Pauschale beruhen, tragen in **Kosten** den Vorsatz "(Pauschale)" vor dem Betrag.
 
     Der erste Horizontmonat ist derselbe Kalendermonat wie der laufende und
     ergaenzt dessen Zeile deshalb nur um die Prognose, statt eine zweite Zeile fuer
@@ -123,6 +131,11 @@ def umsatztabelle(
         kostenplan.kosten_je_monat([m.schluessel for m in historie.monate])
         if kostenplan is not None
         else [None] * len(historie.monate)
+    )
+    status_historie = (
+        kostenplan.kostenstatus_je_monat([m.schluessel for m in historie.monate])
+        if kostenplan is not None
+        else ["unbekannt"] * len(historie.monate)
     )
     zeilen = [
         {
@@ -137,10 +150,12 @@ def umsatztabelle(
             OHNE_BUDGET_SPALTE: "",
             "Schulungsanmeldungen": "",
             "Summe": euro(monat.umsatz),
-            "Kosten": euro(kosten) if kosten is not None else "",
+            "Kosten": _kostentext(kosten, status),
             "Gewinn": euro(monat.umsatz - kosten) if kosten is not None else "",
         }
-        for monat, kosten in zip(historie.monate, kosten_historie, strict=True)
+        for monat, kosten, status in zip(
+            historie.monate, kosten_historie, status_historie, strict=True
+        )
     ]
 
     if prognose.vorhanden:
@@ -160,12 +175,19 @@ def umsatztabelle(
             else [None] * len(horizont)
         )
 
-        for (jahr, monat), wert, gebuchter_betrag, schulungsbetrag, kosten, davon in zip(
+        status_horizont = (
+            kostenplan.kostenstatus_je_monat(horizont)
+            if kostenplan is not None
+            else ["unbekannt"] * len(horizont)
+        )
+
+        for (jahr, monat), wert, gebuchter_betrag, schulungsbetrag, kosten, status, davon in zip(
             horizont,
             median,
             gebucht,
             schulung,
             kosten_horizont,
+            status_horizont,
             ohne_budget,
             strict=True,
         ):
@@ -178,7 +200,7 @@ def umsatztabelle(
                     OHNE_BUDGET_SPALTE: euro(davon) if davon else "",
                     "Schulungsanmeldungen": euro(schulungsbetrag) if schulungsbetrag else "",
                     "Summe": euro(summe_wert),
-                    "Kosten": euro(kosten) if kosten is not None else "",
+                    "Kosten": _kostentext(kosten, status),
                     "Gewinn": euro(summe_wert - kosten) if kosten is not None else "",
                 }
             else:
@@ -192,7 +214,7 @@ def umsatztabelle(
                         OHNE_BUDGET_SPALTE: euro(davon) if davon else "",
                         "Schulungsanmeldungen": euro(schulungsbetrag) if schulungsbetrag else "",
                         "Summe": euro(summe_wert),
-                        "Kosten": euro(kosten) if kosten is not None else "",
+                        "Kosten": _kostentext(kosten, status),
                         "Gewinn": euro(summe_wert - kosten) if kosten is not None else "",
                     },
                 )

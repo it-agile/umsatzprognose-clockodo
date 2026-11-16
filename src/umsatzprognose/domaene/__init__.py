@@ -19,7 +19,7 @@ from umsatzprognose.domaene.auslastung import (
 )
 from umsatzprognose.domaene.bestand import Bestand
 from umsatzprognose.domaene.hinweis import Hinweis
-from umsatzprognose.domaene.kosten import Erfasst, Geschaetzt, Kostenplan, Kostenposten
+from umsatzprognose.domaene.kosten import Kostenplan, Kostenposten, Kostenstatus
 from umsatzprognose.domaene.kunde import Kunde
 from umsatzprognose.domaene.kurzarbeit import (
     Kurzarbeitsbewertung,
@@ -73,18 +73,17 @@ __all__ = [
     "Auslastungssumme",
     "Bestand",
     "Budget",
-    "Erfasst",
     "FakturierbareArbeitBandbreite",
     "FakturierbareArbeitVerteilung",
     "FakturierbareArbeitZiehung",
     "GaussFakturierbareArbeit",
     "Gesamtbudget",
-    "Geschaetzt",
     "Hinweis",
     "IntervallBudget",
     "KeinBudget",
     "Kostenplan",
     "Kostenposten",
+    "Kostenstatus",
     "Kunde",
     "Kundenumsatz",
     "Kurzarbeitsbewertung",

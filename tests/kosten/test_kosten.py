@@ -13,7 +13,6 @@ from decimal import Decimal
 import pytest
 
 from conftest import FakeTabellenClient
-from umsatzprognose.domaene.kosten import Erfasst, Geschaetzt
 from umsatzprognose.google_sheets import kopfzeile_finden
 from umsatzprognose.kosten.kosten import (
     SPALTE_ALLGEMEINKOSTEN,
@@ -28,7 +27,6 @@ from umsatzprognose.kosten.kosten import (
 KOSTEN_PFLICHTSPALTEN = {SPALTE_GESAMTKOSTEN, SPALTE_ALLGEMEINKOSTEN}
 
 KOPFZEILE = ["Monat", "Gehälter", "Spesen", "Allgemeinkosten", "Gesamtkosten"]
-KOPFZEILE_MIT_ERFASSUNG = [*KOPFZEILE, "Kostenerfassung"]
 
 
 @pytest.mark.parametrize(
@@ -59,32 +57,23 @@ def test_zeilen_zu_posten_findet_spalten_ueber_die_kopfzeile() -> None:
     ]
 
 
-def test_zeilen_zu_posten_ersetzt_nur_den_allgemeinkosten_anteil_bei_erfassung() -> None:
+def test_zeilen_zu_posten_uebernimmt_gesamtkosten_und_erkennt_die_pauschale() -> None:
     zeilen = [
-        KOPFZEILE_MIT_ERFASSUNG,
-        # Gehälter, Spesen, Allgemeinkosten, Gesamtkosten, Kostenerfassung
-        ["Januar", "100,00 €", "800,00 €", "50,00 €", "950,00 €", "120,00 €"],
-        ["Februar", "0,00 €", "800,00 €", "0,00 €", "800,00 €", ""],
+        KOPFZEILE,
+        # Gehälter, Spesen, Allgemeinkosten, Gesamtkosten
+        ["Januar", "100,00 €", "800,00 €", "50,00 €", "950,00 €"],
+        ["Februar", "100,00 €", "800,00 €", "50,00 €", "1.020,00 €"],
     ]
     posten = _zeilen_zu_posten(zeilen, 2026)
-    assert [(p.pauschale, p.allgemeinkosten, p.erfassung, p.kosten) for p in posten] == [
-        (
-            Decimal("950.0"),
-            Decimal("50.0"),
-            Erfasst(Decimal("120.0")),
-            Decimal("1020.0"),
-        ),  # 950 - 50 + 120
-        (Decimal("800.0"), Decimal("0.0"), Geschaetzt(), Decimal("800.0")),
+    assert [(p.kosten, p.entspricht_pauschale) for p in posten] == [
+        (Decimal("950.0"), True),
+        (Decimal("1020.0"), False),
     ]
 
 
-def test_zeilen_zu_posten_ohne_kostenerfassung_spalte_faellt_immer_auf_die_pauschale_zurueck() -> (
-    None
-):
-    zeilen = [KOPFZEILE, ["Januar", "100,00 €", "800,00 €", "50,00 €", "950,00 €"]]
-    posten = _zeilen_zu_posten(zeilen, 2026)
-    assert posten[0].erfassung == Geschaetzt()
-    assert posten[0].kosten == Decimal("950.0")
+def test_zeilen_zu_posten_ohne_pauschale_spalten_gilt_nicht_als_pauschale() -> None:
+    zeilen = [["Monat", "Allgemeinkosten", "Gesamtkosten"], ["Januar", "50,00 €", "950,00 €"]]
+    assert not _zeilen_zu_posten(zeilen, 2026)[0].entspricht_pauschale
 
 
 def test_zeilen_zu_posten_ueberspringt_zeilen_ohne_erkennbaren_monat() -> None:

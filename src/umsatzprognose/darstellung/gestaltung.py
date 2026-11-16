@@ -19,9 +19,9 @@ SERIE_HELL = "#86b6ef"
 SCHULUNG = "#d68a2c"
 # Eigene Farbfamilie fuer die Kostenprognose - aus derselben Ueberlegung: eine andere
 # Quelle als der Umsatz, keine weitere Saettigung von SERIE. Wie bei SERIE/SERIE_HELL
-# zeigt die Saettigung die Sicherheit: KOSTEN (satt) fuer Monate mit einer tatsaechlich
-# erfassten Kostenerfassung, KOSTEN_HELL fuer Monate, die noch auf der geschaetzten
-# Kostenpauschale beruhen (siehe Kostenposten.kosten).
+# zeigt die Saettigung die Sicherheit: KOSTEN (satt) fuer Monate mit gesicherten
+# Kosten, KOSTEN_HELL fuer Monate, die noch auf der Kostenpauschale beruhen (siehe
+# Kostenplan.kostenstatus_je_monat).
 KOSTEN = "#b3423f"
 KOSTEN_HELL = "#d9a09f"
 # Farben fuer den Ergebnis-Balken (Umsatz minus Kosten): Vorzeichen entscheidet die
