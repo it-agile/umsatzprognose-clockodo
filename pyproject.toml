@@ -64,7 +64,7 @@ mypy = [
     "pandas-stubs~=3.0.5",
 ]
 ty = [
-    "ty>=0.0.80",
+    "ty>=0.0.102",
 ]
 
 [build-system]

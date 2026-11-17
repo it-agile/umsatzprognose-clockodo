@@ -30,7 +30,7 @@ lint *args:
 types:
     uvx tox -e mypy,mypy-notebooks
 
-# ty (Beobachtung, Fehlschlag bricht nicht ab)
+# Typprüfung mit ty
 ty *args:
     uvx tox -e ty -- {{ args }}
 

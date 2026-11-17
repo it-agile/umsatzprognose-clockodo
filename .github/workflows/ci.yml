@@ -45,17 +45,9 @@ jobs:
       - uses: astral-sh/setup-uv@v10.1.0
       - run: uvx --with tox-uv tox -e mypy-notebooks
 
-  # Rein beobachtend: ty (github.com/astral-sh/ty) ist noch in frueher Entwicklung
-  # (Version 0.0.x, siehe [tool.tox.env.ty] in pyproject.toml) und ersetzt mypy hier
-  # nicht, sondern laeuft nur mit, damit sich die Reife des Werkzeugs ueber die Zeit im
-  # Log beobachten laesst. ignore_outcome in [tool.tox.env.ty] laesst tox trotz eines
-  # Fehlschlags mit Exit-Code 0 enden; continue-on-error hier ist die zusaetzliche
-  # Absicherung auf Workflow-Ebene, falls sich das je aendern sollte - beide zusammen,
-  # damit ein Fehlschlag weder den Build noch den Job-Status rot markiert.
   ty:
-    name: ty (Beobachtung, optional)
+    name: ty
     runs-on: ubuntu-latest
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v10.1.0
