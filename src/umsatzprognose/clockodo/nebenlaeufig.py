@@ -52,7 +52,7 @@ def synchron[T](coro: Coroutine[Any, Any, T]) -> T:
     # Worker-Thread erzeugen (die entstehen bedarfsgesteuert je submit()) und haette
     # deshalb keinerlei Effekt, weder auf Nebenlaeufigkeit noch auf Performance.
     with ThreadPoolExecutor(max_workers=1, thread_name_prefix="clockodo") as pool:
-        return pool.submit(asyncio.run, coro).result()  # ty: ignore[invalid-return-type]
+        return pool.submit(asyncio.run, coro).result()  # ty: ignore[invalid-explicit-return]
 
 
 async def mit_meldung[T](

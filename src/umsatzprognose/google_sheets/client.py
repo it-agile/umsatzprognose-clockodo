@@ -203,7 +203,7 @@ def _colab_credentials() -> CredentialsBase:
     Stand 2026 weiterhin offen).
     """
     import google.auth
-    from google.colab import auth  # ty: ignore[unresolved-import]
+    from google.colab import auth  # ty: ignore[import-not-found]
 
     os.environ["USE_AUTH_EPHEM"] = "0"
     auth.authenticate_user()
