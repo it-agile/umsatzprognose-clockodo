@@ -536,6 +536,15 @@ def test_aufklapptabelle_rendert_knopf_nur_fuer_zeilen_mit_unterzeilen_und_verst
     assert html.count('<th scope="col">') == 3
 
 
+def test_regler_abschnitt_kennzeichnet_den_platzhalter_als_beispiel():
+    html = app_modul._templates.env.from_string(
+        '{% from "_regler.html" import regler_abschnitt %}'
+        '{{ regler_abschnitt("feld", "Titel", "Hinweis", "Beispielwert", "", false, "/x", "Zu") }}',
+    ).render()
+
+    assert 'placeholder="Beispiel (noch nicht eingetragen):\nBeispielwert"' in html
+
+
 def test_dashboard_seite_restvolumen_top_slider_steuert_die_grafik():
     client = TestClient(app_modul.app)
 

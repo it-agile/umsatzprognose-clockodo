@@ -9,7 +9,7 @@
     <summary>{{ ueberschrift }}</summary>
     <div class="regler-gruppe">
         <label>{{ hinweistext }}
-            <textarea name="{{ feldname }}"{% if form_id %} form="{{ form_id }}"{% endif %} rows="3" placeholder="{{ platzhalter }}">{{ wert }}</textarea>
+            <textarea name="{{ feldname }}"{% if form_id %} form="{{ form_id }}"{% endif %} rows="3" placeholder="{{ "Beispiel (noch nicht eingetragen):\n" ~ platzhalter }}">{{ wert }}</textarea>
         </label>
         <div class="regler-aktionen">
             <button type="submit"{% if form_id %} form="{{ form_id }}"{% endif %}>Anwenden</button>
