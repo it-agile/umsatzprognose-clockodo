@@ -40,6 +40,16 @@ Der zweite Befehl aktiviert einmalig pro Klon den Pre-Commit-Hook (`.githooks/`)
 Zellausgaben aus Notebooks entfernt, bevor sie committet werden – das Repository ist
 öffentlich, Notebook-Ausgaben könnten reale Geschäftsdaten enthalten.
 
+Für die Tests reicht das Extra `notebook` nicht: `pytest` steht im Extra `dev`, einzelne
+Tests brauchen zusätzlich `bericht` (`slack-sdk`) und `web` – dieselben Extras, die
+`uvx tox` setzt. Fehlt `pytest` in der Projektumgebung, greift `uv run pytest`
+stillschweigend auf ein global installiertes `pytest` zurück und scheitert an fehlenden
+Projektabhängigkeiten.
+
+```bash
+uv sync --extra notebook --extra dev --extra bericht --extra web
+```
+
 Zugangsdaten aus `.env.sample` nach `.env` kopieren und ausfüllen. Den API-Key findet
 jede Person in Clockodo unter „Persönliche Daten“. Für den Baustein Schulungsanmeldungen
 zusätzlich eine OAuth-Client-ID (kein Service-Account, siehe `.env.sample`) sowie die

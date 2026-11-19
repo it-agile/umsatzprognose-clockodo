@@ -11,6 +11,7 @@ Abhängigkeits-/Python-Verwaltung ausschließlich über **uv** (Python 3.13, sie
 
 ```bash
 uv sync --extra notebook              # Umgebung herstellen
+uv sync --extra notebook --extra dev --extra bericht --extra web   # zusätzlich für Tests (Extras wie in tox)
 git config core.hooksPath .githooks   # einmalig: Pre-Commit-Hook aktivieren (siehe unten)
 uv run pytest                         # alle Tests
 uv run pytest <pfad>::<test>          # ein Test
